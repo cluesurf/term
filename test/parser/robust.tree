@@ -1,0 +1,337 @@
+note <the parser over every .tree in the repository: it round-trips, it is deterministic, it never throws>
+
+# Ported from robust.ts by statement (item term-self-host-001-0636, decision 116). The parser is the subject (decision
+# 106). Three properties, each of which found a real defect the day it was written:
+#
+#   ROUND TRIP   parse(print(parse(x))) equals parse(x): the canonical form re-parses to the same canonical form
+#   DETERMINISM  parsing the same text twice gives the same tree
+#   NEVER THROWS a mutation of a real file gives a result, never an exception
+#
+# The files are every .tree under deck/ and test/ in the order the folders list them, node_modules, .base, dot folders
+# and build output `host` left out (the @term/host package, which carries a deck.tree, kept). FAST=1 checks every 7th,
+# as the original's FAST did. A file the parser refuses is skipped, as the original skipped it, so the round-trip and
+# determinism tests walk the files that parse. The original's KNOWN_ROUND_TRIP baseline is empty, so every parsed file
+# must round-trip. The mutations are the original's: the same generator (an LCG over 32-bit words, seed 20260830),
+# twelve per third file of the sample, each a deleted, inserted or replaced character from the same set, or a deleted
+# run, drawn in the same order.
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <node:fs>, name robust-fs
+  load <node:path>, name robust-path
+
+load @term/base/text
+  find ends-with
+  find starts-with
+
+load @term/base/environment
+  find variable
+
+load @term/base/list
+  find list
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+task is-folder
+  take path, like text
+  like boolean
+
+  host status, robust-fs/stat-sync(path)
+  back status/is-directory()
+
+# every .tree under a folder, in the order the folder lists them
+task tree-files-under
+  take folder, like text
+  take out, like list, like text
+  like void
+
+  fork test, not(robust-fs/exists-sync(folder))
+    hold
+      back
+  walk robust-fs/readdir-sync(folder)
+    take entry, like text
+    fork test, or(or(is-equal(entry, <node_modules>), is-equal(entry, <.base>)), starts-with(entry, <.>))
+      hold
+        turn next
+    host path, robust-path/join(folder, entry)
+    # `host` is build output everywhere except the @term/host package, which carries a deck.tree
+    fork test, and(is-equal(entry, <host>), not(robust-fs/exists-sync(robust-path/join(path, <deck.tree>))))
+      hold
+        turn next
+    fork test, is-folder(path)
+      hold
+        tree-files-under(path, out)
+        turn next
+    fork test, ends-with(entry, <.tree>)
+      hold
+        out/push(path)
+
+task all-files
+  like list, like text
+
+  host out, make list
+  tree-files-under(<deck>, out)
+  tree-files-under(<test>, out)
+  back out
+
+# the files checked: all of them, or every 7th under FAST
+task sample-of
+  take files, like list, like text
+  like list, like text
+
+  fork test, is-equal(variable(<FAST>), <>)
+    hold
+      back files
+  host out, make list
+  save at, 0
+  walk files
+    take file, like text
+    fork test, is-equal(modulo(at, 7), 0)
+      hold
+        out/push(file)
+    save at, add(at, 1)
+  back out
+
+host sample, sample-of(all-files())
+
+task text-of
+  take file, like text
+  like text
+
+  back robust-fs/read-file-sync(file, <utf8>)
+
+# the sampled files the parser reads clean, the ones the original went on to check
+task parsed-of
+  take files, like list, like text
+  like list, like text
+
+  host out, make list
+  walk files
+    take file, like text
+    host first, parser-tree/parse(source-of(file, text-of(file)))
+    fork test, first/ok
+      hold
+        out/push(file)
+  back out
+
+host parsed, parsed-of(sample)
+
+# ROUND TRIP: the canonical form re-parses to the same canonical form
+task round-trips
+  take file, like text
+  like boolean
+
+  host first, parser-tree/parse(source-of(file, text-of(file)))
+  host printed, parser-tree/print-tree(first/tree)
+  host again, parser-tree/parse(source-of(file, printed))
+  fork test, not(again/ok)
+    hold
+      back false
+  back is-equal(parser-tree/print-tree(again/tree), printed)
+
+# DETERMINISM: the same text twice gives the same tree
+task deterministic
+  take file, like text
+  like boolean
+
+  host text, text-of(file)
+  host first, parser-tree/parse(source-of(file, text))
+  host twice, parser-tree/parse(source-of(file, text))
+  fork test, not(twice/ok)
+    hold
+      back false
+  back is-equal(parser-tree/print-tree(twice/tree), parser-tree/print-tree(first/tree))
+
+test <round trip>
+  take file, like text
+    walk parsed
+  want hold, round-trips(file)
+
+test <deterministic>
+  take file, like text
+    walk parsed
+  want hold, deterministic(file)
+
+# what one parse came to, an exception included
+form parse-outcome
+  link threw, like boolean
+  link ok, like boolean
+  link has-tree, like boolean
+  link diagnostics, like number
+
+bind tree-given
+  take result, like dynamic
+  like boolean
+  case node
+    text <Boolean($result.tree)>
+
+bind diagnostic-count
+  take result, like dynamic
+  like number
+  case node
+    text <($result.diagnostics ?? []).length>
+
+task outcome-of
+  take file, like text
+  take text, like text
+  like parse-outcome
+
+  fork
+    mark unsafe
+    host result, parser-tree/parse(source-of(file, text))
+    back make(parse-outcome, bind(threw, false), bind(ok, result/ok), bind(has-tree, tree-given(result)), bind(diagnostics, diagnostic-count(result)))
+  halt take
+    take cause
+    back make(parse-outcome, bind(threw, true), bind(ok, false), bind(has-tree, false), bind(diagnostics, 0))
+
+# whatever it decides, a result that says ok carries a tree, and nothing throws
+task gives-result
+  take file, like text
+  take text, like text
+  like boolean
+
+  host out, outcome-of(file, text)
+  back and(not(out/threw), or(not(out/ok), out/has-tree))
+
+# an unclosed input says so with a diagnostic rather than an ok
+task reports-diagnostic
+  take text, like text
+  like boolean
+
+  host out, outcome-of(<fixed.tree>, text)
+  back and(not(out/threw), and(not(out/ok), is-above(out/diagnostics, 0)))
+
+# NEVER THROWS, FIXED: inputs the seeded sweep once landed on and threw (term-compiler-0075). `{{{y}` closes a `{{{`
+# with one `}`: the tokenizer took the opener's count for the run and read past the end of the text.
+
+test <fixed \{\{\{y\} (three open, one close) returns a tree>
+  want hold, gives-result(<fixed.tree>, <\{\{\{y\}>)
+
+test <fixed \{\{\{y\} (three open, one close) reports a diagnostic>
+  want hold, reports-diagnostic(<\{\{\{y\}>)
+
+test <fixed \{\{y\} (two open, one close) returns a tree>
+  want hold, gives-result(<fixed.tree>, <\{\{y\}>)
+
+test <fixed \{\{y\} (two open, one close) reports a diagnostic>
+  want hold, reports-diagnostic(<\{\{y\}>)
+
+test <fixed \{\{\{\{y\}\} (four open, two close) returns a tree>
+  want hold, gives-result(<fixed.tree>, <\{\{\{\{y\}\}>)
+
+test <fixed \{\{\{\{y\}\} (four open, two close) reports a diagnostic>
+  want hold, reports-diagnostic(<\{\{\{\{y\}\}>)
+
+test <fixed \{\{\{y\}\} (three open, two close) returns a tree>
+  want hold, gives-result(<fixed.tree>, <\{\{\{y\}\}>)
+
+test <fixed \{\{\{y\}\} (three open, two close) reports a diagnostic>
+  want hold, reports-diagnostic(<\{\{\{y\}\}>)
+
+test <fixed a \{\{\{y\} (after a word) returns a tree>
+  want hold, gives-result(<fixed.tree>, <a \{\{\{y\}>)
+
+test <fixed a \{\{\{y\} (after a word) reports a diagnostic>
+  want hold, reports-diagnostic(<a \{\{\{y\}>)
+
+test <fixed a \<\{\{\{y\}\> (inside a text) returns a tree>
+  want hold, gives-result(<fixed.tree>, <a \<\{\{\{y\}\>>)
+
+test <fixed a \<\{\{\{y\}\> (inside a text) reports a diagnostic>
+  want hold, reports-diagnostic(<a \<\{\{\{y\}\>>)
+
+test <fixed \{\{\{y\}\}\} (three open, three close) returns a tree>
+  want hold, gives-result(<fixed.tree>, <\{\{\{y\}\}\}>)
+
+test <fixed many interpolations returns a tree>
+  want hold, gives-result(<fixed.tree>, <a \{\{a\}\}\{\{b\}\}\n  c\n  \{\{x\}\}\{\{y\}\}\n\{\{d\}\} a\n\{\{w\}\}-\{\{m\}\} f \{or\}\{\{\{why\}\}\}\n  \{\{v\}\}/\{\{o\}\}\n>)
+
+# ---- NEVER THROWS: mutations of real files, deterministic from the seed ----
+
+# the generator's state, one item stepped in place by each draw
+host lcg-state, make list(20260830)
+
+host word, 4294967296
+
+# the next draw, as a whole number below `range`: floor(next() * range) of the original, where next() is state / 2^32
+task draw-below
+  take range, like number
+  like number
+
+  host stepped, modulo(add(multiply(get(lcg-state, 0), 1664525), 1013904223), word)
+  lcg-state/set(0, stepped)
+  host scaled, multiply(stepped, range)
+  back divide(subtract(scaled, modulo(scaled, word)), word)
+
+# the characters a mutation inserts or replaces with: the shapes a person actually types
+host typed, make list(<\<>, <\>>, <\{>, <\}>, <(>, <)>, <,>, <\\>, < >, <\n>, <\t>, <">, <#>)
+
+task mutate
+  take text, like text
+  like text
+
+  host at, draw-below(text/length)
+  host kind, draw-below(4)
+  fork test, is-equal(kind, 0)
+    hold
+      # delete a character
+      back <{text/slice(0, at)}{text/slice(add(at, 1))}>
+  fork test, is-equal(kind, 1)
+    hold
+      # insert one
+      host typed-one, get(typed, draw-below(typed/length))
+      back <{text/slice(0, at)}{typed-one}{text/slice(at)}>
+  fork test, is-equal(kind, 2)
+    hold
+      # replace one
+      host typed-one, get(typed, draw-below(typed/length))
+      back <{text/slice(0, at)}{typed-one}{text/slice(add(at, 1))}>
+  # delete a run of up to 80
+  host cut, draw-below(minimum-of(80, subtract(text/length, at)))
+  back <{text/slice(0, at)}{text/slice(add(at, cut))}>
+
+task minimum-of
+  take a, like number
+  take b, like number
+  like number
+
+  fork test, is-below(a, b)
+    hold
+      back a
+  back b
+
+# one mutation of a file: which file and which of its twelve
+form mutation
+  link file, like text
+  link index, like number
+
+# every third file of the sample, twelve mutations each, in the original's order
+task mutations-of
+  take files, like list, like text
+  like list, like mutation
+
+  host out, make list
+  save at, 0
+  walk files
+    take file, like text
+    fork test, is-equal(modulo(at, 3), 0)
+      hold
+        save i, 0
+        walk test
+          hook test, is-below(i, 12)
+          hook hold
+            out/push(make(mutation, bind(file, file), bind(index, i)))
+            save i, add(i, 1)
+    save at, add(at, 1)
+  back out
+
+# the cases run in order, so each draws where the original drew
+test <mutation returns a tree>
+  take one, like mutation
+    walk mutations-of(sample)
+  want hold, gives-result(one/file, mutate(text-of(one/file)))

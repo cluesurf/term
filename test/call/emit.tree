@@ -1,0 +1,311 @@
+note <`term make --emit <node|rust|swift|kotlin> <file.tree> --out <path>`: one program, one backend, one source file>
+
+# Ported from emit.ts by statement (item term-self-host-001-0603), one test per `ok` in its order. A test inside the
+# original's loop over the four backends is walked over them here, a case for each turn. It runs the `term` under test
+# (@term/test/self), so the command a person types is what is under test. For each backend the output names the
+# program's tasks, and where the toolchain is installed it is BUILT with a small `main` appended and RUN, and must print
+# the right answer. A program that does not check is REFUSED: non-zero exit, the diagnostic on stderr, no file written.
+# Kotlin is built and run only with EMIT_KOTLIN=1, as in the original, since it takes about 20 seconds.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load ../support/cli
+  find term-root
+
+load ../support/running
+  find run-tool
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find trim
+  find split, name text-split
+
+# a stdlib import, so the closure and the native env rewrite are exercised, not only the entry file
+host good-text, <load @term/base/code/list\n  find list\n  find push\n\ntask sum-to\n  take size, like number\n  like number\n  save total, code 0\n  save items\n    make list\n  walk size\n    bind base, code 1\n    bind head\n      call add\n        read size\n        code 1\n    hook next\n      take site, name at\n      call push\n        read items\n        read at\n      save total\n        call add\n          read total\n          read at\n  send back, read total\n\ntask greet\n  take name, like text\n  like text\n  send back, text \<hello \{\{name\}\}\>\n>
+
+host bad-text, <task wrong\n  take n, like number\n  like number\n  send back, text \<not a number\>\n>
+
+# the answer every backend's main must print: 1 + 2 + ... + 100, then the greeting
+host wanted, <5050 hello ada>
+
+host targets, make list(<node>, <rust>, <swift>, <kotlin>)
+
+# each backend's two task names, a case each: the target, then the name the output must define
+host defined, make list(<node sumTo>, <node greet>, <rust sum_to>, <rust greet>, <swift sumTo>, <swift greet>, <kotlin sumTo>, <kotlin greet>)
+
+form emit-state
+  mark shared
+  link made, like boolean
+  link root, like text
+
+host emit-now, make(emit-state, bind(made, false), bind(root, <>))
+
+# the project, written once in a temporary folder
+task the-project
+  like text
+
+  fork test, emit-now/made
+    hold
+      back emit-now/root
+  save root, temp-folder(<term-emit->)
+  make-folder(<{root}/code>)
+  write-file(<{root}/code/good.tree>, good-text)
+  write-file(<{root}/code/bad.tree>, bad-text)
+  save emit-now/root, root
+  save emit-now/made, true
+  back root
+
+task extension-of
+  take target, like text
+  like text
+
+  fork test, is-equal(target, <node>)
+    hold
+      back <ts>
+  fork test, is-equal(target, <rust>)
+    hold
+      back <rs>
+  fork test, is-equal(target, <swift>)
+    hold
+      back <swift>
+  back <kt>
+
+# `term make --emit <target> <file>`, and `--out <out>` when `out` is not empty
+task emit-on
+  take target, like text
+  take file, like text
+  take out, like text
+  like run-result
+  mark async
+
+  save argument-list, make list(<make>, <--emit>, target, file)
+  fork test, is-unequal(out, <>)
+    hold
+      argument-list/push(<--out>)
+      argument-list/push(out)
+  back run-self(argument-list, the-project(), 600000)
+
+# where a backend's good program is written
+task good-out
+  take target, like text
+  like text
+
+  back <{the-project()}/out/good.{extension-of(target)}>
+
+# the good program's source on a backend, emitted by the first test and emitted here when it was not, <> when no file
+task source-of
+  take target, like text
+  like text
+  mark async
+
+  save out, good-out(target)
+  fork test, not(file-exists(out))
+    hold
+      emit-on(target, <code/good.tree>, out)
+  fork test, not(file-exists(out))
+    hold
+      back <>
+  back read-file(out)
+
+# the pattern a task's definition matches on a backend
+task definition-of
+  take target, like text
+  take name, like text
+  like pattern
+
+  fork test, is-equal(target, <node>)
+    hold
+      back make(pattern, <function {name}\\b>)
+  fork test, is-equal(target, <rust>)
+    hold
+      back make(pattern, <fn {name}\\s*\\(>)
+  fork test, is-equal(target, <swift>)
+    hold
+      back make(pattern, <func {name}\\s*\\(>)
+  back make(pattern, <fun {name}\\s*\\(>)
+
+task main-of
+  take target, like text
+  like text
+
+  fork test, is-equal(target, <node>)
+    hold
+      back <<console.log(`${sumTo(100)} ${greet('ada')}`)>>
+  fork test, is-equal(target, <rust>)
+    hold
+      back <<fn main() { println!("{} {}", sum_to(100), greet("ada".to_string())); }>>
+  fork test, is-equal(target, <swift>)
+    hold
+      back <<print("\(sumTo(size: 100)) \(greet(name: "ada"))")>>
+  back <<fun main() { println("${sumTo(100L)} ${greet("ada")}") }>>
+
+# why a backend's build and run is skipped here, <> when it is not
+task skip-reason
+  take target, like text
+  like text
+
+  fork test, is-equal(target, <rust>)
+    hold
+      fork test, is-equal(find-tool(<rustc>), <>)
+        hold
+          back <rustc is not installed>
+  fork test, is-equal(target, <swift>)
+    hold
+      fork test, is-equal(find-tool(<swiftc>), <>)
+        hold
+          back <swiftc is not installed>
+  fork test, is-equal(target, <kotlin>)
+    hold
+      fork test, is-equal(variable(<EMIT_KOTLIN>), <>)
+        hold
+          back <set EMIT_KOTLIN=1>
+      fork test, is-equal(find-tool(<kotlinc>), <>)
+        hold
+          back <kotlinc is not installed>
+  back <>
+
+# the good program with its main appended, built by the backend's toolchain: <> when it built, else the errors
+task build-good
+  take target, like text
+  like text
+  mark async
+
+  save root, the-project()
+  save name, <{target}-good>
+  save program, <{source-of(target)}\n{main-of(target)}\n>
+  fork test, is-equal(target, <node>)
+    hold
+      save file, <{root}/{name}.ts>
+      write-file(file, program)
+      back run-tool(make list(<{term-root()}/node_modules/.bin/esbuild>, file, <--bundle>, <--platform=node>, <--format=esm>, <--outfile={root}/{name}.mjs>, <--log-level=error>))
+  fork test, is-equal(target, <rust>)
+    hold
+      save file, <{root}/{name}.rs>
+      write-file(file, program)
+      back run-tool(make list(<rustc>, <--edition>, <2021>, <-A>, <warnings>, file, <-o>, <{root}/{name}>))
+  fork test, is-equal(target, <swift>)
+    hold
+      save file, <{root}/{name}.swift>
+      write-file(file, program)
+      back run-tool(make list(<swiftc>, <-suppress-warnings>, file, <-o>, <{root}/{name}>))
+  save file, <{root}/{name}.kt>
+  write-file(file, program)
+  back run-tool(make list(<kotlinc>, file, <-include-runtime>, <-nowarn>, <-d>, <{root}/{name}.jar>))
+
+# what the built good program prints, both streams
+task run-good
+  take target, like text
+  like text
+  mark async
+
+  save root, the-project()
+  save name, <{target}-good>
+  fork test, is-equal(target, <node>)
+    hold
+      save ran, run(<node>, make list(<{root}/{name}.mjs>))
+      back <{ran/output}{ran/error}>
+  fork test, is-equal(target, <kotlin>)
+    hold
+      save ran, run(<java>, make list(<-jar>, <{root}/{name}.jar>))
+      back <{ran/output}{ran/error}>
+  save ran, run(<{root}/{name}>, make list)
+  back <{ran/output}{ran/error}>
+
+test <--emit exits 0>
+  take target, like text
+    walk targets
+  save ran, emit-on(target, <code/good.tree>, good-out(target))
+  want hold, is-equal(ran/code, 0)
+
+test <the output defines each task>
+  take pair, like text
+    walk defined
+  save parts, text-split(pair, < >)
+  want hold, matches(definition-of(parts/0, parts/1), source-of(parts/0))
+
+# without --out, the same source on standard output
+test <without --out the source is printed>
+  take target, like text
+    walk targets
+  save printed, emit-on(target, <code/good.tree>, <>)
+  want hold, is-equal(printed/code, 0)
+  want hold, is-unequal(source-of(target), <>)
+  want hold, is-equal(printed/output, source-of(target))
+
+test <kotlin: every import is hoisted above the first declaration>
+  save source, source-of(<kotlin>)
+  want hold, is-unequal(source, <>)
+  want miss, matches(make(pattern, <<\n(?:fun|class|object|val)[^\n]*\n[\s\S]*\nimport >>), source)
+
+test <the output builds with its toolchain>
+  take target, like text
+    walk targets
+  fork test, is-unequal(skip-reason(target), <>)
+    hold
+      skip <the toolchain is not installed, or EMIT_KOTLIN is not set>
+  want hold, is-equal(build-good(target), <>)
+
+test <it runs and prints the answer>
+  take target, like text
+    walk targets
+  fork test, is-unequal(skip-reason(target), <>)
+    hold
+      skip <the toolchain is not installed, or EMIT_KOTLIN is not set>
+  want hold, is-equal(trim(run-good(target)), wanted)
+
+# a program that does not check is refused, on every backend, and nothing is written
+task refused-on
+  take target, like text
+  like run-result
+  mark async
+
+  back emit-on(target, <code/bad.tree>, <{the-project()}/out/bad-{target}.txt>)
+
+test <a type error exits non-zero>
+  take target, like text
+    walk make list(<node>, <rust>)
+  want hold, is-equal(refused-on(target)/code, 1)
+
+# the closing item of the terminal output standard: `✗ make Refused, nothing written`, then `1 error` on its facts
+test <the refusal names the error>
+  take target, like text
+    walk make list(<node>, <rust>)
+  want hold, matches(make(pattern, <<Refused, nothing written[\s\S]*?\b\d+ errors?\b>>), refused-on(target)/error)
+
+test <a refused emit writes nothing>
+  take target, like text
+    walk make list(<node>, <rust>)
+  refused-on(target)
+  want miss, file-exists(<{the-project()}/out/bad-{target}.txt>)
+
+# an unknown backend, and a missing file, are refused too
+test <an unknown backend is refused>
+  want hold, is-unequal(emit-on(<cobol>, <code/good.tree>, <>)/code, 0)
+
+test <a missing file is refused>
+  want hold, is-equal(emit-on(<node>, <code/none.tree>, <>)/code, 1)

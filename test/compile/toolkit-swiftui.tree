@@ -1,0 +1,279 @@
+note <a SwiftUI view or a composable in a slot of the retained tree, pressed twice and read back>
+
+# Ported from toolkit-swiftui.ts by statement (item term-self-host-001-0696). A declarative view in a slot of the
+# retained tree: SwiftUI's (swiftui-target-0001, native-view.swift `hostedViews`), a `swiftui` element naming a registered
+# SwiftUI view, on AppKit (macOS) and UIKit (the iPhone simulator), and its Compose twin (compose-target,
+# compose/runtime/native-view.kt `hostedComposables`), a `composable` element naming a registered composable, on
+# Compose's desktop and Jetpack Compose. The program hosts a stepper and a progress view beside a span showing a count it
+# keeps in a signal, presses the stepper's increment twice the way a tap would (on Compose, a click on its real `+`
+# button), and reads back:
+#
+#   - both hosted views are installed in the tree and laid out by their toolkit to a size above zero
+#   - each press reached the program's `change` handler, which wrote the count, so the span reads 2
+#   - the count went back into the hosted view's input through its attribute (the slot holds `value` 2)
+#
+# Android views has no declarative toolkit to host: its slot is Jetpack Compose's leg, so the legs are macos, ios,
+# compose and compose-android, each run on its own as the original runs each in a folder of its own, through
+# test/support/device/toolkit-run (item 0548), which skips a leg whose toolchain or device is not here.
+# SWIFTUI_ONLY=macos (or ios, compose, compose-android) runs one leg.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way are one walked test, a
+# case each, labeled by the check's name. Each `ok` of the original's judge is one walked test over the legs, a leg a
+# case of it, skipped where the leg was or where it stopped before the original would have judged it.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find run-leg
+  find prepare-no-device
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find index-of
+  find substring
+  find trim
+  find char-count
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/pattern
+  find pattern
+  find find-matches
+  find pattern-match
+
+load @term/base/list
+  find push
+
+# the slot element each platform hosts its own declarative views in: SwiftUI's on Apple, a composable's on Compose
+task slot-of
+  take leg, like text
+  like text
+
+  fork test, starts-with(leg, <compose>)
+    hold
+      back <composable>
+  back <swiftui>
+
+# the original's program for a leg, its slot and PNG path filled in
+task swiftui-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  save slot, slot-of(leg)
+  back <load @term/site/code/dom/dom\n  find view\n  find get-value\n\nload @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find show-window\n  find run-app\n  find exit-app\n  find child-at\n  find serialize\n  find snapshot\n  find say\n  find later\n  find hosted-name\n  find hosted-attribute\n  find perform-hosted\n\ntask count-text\n  take count, like signal\n  like text\n  send back\n    call read-signal\n      bind self, read count\n\nview board\n  take host, like view\n  save count\n    call make-signal\n      bind value, text \<0\>\n  view {slot}\n    name stepper\n    bind name, text \<stepper\>\n    bind label, text \<count\>\n    bind value\n      call count-text\n        read count\n    seed change\n      call write-signal\n        bind self, read count\n        bind value\n          call get-value\n            read stepper\n  view {slot}\n    bind name, text \<progress\>\n    bind label, text \<done\>\n    bind value, text \<0.25\>\n  view span\n    read\n      call count-text\n        read count\n\ntask main\n  save root\n    call open-root\n      text \<Term SwiftUI\>\n      code 420\n      code 320\n  call board\n    read root\n  call after-launch\n    task check\n      call show-window\n      save stepper\n        call child-at\n          read root\n          code 0\n      save progress\n        call child-at\n          read root\n          code 1\n      save stepper-name\n        call hosted-name\n          read stepper\n      save progress-name\n        call hosted-name\n          read progress\n      save start\n        call serialize\n          read root\n      call say\n        text \<step start \{\{stepper-name\}\} \{\{progress-name\}\} \{\{start\}\}\>\n      call perform-hosted\n        read stepper\n        text \<increment\>\n      call perform-hosted\n        read stepper\n        text \<increment\>\n      call later\n        task after\n          save handed\n            call hosted-attribute\n              read stepper\n              text \<value\>\n          save shown\n            call serialize\n              call child-at\n                read root\n                code 2\n          call say\n            text \<step pressed \{\{handed\}\} \{\{shown\}\}\>\n          call snapshot\n            text \<{shot}\>\n          call exit-app\n            code 0\n  call run-app\n>
+
+form swiftui-state
+  mark shared
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host swiftui-now, make(swiftui-state, bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# SWIFTUI_ONLY's leg, else Apple's SwiftUI slot and Compose's composable slot, made once
+task the-legs
+  like swiftui-state
+
+  fork test, swiftui-now/made
+    hold
+      back swiftui-now
+  save swiftui-now/made, true
+  save only, variable(<SWIFTUI_ONLY>)
+  fork test, is-unequal(only, <>)
+    hold
+      swiftui-now/legs/push(only)
+      back swiftui-now
+  walk make(list, <macos>, <ios>, <compose>, <compose-android>)
+    take leg, like text
+    swiftui-now/legs/push(leg)
+  back swiftui-now
+
+# one leg, in a folder of its own, run by the first test that asks. Not `SwiftUI`: the iOS build names the app's module
+# after it, and `SwiftUI.View` would then be the app's own
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-legs()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-toolkit-swiftui->)), bind(name, <Hosted>), bind(who, <toolkit-swiftui>), bind(ios-identifier, <surf.term.toolkit-swiftui-test>), bind(android-identifier, <surf.term.toolkitswiftui>))
+  save made, run-leg(app, leg, swiftui-program, prepare-no-device)
+  save swiftui-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-legs()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing. Its judge says nothing on android, which is never one of these legs
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, is-equal(ran/leg, <android>)
+    hold
+      back <Android views has no declarative toolkit to host>
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# the text after `step <name> ` on the first line holding it
+task step
+  take output, like text
+  take name, like text
+  like text
+
+  save mark, <step {name} >
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        save from, add(index-of(line, mark), char-count(mark))
+        back trim(substring(line, from, char-count(line)))
+  back <>
+
+form hosted-view
+  link name, like text
+  link width, like float
+  link height, like float
+
+# every `<swiftui name=".." size="w,h">` (or `<composable ...>`) the tree read back holds, with its size
+task hosted
+  take tree, like text
+  like list, like hosted-view
+
+  save out, make list
+  walk find-matches(make(pattern, <\<(?:swiftui|composable) name="([^"]*)" size="(\\d+),(\\d+)"\>>), tree)
+    take hit, like pattern-match
+    out/push(make(hosted-view, bind(name, hit/groups/0), bind(width, parse-float(hit/groups/1)), bind(height, parse-float(hit/groups/2))))
+  back out
+
+test <both hosted views are installed in the tree>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, starts-with(step(ran/output, <start>), <stepper progress >)
+
+# two views, each above zero both ways, the stepper first
+task laid-out
+  take views, like list, like hosted-view
+  like boolean
+
+  fork test, is-unequal(views/length, 2)
+    hold
+      back false
+  walk views
+    take one, like hosted-view
+    fork test, not(and(is-above(one/width, 0.0), is-above(one/height, 0.0)))
+      hold
+        back false
+  back and(is-equal(views/0/name, <stepper>), is-equal(views/1/name, <progress>))
+
+test <the toolkit laid each one out to a size above zero>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, laid-out(hosted(step(ran/output, <start>)))
+
+test <two presses reached the program's handler, and the count went back into the stepper's input>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, starts-with(step(ran/output, <pressed>), <2 >)
+
+test <the span the program draws reads the count>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(step(ran/output, <pressed>), <2>)

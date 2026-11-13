@@ -1,0 +1,295 @@
+note <mark sole and mark hide are enforced alike on every backend, and the passing programs run>
+
+# Ported from sole-hide.ts by statement (item 0652). `mark sole` and `mark hide` ENFORCED (term/affine-kinds-0008, 0009,
+# term-affine-kinds-0001; decision note/project/term/affine-kinds/decision/001-many-by-default-sole-and-hide-declared-per-form.md).
+#
+# Each case is compiled for every backend env (node, rust, swift, kotlin): the gates run in the shared front end after
+# the checker, so a refusal is the same diagnostic on all four before any backend emits. The passing cases are then
+# built and RUN on each backend whose toolchain is installed, the output compared. Each case is one walked test over the
+# four backends, a case per backend.
+#
+#   sole-reused     a double use, a use after a move into a call, a use inside a walk of a name bound outside it
+#   (passes)        a fork that hands the permit on once per arm: the max over arms, not the sum
+#   sole-captured   a closure naming a sole value from outside it
+#   sole-generic    a sole type as a list element
+#   sole-unearned   a form holding a sole field without `mark sole` (and through another form); with it, it builds
+#   hidden-make     `make permit` from another file, a case of a hidden form, a bodyless task answering one
+#   (passes)        the declaring file makes it, another file reads its fields, a file under the package's test/ makes it
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compile-note
+  find compiling-source
+  find refused-as
+
+load ../support/running
+  find run-text
+  find backends
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+# ---- the programs ----
+
+host permit-module, <form permit\n  mark sole\n  link note, like text\n\ntask grant\n  take note, like text\n  like permit\n  send back\n    make permit\n      bind note, read note\n\ntask spend\n  take permit, like permit\n  like text\n  send back, read permit/note\n>
+
+host twice, <{permit-module}\ntask run\n  like text\n  save p, grant(\<n1\>)\n  save a, spend(p)\n  send back, spend(p)\n>
+
+# reading a plain field consumes nothing, but a value handed on is gone: a read after the move is refused
+host after-move, <{permit-module}\ntask keep\n  take permit, like permit\n  like permit\n  send back, read permit\n\ntask run\n  like text\n  save p, grant(\<n1\>)\n  save q, keep(p)\n  send back, read p/note\n>
+
+host reads-then-moves, <{permit-module}\ntask run\n  like text\n  save p, grant(\<n1\>)\n  save a, read p/note\n  save b, read p/note\n  send back, spend(p)\n>
+
+# a method called on a sole value hands it on, as an argument does (term-affine-kinds-0003, gap 170)
+host stamped-module, <form permit\n  mark sole\n  link note, like text\n  task stamp\n    take self\n    like text\n    send back, read self/note\n\ntask grant\n  take note, like text\n  like permit\n  send back\n    make permit\n      bind note, read note\n\ntask spend\n  take permit, like permit\n  like text\n  send back, read permit/note\n>
+
+host method-then-spend, <{stamped-module}\ntask run\n  like text\n  save p, grant(\<n1\>)\n  save a, call p/stamp\n  send back, spend(p)\n>
+
+host method-once, <{stamped-module}\ntask run\n  like text\n  save p, grant(\<n1\>)\n  save a, read p/note\n  send back, call p/stamp\n>
+
+# a match whose arm takes the subject's fields hands the subject on to it
+host ticket-module, <form ticket\n  mark sole\n  case open\n    link note, like text\n  case shut\n\ntask issue\n  take note, like text\n  like ticket\n  send back\n    make open\n      bind note, read note\n\ntask spend-ticket\n  take t, like ticket\n  like text\n  send back, \<spent\>\n>
+
+host match-then-spend, <{ticket-module}\ntask run\n  like text\n  save t, issue(\<n1\>)\n  save seen, \<none\>\n  sift t\n    case open\n      link note\n      save seen, read note\n    case shut\n      save seen, \<shut\>\n  send back, spend-ticket(t)\n>
+
+host match-binds-nothing, <{ticket-module}\ntask run\n  like text\n  save t, issue(\<n1\>)\n  save seen, \<none\>\n  sift t\n    case open\n      save seen, \<open\>\n    case shut\n      save seen, \<shut\>\n  send back, spend-ticket(t)\n>
+
+host move-then-move, <{permit-module}\ntask keep\n  take permit, like permit\n  like permit\n  send back, read permit\n\ntask run\n  like text\n  save p, grant(\<n1\>)\n  save q, keep(p)\n  save r, p\n  send back, spend(r)\n>
+
+host looped, <{permit-module}\ntask run\n  take notes, like list, like text\n  like text\n  save p, grant(\<n1\>)\n  save last, \<none\>\n  walk notes\n    take n\n    save last, spend(p)\n  send back, last\n>
+
+host per-arm, <{permit-module}\ntask pick\n  take flag, like boolean\n  like text\n  save p, grant(\<n1\>)\n  fork test, read flag\n    hold\n      send back, spend(p)\n  send back\n    call spend\n      read p\n\ntask run\n  like text\n  send back, pick(true)\n>
+
+host per-arm-then-again, <{permit-module}\ntask pick\n  take flag, like boolean\n  like text\n  save p, grant(\<n1\>)\n  save a, \<\>\n  fork test, read flag\n    hold\n      save a, spend(p)\n    miss\n      save a, spend(p)\n  send back, spend(p)\n>
+
+host fresh, <{permit-module}\ntask run\n  take notes, like list, like text\n  like text\n  save last, \<none\>\n  walk notes\n    take n\n    save p, grant(n)\n    save last, spend(p)\n  send back, last\n>
+
+host hoarded, <{permit-module}\ntask hoard\n  take all, like list, like permit\n  like number\n  send back, 0\n>
+
+host unearned, <{permit-module}\nform ticket\n  link permit, like permit\n  link seat, like text\n>
+
+host through-another, <{permit-module}\nform ticket\n  mark sole\n  link permit, like permit\n\nform booking\n  link ticket, like ticket\n  link who, like text\n>
+
+host earned, <{permit-module}\nform ticket\n  mark sole\n  link permit, like permit\n  link seat, like text\n\ntask run\n  like text\n  send back, \<ok\>\n>
+
+host hidden-module, <form permit\n  mark hide\n  mark sole\n  link note, like text\n  link person, like text\n\ntask grant-delete\n  take person, like text\n  take note, like text\n  like permit\n  send back\n    make permit\n      bind note, read note\n      bind person, read person\n\ntask delete-note\n  take permit, like permit\n  like text\n  send back, read permit/note\n>
+
+host forged, <load @app/permit\n  find permit\n  find delete-note\n\ntask erase\n  like text\n  send back\n    call delete-note\n      make permit\n        bind note, \<n1\>\n        bind person, \<ada\>\n>
+
+host asked, <load @app/permit\n  find permit\n  find grant-delete\n  find delete-note\n\ntask run\n  like text\n  save p, grant-delete(\<ada\>, \<n1\>)\n  send back, delete-note(p)\n>
+
+host handle-module, <form handle\n  mark hide\n  case open\n    link at, like text\n  case shut\n>
+
+host forged-case, <load @app/handle\n  find handle\n\ntask forge\n  like handle\n  send back\n    make open\n      bind at, \<x\>\n>
+
+host conjured, <load @app/permit\n  find permit\n\ntask conjure\n  like permit\n>
+
+# `@app/<path>` is `/pkg/code/<path>.tree`, so `/pkg/test/` holds the package's tests; anything else is the stdlib
+task app
+  take name, like text
+  take text, like text
+  like compiling-source
+
+  back make(compiling-source, bind(file, <@app/{name}>), bind(text, text), bind(answer, </pkg/code/{name}.tree>))
+
+host permit-files, make list(app(<permit>, hidden-module))
+
+host handle-files, make list(app(<handle>, handle-module))
+
+# the env a backend compiles under
+task env-of
+  take backend, like text
+  like text
+
+  fork test, is-equal(backend, <typescript>)
+    hold
+      back <node>
+  back backend
+
+# the main compiled for a backend's env, its loads read from the files first and the project after
+task build
+  take main, like text
+  take backend, like text
+  take files
+    like list, like compiling-source
+    fall make list
+  take file, like text, fall </pkg/code/main.tree>
+  like compile-outcome
+
+  host env, env-of(backend)
+  back compile-text(main, make(compile-choice, bind(file, file), bind(project, <.>), bind(project-env, env), bind(env, env), bind(files, files)))
+
+# the message of the first diagnostic of this name, <> when the program was not refused by one
+task hit-message
+  take out, like compile-outcome
+  take code, like text
+  like text
+
+  walk out/notes
+    take note, like compile-note
+    fork test, is-equal(note/name, code)
+      hold
+        back note/message
+  back <>
+
+host folder, temp-folder(<term-sole-hide->)
+
+# ---- sole ----
+
+test <a permit spent twice is refused as sole-reused>
+  take backend, like text
+    walk backends()
+  host out, build(twice, backend)
+  want hold, refused-as(out, <sole-reused>)
+  want hold, text-contains(hit-message(out, <sole-reused>), <"p">)
+  want hold, text-contains(hit-message(out, <sole-reused>), <handed on at line>)
+
+test <a use after a move into a call is refused as sole-reused>
+  take backend, like text
+    walk backends()
+  host out, build(after-move, backend)
+  want hold, refused-as(out, <sole-reused>)
+  want hold, text-contains(hit-message(out, <sole-reused>), <"p">)
+  want hold, text-contains(hit-message(out, <sole-reused>), <read here after it was handed on>)
+
+test <two plain field reads, then one move builds>
+  take backend, like text
+    walk backends()
+  want hold, build(reads-then-moves, backend)/ok
+
+test <a permit stamped by a method, then spent is refused as sole-reused>
+  take backend, like text
+    walk backends()
+  host out, build(method-then-spend, backend)
+  want hold, refused-as(out, <sole-reused>)
+  want hold, text-contains(hit-message(out, <sole-reused>), <"p">)
+  want hold, text-contains(hit-message(out, <sole-reused>), <handed on at line>)
+
+test <a field read, then one method call builds>
+  take backend, like text
+    walk backends()
+  want hold, build(method-once, backend)/ok
+
+test <a ticket matched into its fields, then spent is refused as sole-reused>
+  take backend, like text
+    walk backends()
+  host out, build(match-then-spend, backend)
+  want hold, refused-as(out, <sole-reused>)
+  want hold, text-contains(hit-message(out, <sole-reused>), <"t">)
+  want hold, text-contains(hit-message(out, <sole-reused>), <handed on at line>)
+
+test <a match that takes no field, then one spend builds>
+  take backend, like text
+    walk backends()
+  want hold, build(match-binds-nothing, backend)/ok
+
+test <a save of a permit already moved into a call is refused as sole-reused>
+  take backend, like text
+    walk backends()
+  host out, build(move-then-move, backend)
+  want hold, refused-as(out, <sole-reused>)
+  want hold, text-contains(hit-message(out, <sole-reused>), <"p">)
+
+test <a permit spent inside a walk is refused as sole-reused>
+  take backend, like text
+    walk backends()
+  host out, build(looped, backend)
+  want hold, refused-as(out, <sole-reused>)
+  want hold, text-contains(hit-message(out, <sole-reused>), <walk may run its body twice>)
+
+test <a fork that spends the permit once per arm builds>
+  take backend, like text
+    walk backends()
+  want hold, build(per-arm, backend)/ok
+
+test <a spend after a fork that spent it in each arm is refused as sole-reused>
+  take backend, like text
+    walk backends()
+  host out, build(per-arm-then-again, backend)
+  want hold, refused-as(out, <sole-reused>)
+  want hold, text-contains(hit-message(out, <sole-reused>), <"p">)
+
+test <a permit made and spent inside each turn of a walk builds>
+  take backend, like text
+    walk backends()
+  want hold, build(fresh, backend)/ok
+
+test <a list of permits is refused as sole-generic>
+  take backend, like text
+    walk backends()
+  host out, build(hoarded, backend)
+  want hold, refused-as(out, <sole-generic>)
+  want hold, text-contains(hit-message(out, <sole-generic>), <permit>)
+
+# ---- earned ----
+
+test <a form holding a permit without mark sole is refused as sole-unearned>
+  take backend, like text
+    walk backends()
+  host out, build(unearned, backend)
+  want hold, refused-as(out, <sole-unearned>)
+  want hold, text-contains(hit-message(out, <sole-unearned>), <"ticket">)
+  want hold, text-contains(hit-message(out, <sole-unearned>), <"permit">)
+
+test <a form holding a sole form that holds a permit is refused as sole-unearned>
+  take backend, like text
+    walk backends()
+  host out, build(through-another, backend)
+  want hold, refused-as(out, <sole-unearned>)
+  want hold, text-contains(hit-message(out, <sole-unearned>), <"booking">)
+
+test <the same form with mark sole builds>
+  take backend, like text
+    walk backends()
+  want hold, build(earned, backend)/ok
+
+# ---- hide ----
+
+test <a make of a hidden permit from another file is refused as hidden-make>
+  take backend, like text
+    walk backends()
+  host out, build(forged, backend, permit-files)
+  want hold, refused-as(out, <hidden-make>)
+  want hold, text-contains(hit-message(out, <hidden-make>), <"permit">)
+  want hold, text-contains(hit-message(out, <hidden-make>), <pkg/code/permit.tree>)
+
+test <another file that asks the declaring file for a permit and reads it builds>
+  take backend, like text
+    walk backends()
+  want hold, build(asked, backend, permit-files)/ok
+
+test <a test file of the package that makes a permit builds>
+  take backend, like text
+    walk backends()
+  want hold, build(forged, backend, permit-files, </pkg/test/permit.tree>)/ok
+
+test <a make of a case of a hidden form from another file is refused as hidden-make>
+  take backend, like text
+    walk backends()
+  host out, build(forged-case, backend, handle-files)
+  want hold, refused-as(out, <hidden-make>)
+  want hold, text-contains(hit-message(out, <hidden-make>), <"handle">)
+
+test <a task with no body that answers a hidden form is refused as hidden-make>
+  take backend, like text
+    walk backends()
+  host out, build(conjured, backend, permit-files)
+  want hold, refused-as(out, <hidden-make>)
+  want hold, text-contains(hit-message(out, <hidden-make>), <"permit">)
+
+# ---- run the passing programs where the toolchains are ----
+
+test <the per-arm program runs and spends its permit once>
+  take backend, like text
+    walk backends()
+  host ran, run-text(per-arm, backend, folder, <per-arm>, make(compile-choice, bind(project, <.>)))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <{ran/reason}>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <n1>)

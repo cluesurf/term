@@ -1,0 +1,212 @@
+note <A unit's stored bytes do not hang on where its mill came from>
+
+# Ported from mill-origin.ts by statement (item term-self-host-001-0623), one test per `ok` in its order. Item
+# term-self-host-001-0432, decision 077 section 4: a pool build mills a module in one worker and reads that mill back from
+# the store in another. The mill wrote keys holding nothing and shared type objects between nodes, which the store's
+# JSON drops, so the unit answer stored differed by the process that built it. Here one project builds on two stores: A
+# mills every module fresh, B starts with A's mill entries only. Every unit entry both write under one key must hold the
+# same bytes, and a milled module must hold no key whose value is undefined. compile/compile, compile/load,
+# compile/cache, call/cache-store and call/code/make are the subject (decision 106).
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load ../support/walking
+  find kind-of
+  find fields-of
+  find field-of
+
+load @term/base/text
+  find starts-with
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/make>, name project-module
+  load <node:fs>, name origin-file
+  load <node:path>, name origin-path
+  load <node:zlib>, name origin-zlib
+
+bind new-cache
+  take module, like dynamic
+  take store, like dynamic
+  take label, like text
+  like dynamic
+  case node
+    text <new $module.CompileCache($store, $label)>
+
+# host value: an empty host Map, the milling's template table
+bind empty-map
+  take seed, like number
+  like dynamic
+  case node
+    text <new Map()>
+
+host dir, origin-file/realpath-sync(temp-folder(<mill-origin->))
+
+# a task with no `like` (write-file) is the one whose `result` the checker writes
+task project
+  take name, like text
+  like text
+
+  host root, origin-path/join(dir, name)
+  origin-file/mkdir-sync(origin-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  origin-file/write-file-sync(origin-path/join(root, <deck.tree>), <deck @probe/mill-origin\n  mark \<0.0.1\>\n>)
+  origin-file/write-file-sync(origin-path/join(root, <code>, <base.tree>), <load @term/base/native/node/file\n  find write-file\n\ntask main\n  mark async\n  call write-file\n    text \<a\>\n    text \<b\>\n>)
+  back root
+
+# every file under a folder, none when it is not there
+task entries
+  take at, like text
+  like list, like text
+
+  save out, make list
+  fork test, not(origin-file/exists-sync(at))
+    hold
+      back out
+  walk origin-file/readdir-sync(at)
+    take name, like text
+    host full, origin-path/join(at, name)
+    host stat, origin-file/stat-sync(full)
+    fork test, stat/is-directory()
+      hold
+        walk entries(full)
+          take inner, like text
+          out/push(inner)
+      miss
+        out/push(full)
+  back out
+
+# an entry's text, gunzipped when it starts with gzip's first byte
+task read-entry
+  take file, like text
+  like text
+
+  host raw, origin-file/read-file-sync(file)
+  fork test, is-equal(raw/0, 31)
+    hold
+      host unzipped, origin-zlib/gunzip-sync(raw)
+      back unzipped/to-string(<utf8>)
+  back raw/to-string(<utf8>)
+
+task build
+  take root, like text
+  take store, like text
+  like dynamic
+
+  host cache, new-cache(cache-module, cache-store/disk-cache-store(store, <mill-origin>), <mill-origin>)
+  back project-module/compile-project-separate(root, cache, <node>, project-module/build-session(root))
+
+# every field under a value whose value is undefined, by its path
+task undefined-keys
+  take value, like dynamic
+  take at, like text
+  take out, like list, like text
+  like void
+
+  host kind, kind-of(value)
+  fork test, and(is-unequal(kind, <object>), is-unequal(kind, <list>))
+    hold
+      back
+  walk fields-of(value)
+    take key, like text
+    host inner, field-of(value, key)
+    fork test, is-equal(kind-of(inner), <undefined>)
+      hold
+        out/push(<{at}.{key}>)
+      miss
+        undefined-keys(inner, <{at}.{key}>, out)
+
+# the paths under `from` whose first part is `kind`
+task of-kind
+  take from, like text
+  take kind, like text
+  like list, like text
+
+  save out, make list
+  walk entries(from)
+    take file, like text
+    fork test, starts-with(origin-path/relative(from, file), kind)
+      hold
+        out/push(file)
+  back out
+
+host file, origin-file/realpath-sync(<deck/base/code/native/node/file.tree>)
+host milled, compile-module/milled-module(make-record(make(list, <file>, file, <text>, origin-file/read-file-sync(file, <utf8>))), make-record(make(list, <parsed>, load-module/make-parse-memo(), <templates>, empty-map(0), <templateKey>, <>, <lean>, false)))
+
+task holes
+  like list, like text
+
+  save out, make list
+  undefined-keys(milled, <>, out)
+  back out
+
+host store-a, origin-path/join(dir, <store-a>)
+host store-b, origin-path/join(dir, <store-b>)
+host a, build(project(<a>), store-a)
+host mills, of-kind(store-a, <mill>)
+
+# B's store starts with A's mill entries only
+task copy-mills
+  like number
+
+  walk mills
+    take one, like text
+    host to, origin-path/join(store-b, origin-path/relative(store-a, one))
+    origin-file/mkdir-sync(origin-path/join(to, <..>), make-record(make(list, <recursive>, true)))
+    origin-file/cp-sync(one, to)
+  back mills/length
+
+host copied, copy-mills()
+host b, build(project(<b>), store-b)
+
+form compared
+  link same, like number
+  link differ, like list, like text
+
+# every unit entry both stores hold, the same bytes or not
+task compare-units
+  like compared
+
+  save same, 0
+  save differ, make list
+  walk of-kind(store-a, <unit>)
+    take one, like text
+    host other, origin-path/join(store-b, origin-path/relative(store-a, one))
+    fork test, origin-file/exists-sync(other)
+      hold
+        fork test, is-equal(read-entry(one), read-entry(other))
+          hold
+            save same, add(same, 1)
+          miss
+            differ/push(origin-path/relative(store-a, one))
+  back make(compared, bind(same, same), bind(differ, differ))
+
+host units, compare-units()
+
+test <a milled module holds no key whose value is undefined>
+  want hold, is-equal(holes()/length, 0)
+
+test <the build on a fresh mill builds>
+  want hold, is-equal(a/failed, 0)
+
+test <and stores its mills>
+  want hold, is-above(mills/length, 0)
+
+test <the build on stored mills builds>
+  want hold, is-equal(copied, mills/length)
+  want hold, is-equal(b/failed, 0)
+
+test <the stdlib units both stores hold are compared>
+  want hold, is-above(add(units/same, units/differ/length), 0)
+
+test <every unit both stores hold has the same bytes>
+  want hold, is-equal(units/differ/length, 0)

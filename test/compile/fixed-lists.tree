@@ -1,0 +1,145 @@
+note <the fixed-length list fact, held both ways: which integer lists Kotlin may hold as a LongArray>
+
+# Ported from fixed-lists.ts by statement (item term-self-host-001-0571), one test per `ok` in its order. The fact is
+# compile/backend `fixed-lists`, the suite's subject (decision 106), with `list-facts` and `gated-tasks` before it. A
+# wrong answer is a build error rather than a wrong result (a LongArray handed where a MutableList goes, or a push onto
+# one), but each rule still gets a case that must NOT be fixed. The original's integer test is the task `is-integer`,
+# handed to the fact as its closure.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find file-text
+
+load ../support/walking
+  find field-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find push
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/backend>, name backend-module
+
+# host value: a set of the mask methods, as gated-tasks takes them
+bind set-of
+  take items, like list, like dynamic
+  like dynamic
+  case node
+    text <new Set($items)>
+
+# host value: whether the fact's map holds `name` for `owner`
+bind holds-name
+  take facts, like dynamic
+  take owner, like text
+  take name, like dynamic
+  like boolean
+  case node
+    text <($facts.get($owner)?.has($name) === true)>
+
+# host value: the sets a fact map holds, in its order
+bind sets-of
+  take facts, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$facts.values()]>
+
+bind set-has
+  take found, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$found.has($name)>
+
+# a type the fact may hold as a LongArray: a number, or the named number or integer
+task is-integer
+  take t, like dynamic
+  like boolean
+
+  host kind, <{field-of(t, <kind>)}>
+  fork test, is-equal(kind, <number>)
+    hold
+      back true
+  fork test, is-unequal(kind, <named>)
+    hold
+      back false
+  host name, <{field-of(t, <name>)}>
+  back or(is-equal(name, <number>), is-equal(name, <integer>))
+
+# the program compiled for Kotlin on the stdlib, halting on a refusal with its first message
+task built
+  take text, like text
+  take file, like text
+  like dynamic
+
+  host out, compile-text(text, make(compile-choice, bind(file, file), bind(stdlib, <kotlin>), bind(env, <kotlin>)))
+  fork test, not(out/ok)
+    hold
+      halt <{file}: {join(out/messages, < | >)}>
+  back out/program
+
+# the fixed-list fact of a program: `locals` and `params`, each a map from a task's name to a set
+task facts
+  take program, like dynamic
+  like dynamic
+
+  host methods, make list
+  walk program
+    take one, like dynamic
+    fork test, is-equal(<{field-of(one, <form>)}>, <mask>)
+      hold
+        walk field-of(one, <methods>)
+          take method, like dynamic
+          methods/push(method)
+  host lists, backend-module/list-facts(program, backend-module/gated-tasks(program, set-of(methods)))
+  back backend-module/fixed-lists(program, field-of(lists, <lend>), field-of(lists, <fresh>), is-integer)
+
+host fannkuch-path, <mark/fannkuch-redux/term.tree>
+
+host shared, <load @term/base/list\n  find list\n\nform holder\n  link items, like list, like number\n\ntask counting\n  take n, like number\n  like list, like number\n  save out\n    make list\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take site, name i\n      call push\n        bind list, read out\n        bind item, read i\n  send back, read out\n\ntask bump\n  take xs, like list, like number\n  take by, like number\n  save xs/\{by\}\n    call add\n      read xs/\{by\}\n      read by\n\ntask compute\n  like text\n  host xs\n    call counting\n      code 3\n  host h\n    make holder\n      bind items, read xs\n  call bump\n    read xs\n    code 1\n  host zs\n    call counting\n      code 3\n  call bump\n    read zs\n    code 2\n  host a, read h/items/1\n  host b, read zs/2\n  send back, text \<\{\{a\}\} \{\{b\}\}\>\n>
+
+host flip-long-array, make pattern, <<fun flip\(perm: LongArray>>
+
+# 1. fannkuch-redux: the three working lists come from fresh tasks and are only lent and indexed, so all are fixed,
+# and `flip`, which every caller hands a fixed list, takes a LongArray
+test <fannkuch's perm, perm1 and count are fixed>
+  host locals, field-of(facts(built(file-text(fannkuch-path), fannkuch-path)), <locals>)
+  want hold, holds-name(locals, <fannkuch>, <perm>)
+  want hold, holds-name(locals, <fannkuch>, <perm1>)
+  want hold, holds-name(locals, <fannkuch>, <count>)
+
+test <flip's list parameter is fixed>
+  host params, field-of(facts(built(file-text(fannkuch-path), fannkuch-path)), <params>)
+  want hold, holds-name(params, <flip>, 0)
+
+test <Kotlin writes `fun flip(perm: LongArray`>
+  host out, compile-text(file-text(fannkuch-path), make(compile-choice, bind(file, fannkuch-path), bind(stdlib, <kotlin>), bind(env, <kotlin>)))
+  want hold, matches(flip-long-array, emit-text(out, <kotlin>))
+
+# 2. a list stored into a record escapes, so it is shared rather than owned: `bump`, which one caller hands it, takes
+# a MutableList, and the owned `zs` another caller lends to `bump` stays one too. A list a task pushes onto never is
+# fixed. (A copy like `host ys, read xs` is no alias: the simplifier propagates it, so it is not the shared case)
+host shared-facts, facts(built(shared, <fixed-lists-shared.tree>))
+
+test <a parameter some caller passes a shared list is NOT fixed>
+  want hold, not(holds-name(field-of(shared-facts, <params>), <bump>, 0))
+
+test <an owned local lent to such a parameter is NOT fixed>
+  want hold, not(holds-name(field-of(shared-facts, <locals>), <compute>, <zs>))
+
+test <a list a task pushes onto is NOT fixed>
+  save none, true
+  walk sets-of(field-of(shared-facts, <locals>))
+    take names, like dynamic
+    fork test, set-has(names, <out>)
+      hold
+        save none, false
+  want hold, none

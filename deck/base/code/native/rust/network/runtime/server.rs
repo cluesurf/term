@@ -21,7 +21,7 @@
 // NO TERM FORM IS NAMED HERE (item 1218). This file is spliced into the emitted program as source, and a form's name
 // there is not its own: loaded beside network/http, the server's `response` is `Response__in0_1`. The handler is the
 // native module's `answer-plain` over the program's (network/server/plain): the request goes in as its parts, the
-// response comes back as `[status, body, name, value, ...]`.
+// response comes back as `[status, body, hex, name, value, ...]`, `hex` a bytes body (item 1326).
 //
 // `start` answers once the port is bound, and `stop` once it is closed (item 1206): the bind and the close both
 // happen on the server thread, and both are waited on by a hand-back (`crate::__term_hand_back`).
@@ -78,7 +78,7 @@ mod runtime {
                 Rc::new(RefCell::new(Running {
                     halt: Some(bound.halt),
                     closed: Some(bound.closed),
-                    port,
+                    port: bound.port,
                 }))
             }
             Err(error) => {
@@ -91,6 +91,11 @@ mod runtime {
                 }))
             }
         }
+    }
+
+    // the port a started server is bound to: the OS's choice when `start` asked for port 0 (item 1326)
+    pub fn port(server: Server) -> i64 {
+        server.borrow().port
     }
 
     // stop accepting, and answer once the server thread has closed its listener and every connection

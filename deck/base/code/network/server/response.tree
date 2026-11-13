@@ -1,21 +1,32 @@
-# An HTTP response a server handler returns: a status code, a list of headers, and a text body. The constructors cover the
-# common answers: `make-ok` for 200 with a body, `make-status` for a bare status code. `with-header` adds one header and
-# returns the response, so several calls chain to build a multi-header response (repeats allowed, e.g. multiple set-cookie).
+# An HTTP response a server handler returns: a status code, a list of headers, and a body, as text or as bytes. The
+# constructors cover the common answers: `make-ok` for 200 with a text body, `make-bytes` for a body of any bytes (a
+# file, an image, a package), `make-status` for a bare status code. `with-header` adds one header and returns the
+# response, so several calls chain to build a multi-header response (repeats allowed, e.g. multiple set-cookie).
 
 # one response header: a name and its value, kept as an ordered list so duplicates (set-cookie, ...) survive
 
 mark unstable
 
+load @term/base/bytes
+  find from-byte-list
+
 form header
   link name, like text
   link value, like text
 
+# `body` is text, sent as utf8. `data` is the body as bytes, every value 0 to 255 sent as it is, for a body that is no
+# text: when `data` holds a byte it is what goes out and `body` is not read (item term-self-host-001-1326). It falls to
+# no bytes through `from-byte-list`, an inline bind that raises nothing: a fall through the native `from-text` made
+# every `make response` a call that can raise on rust, swift and kotlin, so no handler typed as raising nothing built
 form response
   link status, like number
   link headers
     like list
       like header
   link body, like text
+  link data
+    like bytes
+    fall from-byte-list(make list)
 
 # 200 OK with a text body
 task make-ok
@@ -27,6 +38,22 @@ task make-ok
       bind headers
         make list
       bind body, read body
+
+# a body of bytes, sent byte for byte (200 unless `status` says otherwise)
+task make-bytes
+  take data, like bytes
+  take
+    status
+    like number
+    fall 200
+  like response
+  send back
+    make response
+      bind status, read status
+      bind headers
+        make list
+      bind body, text <>
+      bind data, read data
 
 # a status code with an empty body (404, 500, 204, ...)
 task make-status

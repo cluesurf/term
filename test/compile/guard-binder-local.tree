@@ -1,0 +1,112 @@
+note <a guard's caught binder is a local of its task, never a reference to a task of its name>
+
+# Ported from guard-binder-local.ts by statement (item term-self-host-001-0571), one test per `ok` in its order. A
+# guard's caught binder is a local of its task, as a task's `take` is (term-compiler-0073). `halt take` / `take refused`
+# in deck/deck/code/package/linking.tree read `refused` while three other files defined a task `refused`, and
+# check/disambiguate.tree counted the binder as a reference to those tasks: line/base.tree was refused as
+# duplicate-definition. The original's resolver answered `@app/x` as `x.tree`: here each module is a `files` source
+# with that answer, and the compile resolves nothing else.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+  find refused-as
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find replace-matches
+
+# a guard in task `name` whose caught binder is `binder`, read as a value in its handler
+task guarded
+  take name, like text
+  take binder, like text
+  take answer, like text
+  like text
+
+  back <task {name}\n  like text\n  fork\n    mark unsafe\n    halt \<bad\>\n  halt take\n    take {binder}\n    save seen, read {binder}\n    send back, text \<{answer}\>\n  send back, text \<ok\>\n>
+
+# a top-level task `name`, in its own file
+task defines
+  take name, like text
+  take answer, like text
+  like text
+
+  back <task {name}\n  take x, like text\n  like text\n  send back, text \<{answer}\>\n\ntask other-{answer}\n  like text\n  send back, text \<o\>\n>
+
+# the module `@app/{name}`, answering as `{name}.tree`
+task module
+  take name, like text
+  take text, like text
+  like compiling-source
+
+  back make(compiling-source, bind(file, <@app/{name}>), bind(text, text), bind(answer, <{name}.tree>))
+
+task build
+  take modules, like list, like compiling-source
+  take main, like text
+  like compile-outcome
+
+  back compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(files, modules)))
+
+host reads-a-task, make pattern, <<refused__in|refusedIn\d>>
+host reads-problem, make pattern, <<problem__in|problemIn\d>>
+host problem-task, make pattern, <<function problem\w*\([\s\S]*?\n\}>>
+
+# two files define a task `refused`, a third reads its guard binder `refused`, and the program holds all three
+task three-files
+  like compile-outcome
+
+  host main, <load @app/a\n  find other-a\n\nload @app/b\n  find other-b\n\nload @app/g\n  find run-guarded\n\ntask run\n  like text\n  send back, call run-guarded\n>
+  back build(make(list, module(<a>, defines(<refused>, <a>)), module(<b>, defines(<refused>, <b>)), module(<g>, guarded(<run-guarded>, <refused>, <g>))), main)
+
+# one other file defines `refused`: the binder must not be bound to that file's task either
+task one-file
+  like compile-outcome
+
+  host main, <load @app/a\n  find other-a\n\nload @app/g\n  find run-guarded\n\ntask run\n  like text\n  send back, call run-guarded\n>
+  back build(make(list, module(<a>, defines(<refused>, <a>)), module(<g>, guarded(<run-guarded>, <refused>, <g>))), main)
+
+host two-guards-main, <load @app/g1\n  find first\n\nload @app/g2\n  find second\n\ntask run\n  like text\n  send back, call first\n>
+
+test <a guard binder named like a task two files define builds>
+  host out, three-files()
+  want hold, out/ok
+
+test <it is no duplicate-definition>
+  host out, three-files()
+  want hold, not(refused-as(out, <duplicate-definition>))
+
+test <a guard binder named like one other file's task builds>
+  host out, one-file()
+  want hold, out/ok
+
+test <and the handler reads the caught value, not the task>
+  host out, one-file()
+  want hold, out/ok
+  want hold, not(matches(reads-a-task, out/emitted))
+
+# two modules each with a guard binding the same take name, a third loading both
+test <two modules guarding with one binder name, loaded by a third, build>
+  host out, build(make(list, module(<g1>, guarded(<first>, <problem>, <one>)), module(<g2>, guarded(<second>, <problem>, <two>))), two-guards-main)
+  want hold, out/ok
+
+# and both at once: each guarding module also defines a task of the binder's name. The split renames each file's
+# `problem` task apart, so a handler bound to its file's task reads a renamed name
+task both-at-once
+  like compile-outcome
+
+  host g1, <{guarded(<first>, <problem>, <one>)}\n{defines(<problem>, <p1>)}>
+  host g2, <{guarded(<second>, <problem>, <two>)}\n{defines(<problem>, <p2>)}>
+  back build(make(list, module(<g1>, g1), module(<g2>, g2)), two-guards-main)
+
+test <guard binders named like a task their own files define build>
+  host out, both-at-once()
+  want hold, out/ok
+
+test <and each handler reads its caught value, not its own file's task>
+  host out, both-at-once()
+  want hold, out/ok
+  want hold, not(matches(reads-problem, replace-matches(problem-task, out/emitted, <>)))

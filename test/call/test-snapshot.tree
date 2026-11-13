@@ -1,0 +1,327 @@
+note <want snapshot holds a text against the one stored beside its test file, and term test --commit writes that store>
+
+# Ported from test-snapshot.ts by statement (item term-self-host-001-0650), one test per `ok` in its order. Decision 022
+# T2, item 0186: `want snapshot, <text>` holds a text against the one stored in the test file's `<test>.snapshot.tree`, and
+# `term test --commit` writes that file (`--update` is its old spelling, still honored with a warning). A project in a
+# temporary folder is run as a person runs it, by the `term` under test (@term/test/self): with no store each snapshot
+# fails naming its line and the command that writes it, `--commit` writes the store and passes, a second run passes
+# against it, a change to the code fails with both texts, a text holding every character a literal escapes and every
+# character the store's own syntax could misread comes back exactly, a change of one of its characters fails naming the
+# line, `--update` still writes with the warning, a value that is not text is refused at the build, and `--commit` is
+# refused off node. On each native backend this machine has, the tests hold against the store node wrote.
+#
+# The node runs follow one another on one project, so they are made once, in the original's order, by the first test
+# that asks, and kept in `snap-now`. Each native test makes its own run after them.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/process/run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find replace-matches
+
+load @term/base/text
+  find contains
+
+dock load
+  load <node:fs>, name snap-file
+
+# the test file over the greetings: two snapshots in one test, one in the next
+host greet-test, <load ../code/greet\n  find greet\n  find awkward\n\ntest \<greets two people\>\n  want snapshot, greet(\<ada\>)\n  want snapshot\n    call greet\n      text \<grace\>\n\ntest \<keeps every character\>\n  want snapshot, awkward()\n>
+
+host escape-test, <load ../code/escape\n  find tricky\n\ntest \<keeps what the store could misread\>\n  want snapshot, tricky()\n  want snapshot, \<\>\n>
+
+host number-refused, <test \<a number is no snapshot\>\n  want snapshot, 3\n>
+
+host number-held, <test \<a number shown is one\>\n  want hold, true\n>
+
+# the code the greetings snapshot, and every character a text literal escapes, and a line break
+task greet-code
+  take greeting, like text
+  like text
+
+  back <task greet\n  take name, like text\n  like text\n  back \<{greeting} \{name\}\>\n\n# every character a text literal escapes, and a line break\ntask awkward\n  like text\n  back \<a \\\<b\\\> \\\{c\\\} \\\\ d\\ne\\tf\>\n>
+
+# a text holding what the store's own syntax could misread: a backslash, both angle brackets doubled and alone, both
+# braces, a line break, a carriage return, a tab, trailing spaces, blank lines and a character past U+FFFF. Written in
+# Term's own escapes, `two` the word one run changes
+task escape-code
+  take two, like text
+  like text
+
+  back <task tricky\n  like text\n  back \<\\\\ \\\< \\\> \\\{ \\\} \\\<\\\< \\\>\\\> end\\nline {two}\\r\\ttab  \\n\\n\\nafter blanks 𝄞  \>\n>
+
+form snap-run
+  link code, like number
+  link out, like text
+
+# every node run in its order, the store as --commit wrote it, and the code term look answered
+form snap-state
+  mark shared
+  link made, like boolean
+  link root, like text
+  link runs, like hash, like text, like snap-run
+  link store-there, like boolean
+  link stored, like text
+  link looked, like number
+
+host snap-now, make(snap-state, bind(made, false), bind(root, <>), bind(runs, make hash), bind(store-there, false), bind(stored, <>), bind(looked, -1))
+
+# one run of term test in the project, the report's wrapped reasons read as one line
+task snap-test
+  take root, like text
+  take arguments, like list, like text
+  like snap-run
+  mark async
+
+  save argument-list, make(list, <test>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(<--color>)
+  argument-list/push(<never>)
+  save ran, run-self(argument-list, root, 900000)
+  save out, replace-matches(make(pattern, <<\n {4}(?=\S)>>), <{ran/output}{ran/error}>, < >)
+  back make(snap-run, bind(code, ran/code), bind(out, out))
+
+# one run, kept under its name
+task keep-run
+  take key, like text
+  take root, like text
+  take arguments, like list, like text
+  like void
+  mark async
+
+  save made, snap-test(root, arguments)
+  save snap-now/runs/{key}, made
+
+task the-runs
+  like snap-state
+  mark async
+
+  fork test, snap-now/made
+    hold
+      back snap-now
+  save snap-now/made, true
+  save root, snap-file/realpath-sync(temp-folder(<test-snapshot->))
+  save snap-now/root, root
+  make-folder(<{root}/code>)
+  make-folder(<{root}/test>)
+  write-file(<{root}/deck.tree>, <deck @probe/snapshot\n  mark \<0.0.1\>\n>)
+  write-file(<{root}/code/greet.tree>, greet-code(<hello>))
+  write-file(<{root}/test/greet.tree>, greet-test)
+  save store, <{root}/test/greet.snapshot.tree>
+  keep-run(<empty>, root, make list)
+  keep-run(<updated>, root, make(list, <--commit>))
+  save snap-now/store-there, file-exists(store)
+  fork test, snap-now/store-there
+    hold
+      save snap-now/stored, read-file(store)
+  keep-run(<again>, root, make list)
+  save looked, run-self(make(list, <look>, store, <--color>, <never>), root)
+  save snap-now/looked, looked/code
+  write-file(<{root}/code/greet.tree>, greet-code(<hi>))
+  keep-run(<changed>, root, make list)
+  write-file(<{root}/code/greet.tree>, greet-code(<hello>))
+  write-file(<{root}/code/escape.tree>, escape-code(<two>))
+  write-file(<{root}/test/escape.tree>, escape-test)
+  keep-run(<escaped>, root, make(list, <escape>, <--commit>))
+  keep-run(<escape-held>, root, make(list, <escape>))
+  write-file(<{root}/code/escape.tree>, escape-code(<tw0>))
+  keep-run(<moved>, root, make(list, <escape>))
+  keep-run(<spelled>, root, make(list, <escape>, <--update>))
+  keep-run(<spelled-held>, root, make(list, <escape>))
+  write-file(<{root}/code/escape.tree>, escape-code(<two>))
+  keep-run(<back>, root, make(list, <escape>, <--commit>))
+  keep-run(<refused>, root, make(list, <--commit>, <--env>, <rust>))
+  write-file(<{root}/test/number.tree>, number-refused)
+  keep-run(<number>, root, make(list, <--filter>, <number>))
+  write-file(<{root}/test/number.tree>, number-held)
+  back snap-now
+
+task snap-run-of
+  take key, like text
+  like snap-run
+  mark async
+
+  save state, the-runs()
+  back state/runs/{key}
+
+# whether every tool a native backend needs is on this machine
+task tools-here
+  take tools, like list, like text
+  like boolean
+
+  save here, true
+  walk tools
+    take tool, like text
+    fork test, is-equal(find-tool(tool), <>)
+      hold
+        save here, false
+  back here
+
+test <with no store, every snapshot test fails>
+  save empty, snap-run-of(<empty>)
+  want hold, contains(empty/out, <2 tests · 0 passed · 2 failed>)
+  want hold, is-equal(empty/code, 1)
+
+test <naming the line and the command that writes it>
+  save empty, snap-run-of(<empty>)
+  want hold, contains(empty/out, <no snapshot is stored for line 6: term test --commit writes it>)
+
+test <--commit passes and writes three>
+  save updated, snap-run-of(<updated>)
+  want hold, contains(updated/out, <2 tests · 2 passed>)
+  want hold, contains(updated/out, <3 snapshots written>)
+  want hold, is-equal(updated/code, 0)
+
+test <--commit gives no warning>
+  save updated, snap-run-of(<updated>)
+  want miss, contains(updated/out, <--update is>)
+
+test <the store exists beside the test>
+  save state, the-runs()
+  want hold, state/store-there
+
+test <as a hash from each phrase to its texts>
+  save state, the-runs()
+  want hold, contains(state/stored, <list \<greets two people\>>)
+  want hold, contains(state/stored, <\<hello ada\>, \<hello grace\>>)
+
+test <a second run holds against it>
+  save again, snap-run-of(<again>)
+  want hold, contains(again/out, <2 tests · 2 passed>)
+  want hold, is-equal(again/code, 0)
+
+test <the store is a data file `term look` reads>
+  save state, the-runs()
+  want hold, is-equal(state/looked, 0)
+
+test <a change to the code fails the snapshot>
+  save changed, snap-run-of(<changed>)
+  want hold, contains(changed/out, <1 failed>)
+  want hold, is-equal(changed/code, 1)
+
+test <with both texts>
+  save changed, snap-run-of(<changed>)
+  want hold, contains(changed/out, <left \<hi ada\>, right \<hello ada\>>)
+
+test <the text holding every escaped character still holds>
+  save changed, snap-run-of(<changed>)
+  want miss, contains(changed/out, <Keeps every character>)
+
+test <--commit records the text the store could misread, and the empty text>
+  save escaped, snap-run-of(<escaped>)
+  want hold, contains(escaped/out, <1 test · 1 passed>)
+  want hold, contains(escaped/out, <2 snapshots written>)
+  want hold, is-equal(escaped/code, 0)
+
+test <node holds both against the store>
+  save held, snap-run-of(<escape-held>)
+  want hold, contains(held/out, <1 test · 1 passed>)
+  want hold, is-equal(held/code, 0)
+
+test <one character changed fails, naming the line>
+  save moved, snap-run-of(<moved>)
+  want hold, contains(moved/out, <1 failed>)
+  want hold, contains(moved/out, <test/escape.tree:5>)
+  want hold, is-equal(moved/code, 1)
+
+test <--update still writes, with the warning>
+  save spelled, snap-run-of(<spelled>)
+  want hold, contains(spelled/out, <2 snapshots written>)
+  want hold, contains(spelled/out, <term test --update is term test --commit now>)
+  want hold, is-equal(spelled/code, 0)
+
+test <and what it wrote holds>
+  save held, snap-run-of(<spelled-held>)
+  want hold, contains(held/out, <1 test · 1 passed>)
+  want hold, is-equal(held/code, 0)
+
+test <--commit writes the first text back>
+  save back-run, snap-run-of(<back>)
+  want hold, is-equal(back-run/code, 0)
+
+test <--commit is refused off node>
+  save refused, snap-run-of(<refused>)
+  want hold, contains(refused/out, <Snapshots are written on node: --commit runs without --env>)
+  want hold, is-unequal(refused/code, 0)
+
+test <a value that is not text is refused at the build>
+  save number, snap-run-of(<number>)
+  want hold, contains(number/out, <expected text, found number>)
+  want hold, is-unequal(number/code, 0)
+
+test <rust: the tests hold against the store node wrote>
+  fork test, not(tools-here(make(list, <rustc>)))
+    hold
+      skip <rustc not here>
+  save state, the-runs()
+  save native, snap-test(state/root, make(list, <--env>, <rust>, <--filter>, <greet>))
+  want hold, contains(native/out, <2 tests · 2 passed>)
+  want hold, is-equal(native/code, 0)
+
+test <rust: the text the store could misread holds against what node wrote>
+  fork test, not(tools-here(make(list, <rustc>)))
+    hold
+      skip <rustc not here>
+  save state, the-runs()
+  save native, snap-test(state/root, make(list, <--env>, <rust>, <escape>))
+  want hold, contains(native/out, <1 test · 1 passed>)
+  want hold, is-equal(native/code, 0)
+
+test <swift: the tests hold against the store node wrote>
+  fork test, not(tools-here(make(list, <swiftc>)))
+    hold
+      skip <swiftc not here>
+  save state, the-runs()
+  save native, snap-test(state/root, make(list, <--env>, <swift>, <--filter>, <greet>))
+  want hold, contains(native/out, <2 tests · 2 passed>)
+  want hold, is-equal(native/code, 0)
+
+test <swift: the text the store could misread holds against what node wrote>
+  fork test, not(tools-here(make(list, <swiftc>)))
+    hold
+      skip <swiftc not here>
+  save state, the-runs()
+  save native, snap-test(state/root, make(list, <--env>, <swift>, <escape>))
+  want hold, contains(native/out, <1 test · 1 passed>)
+  want hold, is-equal(native/code, 0)
+
+test <kotlin: the tests hold against the store node wrote>
+  fork test, not(tools-here(make(list, <kotlinc>, <java>)))
+    hold
+      skip <kotlinc and java not here>
+  save state, the-runs()
+  save native, snap-test(state/root, make(list, <--env>, <kotlin>, <--filter>, <greet>))
+  want hold, contains(native/out, <2 tests · 2 passed>)
+  want hold, is-equal(native/code, 0)
+
+test <kotlin: the text the store could misread holds against what node wrote>
+  fork test, not(tools-here(make(list, <kotlinc>, <java>)))
+    hold
+      skip <kotlinc and java not here>
+  save state, the-runs()
+  save native, snap-test(state/root, make(list, <--env>, <kotlin>, <escape>))
+  want hold, contains(native/out, <1 test · 1 passed>)
+  want hold, is-equal(native/code, 0)

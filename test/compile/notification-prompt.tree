@@ -1,0 +1,270 @@
+note <a local notification shown on iOS through the platform's own prompt, tapped by a UI test, its banner the witness>
+
+# Ported from notification-prompt.ts by statement (item term-self-host-001-0694). A local notification shown on iOS
+# (device-layer-0018), through the platform's own prompt. `simctl privacy` grants no notifications, so the only way to
+# the grant is the alert SpringBoard puts up, and only a UI test can tap it: an XCUITest bundle, written and built here
+# (test/support/device/springboard-taps), drives SpringBoard, taps Allow when our app's prompt comes up, and then waits
+# for a banner carrying the notification's title. That banner is the witness: SpringBoard drew it, the app did not
+# report it.
+#
+# The app (a UIKit toolkit program) asks for the grant, posts the notification while it is in front, and says what it
+# was answered. It runs on the iOS leg alone (test/support/device/toolkit-run), once, by the first test that asks. The
+# leg's own checks are one walked test, a case each, and each of the original judge's `ok`s is one test, skipped where
+# the leg was or where it stopped before its app ran. Skips, with the reason, without xcodebuild or a simulator.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find run-leg
+
+load ../support/device/springboard-taps
+  find taps
+  find taps-finished
+  find build-taps
+  find start-taps
+  find finish-taps
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+  find char-count
+  find trim
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# host value: this run's process id, so the banner's title is this run's own
+bind notice-pid
+  take seed, like number
+  like text
+  case node
+    text <String(process.pid)>
+
+host notice-identifier, <surf.term.notification-prompt-test>
+
+form notice-state
+  mark shared
+  link made, like boolean
+  link xcode, like boolean
+  link title, like text
+  link folder, like text
+  link taps, like taps
+  link ran, like toolkit-leg
+  link tapped, like taps-finished
+
+host notice-now, make(notice-state, bind(made, false), bind(xcode, false), bind(title, <>), bind(folder, <>), bind(taps, make(taps, bind(built, false), bind(errors, <>), bind(project, <>), bind(derived, <>), bind(log, <>))), bind(ran, make(toolkit-leg, bind(leg, <ios>), bind(toolkit, <UIKit>))), bind(tapped, make(taps-finished, bind(started, false))))
+
+# whether xcodebuild answers `-version` with 0
+task xcode-answers
+  take tool, like text
+  like boolean
+
+  save got, -1
+  fork
+    mark unsafe
+    save version, run(tool, make list(<-version>))
+    save got, version/code
+  halt take
+    take cause
+    save got, -1
+  back is-equal(got, 0)
+
+# the original's program, the run's title filled in
+task notice-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  save title, notice-now/title
+  back <load @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find launch\n  find run-app\n  find exit-app\n  find say\n\nload @term/site/code/view/permission\n  find permission-status\n  find request-permission\n\nload @term/site/code/view/notification\n  find show-notification\n\ntask main\n  save root\n    call open-root\n      text \<Term notice\>\n      code 320\n      code 200\n  call launch\n    task check\n      mark async\n      save before\n        call permission-status\n          text \<notification\>\n      call say\n        text \<step before \{before\}\>\n      save asked\n        call request-permission\n          text \<notification\>\n      call say\n        text \<step asked \{asked\}\>\n      save posted\n        call show-notification\n          text \<{title}\>\n          text \<posted by notification-prompt\>\n      call say\n        text \<step posted \{posted\}\>\n      call exit-app\n        code 0\n  call run-app\n>
+
+# started once the app is installed and before it launches: the UI test waits for the prompt the launch brings up
+task notice-prepare
+  take leg, like text
+  take udid, like text
+  take serial, like text
+  take identifier, like text
+  like void
+
+  fork test, and(is-equal(leg, <ios>), and(is-unequal(udid, <>), notice-now/taps/built))
+    hold
+      start-notice-taps(udid)
+
+# start the UI test on the simulator. The harness's before-launch raises nothing: a start that raises leaves the test
+# not started, which its own test reads
+task start-notice-taps
+  take udid, like text
+  like void
+
+  fork
+    mark unsafe
+    start-taps(notice-now/taps, udid)
+  halt take
+    take cause
+    save notice-now/taps/started, false
+
+# the UI test built, then the iOS leg run, then the UI test's end read, once
+task the-notice
+  like notice-state
+
+  fork test, notice-now/made
+    hold
+      back notice-now
+  save state, notice-now
+  save state/made, true
+  save state/xcode, xcode-answers(<xcodebuild>)
+  fork test, not(state/xcode)
+    hold
+      back state
+  save state/title, <Term notice {notice-pid(0)}>
+  save state/folder, temp-folder(<term-notification->)
+  # the taps: Allow on our app's prompt, then the banner. Every element SpringBoard draws is searched, since a banner's
+  # title is one static text among the app name and the body
+  save body, <        let allow = springboard.buttons["Allow"]\n        XCTAssertTrue(allow.waitForExistence(timeout: 120), "no notification prompt came up")\n        allow.tap()\n        let banner = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "{state/title}")).firstMatch\n        XCTAssertTrue(banner.waitForExistence(timeout: 60), "no banner with the title came up")\n        print("taps: allowed, banner shown")>
+  save state/taps, build-taps(state/folder, body)
+  save app, make(toolkit-app, bind(root, term-root()), bind(folder, state/folder), bind(name, <Notice>), bind(who, <notification-prompt>), bind(ios-identifier, notice-identifier), bind(android-identifier, <surf.term.notice>))
+  save state/ran, run-leg(app, <ios>, notice-program, notice-prepare)
+  save state/tapped, finish-taps(state/taps)
+  back state
+
+# what the app said at `step <name> `, the rest of that line trimmed
+task step
+  take output, like text
+  take name, like text
+  like text
+
+  save mark, <step {name} >
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        back trim(substring(line, add(index-of(line, mark), char-count(mark)), char-count(line)))
+  back <>
+
+# whether the leg ran its app, as the original judged it once it did
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, text-contains(one/name, <said it exits 0>)
+      hold
+        back true
+  back false
+
+# why a judge check skips, <> when it is judged
+task judge-skip
+  take state, like notice-state
+  like text
+
+  fork test, not(state/xcode)
+    hold
+      back <notification-prompt (no xcodebuild)>
+  fork test, is-equal(state/ran/state, <skipped>)
+    hold
+      back <ios: {state/ran/reason}>
+  fork test, not(reached-judge(state/ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# every check the leg made, by name, and `ios: skipped, <why>` when it was
+task check-names
+  like list, like text
+
+  save state, the-notice()
+  save names, make list
+  fork test, not(state/xcode)
+    hold
+      names/push(<ios: skipped, no xcodebuild>)
+      back names
+  fork test, is-equal(state/ran/state, <skipped>)
+    hold
+      names/push(<ios: skipped, {state/ran/reason}>)
+  walk state/ran/checks
+    take one, like toolkit-check
+    names/push(one/name)
+  back names
+
+# the check of that name
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save state, the-notice()
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk state/ran/checks
+    take one, like toolkit-check
+    fork test, is-equal(one/name, name)
+      hold
+        save found, one
+  back found
+
+test <the UI test that taps the prompt builds>
+  save state, the-notice()
+  fork test, not(state/xcode)
+    hold
+      skip <notification-prompt (no xcodebuild)>
+  want hold, state/taps/built
+
+test <the ios leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+test <ios (UIKit): before asking, the grant is not-determined>
+  save state, the-notice()
+  save why, judge-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(step(state/ran/output, <before>), <not-determined>)
+
+test <ios (UIKit): the prompt was tapped, and the request answers granted>
+  save state, the-notice()
+  save why, judge-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(step(state/ran/output, <asked>), <granted>)
+
+test <ios (UIKit): the notification is posted>
+  save state, the-notice()
+  save why, judge-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(step(state/ran/output, <posted>), <shown>)
+
+# the witness: SpringBoard drew a banner with the notification's title, which only the platform can do
+test <ios: SpringBoard showed the prompt, took the tap, and drew the banner with its title>
+  save state, the-notice()
+  fork test, not(state/xcode)
+    hold
+      skip <notification-prompt (no xcodebuild)>
+  fork test, not(state/tapped/started)
+    hold
+      skip <the UI test never started: no app launched on a simulator>
+  want hold, and(is-equal(state/tapped/status, 0), text-contains(state/tapped/log, <taps: allowed, banner shown>))

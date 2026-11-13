@@ -1,0 +1,225 @@
+note <A law in words: twenty hand-written targets, a wrong law that reads wrong, and a sentence blind to name and comment>
+
+# Ported from the TypeScript original by statement (item term-self-host-001-0611), one test per `ok` in its order: one
+# per target of its literal list, then the two of the wrong law. check/law-english is the subject and call/role-of reads
+# each project's roles and lean marks, both docked (decision 106). Each target is a rule of deck/base or seed.tree with
+# the English written by hand from the rule's Term form before the renderer existed. The renderer, run on the real file
+# through the parser and the mill, must produce each sentence exactly. seed.tree is a Term project outside this
+# repository: its targets run when TERM_SEED_TREE names its folder (resolved against INIT_CWD, else the working
+# directory) and each skips, saying so, when it does not. The original's `--census` only prints counts, so it has no
+# port.
+
+load ../support/cli
+  find term-root
+
+load ../support/compiling
+  find file-text
+
+load ../support/judging
+  find make-record
+  find set-field
+  find truth
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find trim
+
+dock load
+  load <@term/make/code/check/law-english>, name law-english
+  load <@term/call/code/role-of>, name law-roles
+  load <node:path>, name law-path
+
+# the root of deck/base, with its closing slash, as the original's URL gave it
+task base-root
+  like text
+
+  back <{law-path/join(term-root(), <deck>, <base>)}/>
+
+# the root of seed.tree, <> when TERM_SEED_TREE names none
+task seed-root
+  like text
+
+  save given, trim(variable(<TERM_SEED_TREE>))
+  fork test, is-equal(given, <>)
+    hold
+      back <>
+  save from, variable(<INIT_CWD>)
+  fork test, is-equal(from, <>)
+    hold
+      save from, law-path/resolve(<.>)
+  back <{law-path/resolve(from, given)}/>
+
+# what the renderer reads of one file of a project: its laws, or why it read none
+task laws-of-file
+  take root, like text
+  take file, like text
+  like dynamic
+
+  save path, law-path/join(root, file)
+  save role-of, law-roles/project-role-of(root)
+  save lean-of, law-roles/project-lean-of(root)
+  save asked, make-record(make(list, <file>, path, <text>, file-text(path), <lean>, lean-of(path)))
+  save role, role-of(path)
+  fork test, truth(role)
+    hold
+      set-field(asked, <role>, role)
+  back law-english/law-sentences-of(asked)
+
+# the sentence of the named rule in one file, else what stopped it
+task sentence-of
+  take root, like text
+  take file, like text
+  take rule, like text
+  like text
+
+  save read, laws-of-file(root, file)
+  fork test, not(read/ok)
+    hold
+      back <not read: {read/error}>
+  walk read/laws
+    take law, like dynamic
+    fork test, is-equal(law/name, rule)
+      hold
+        fork test, truth(law/refused)
+          hold
+            back <refused: {law/refused}>
+        back law/text
+  back <no such rule>
+
+test <target refl>
+  want hold, is-equal(sentence-of(base-root(), <code/proof/equal/refl.tree>, <refl>), <For every type a and every value x of type a, x equals x.>)
+
+test <target symmetry>
+  want hold, is-equal(sentence-of(base-root(), <code/proof/equal/symmetry.tree>, <symmetry>), <For every type a and all values x and y of type a, if x equals y, then y equals x.>)
+
+test <target transitivity>
+  want hold, is-equal(sentence-of(base-root(), <code/proof/equal/transitivity.tree>, <transitivity>), <For every type a and all values x, y and z of type a, if x equals y and y equals z, then x equals z.>)
+
+test <target congruence>
+  want hold, is-equal(sentence-of(base-root(), <code/proof/equal/congruence.tree>, <congruence>), <For all types a and b, every function f from a to b and all values x and y of type a, if x equals y, then f of x equals f of y.>)
+
+test <target substitution>
+  want hold, is-equal(sentence-of(base-root(), <code/proof/equal/substitution.tree>, <substitution>), <For every type a, every property p of values of type a and all values x and y of type a, if x equals y and p holds of x, then p holds of y.>)
+
+test <target absurd>
+  want hold, is-equal(sentence-of(base-root(), <code/proof/absurd.tree>, <absurd>), <For every type a, if there is a value of never, the type with no values, then there is a value of type a.>)
+
+test <target order-is-reflexive>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/order/law.tree>, <order-is-reflexive>), <For every number a, a is at most a.>)
+
+test <target order-is-antisymmetric>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/order/law.tree>, <order-is-antisymmetric>), <For all numbers a and b, if a is at most b and b is at most a, then a equals b.>)
+
+# `show miss is-below a a`: the mill negates the comparison, so the sentence says what the prover checks
+test <target strict-order-is-irreflexive>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/order/law.tree>, <strict-order-is-irreflexive>), <For every number a, a is at least a.>)
+
+test <target strict-order-is-translation-invariant>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/order/law.tree>, <strict-order-is-translation-invariant>), <For all numbers a, b and c, if a is less than b, then a plus c is less than b plus c.>)
+
+test <target strict-order-is-transitive>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/order/law.tree>, <strict-order-is-transitive>), <For all numbers a, b and c, if a is less than b and b is less than c, then a is less than c.>)
+
+test <target length-of-nil-is-zero>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/type/roll.tree>, <length-of-nil-is-zero>), <The length of nil equals zero.>)
+
+test <target append-nil-left-is-identity>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/type/roll.tree>, <append-nil-left-is-identity>), <For every roll ys, nil followed by ys equals ys.>)
+
+test <target append-is-associative>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/type/roll.tree>, <append-is-associative>), <For all rolls xs, ys and zs, (xs followed by ys) followed by zs equals xs followed by (ys followed by zs).>)
+
+test <target length-of-append-adds>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/type/roll.tree>, <length-of-append-adds>), <For all rolls xs and ys, the length of (xs followed by ys) equals (the length of xs) plus (the length of ys).>)
+
+test <target reverse-reverse-is-identity>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/type/roll.tree>, <reverse-reverse-is-identity>), <For every roll xs, the reverse of the reverse of xs equals xs.>)
+
+test <target length-of-cons-steps>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/type/roll.tree>, <length-of-cons-steps>), <For every natural h and every roll t, the length of (cons with item h and more t) equals succ with prior (the length of t).>)
+
+# first written without the parentheses, which reads two ways ("both a and (b equals ...)"). The renderer's grouping
+# rule was right and the hand-written target was corrected to it, the one target changed after the renderer ran
+test <target both-commutes>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/logic/boolean.tree>, <both-commutes>), <For all flags a and b, (both a and b) equals (both b and a).>)
+
+test <target compose-associates>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/function/property.tree>, <compose-associates>), <For all types a, b, c and d, every function h from c to d, every function g from b to c, every function f from a to b and every value x of type a, (h after (g after f)) applied to x equals ((h after g) after f) applied to x.>)
+
+test <target left-inverse-gives-injective>
+  fork test, is-equal(seed-root(), <>)
+    hold
+      skip <TERM_SEED_TREE names no seed.tree folder>
+  want hold, is-equal(sentence-of(seed-root(), <code/function/property.tree>, <left-inverse-gives-injective>), <For all types a and b, every function f from a to b, every function g from b to a and all values x and y of type a, if for every value u of type a, g of f of u equals u, and f of x equals f of y, then x equals y.>)
+
+# A WRONG LAW. Its name and its comment both say transitivity, and its conclusion is reversed. A person who reads only
+# the name approves it, and the sentence shows what it states
+host wrong-body, <rule strict-order-is-transitive\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  have h1\n    call is-below\n      read a\n      read b\n  have h2\n    call is-below\n      read b\n      read c\n  show hold\n    call is-below\n      read c\n      read a\n>
+
+host wrong, <# Transitivity of the strict order: if a is below b and b is below c, then a is below c.\n{wrong-body}>
+
+# the same rule renamed and recommented: the sentence cannot depend on either
+host renamed, <# anything at all, even a false description\nrule c-wins\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  have h1\n    call is-below\n      read a\n      read b\n  have h2\n    call is-below\n      read b\n      read c\n  show hold\n    call is-below\n      read c\n      read a\n>
+
+# the first law's sentence of a text, else the reader's error
+task first-sentence
+  take file, like text
+  take text, like text
+  like text
+
+  save read, law-english/law-sentences-of(make-record(make(list, <file>, file, <text>, text)))
+  fork test, not(read/ok)
+    hold
+      back <not read: {read/error}>
+  fork test, is-equal(read/laws/length, 0)
+    hold
+      back <no law>
+  back read/laws/0/text
+
+test <a wrong law reads wrong>
+  want hold, is-equal(first-sentence(<wrong.tree>, wrong), <For all numbers a, b and c, if a is less than b and b is less than c, then c is less than a.>)
+
+test <the name and the comment are not read>
+  host was, first-sentence(<wrong.tree>, wrong)
+  want hold, is-equal(first-sentence(<renamed.tree>, renamed), was)

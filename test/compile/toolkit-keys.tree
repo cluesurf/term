@@ -1,0 +1,178 @@
+note <three keys pressed through each toolkit host reach the program's listener under their web names>
+
+# Ported from toolkit-keys.ts by statement (item term-self-host-001-0696). The portable keyboard on the toolkit hosts
+# (swiftui-target-0003, `listen-key`): AppKit's key-down monitor (macOS), the root controller's presses (the iPhone
+# simulator), the Activity's key dispatch (the Android emulator), and on Compose (compose-target-0003) the window's root
+# box hearing the keys through onPreviewKeyEvent. The program listens for keys and draws the ones it hears in a span,
+# presses Escape, `a` and the up arrow through the platform (`type-key`), and reads the span back off the platform's
+# view. Built and run on each leg by test/support/device/toolkit-run (item 0548), which skips a leg whose toolchain or
+# device is not here. KEYS_ONLY=macos (or ios, android, compose) runs one leg.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way (it compiles, holds no
+# WebView, builds, exits 0, installs) are one walked test, a case each, labeled by the check's name. The original's
+# judge `ok` is one walked test over the legs, a leg a case of it, skipped where the leg was or where it stopped before
+# the original would have judged it.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+  find trim
+  find char-count
+
+# the original's program, its PNG path filled in
+task keys-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  back <load @term/site/code/dom/dom\n  find view\n\nload @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find show-window\n  find run-app\n  find exit-app\n  find serialize\n  find snapshot\n  find say\n  find later\n  find listen-key\n  find type-key\n\nload @term/base/text/string\n  find concat\n\ntask heard-text\n  take heard, like signal text\n  like text\n  send back\n    call read-signal\n      bind self, read heard\n\nview board\n  take host, like view\n  take heard, like signal text\n  view span\n    read\n      call heard-text\n        read heard\n\ntask main\n  save heard\n    call make-signal\n      bind value, text \<keys:\>\n  save root\n    call open-root\n      text \<Term keys\>\n      code 320\n      code 200\n  call board\n    read root\n    read heard\n  save drop\n    call listen-key\n      task hear\n        take key, like text\n        call write-signal\n          bind self, read heard\n          bind value\n            call concat\n              call concat\n                call read-signal\n                  bind self, read heard\n                text \< \>\n              read key\n  call after-launch\n    task check\n      call show-window\n      call type-key\n        text \<Escape\>\n      call type-key\n        text \<a\>\n      call type-key\n        text \<ArrowUp\>\n      call later\n        task after\n          save drawn\n            call serialize\n              read root\n          call say\n            text \<step keys \{\{drawn\}\}\>\n          call snapshot\n            text \<{shot}\>\n          call exit-app\n            code 0\n  call run-app\n>
+
+form keys-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host keys-now, make(keys-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# the app and the legs KEYS_ONLY allows, made once
+task the-app
+  like keys-state
+
+  fork test, keys-now/made
+    hold
+      back keys-now
+  save keys-now/made, true
+  save keys-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-toolkit-keys->)), bind(name, <Keys>), bind(who, <toolkit-keys>), bind(ios-identifier, <surf.term.toolkit-keys-test>), bind(android-identifier, <surf.term.toolkitkeys>), bind(compose, true))
+  save keys-now/legs, legs-of(keys-now/app, variable(<KEYS_ONLY>))
+  back keys-now
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, keys-program, prepare-no-device)
+  save keys-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# the text after `step <name> ` on the first line holding it
+task step
+  take output, like text
+  take name, like text
+  like text
+
+  save mark, <step {name} >
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        save from, add(index-of(line, mark), char-count(mark))
+        back trim(substring(line, from, char-count(line)))
+  back <>
+
+test <three keys pressed through the platform reach the listener under their web names>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(step(ran/output, <keys>), <keys: Escape a ArrowUp>)

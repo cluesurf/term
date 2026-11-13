@@ -1,0 +1,118 @@
+note <network/server sends a bytes body byte for byte, every value 0 to 255, as curl reads it (item term-self-host-001-1326)>
+
+# A handler's `make-bytes` body goes out as those bytes: every value 0 to 255, twice and in order, so no text decoding
+# could pass it through unchanged (suite port 0702 serves such a payload, 0701 a package). curl, a client of its own,
+# writes what it read to a file, and the file is read back as bytes. A `make-ok` text body from the same server still
+# answers as text. The server is on port 0, the port the OS chose (the server-port suite beside this one holds that).
+#
+# curl is asked through process/run, which on rust blocks the loop the server answers on, so this file runs on node;
+# the compiled servers' bytes are the compiled-server round trip's. Without curl each test is its own skip.
+
+load @term/base/network/server
+  find start
+  find stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-ok
+  find make-bytes
+  find make-status
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find read-bytes
+  find read, name read-file
+
+load @term/base/bytes
+  find from-hex
+  find to-hex
+
+# every byte value in order, twice, as hex: 512 bytes
+task payload-hex
+  like text
+
+  save digits, make list(<0>, <1>, <2>, <3>, <4>, <5>, <6>, <7>, <8>, <9>, <a>, <b>, <c>, <d>, <e>, <f>)
+  save every, <>
+  walk digits
+    take high, like text
+    walk digits
+      take low, like text
+      save every, <{every}{high}{low}>
+  back <{every}{every}>
+
+# /payload answers the bytes, /text a text body, anything else a 404
+task route
+  take req, like request
+  like response
+
+  fork test, is-equal(req/path, </payload>)
+    hold
+      back make-bytes(from-hex(payload-hex()))
+  fork test, is-equal(req/path, </text>)
+    hold
+      back make-ok(<plain>)
+  back make-status(404)
+
+# what curl answered for each path, asked once while one server runs on port 0
+form asked
+  mark shared
+  link done, like boolean
+  link code, like text
+  link written, like text
+  link text, like text
+
+host now, make(asked, bind(done, false), bind(code, <>), bind(written, <>), bind(text, <>))
+
+# the server up, /payload and /text each curled into a file read back, and the server stopped. Once, for every test
+task ask
+  mark async
+  like void
+
+  fork test, now/done
+    hold
+      back
+  save now/done, true
+  save running, start(0, <127.0.0.1>, route)
+  save folder, temp-folder(<term-server-bytes->)
+  save file, <{folder}/payload.bin>
+  save page, <{folder}/text.txt>
+  save got, run(<curl>, make(list, <-s>, <--max-time>, <10>, <-o>, file, <http://127.0.0.1:{running/port}/payload>))
+  save plain, run(<curl>, make(list, <-s>, <--max-time>, <10>, <-o>, page, <http://127.0.0.1:{running/port}/text>))
+  save now/code, <{got/code} {plain/code}>
+  fork test, and(is-equal(got/code, 0), is-equal(plain/code, 0))
+    hold
+      save now/written, to-hex(read-bytes(file))
+      save now/text, read-file(page)
+  stop(running)
+
+test <curl reads both answers>
+  fork test, is-equal(find-tool(<curl>), <>)
+    hold
+      skip <curl is not installed>
+  ask()
+  want hold, is-equal(now/code, <0 0>)
+
+test <the bytes body is every byte value 0 to 255, twice, as sent>
+  fork test, is-equal(find-tool(<curl>), <>)
+    hold
+      skip <curl is not installed>
+  ask()
+  want hold, is-equal(now/written, payload-hex())
+
+test <a text body from the same server is still its text>
+  fork test, is-equal(find-tool(<curl>), <>)
+    hold
+      skip <curl is not installed>
+  ask()
+  want hold, is-equal(now/text, <plain>)

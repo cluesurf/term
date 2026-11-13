@@ -1,0 +1,774 @@
+note <one Term program on the platform's own toolkit views, read back from the views>
+
+# Ported from toolkit-view.ts by statement (item term-self-host-001-0696). The dom on the platform's own toolkit
+# (native-dom-0005, 0006): ONE Term program, rendered by the Solid-style runtime into real AppKit views on macOS, real
+# UIKit views on the iOS simulator and real Android views on the emulator, with no WebView and no JavaScript engine. The
+# program opens a window, renders a counter written in the `view` DSL, presses its button with the platform's own click,
+# and prints the tree as read back FROM THE VIEWS (the button's title as the toolkit draws it), then writes a PNG of the
+# screen. It goes on to the slider, select, input and dialog (native-dom-0026), the layout rows (native-dom-0027, judged
+# by test/support/device/layout-rows, the judge the web is held to as well), face's style table (native-dom-0008,
+# 0048), the device traits (native-dom-0012) and a real turn of the device (native-dom-0035).
+#
+# The style tables are face's theme compiled by compile/look-table when the suite runs, as the original compiles them,
+# and the layout rows and their calls come from test/support/device/layout-rows. Each leg is built and run by
+# test/support/device/toolkit-run (item 0548), which skips a leg whose toolchain or device is not here, in place of the
+# original's own copy of those steps. TOOLKIT_ONLY=macos (or ios, android) runs one leg. A leg's PNG goes to SNAPSHOT,
+# SNAPSHOT_IOS or SNAPSHOT_ANDROID when set, which is how the screenshots in note/project/term/archive/native-dom/ are
+# made.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way are one walked test, a
+# case each, labeled by the check's name. Each `ok` of the original's judge is one walked test over the legs, a leg a
+# case of it (the layout checks a case for each leg and check), skipped where the leg was or where it stopped before
+# the original would have judged it.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/device/layout-rows
+  find layout-rows
+  find layout-labels
+  find layout-label
+  find layout-check
+  find judge-layout
+
+load ../support/compiling
+  find file-text
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find exists, name file-exists
+  find read-bytes
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find starts-with
+  find ends-with
+  find index-of
+  find substring
+  find trim
+  find char-count
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/make/code/compile/look-table>, name look-module
+
+form token-source
+  link file, like text
+  link text, like text
+
+# native-dom-0008: face's own theme, compiled to the style table the app hands its host, light scheme and dark
+host theme-file, <deck/face/code/style/theme.tree>
+
+task theme-source
+  like token-source
+
+  back make(token-source, bind(file, theme-file), bind(text, file-text(theme-file)))
+
+# every layout row mounted on the root, then each one's frames said: the rows are the root's children 4 onward
+task layout-calls
+  like text
+
+  save out, <>
+  walk layout-labels()
+    take one, like layout-label
+    save out, <{out}      call {one/view}\n        read root\n>
+  save at, 4
+  walk layout-labels()
+    take one, like layout-label
+    save out, <{out}      call say-row\n        text \<{one/label}\>\n        call child-at\n          read root\n          code {at}\n>
+    save at, add(at, 1)
+  back out
+
+# the original's program, its PNG path, style tables and layout rows filled in. The dom is loaded the way an app loads
+# it, through the public path, so the `macos` env picks the Apple host
+task view-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  save theme, theme-source()
+  save style-table, look-module/style-table-text(look-module/compile-look-table(theme))
+  save style-table-dark, look-module/style-table-text(look-module/compile-look-table(theme, <dark>))
+  save layout-text, layout-rows()
+  save layout-calls, layout-calls()
+  back <load @term/site/code/view/reactive\n  find make-effect\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n  find attach-event\n  find show\n\nload @term/site/code/dom/dom\n  find view\n  find append\n  find add-class\n  find remove-class\n  find set-attribute\n  find set-style\n  find create-text\n\nload @term/site/code/dom/style\n  find use-styles\n\n# the switch the author writes once; on these three platforms the build picks the platform's own control\nload @term/face/code/component/switch\n  find switch\n\nload @term/face/code/logic/disclosure\n  find make-disclosure\n\n# the slider the author writes once (native-dom-0026); here NSSlider, UISlider or a SeekBar\nload @term/face/code/component/slider\n  find slider\n\nload @term/face/code/logic/range\n  find make-range\n  find range-value\n\n# the select the author writes once (native-dom-0026); here NSPopUpButton, a UIButton menu or a Spinner\nload @term/face/code/component/select\n  find select\n\n# the input the author writes once (native-dom-0026); here NSTextField, UITextField or EditText\nload @term/face/code/component/input\n  find input\n\n# the dialog the author writes once (native-dom-0026); here an NSPanel sheet, a page sheet or an android.app.Dialog\nload @term/face/code/component/dialog\n  find dialog\n\nload @term/face/code/logic/disclosure\n  find disclosure-open\n  find open-disclosure\n\nload @term/base/code/list\n  find list\n\nload @term/site/code/view/device\n  find device-trait\n\nload @term/site/code/view/native/toolkit/device\n  find change-trait\n  find turn-device\n\nload @term/site/code/dom/native/toolkit/dom\n  find create-element\n  find frame-of\n  find style-of\n  find unsupported-styles\n  find open-root\n  find after-launch\n  find show-window\n  find run-app\n  find exit-app\n  find press\n  find slide\n  find choose\n  find type-text\n  find dismiss\n  find later\n  find child-at\n  find serialize\n  find snapshot\n  find say\n\ntask shown\n  take count, like signal number\n  like text\n  save value\n    call read-signal\n      bind self, read count\n  send back, text \<\{\{value\}\}\>\n\nview tally\n  take host, like view\n  save count\n    call make-signal\n      bind value, code 0\n  view button\n    seed click\n      call write-signal\n        bind self, read count\n        bind value\n          call add\n            call read-signal\n              bind self, read count\n            code 1\n    read\n      call shown\n        read count\n  fork test\n    hook test\n      call is-above\n        call read-signal\n          bind self, read count\n        code 10\n    hook hold\n      view span\n        text \<high\>\n    hook miss\n      view span\n        text \<low\>\n\n# a row laid out by the platform's own stack: direction, gap, alignment and padding, written once as CSS words\nview sample-row\n  take host, like view\n  view div\n    bind style, text \<display: flex; flex-direction: row; gap: 12px; align-items: center; padding: 8px\>\n    view button\n      text \<a\>\n    view button\n      text \<bb\>\n\n# a device trait as a signal (native-dom-0012): the span reads the platform's color scheme and is rewritten when it\n# changes\ntask trait-text\n  take name, like text\n  like text\n  save trait\n    call device-trait\n      read name\n  send back\n    call read-signal\n      bind self, read trait\n\nview theme\n  take host, like view\n  view span\n    read\n      call trait-text\n        text \<color-scheme\>\n\n# native-dom-0035: how many times each span's text was computed, so a turn can show that only the one reading the\n# width ran again\nform runs\n  note shared\n  link width, like number\n  link scheme, like number\n\nhost counted\n  make runs\n    bind width, code 0\n    bind scheme, code 0\n\ntask counted-width\n  like text\n  save counted/width\n    call add\n      read counted/width\n      code 1\n  send back\n    call trait-text\n      text \<width-class\>\n\ntask counted-scheme\n  like text\n  save counted/scheme\n    call add\n      read counted/scheme\n      code 1\n  send back\n    call trait-text\n      text \<color-scheme\>\n\nview turn-watch\n  take host, like view\n  view span\n    read\n      call counted-width\n  view span\n    read\n      call counted-scheme\n\ntask traits-line\n  like text\n  save idiom\n    call trait-text\n      text \<idiom\>\n  save width\n    call trait-text\n      text \<width-class\>\n  save pointer\n    call trait-text\n      text \<pointer\>\n  save motion\n    call trait-text\n      text \<reduce-motion\>\n  save scale\n    call trait-text\n      text \<text-scale\>\n  send back, text \<traits \{\{idiom\}\} \{\{width\}\} \{\{pointer\}\} \{\{motion\}\} \{\{scale\}\}\>\n\n# the layout words native-dom-0027 holds, each a row of two buttons whose frames are read back from the views. The\n# same rows layout-golden.ts draws in Chromium (test/compile/shared/layout-rows.ts)\n{layout-text}\n# what the dialog holds: drawn into it by the dialog, wherever the platform presents it\nview dialog-body\n  take host, like view\n  view span\n    text \<Sure?\>\n\n# the select's choices, made at the top level: a list made inside a closure reaches Swift untyped (native-dom-0021)\ntask size-names\n  like list\n    like text\n  save names\n    make list\n  call push\n    bind list, read names\n    bind item, text \<small\>\n  call push\n    bind list, read names\n    bind item, text \<medium\>\n  call push\n    bind list, read names\n    bind item, text \<large\>\n  send back, read names\n\n# a row and its two children, said as: rows, the label, then x,y,w,h for the row and for each child\ntask say-row\n  take label, like text\n  take row, like view\n  save whole\n    call frame-of\n      read row\n  save first\n    call frame-of\n      call child-at\n        read row\n        code 0\n  save second\n    call frame-of\n      call child-at\n        read row\n        code 1\n  call say\n    text \<rows \{\{label\}\} \{\{whole\}\} \{\{first\}\} \{\{second\}\}\>\n\ntask press-times\n  take button, like view\n  take times, like number\n  walk size\n    bind base, code 0\n    bind head, read times\n    hook next\n      take site, name step\n      call press\n        read button\n\n# the panel style-run made, kept so the run after the dialog can read it once the device is dark (native-dom-0048)\nhost styled-panels\n  make list\n  like list\n    like view\n\n# native-dom-0008: face's theme as a style table, applied by class and by state, read back off the platform's views.\n# The panel is mounted last on the root, so the screenshot shows it and no earlier child moves\ntask style-run\n  take root, like view\n  save panel\n    call create-element\n      bind tag, text \<div\>\n  call add-class\n    read panel\n    text \<panel\>\n  save words\n    call create-text\n      text \<Styled by face\>\n  call append\n    read panel\n    read words\n  call append\n    read root\n    read panel\n  call push\n    bind list, read styled-panels\n    bind item, read panel\n  save panel-fill\n    call style-of\n      read panel\n      text \<background\>\n  save edge\n    call style-of\n      read panel\n      text \<border\>\n  save corner\n    call style-of\n      read panel\n      text \<border-radius\>\n  save ink\n    call style-of\n      read words\n      text \<color\>\n  save overlay\n    call create-element\n      bind tag, text \<div\>\n  call add-class\n    read overlay\n    text \<overlay\>\n  save hidden\n    call style-of\n      read overlay\n      text \<opacity\>\n  call set-attribute\n    read overlay\n    text \<data-state\>\n    text \<open\>\n  save shown\n    call style-of\n      read overlay\n      text \<opacity\>\n  save tag\n    call create-element\n      bind tag, text \<span\>\n  call add-class\n    read tag\n    text \<label\>\n  save tag-words\n    call create-text\n      text \<Name\>\n  call append\n    read tag\n    read tag-words\n  save size\n    call style-of\n      read tag-words\n      text \<font-size\>\n  save weight\n    call style-of\n      read tag-words\n      text \<font-weight\>\n  save pinned\n    call create-element\n      bind tag, text \<div\>\n  call set-style\n    read pinned\n    text \<background\>\n    text \<#102030\>\n  call add-class\n    read pinned\n    text \<panel\>\n  save kept\n    call style-of\n      read pinned\n      text \<background\>\n  save kept-edge\n    call style-of\n      read pinned\n      text \<border\>\n  save chip\n    call create-element\n      bind tag, text \<div\>\n  call add-class\n    read chip\n    text \<kbd\>\n  save chip-fill\n    call style-of\n      read chip\n      text \<background\>\n  call remove-class\n    read chip\n    text \<kbd\>\n  save cleared\n    call style-of\n      read chip\n      text \<background\>\n  call say\n    text \<styles \{\{panel-fill\}\} \{\{edge\}\} \{\{corner\}\} \{\{ink\}\} \{\{hidden\}\} \{\{shown\}\} \{\{size\}\} \{\{weight\}\} \{\{kept\}\} \{\{kept-edge\}\} \{\{chip-fill\}\} \{\{cleared\}\}\>\n\n# the run after the dialog, called once the platform has dismissed it\ntask finish-run\n  save missing, call unsupported-styles\n  call say\n    text \<unsupported [\{\{missing\}\}]\>\n  call snapshot\n    text \<{shot}\>\n  call change-trait\n    text \<color-scheme\>\n    text \<light\>\n  save box\n    call create-element\n      bind tag, text \<div\>\n  call theme\n    read box\n  save before\n    call serialize\n      read box\n  call say\n    text \<theme \{\{before\}\}\>\n  call say\n    call traits-line\n  call change-trait\n    text \<color-scheme\>\n    text \<dark\>\n  save after\n    call serialize\n      read box\n  call say\n    text \<theme \{\{after\}\}\>\n  save lit\n    read styled-panels/0\n  save dark-fill\n    call style-of\n      read lit\n      text \<background\>\n  save dark-ink\n    call style-of\n      call child-at\n        read lit\n        code 0\n      text \<color\>\n  call say\n    text \<styles dark \{\{dark-fill\}\} \{\{dark-ink\}\}\>\n  # native-dom-0035: the platform turns the device, and the app hears it the way it hears a person turning it\n  save turn-box\n    call create-element\n      bind tag, text \<div\>\n  call turn-watch\n    read turn-box\n  save width-before\n    call trait-text\n      text \<width-class\>\n  save width-runs-before, read counted/width\n  save scheme-runs-before, read counted/scheme\n  call say\n    text \<turn before \{\{width-before\}\} \{\{width-runs-before\}\} \{\{scheme-runs-before\}\}\>\n  call make-effect\n    task report\n      save seen\n        call trait-text\n          text \<width-class\>\n      fork test\n        hook test\n          call is-equal\n            read seen\n            read width-before\n        hook miss\n          save width-runs, read counted/width\n          save scheme-runs, read counted/scheme\n          call say\n            text \<turned \{\{seen\}\} \{\{width-runs\}\} \{\{scheme-runs\}\}\>\n          call exit-app\n            code 0\n        hook hold\n          save skip, code 0\n  call turn-device\n\ntask main\n  # the style table goes to the host before anything is made, as an app's boot would hand it\n  call use-styles\n    text \<{style-table}\>\n    text \<{style-table-dark}\>\n  save root\n    call open-root\n      text \<Term, natively\>\n      code 420\n      code 200\n  call tally\n    read root\n  save wifi\n    call make-disclosure\n      bind start, false\n  call switch\n    read root\n    text \<\>\n    read wifi\n  call sample-row\n    read root\n  call after-launch\n    task check\n      call show-window\n      save button\n        call child-at\n          read root\n          code 0\n      call press-times\n        read button\n        code 5\n      call say\n        call serialize\n          read root\n      call press\n        call child-at\n          read root\n          code 2\n      call press-times\n        read button\n        code 6\n      call say\n        call serialize\n          read root\n      save row\n        call child-at\n          read root\n          code 3\n      save row-frame\n        call frame-of\n          read row\n      call say\n        text \<frame row \{\{row-frame\}\}\>\n      save first-frame\n        call frame-of\n          call child-at\n            read row\n            code 0\n      call say\n        text \<frame first \{\{first-frame\}\}\>\n      save second-frame\n        call frame-of\n          call child-at\n            read row\n            code 1\n      call say\n        text \<frame second \{\{second-frame\}\}\>\n      # the layout rows, appended after both trees were read so WANT is unchanged; children 4 onward of the root\n{layout-calls}      # native-dom-0026: the slider, two ways. Mounted off the window so the root's children stay as the rows expect\n      save volume\n        call make-range\n          bind start, code 40.0\n      save slider-box\n        call create-element\n          bind tag, text \<div\>\n      call slider\n        read slider-box\n        text \<\>\n        read volume\n        code 0.0\n        code 100.0\n        code 0.5\n      save slider-shown\n        call serialize\n          read slider-box\n      call say\n        text \<slider shown \{\{slider-shown\}\}\>\n      call slide\n        call child-at\n          read slider-box\n          code 0\n        text \<37.5\>\n      save heard\n        call range-value\n          read volume\n      call say\n        text \<slider heard \{\{heard\}\}\>\n      call write-signal\n        bind self, read volume\n        bind value, code 20.0\n      save slider-moved\n        call serialize\n          read slider-box\n      call say\n        text \<slider moved \{\{slider-moved\}\}\>\n      # native-dom-0026: the select, two ways, off the window as the slider is\n      save size\n        call make-signal\n          bind value, text \<medium\>\n      save sizes, call size-names\n      save select-box\n        call create-element\n          bind tag, text \<div\>\n      call select\n        read select-box\n        text \<\>\n        read size\n        read sizes\n      save select-shown\n        call serialize\n          read select-box\n      call say\n        text \<select shown \{\{select-shown\}\}\>\n      call choose\n        call child-at\n          read select-box\n          code 0\n        text \<large\>\n      save chosen\n        call read-signal\n          bind self, read size\n      call say\n        text \<select heard \{\{chosen\}\}\>\n      call write-signal\n        bind self, read size\n        bind value, text \<small\>\n      save select-moved\n        call serialize\n          read select-box\n      call say\n        text \<select moved \{\{select-moved\}\}\>\n      # native-dom-0026: the input, two ways, off the window as the others are\n      save greeting\n        call make-signal\n          bind value, text \<hello\>\n      save input-box\n        call create-element\n          bind tag, text \<div\>\n      call input\n        read input-box\n        text \<\>\n        read greeting\n        text \<Your name\>\n      save input-shown\n        call serialize\n          read input-box\n      call say\n        text \<input shown \{\{input-shown\}\}\>\n      call type-text\n        call child-at\n          read input-box\n          code 0\n        text \<hello world\>\n      save typed\n        call read-signal\n          bind self, read greeting\n      call say\n        text \<input heard \{\{typed\}\}\>\n      call write-signal\n        bind self, read greeting\n        bind value, text \<bye\>\n      save input-moved\n        call serialize\n          read input-box\n      call say\n        text \<input moved \{\{input-moved\}\}\>\n      call style-run\n        read root\n      # native-dom-0026: the dialog, presented by the platform and dismissed by the person\n      save asking\n        call make-disclosure\n          bind start, false\n      save dialog-box\n        call create-element\n          bind tag, text \<div\>\n      call dialog\n        read dialog-box\n        text \<\>\n        read asking\n        text \<Delete it?\>\n        read dialog-body\n      save sheet\n        call child-at\n          read dialog-box\n          code 0\n      save closed-tree\n        call serialize\n          read sheet\n      save page-tree\n        call serialize\n          read dialog-box\n      call say\n        text \<dialog closed \{\{closed-tree\}\} page \{\{page-tree\}\}\>\n      call open-disclosure\n        bind self, read asking\n      # the platform presents it on its own turn, so it is read after one\n      call later\n        task opened\n          save open-tree\n            call serialize\n              read sheet\n          call say\n            text \<dialog opened \{\{open-tree\}\}\>\n          call dismiss\n            read sheet\n          call later\n            task dismissed\n              save after-dismiss\n                call serialize\n                  read sheet\n              save still-open\n                call disclosure-open\n                  bind self, read asking\n              call say\n                text \<dialog dismissed \{\{after-dismiss\}\} \{\{still-open\}\}\>\n              call finish-run\n  call run-app\n>
+
+# what both platforms must print: the tree read back from their own views
+host want-low, <\<main\>\<button\>5\</button\>\<span\>low\</span\>\<switch checked="false"\>\</switch\>\<div\>\<button\>a\</button\>\<button\>bb\</button\>\</div\>\</main\>>
+host want-high, <\<main\>\<button\>11\</button\>\<span\>high\</span\>\<switch checked="true"\>\</switch\>\<div\>\<button\>a\</button\>\<button\>bb\</button\>\</div\>\</main\>>
+
+# what the platform must draw for face's theme, read back off the views: the panel's fill, edge, corners and the text
+# color its children inherit, the overlay's opacity closed then open, a label's font, a fill set inline that the
+# class's row does not override while its edge still applies, and a kbd's fill gone once its class is removed
+host want-styles, <styles #fafafa 1px #e4e4e7 8px #18181b 0 1 14px 500 #102030 1px #e4e4e7 #f4f4f5 none>
+
+# native-dom-0048: the same panel once the platform turns the device dark, restyled from the dark table
+host want-dark-styles, <styles dark #09090b #f4f4f5>
+
+# where a leg's PNG goes, by leg, when the run names one
+task shots
+  like hash, like text, like text
+
+  save named, make hash
+  save value, variable(<SNAPSHOT>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/macos, value
+  save value, variable(<SNAPSHOT_IOS>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/ios, value
+  save value, variable(<SNAPSHOT_ANDROID>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/android, value
+  back named
+
+form view-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host view-now, make(view-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# the app and the legs TOOLKIT_ONLY allows, made once
+task the-app
+  like view-state
+
+  fork test, view-now/made
+    hold
+      back view-now
+  save view-now/made, true
+  save view-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-toolkit-view->)), bind(name, <NativeDom>), bind(who, <toolkit-view>), bind(ios-identifier, <surf.term.native-dom-test>), bind(android-identifier, <surf.term.nativedom>), bind(shots, shots()))
+  save view-now/legs, legs-of(view-now/app, variable(<TOOLKIT_ONLY>))
+  back view-now
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, view-program, prepare-no-device)
+  save view-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# the output's lines, each trimmed
+task said-lines
+  take output, like text
+  like list, like text
+
+  save out, make list
+  walk lines-of(output)
+    take line, like text
+    out/push(trim(line))
+  back out
+
+# the text after `<marker> ` on the first trimmed line holding it, <> when no line does
+task said-after
+  take output, like text
+  take marker, like text
+  like text
+
+  save mark, <{marker} >
+  walk said-lines(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        back substring(line, add(index-of(line, mark), char-count(mark)), char-count(line))
+  back <>
+
+# the first trimmed line holding `part`, <> when none does
+task said-line
+  take output, like text
+  take part, like text
+  like text
+
+  walk said-lines(output)
+    take line, like text
+    fork test, text-contains(line, part)
+      hold
+        back line
+  back <>
+
+# the trees said, the lines that start `<main>`
+task main-lines
+  take output, like text
+  like list, like text
+
+  save out, make list
+  walk said-lines(output)
+    take line, like text
+    fork test, starts-with(line, <\<main\>>)
+      hold
+        out/push(line)
+  back out
+
+# the line at `at`, <> past the end
+task line-at
+  take lines, like list, like text
+  take at, like number
+  like text
+
+  fork test, is-minimum(at, lines/length)
+    hold
+      back <>
+  back lines/{at}
+
+# a number, or -1 when the text is not one
+task number-or-not
+  take part, like text
+  like float
+
+  fork
+    mark unsafe
+    back parse-float(part)
+  halt take
+    take cause
+    back -1.0
+
+# the frame said after `frame <name>`, x,y,w,h, empty when it is not four numbers
+task frame-named
+  take output, like text
+  take name, like text
+  like list, like float
+
+  save said, said-after(output, <frame {name}>)
+  save out, make list
+  fork test, is-equal(said, <>)
+    hold
+      back out
+  fork
+    mark unsafe
+    walk text-split(said, <,>)
+      take one, like text
+      out/push(parse-float(one))
+  halt take
+    take cause
+    back make list
+  fork test, is-unequal(out/length, 4)
+    hold
+      back make list
+  back out
+
+task whole
+  take frame, like list, like float
+  like boolean
+
+  back is-equal(frame/length, 4)
+
+task near
+  take a, like float
+  take b, like float
+  like boolean
+
+  back and(is-maximum(a, add(b, 1.0)), is-minimum(a, subtract(b, 1.0)))
+
+# the judge reads a leg that ran, else the case says why it skips
+task judged
+  take leg, like text
+  like toolkit-leg
+
+  back leg-run(leg)
+
+test <five presses read back from the toolkit: the counter at 5, low>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(line-at(main-lines(ran/output), 0), want-low)
+
+test <eleven presses read back from the toolkit: the counter at 11, high, the switch on>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(line-at(main-lines(ran/output), 1), want-high)
+
+# the row: the platform's stack put the second button exactly 12 after the first, the first 8 inside the row, and
+# centred them on one line. Read back from the views, so a mapping that did nothing cannot pass
+test <the gap is the platform stack's spacing, 12>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save first, frame-named(ran/output, <first>)
+  save second, frame-named(ran/output, <second>)
+  want hold, and(whole(first), whole(second))
+  want hold, near(second/0, add(add(first/0, first/2), 12.0))
+
+test <the padding is the stack's inset, 8>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save row, frame-named(ran/output, <row>)
+  save first, frame-named(ran/output, <first>)
+  want hold, and(whole(row), whole(first))
+  want hold, near(subtract(first/0, row/0), 8.0)
+  want hold, is-minimum(subtract(first/1, row/1), 7.0)
+
+test <align-items center puts both on one line>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save first, frame-named(ran/output, <first>)
+  save second, frame-named(ran/output, <second>)
+  want hold, and(whole(first), whole(second))
+  want hold, near(add(first/1, divide(first/3, 2.0)), add(second/1, divide(second/3, 2.0)))
+
+# native-dom-0026: the slider is the platform's control, and the value goes both ways through it
+test <the slider shows the range's 40, read back from the platform's control>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <slider shown>), <\<div\>\<slider value="40"\>\</slider\>\</div\>>)
+
+test <a move to 37.5 made on the control, half a step, is written into the range>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(number-or-not(said-after(ran/output, <slider heard>)), 37.5)
+
+test <the range written to 20 moves the control>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <slider moved>), <\<div\>\<slider value="20"\>\</slider\>\</div\>>)
+
+test <the select shows the signal's medium, read back from the platform's picker>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <select shown>), <\<div\>\<select value="medium"\>\</select\>\</div\>>)
+
+test <large chosen on the picker is written into the signal>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <select heard>), <large>)
+
+test <the signal written to small moves the picker>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <select moved>), <\<div\>\<select value="small"\>\</select\>\</div\>>)
+
+test <the input shows the signal's hello, read back from the platform's field>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <input shown>), <\<div\>\<input value="hello"\>\</input\>\</div\>>)
+
+test <hello world typed into the field is written into the signal>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <input heard>), <hello world>)
+
+test <the signal written to bye shows in the field>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <input moved>), <\<div\>\<input value="bye"\>\</input\>\</div\>>)
+
+test <the dialog holds its heading and content, closed, and is not in the page it was given>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <dialog closed>), <\<sheet open="false"\>\<h2\>Delete it?\</h2\>\<span\>Sure?\</span\>\</sheet\> page \<div\>\</div\>>)
+
+test <opening the disclosure has the platform present it>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <dialog opened>), <\<sheet open="true"\>\<h2\>Delete it?\</h2\>\<span\>Sure?\</span\>\</sheet\>>)
+
+test <the person's dismissal ends the presentation and closes the disclosure>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(ran/output, <dialog dismissed>), <\<sheet open="false"\>\<h2\>Delete it?\</h2\>\<span\>Sure?\</span\>\</sheet\> false>)
+
+# native-dom-0027: the words 0007 did not run, judged by the one judge the web is held to as well. A case each leg and
+# check, `<leg>: <check>`
+task layout-cases
+  like list, like text
+
+  save out, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    walk judge-layout(ran/output)
+      take one, like layout-check
+      out/push(<{leg}: {one/name}>)
+  back out
+
+test <the layout rows hold as on the web>
+  take case, like text
+    walk layout-cases()
+  save leg, text-split(case, <: >)/0
+  save name, substring(case, add(char-count(leg), 2), char-count(case))
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save held, false
+  walk judge-layout(ran/output)
+    take one, like layout-check
+    fork test, is-equal(one/name, name)
+      hold
+        save held, one/passed
+  want hold, held
+
+# native-dom-0008: face's theme drawn by the platform, read back off the views
+test <face's style table drawn by the toolkit>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save styles, said-line(ran/output, <styles #>)
+  want hold, and(is-unequal(styles, <>), ends-with(styles, want-styles))
+
+test <the device turned dark restyles the panel from the dark table>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save dark, said-line(ran/output, <styles dark >)
+  want hold, and(is-unequal(dark, <>), ends-with(dark, want-dark-styles))
+
+test <every style mapped onto the platform>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save missing, said-line(ran/output, <unsupported [>)
+  want hold, and(is-unequal(missing, <>), ends-with(missing, <unsupported []>))
+
+test <a PNG of the screen was written>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, file-exists(ran/shot)
+  save bytes, read-bytes(ran/shot)
+  want hold, and(is-equal(bytes/1, 80), and(is-equal(bytes/2, 78), is-equal(bytes/3, 71)))
+
+# the trees said after `theme `, the lines holding `theme <`
+task themes
+  take output, like text
+  like list, like text
+
+  save out, make list
+  walk said-lines(output)
+    take line, like text
+    fork test, text-contains(line, <theme \<>)
+      hold
+        out/push(substring(line, add(index-of(line, <theme \<>), 6), char-count(line)))
+  back out
+
+# the device traits (native-dom-0012), read from the platform: the span bound to the color scheme reads `light` once
+# the platform is forced light, and `dark` after the platform is forced dark and reports it through its own watcher
+test <the color scheme reads light from the platform>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(line-at(themes(ran/output), 0), <\<div\>\<span\>light\</span\>\</div\>>)
+
+test <the platform's change to dark rewrites the span>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(line-at(themes(ran/output), 1), <\<div\>\<span\>dark\</span\>\</div\>>)
+
+# the words said after `<marker> `, split on spaces, empty when no line says it
+task words-after
+  take output, like text
+  take marker, like text
+  like list, like text
+
+  save said, said-line(output, <{marker} >)
+  fork test, is-equal(said, <>)
+    hold
+      back make list
+  save mark, <{marker} >
+  back text-split(substring(said, add(index-of(said, mark), char-count(mark)), char-count(said)), < >)
+
+test <idiom and pointer are the platform's: desktop and fine on macOS, phone and touch elsewhere>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save read, words-after(ran/output, <traits>)
+  save idiom, line-at(read, 0)
+  save pointer, line-at(read, 2)
+  save want-idiom, <phone>
+  save want-pointer, <touch>
+  fork test, is-equal(leg, <macos>)
+    hold
+      save want-idiom, <desktop>
+      save want-pointer, <fine>
+  want hold, and(is-equal(idiom, want-idiom), is-equal(pointer, want-pointer))
+
+# read from the window: compact or regular. Which one depends on how the device was left, which the turn below relies
+# on and checks both ways over time
+test <the width class is read>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save width, line-at(words-after(ran/output, <traits>), 1)
+  want hold, or(is-equal(width, <compact>), is-equal(width, <regular>))
+
+test <reduce motion and text scale are read>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save read, words-after(ran/output, <traits>)
+  save motion, line-at(read, 3)
+  want hold, or(is-equal(motion, <yes>), is-equal(motion, <no>))
+  want hold, is-above(number-or-not(line-at(read, 4)), 0.0)
+
+# the turn goes to whichever shape the device was not in, so the class flips: compact to regular from portrait or a
+# narrow window, regular to compact from landscape. <> for anything else
+task flipped
+  take width, like text
+  like text
+
+  fork test, is-equal(width, <compact>)
+    hold
+      back <regular>
+  fork test, is-equal(width, <regular>)
+    hold
+      back <compact>
+  back <>
+
+# native-dom-0035: a real turn, reported by the platform. Compact before, regular after, and of the two spans only the
+# one reading the width computed its text again: once before, once after. The scheme span once in all
+test <before the turn each span computed once>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save before, words-after(ran/output, <turn before>)
+  want hold, is-unequal(flipped(line-at(before, 0)), <>)
+  want hold, and(is-equal(line-at(before, 1), <1>), is-equal(line-at(before, 2), <1>))
+
+test <the platform's turn flips the width class>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save width-before, line-at(words-after(ran/output, <turn before>), 0)
+  save width-after, line-at(words-after(ran/output, <turned>), 0)
+  want hold, and(is-unequal(width-after, <>), is-equal(width-after, flipped(width-before)))
+
+test <only the span reading the width ran again>
+  take leg, like text
+    walk leg-names()
+  save ran, judged(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save turned, words-after(ran/output, <turned>)
+  want hold, and(is-equal(line-at(turned, 1), <2>), is-equal(line-at(turned, 2), <1>))

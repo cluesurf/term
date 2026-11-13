@@ -1,0 +1,181 @@
+note <a name binds to its own module once a program holds two modules that each worked alone>
+
+# Ported from lean-binding.ts by statement (item 0652). Four ways a name bound wrongly once a program held two modules that
+# each worked alone, all found by the engine/value port (self-hosting, 2026-10-04), when engine/data/trit, float, string
+# and array met in one program:
+#
+#   1. a lean call to a native BINDING, `twice(helper(1))`, where two files define `helper`: the label was nested only
+#      by the resolver, after binding had renamed `helper` apart, so it named nothing (check/overload.ts nestLeanLabels)
+#   2. the same inside a METHOD call, `b/add-to(helper(1))`
+#   3. two forms naming a case alike (`leaf` on `vector` and `rope`): a match read the case of the form declared LAST,
+#      so `case leaf / back length` bound the task `length` instead of the field (check/infer.ts `caseFields`,
+#      check/resolve.ts)
+#   4. a task beside a METHOD of its name in another module: `push` on the stdlib's `list`, and engine/data/array's
+#      task `push`. A file importing the list's `push` was bound to the task (check/overload.ts, `elsewhere`)
+#
+# Each program is built and run: its TypeScript imported in this process (test/support/importing), the Rust one built
+# by rustc and run.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+  find emit-text
+
+load ../support/importing
+  find import-text
+  find call-export
+
+load ../support/judging
+  find make-record
+
+load ../support/running
+  find run-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find trim
+
+host helper-a, <task helper\n  take n, like number\n  like number\n  back add(n, 10)\n>
+host helper-b, <task helper\n  take n, like number\n  like number\n  back add(n, 100)\n\ntask other-b\n  like number\n  back helper(1)\n>
+host twice-module, <bind twice\n  take x, like number\n  like number\n  case node\n    text \<($x * 2)\>\n>
+
+# two forms with a case `leaf`, and a task named like the one case's field
+host rope-module, <form rope\n  case leaf\n    link text, like text\n    link length, like number\n  case branch\n    link left, like rope\n    link length, like number\n\ntask length\n  take r, like rope\n  like number\n  back measure(r)\n\ntask measure\n  take r, like rope\n  like number\n  sift r\n    case leaf\n      back length\n    case branch\n      back length\n\ntask make-rope\n  take written, like text\n  take count, like number\n  like rope\n  back\n    make leaf\n      bind text, written\n      bind length, count\n>
+host vector-module, <form vector\n  case leaf\n    link items, like list, like number\n  case branch\n    link left, like vector\n    link size, like number\n\ntask size-of\n  take v, like vector\n  like number\n  sift v\n    case leaf\n      back items/length\n    case branch\n      back size\n>
+
+# a module's own task `push`, beside the stdlib list's METHOD `push`, which another module imports
+host array-module, <form vector\n  link items, like list, like number\n\ntask push\n  take v, like vector\n  take value, like number\n  like vector\n  save items, v/items\n  items/push(value)\n  back\n    make vector\n      bind items, items\n>
+
+host conv-a, <task conv\n  take n, like number\n  like number\n  back add(n, 1)\n>
+host conv-b, <task conv\n  take n, like number\n  like number\n  back add(n, 100)\n>
+
+host box-get, <form box\n  link items, like list, like number\n\ntask get\n  take b, like box\n  take i, like number\n  like number\n  back add(b/items/length, 50)\n>
+
+host folder, temp-folder(<term-lean-binding->)
+
+# a lean module of the package, `@app/<name>`, answered as /app/code/<name>.tree
+task app
+  take name, like text
+  take text, like text
+  like compiling-source
+
+  back make(compiling-source, bind(file, <@app/{name}>), bind(text, text), bind(answer, </app/code/{name}.tree>))
+
+# a lean main over the package's modules, the project behind them
+task built
+  take files, like list, like compiling-source
+  take main, like text
+  like compile-outcome
+
+  back compile-text(main, make(compile-choice, bind(file, </app/code/main.tree>), bind(lean, true), bind(project, <.>), bind(files, files)))
+
+# the program's TypeScript imported in this process under its own name, its namespace
+task module-of
+  take out, like compile-outcome
+  take name, like text
+  like dynamic
+  mark async
+
+  back import-text(out/emitted, folder, name)
+
+test <a lean call to a binding nests a task two files define>
+  host out, built(make(list,app(<a>, helper-a), app(<b>, helper-b), app(<twice>, twice-module)), <load @app/a\n  find helper\n\nload @app/b\n  find other-b\n\nload @app/twice\n  find twice\n\ntask run\n  like number\n  back twice(helper(1))\n>)
+  want hold, out/ok
+  host module, module-of(out, <binding>)
+  want hold, is-equal(call-export(module, <run>), 22)
+
+test <a lean METHOD call nests a task two files define>
+  host out, built(make(list,app(<a>, helper-a), app(<b>, helper-b)), <load @app/a\n  find helper\n\nload @app/b\n  find other-b\n\nform box\n  link n, like number\n\n  task add-to\n    take self\n    take more, like number\n    like number\n    back add(self/n, more)\n\ntask run\n  like number\n  save b\n    make box\n      bind n, 5\n  back b/add-to(helper(1))\n>)
+  want hold, out/ok
+  host module, module-of(out, <method>)
+  want hold, is-equal(call-export(module, <run>), 16)
+
+test <a match reads its own form's case when another form names a case alike>
+  host out, built(make(list,app(<rope>, rope-module), app(<vector>, vector-module)), <load @app/rope\n  find rope\n  find length, name rope-length\n\nload @app/vector\n  find vector\n  find size-of\n\ntask run\n  take r, like rope\n  like number\n  back rope-length(r)\n>)
+  want hold, out/ok
+  host module, module-of(out, <case>)
+  host leaf, make-record(make(list, <form>, <leaf>, <text>, <abc>, <length>, 3))
+  host inner, make-record(make(list, <form>, <leaf>, <text>, <a>, <length>, 1))
+  host branch, make-record(make(list, <form>, <branch>, <left>, inner, <length>, 9))
+  want hold, and(is-equal(module/run(leaf), 3), is-equal(module/run(branch), 9))
+
+test <a file importing a method keeps it beside another file's task of its name>
+  host out, built(make(list,app(<array>, array-module)), <load @app/array\n  find vector\n\nload @term/base/list\n  find push\n\ntask run\n  like number\n  save out, make list\n  call push\n    bind list, read out\n    bind item, 7\n  back out/length\n>)
+  want hold, out/ok
+  host module, module-of(out, <push>)
+  want hold, is-equal(call-export(module, <run>), 1)
+
+# two aliases of ONE imported name from two modules: each alias reaches the module its own find named (the scope's
+# `aliases`). engine.tree's `float-to-number` and `decimal-to-number` both bound to the stdlib binding
+test <two aliases of one name from two modules each reach their own>
+  host out, built(make(list,app(<a>, conv-a), app(<b>, conv-b)), <load @app/a\n  find conv, name a-conv\n\nload @app/b\n  find conv, name b-conv\n\ntask run\n  like number\n  back add(a-conv(1), b-conv(1))\n>)
+  want hold, out/ok
+  host module, module-of(out, <aliases>)
+  want hold, is-equal(call-export(module, <run>), 103)
+
+# and the same alias nested two calls deep in a lean call, where a label nesting dropped it (lean-nest `leanLabelOf`)
+test <an alias nested two lean calls deep keeps its module>
+  host out, built(make(list,app(<a>, conv-a), app(<b>, conv-b), app(<twice>, twice-module)), <load @app/a\n  find conv, name a-conv\n\nload @app/b\n  find conv, name b-conv\n\nload @app/twice\n  find twice\n\ntask outer\n  take n, like number\n  like number\n  back add(n, 1000)\n\ntask run\n  like number\n  back outer(twice(a-conv(1)))\n>)
+  want hold, out/ok
+  host module, module-of(out, <nested>)
+  want hold, is-equal(call-export(module, <run>), 1004)
+
+# a plain find beside an alias of the same name: `find get` from the list and `find get, name vector-get` from a
+# module's task. The bare name reaches the PLAIN find only (the scope's `plain`)
+test <a plain find and an alias of one name each reach their own>
+  host out, built(make(list,app(<box>, box-get)), <load @term/base/list\n  find get\n\nload @app/box\n  find box\n  find get, name box-get\n\ntask run\n  like number\n  save xs, make list(7, 8)\n  save b\n    make box\n      bind items, xs\n  back add(get(xs, 1), box-get(b, 0))\n>)
+  want hold, out/ok
+  host module, module-of(out, <plain>)
+  want hold, is-equal(call-export(module, <run>), 60)
+
+# two modules' `host` of one name: each module reads its own (check/overload.ts `bindHostsApart`)
+test <two modules' hosts of one name each read their own>
+  host out, built(make(list,app(<x>, <host limit, 5\n\ntask x-limit\n  like number\n  back limit\n>), app(<y>, <host limit, 7\n\ntask y-limit\n  like number\n  back limit\n>)), <load @app/x\n  find x-limit\n\nload @app/y\n  find y-limit\n\ntask run\n  like number\n  back add(x-limit(), y-limit())\n>)
+  want hold, out/ok
+  host module, module-of(out, <hosts>)
+  want hold, is-equal(call-export(module, <run>), 12)
+
+# ---- the same program natively: each emitter read a case's fields by its name alone too ----
+
+host native, compile-text(<load @app/rope\n  find rope\n  find make-rope\n  find length, name rope-length\n\nload @app/vector\n  find vector\n  find size-of\n\ntask total\n  like number\n  back rope-length(make-rope(\<abc\>, 3))\n>, make(compile-choice, bind(file, </app/code/main.tree>), bind(lean, true), bind(project, <.>), bind(project-env, <rust>), bind(env, <rust>), bind(entry, <total>), bind(files, make list(app(<rope>, rope-module), app(<vector>, vector-module)))))
+
+host native-rust, emit-text(native, <rust>)
+
+# rustc's errors building the case program into `place` as `main`, <> when it built
+task rustc-errors
+  take place, like text
+  like text
+
+  write-file(<{place}/main.rs>, <{native-rust}\nfn main() \{\n    println!("\{\}", total());\n\}\n>)
+  back run-tool(make list(<rustc>, <--edition>, <2021>, <-A>, <warnings>, <-o>, <{place}/main>, <{place}/main.rs>))
+
+# the original's one FAIL when the case program does not build stands in each test, as each needs the built program
+test <rustc compiles the case program>
+  want hold, native/ok
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  want hold, is-equal(rustc-errors(temp-folder(<term-lean-binding->)), <>)
+
+test <Rust reads its own form's case>
+  want hold, native/ok
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  host place, temp-folder(<term-lean-binding->)
+  want hold, is-equal(rustc-errors(place), <>)
+  host ran, run(<{place}/main>, make list)
+  want hold, is-equal(trim(ran/output), <3>)

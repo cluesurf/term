@@ -1,0 +1,171 @@
+note <the per-item memo: a pass is remembered under its input and its judging code, a failure never>
+
+# Tests of memo.tree, beside it rather than in it: a loaded file's test blocks are not rewritten (T-0878). The
+# original, memo.ts beside it, is a helper with no tests of its own (item 0643): these hold what its comments promise.
+
+load ./memo
+  find make-memo
+  find has-passed
+  find keep-pass
+  find save-memo
+
+load ./support/temp
+  find temp-folder
+  find remove-at-exit
+
+load ./support/cli
+  find term-root
+
+dock load
+  load <node:fs>, name check-fs
+  load <node:path>, name check-path
+
+bind check-own-pid
+  take seed, like number
+  like text
+  case node
+    text <String(process.pid)>
+
+bind check-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+bind check-set-memo
+  take value, like text
+  like void
+  case node
+    text <(process.env.TERM_MEMO = $value)>
+
+bind check-clear-memo
+  take seed, like number
+  like void
+  case node
+    text <(delete process.env.TERM_MEMO)>
+
+# a folder of judging code, under a temporary folder, named from the Term root as a suite names its code
+form judge
+  link code, like text
+  link file, like text
+
+task judge-folder
+  take name, like text
+  like judge
+
+  save folder, temp-folder(<memo-check-{name}->)
+  check-fs/write-file-sync(check-path/join(folder, <rule.txt>), <one>)
+  back make(judge, bind(code, check-path/relative(term-root(), folder)), bind(file, check-path/join(folder, <rule.txt>)))
+
+# a suite name of this process, its memo file removed when the process ends
+task suite-name
+  take name, like text
+  like text
+
+  save suite, <memo-check-{name}-{check-own-pid(0)}>
+  remove-at-exit(check-path/join(term-root(), <.base/@term/code/memo/{suite}.json>))
+  back suite
+
+test <a new memo has passed nothing, and a kept pass answers the next run over the same code>
+  save judge, judge-folder(<kept>)
+  save suite, suite-name(<kept>)
+  save first, make-memo(suite, make(list, judge/code))
+  want miss, has-passed(first, <a.tree>, <text a>)
+  keep-pass(first, <a.tree>, <text a>)
+  want hold, is-equal(save-memo(first), 0)
+  save second, make-memo(suite, make(list, judge/code))
+  want hold, has-passed(second, <a.tree>, <text a>)
+  want hold, is-equal(save-memo(second), 1)
+
+test <a changed input is a different key, checked again>
+  save judge, judge-folder(<input>)
+  save suite, suite-name(<input>)
+  save first, make-memo(suite, make(list, judge/code))
+  keep-pass(first, <a.tree>, <text a>)
+  save-memo(first)
+  save second, make-memo(suite, make(list, judge/code))
+  want miss, has-passed(second, <a.tree>, <text b>)
+  want miss, has-passed(second, <b.tree>, <text a>)
+
+test <a change to any file of the judging code is a different key>
+  save judge, judge-folder(<code>)
+  save suite, suite-name(<code>)
+  save first, make-memo(suite, make(list, judge/code))
+  keep-pass(first, <a.tree>, <text a>)
+  save-memo(first)
+  check-fs/write-file-sync(judge/file, <two>)
+  save second, make-memo(suite, make(list, judge/code))
+  want miss, has-passed(second, <a.tree>, <text a>)
+
+test <node_modules, host, tmp and dot folders inside the judging code are not part of it>
+  save judge, judge-folder(<skip>)
+  save suite, suite-name(<skip>)
+  save first, make-memo(suite, make(list, judge/code))
+  keep-pass(first, <a.tree>, <text a>)
+  save-memo(first)
+  save root, check-path/join(term-root(), judge/code)
+  walk make(list, <node_modules>, <host>, <tmp>, <.base>, <.cache>)
+    take skipped, like text
+    check-fs/mkdir-sync(check-path/join(root, skipped))
+    check-fs/write-file-sync(check-path/join(root, skipped, <x.txt>), <x>)
+  save second, make-memo(suite, make(list, judge/code))
+  want hold, has-passed(second, <a.tree>, <text a>)
+
+test <a failure is never remembered, and the file keeps only the keys of the last run>
+  save judge, judge-folder(<failure>)
+  save suite, suite-name(<failure>)
+  save first, make-memo(suite, make(list, judge/code))
+  keep-pass(first, <a.tree>, <text a>)
+  keep-pass(first, <b.tree>, <text b>)
+  save-memo(first)
+  # the second run passes a.tree again and fails b.tree: it keeps no key for b.tree
+  save second, make-memo(suite, make(list, judge/code))
+  want hold, has-passed(second, <a.tree>, <text a>)
+  save-memo(second)
+  save third, make-memo(suite, make(list, judge/code))
+  want hold, has-passed(third, <a.tree>, <text a>)
+  want miss, has-passed(third, <b.tree>, <text b>)
+
+test <bytes are an input as text is, keyed by their content>
+  save judge, judge-folder(<bytes>)
+  save suite, suite-name(<bytes>)
+  # the input file sits outside the judging code, so writing it changes no key
+  save input, check-path/join(temp-folder(<memo-check-input->), <input.txt>)
+  check-fs/write-file-sync(input, <text a>)
+  save first, make-memo(suite, make(list, judge/code))
+  keep-pass(first, <a.tree>, check-fs/read-file-sync(input))
+  save-memo(first)
+  save second, make-memo(suite, make(list, judge/code))
+  want hold, has-passed(second, <a.tree>, <text a>)
+  check-fs/write-file-sync(input, <text b>)
+  want miss, has-passed(second, <a.tree>, check-fs/read-file-sync(input))
+
+test <TERM_MEMO=off checks everything and writes no file>
+  save judge, judge-folder(<off>)
+  save suite, suite-name(<off>)
+  save first, make-memo(suite, make(list, judge/code))
+  keep-pass(first, <a.tree>, <text a>)
+  save-memo(first)
+  check-set-memo(<off>)
+  save second, make-memo(suite, make(list, judge/code))
+  save answered, has-passed(second, <a.tree>, <text a>)
+  check-fs/rm-sync(check-path/join(term-root(), <.base/@term/code/memo/{suite}.json>))
+  keep-pass(second, <b.tree>, <text b>)
+  save reused, save-memo(second)
+  check-clear-memo(0)
+  want miss, answered
+  want hold, is-equal(reused, 0)
+  want miss, check-fs/exists-sync(check-path/join(term-root(), <.base/@term/code/memo/{suite}.json>))
+
+test <a memo file that is not JSON is read as empty>
+  save judge, judge-folder(<broken>)
+  save suite, suite-name(<broken>)
+  save folder, check-path/join(term-root(), <.base/@term/code/memo>)
+  check-fs/mkdir-sync(folder, check-folder-options(0))
+  check-fs/write-file-sync(check-path/join(folder, <{suite}.json>), <not json>)
+  save first, make-memo(suite, make(list, judge/code))
+  want miss, has-passed(first, <a.tree>, <text a>)
+  keep-pass(first, <a.tree>, <text a>)
+  save-memo(first)
+  save second, make-memo(suite, make(list, judge/code))
+  want hold, has-passed(second, <a.tree>, <text a>)

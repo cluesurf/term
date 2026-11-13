@@ -1,0 +1,256 @@
+note <the TypeScript backend computes what the interpreter computes>
+
+# Ported from run.ts by statement (item term-self-host-001-0586, decision 116). The interpreter (engine/engine.tree),
+# the TypeScript emitter (engine/backend/typescript-text.tree) and the RT runtime (engine/backend/runtime.ts) are the
+# subject (decision 106). Each program is compiled to TypeScript, run in-process against RT, and must display what the
+# interpreter, the oracle, answers for it.
+#
+# The original built each program's AST with small helpers (`int`, `vbl`, `bin`, `call`, `lett`, `set`, `ret`, `fn`).
+# They are tasks here, each writing its node as the JSON the engine reads, so a program is a text read once. Its
+# in-process runners came from compiled.ts beside it: the emitted text made a function over RT with the host's
+# Function constructor, which the runners below do the same way. One test per `same` of the original, in its order.
+
+dock load
+  load <@term/make/code/engine/engine>, name engine-module
+  load <@term/make/code/engine/value>, name value-module
+  load <@term/make/code/engine/backend/typescript-text>, name emit-module
+  load <@term/make/code/engine/backend/runtime>, name runtime-module
+  load <global:JSON>, name engine-json
+  load <global:Function>, name host-function
+
+# ---- the original's AST helpers, each a node as JSON ----
+
+task int-node
+  take value, like number
+  like text
+
+  back <\{"form":"integer","value":\{"form":"small","value":{value}\}\}>
+
+task str-node
+  take value, like text
+  like text
+
+  back <\{"form":"string","value":"{value}"\}>
+
+task var-node
+  take name, like text
+  like text
+
+  back <\{"form":"variable","name":"{name}"\}>
+
+task bin-node
+  take op, like text
+  take left, like text
+  take right, like text
+  like text
+
+  back <\{"form":"binary","op":"{op}","left":{left},"right":{right}\}>
+
+task member-node
+  take target, like text
+  take name, like text
+  like text
+
+  back <\{"form":"member","target":{target},"name":"{name}"\}>
+
+# a list of nodes, as a JSON array
+task nodes
+  take items, like list, like text
+  like text
+
+  save out, <>
+  walk items
+    take one, like text
+    fork test, is-equal(out, <>)
+      hold
+        save out, one
+      miss
+        save out, <{out},{one}>
+  back <[{out}]>
+
+task call-node
+  take name, like text
+  take args, like list, like text
+  like text
+
+  back <\{"form":"call","callee":{var-node(name)},"args":{nodes(args)}\}>
+
+task let-node
+  take name, like text
+  take init, like text
+  like text
+
+  back <\{"form":"let","name":"{name}","init":{init},"mutable":true\}>
+
+task set-node
+  take name, like text
+  take value, like text
+  like text
+
+  back <\{"form":"assign","target":{var-node(name)},"op":"=","value":{value}\}>
+
+task ret-node
+  take value, like text
+  like text
+
+  back <\{"form":"return","value":{value}\}>
+
+task fn-node
+  take name, like text
+  take params, like list, like text
+  take body, like list, like text
+  take is-async, like boolean
+  like text
+
+  save names, make list
+  walk params
+    take one, like text
+    names/push(<"{one}">)
+  back <\{"form":"function","name":"{name}","params":{nodes(names)},"body":{nodes(body)},"isAsync":{is-async}\}>
+
+task statement-of
+  take expr, like text
+  like text
+
+  back <\{"form":"expression","expr":{expr}\}>
+
+# a program: its statements read once as the engine's AST
+task program
+  take statements, like list, like text
+  like dynamic
+
+  back engine-json/parse(nodes(statements))
+
+# host value: an argument as the engine's integer value, a big integer (engine/data/integer is Term: its value is a
+# `big-integer`, `{ dock: bigint }`)
+bind arg
+  take value, like number
+  like dynamic
+  case node
+    text <(\{ form: "integer", value: \{ value: \{ dock: BigInt($value) \}, resolution: "big" \} \})>
+
+# host value: a function made by the host's Function constructor, called over RT, and over the arguments
+bind run-over
+  take made, like dynamic
+  take runtime, like dynamic
+  like dynamic
+  case node
+    text <$made($runtime)>
+
+bind run-over-with
+  take made, like dynamic
+  take runtime, like dynamic
+  take given, like dynamic
+  like dynamic
+  case node
+    text <$made($runtime, $given)>
+
+# ---- the runners ----
+
+# run a compiled program in-process: its last expression's value
+task run-compiled
+  take code, like dynamic
+  like dynamic
+  mark async
+
+  host parts, emit-module/compile-for-run(code)
+  host made, host-function(<RT>, <return (async () =\> \{ {emit-module/typescript-preamble()} {parts/declarations} {parts/body} return RT.UNIT_V; \})()>)
+  back wait run-over(made, runtime-module)
+
+# run a named function of a compiled program on argument values
+task run-compiled-function
+  take code, like dynamic
+  take name, like text
+  take given, like list, like dynamic
+  like dynamic
+  mark async
+
+  host made, host-function(<RT>, <__ARGS__>, <return (async () =\> \{ {emit-module/typescript-preamble()} {emit-module/compile-declarations(code)} return {name}(...__ARGS__); \})()>)
+  back wait run-over-with(made, runtime-module, given)
+
+task shown
+  take value, like dynamic
+  like text
+
+  back value-module/display(value)
+
+# what the interpreter and the compiled program show for a function call: equal, or the test says both
+task function-agrees
+  take code, like dynamic
+  take name, like text
+  take given, like list, like dynamic
+  like boolean
+  mark async
+
+  host interpreted, wait engine-module/call-function(code, name, given)
+  host compiled, run-compiled-function(code, name, given)
+  back is-equal(shown(compiled), shown(interpreted))
+
+task program-agrees
+  take code, like dynamic
+  like boolean
+  mark async
+
+  host interpreted, wait engine-module/run(code)
+  host compiled, run-compiled(code)
+  back is-equal(shown(compiled), shown(interpreted))
+
+# ---- the programs ----
+
+host fib-program, program(make(list, fn-node(<fib>, make(list, <n>), make(list, let-node(<a>, int-node(0)), let-node(<b>, int-node(1)), let-node(<t>, int-node(0)), <\{"form":"while","cond":{bin-node(<!=>, var-node(<n>), int-node(0))},"body":{nodes(make(list, set-node(<n>, bin-node(<->, var-node(<n>), int-node(1))), set-node(<t>, bin-node(<+>, var-node(<a>), var-node(<b>))), set-node(<a>, var-node(<b>)), set-node(<b>, var-node(<t>))))}\}>, ret-node(var-node(<a>))), false)))
+
+test <fib(10) while loop>
+  want hold, function-agrees(fib-program, <fib>, make(list, arg(10)))
+
+host fact-program, program(make(list, fn-node(<fact>, make(list, <n>), make(list, <\{"form":"if","branches":[\{"cond":{bin-node(<\<=>, var-node(<n>), int-node(1))},"body":[{ret-node(int-node(1))}]\}],"otherwise":[{ret-node(bin-node(<*>, var-node(<n>), call-node(<fact>, make(list, bin-node(<->, var-node(<n>), int-node(1))))))}]\}>), false)))
+
+test <fact(6) recursion>
+  want hold, function-agrees(fact-program, <fact>, make(list, arg(6)))
+
+host classify-switch, <\{"form":"switch","subject":{call-node(<sign>, make(list, var-node(<n>)))},"cases":[\{"match":{int-node(-1)},"body":[{ret-node(str-node(<negative>))}]\},\{"match":{int-node(0)},"body":[{ret-node(str-node(<zero>))}]\}],"otherwise":[{ret-node(str-node(<positive>))}]\}>
+host sign-if, <\{"form":"if","branches":[\{"cond":{bin-node(<\<>, var-node(<n>), int-node(0))},"body":[{ret-node(int-node(-1))}]\},\{"cond":{bin-node(<\>>, var-node(<n>), int-node(0))},"body":[{ret-node(int-node(1))}]\}],"otherwise":[{ret-node(int-node(0))}]\}>
+host classify-program, program(make(list, fn-node(<classify>, make(list, <n>), make(list, classify-switch), false), fn-node(<sign>, make(list, <n>), make(list, sign-if), false)))
+
+test <switch classify(-3)>
+  want hold, function-agrees(classify-program, <classify>, make(list, arg(-3)))
+
+test <switch classify(9)>
+  want hold, function-agrees(classify-program, <classify>, make(list, arg(9)))
+
+host array-loop, <\{"form":"while","cond":{bin-node(<\<>, var-node(<i>), member-node(var-node(<xs>), <length>))},"body":{nodes(make(list, set-node(<sum>, bin-node(<+>, var-node(<sum>), <\{"form":"index","target":{var-node(<xs>)},"index":{var-node(<i>)}\}>)), set-node(<i>, bin-node(<+>, var-node(<i>), int-node(1)))))}\}>
+host array-program, program(make(list, let-node(<xs>, <\{"form":"array","items":{nodes(make(list, int-node(2), int-node(3), int-node(5), int-node(7)))}\}>), set-node(<xs>, call-node(<push>, make(list, var-node(<xs>), int-node(11)))), let-node(<sum>, int-node(0)), let-node(<i>, int-node(0)), array-loop, statement-of(var-node(<sum>))))
+
+test <arrays push + sum>
+  want hold, program-agrees(array-program)
+
+host map-program, program(make(list, let-node(<m>, <\{"form":"map","entries":[]\}>), <\{"form":"assign","target":{member-node(var-node(<m>), <a>)},"op":"=","value":{int-node(10)}\}>, <\{"form":"assign","target":{member-node(var-node(<m>), <b>)},"op":"=","value":{int-node(20)}\}>, statement-of(bin-node(<+>, member-node(var-node(<m>), <a>), member-node(var-node(<m>), <b>)))))
+
+test <maps fields>
+  want hold, program-agrees(map-program)
+
+host text-program, program(make(list, let-node(<s>, bin-node(<+>, str-node(<hyper>), str-node(<bolic>))), statement-of(member-node(var-node(<s>), <length>))))
+
+test <strings concat length>
+  want hold, program-agrees(text-program)
+
+host async-program, program(make(list, fn-node(<inner>, make(list), make(list, ret-node(int-node(21))), true), fn-node(<outer>, make(list), make(list, let-node(<x>, <\{"form":"await","expr":{call-node(<inner>, make(list))}\}>), let-node(<y>, <\{"form":"await","expr":{call-node(<inner>, make(list))}\}>), ret-node(bin-node(<+>, var-node(<x>), var-node(<y>)))), true)))
+
+test <async/await outer()>
+  want hold, function-agrees(async-program, <outer>, make(list))
+
+# throw and try/catch: a thrown value is recovered by the catch binding
+host safe-try, <\{"form":"try","body":[\{"form":"if","branches":[\{"cond":{bin-node(<\<>, var-node(<n>), int-node(0))},"body":[\{"form":"throw","value":{int-node(99)}\}]\}],"otherwise":[]\},{ret-node(var-node(<n>))}],"catches":[\{"name":"e","body":[{ret-node(var-node(<e>))}]\}],"finallyBody":[]\}>
+host try-program, program(make(list, fn-node(<safe>, make(list, <n>), make(list, safe-try), false)))
+
+test <try/catch recovers a thrown value (n=-5)>
+  want hold, function-agrees(try-program, <safe>, make(list, arg(-5)))
+
+test <try/catch passes through (n=7)>
+  want hold, function-agrees(try-program, <safe>, make(list, arg(7)))
+
+# for-of over an array sums its elements
+host for-loop, <\{"form":"for","name":"x","iterable":\{"form":"array","items":{nodes(make(list, int-node(1), int-node(2), int-node(3), int-node(4)))}\},"body":[{set-node(<sum>, bin-node(<+>, var-node(<sum>), var-node(<x>)))}]\}>
+host for-program, program(make(list, fn-node(<total>, make(list), make(list, let-node(<sum>, int-node(0)), for-loop, ret-node(var-node(<sum>))), false)))
+
+test <for-of array sum>
+  want hold, function-agrees(for-program, <total>, make(list))

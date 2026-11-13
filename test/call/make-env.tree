@@ -1,0 +1,279 @@
+note <`term make --env <rust|swift|kotlin|node>`: every program of the project for one backend, one file each under host/<env>/>
+
+# Ported from make-env.ts by statement (item term-self-host-001-0604), one test per `ok` in its order. A test inside the
+# original's loop over the four backends is walked over them here, a case for each turn, and a backend whose toolchain
+# is not installed skips its case, as the original skipped its turn. MAKE_ENV_ONLY=node, rust, swift or kotlin skips
+# every other backend, as it did. A program is a file with a `run`, `boot` or `main` task taking nothing, and a library
+# is not written on its own (deck/call/code/make-native.ts). One program that does not build is reported, the rest are
+# written, and the run fails. `--build` builds each beside its source. The original collapsed every run of white space
+# in stderr before matching: each pattern here reads `\s+` between words instead.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load ../support/running
+  find missing-tools
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host backends, make list(<node>, <rust>, <swift>, <kotlin>)
+
+host manifest-text, <deck @probe/make-env\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>
+
+host empty-manifest-text, <deck @probe/make-env-empty\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>
+
+host twice-text, <task twice\n  take n, like number\n  like number\n  back multiply(n, 2)\n>
+
+host answer-text, <load ./twice\n  find twice\n\ntask run\n  like text\n  back \<answer \{twice(21)\}\>\n>
+
+host other-text, <task main\n  like text\n  back \<the other program\>\n>
+
+host broken-text, <task run\n  like number\n  back \<not a number\>\n>
+
+# the toolchain each backend needs beyond node
+task tools-of
+  take env, like text
+  like list, like text
+
+  fork test, is-equal(env, <rust>)
+    hold
+      back make list(<rustc>)
+  fork test, is-equal(env, <swift>)
+    hold
+      back make list(<swiftc>)
+  fork test, is-equal(env, <kotlin>)
+    hold
+      back make list(<kotlinc>, <java>)
+  back make list
+
+# whether a backend's case runs here: its toolchain is installed, and MAKE_ENV_ONLY names it or nothing
+task runs-here
+  take env, like text
+  like boolean
+
+  save only, variable(<MAKE_ENV_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, env))
+    hold
+      back false
+  back is-equal(missing-tools(tools-of(env)), <>)
+
+task extension-of
+  take env, like text
+  like text
+
+  fork test, is-equal(env, <node>)
+    hold
+      back <ts>
+  fork test, is-equal(env, <rust>)
+    hold
+      back <rs>
+  fork test, is-equal(env, <swift>)
+    hold
+      back <swift>
+  back <kt>
+
+# a project of two programs and a library one of them loads, and with `broken` a third program that does not check
+task project-in
+  take root, like text
+  take broken, like boolean
+  like text
+
+  make-folder(<{root}/code/tool>)
+  write-file(<{root}/deck.tree>, manifest-text)
+  write-file(<{root}/code/twice.tree>, twice-text)
+  write-file(<{root}/code/answer.tree>, answer-text)
+  write-file(<{root}/code/tool/other.tree>, other-text)
+  fork test, broken
+    hold
+      write-file(<{root}/code/broken.tree>, broken-text)
+  back root
+
+task project
+  take broken, like boolean
+  like text
+
+  back project-in(temp-folder(<term-make-env->), broken)
+
+form make-env-state
+  mark shared
+  link made, like boolean
+  link box, like text
+
+host make-env-now, make(make-env-state, bind(made, false), bind(box, <>))
+
+# the one temporary folder that holds each backend's projects
+task the-box
+  like text
+
+  fork test, make-env-now/made
+    hold
+      back make-env-now/box
+  save make-env-now/box, temp-folder(<term-make-env->)
+  save make-env-now/made, true
+  back make-env-now/box
+
+# a backend's project of a kind, written once, as the original made one per turn of its loop
+task project-of
+  take kind, like text
+  take env, like text
+  like text
+
+  save root, <{the-box()}/{kind}-{env}>
+  fork test, file-exists(<{root}/deck.tree>)
+    hold
+      back root
+  back project-in(root, is-equal(kind, <dirty>))
+
+task clean-of
+  take env, like text
+  like text
+
+  back project-of(<clean>, env)
+
+task dirty-of
+  take env, like text
+  like text
+
+  back project-of(<dirty>, env)
+
+task term-in
+  take root, like text
+  take arguments, like list, like text
+  like run-result
+  mark async
+
+  back run-self(arguments, root, 900000)
+
+task said-matches
+  take ran, like run-result
+  take text, like text
+  like boolean
+
+  back matches(make(pattern, text), ran/error)
+
+test <an unknown backend is a usage error, naming the backends>
+  save wrong, term-in(project(false), make list(<make>, <--env>, <cobol>))
+  want hold, is-equal(wrong/code, 2)
+  want hold, said-matches(wrong, <<rust,\s+swift,\s+kotlin,\s+node>>)
+
+test <a project with no program is refused, naming the entries>
+  save empty, temp-folder(<term-make-env->)
+  make-folder(<{empty}/code>)
+  write-file(<{empty}/deck.tree>, empty-manifest-text)
+  write-file(<{empty}/code/twice.tree>, twice-text)
+  save none, term-in(empty, make list(<make>, <--env>, <node>))
+  want hold, is-unequal(none/code, 0)
+  want hold, said-matches(none, <<`run`,\s+`boot`,\s+`main`>>)
+
+test <each program is written under host/\<env\>/, by its path>
+  take env, like text
+    walk backends
+  fork test, not(runs-here(env))
+    hold
+      skip <its toolchain is not installed, or MAKE_ENV_ONLY names another backend>
+  save clean, clean-of(env)
+  save made, term-in(clean, make list(<make>, <--env>, env))
+  want hold, is-equal(made/code, 0)
+  want hold, file-exists(<{clean}/host/{env}/code/answer.{extension-of(env)}>)
+  want hold, file-exists(<{clean}/host/{env}/code/tool/other.{extension-of(env)}>)
+
+test <a library is not written on its own>
+  take env, like text
+    walk backends
+  fork test, not(runs-here(env))
+    hold
+      skip <its toolchain is not installed, or MAKE_ENV_ONLY names another backend>
+  save clean, clean-of(env)
+  term-in(clean, make list(<make>, <--env>, env))
+  want miss, file-exists(<{clean}/host/{env}/code/twice.{extension-of(env)}>)
+
+test <the verdict counts the programs>
+  take env, like text
+    walk backends
+  fork test, not(runs-here(env))
+    hold
+      skip <its toolchain is not installed, or MAKE_ENV_ONLY names another backend>
+  save made, term-in(clean-of(env), make list(<make>, <--env>, env))
+  want hold, said-matches(made, <<Emitted\s+2\s+of\s+2\s+programs\s+for>>)
+
+test <a program that does not check is reported, the rest written, and the run fails>
+  take env, like text
+    walk backends
+  fork test, not(runs-here(env))
+    hold
+      skip <its toolchain is not installed, or MAKE_ENV_ONLY names another backend>
+  save dirty, dirty-of(env)
+  save partial, term-in(dirty, make list(<make>, <--env>, env))
+  want hold, is-equal(partial/code, 1)
+  want hold, said-matches(partial, <<broken\.tree>>)
+  want hold, file-exists(<{dirty}/host/{env}/code/answer.{extension-of(env)}>)
+  want miss, file-exists(<{dirty}/host/{env}/code/broken.{extension-of(env)}>)
+  want hold, said-matches(partial, <<2\s+of\s+3>>)
+
+test <--build builds every program>
+  take env, like text
+    walk backends
+  fork test, not(runs-here(env))
+    hold
+      skip <its toolchain is not installed, or MAKE_ENV_ONLY names another backend>
+  save built, term-in(clean-of(env), make list(<make>, <--env>, env, <--build>))
+  want hold, is-equal(built/code, 0)
+  want hold, said-matches(built, <<Built\s+2\s+of\s+2>>)
+
+# what a built program answers, by the command native-build writes for it, from `folder` under host/<env>/code/
+task run-built
+  take env, like text
+  take folder, like text
+  take name, like text
+  like run-result
+  mark async
+
+  save build, <{clean-of(env)}/host/{env}/code/{folder}build>
+  fork test, is-equal(env, <node>)
+    hold
+      back run(<node>, make list(<{build}/{name}.mjs>))
+  fork test, is-equal(env, <kotlin>)
+    hold
+      back run(<java>, make list(<-jar>, <{build}/{name}.jar>))
+  back run(<{build}/{name}>, make list)
+
+# `answer 42` is also the proof the library came along: `twice` lives in another file, and the program is folded from it
+test <a built program answers, its library with it>
+  take env, like text
+    walk backends
+  fork test, not(runs-here(env))
+    hold
+      skip <its toolchain is not installed, or MAKE_ENV_ONLY names another backend>
+  save ran, run-built(env, <>, <answer>)
+  want hold, is-equal(ran/code, 0)
+  want hold, is-equal(ran/output, <answer 42>)
+
+# `other` starts at `task main`, which Rust and Kotlin reserve for the main the build adds (`main_`)
+test <a program that starts at `task main` builds and answers>
+  take env, like text
+    walk backends
+  fork test, not(runs-here(env))
+    hold
+      skip <its toolchain is not installed, or MAKE_ENV_ONLY names another backend>
+  save ran, run-built(env, <tool/>, <other>)
+  want hold, is-equal(ran/code, 0)
+  want hold, is-equal(ran/output, <the other program>)

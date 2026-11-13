@@ -1,0 +1,229 @@
+note <what the two parts of the guide-gaps port share: the original's build() and load(), held as Term>
+
+# Ported from test/compile/guide-gaps.ts by statement (items term-self-host-001-0614 and 0615), its two parts beside this
+# file. `build` compiles a fixture as the original's build() did, under /gate/code/gap.tree with nothing linked, and
+# `linked` resolves the standard library and @term/site from the Term root, as its projectResolver(TERM, env) did. `warned`
+# is the original's `warnings`, each `<name>: <message>`. `answer` is its load(): the emitted module is written to a temp
+# folder and imported by a main under node with tsx's loader, which makes the calls a block gives in order and prints
+# what each answered. What a module printed is kept by name, so the tests of one block run it once.
+
+load ../../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../../support/running
+  find running-node
+
+load ../../support/cli
+  find term-root
+
+load ../../support/judging
+  find truth
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/path
+  find join, name path-join
+
+load @term/base/text
+  find split, name text-split
+  find index-of, name text-index-of
+  find substring, name text-substring
+  find trim
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join, name text-join
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/make/code/parser/tree>, name gaps-parser
+
+form gaps-source
+  link file, like text
+  link text, like text
+
+host main-head, <import * as mod from "./module.mts"\nconst caught = call =\> \{ try \{ call(); return "none" \} catch (error) \{ return [error?.name, error?.form, error?.link?.actual].join(" ") \} \}\nconst said = []\nfor (const call of [\n>
+host main-tail, <\n]) said.push(String(await call()))\nprocess.stdout.write("\\n~said~" + said.join("~|~"))\n>
+
+# the name an unlinked fixture compiles under
+task gap-file
+  like text
+
+  back </gate/code/gap.tree>
+
+# a fixture compiled with nothing linked, as the original's build(text)
+task build
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, gap-file())))
+
+# a fixture compiled as `env` with nothing linked
+task build-on
+  take source, like text
+  take env, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, gap-file()), bind(env, env)))
+
+# the file a linked fixture compiles as: one under the Term root, where the original's build(text, _, true) put it
+task linked-file
+  like text
+
+  back path-join(term-root(), <test/compile/gap.tree>)
+
+# a fixture compiled against the Term root's own decks for `env`, as the original's build(text, undefined, true)
+task linked
+  take source, like text
+  take env, like text, fall <node>
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, linked-file()), bind(project, <.>), bind(project-env, env), bind(env, env)))
+
+# the messages of a refusal joined, as the original's `messages`
+task said
+  take out, like compile-outcome
+  like text
+
+  back text-join(out/messages, < | >)
+
+# each warning as `<name>: <message>`, as the original's `warnings`
+task warned
+  take out, like compile-outcome
+  like list, like text
+
+  host found, make list
+  save at, 0
+  walk out/warnings
+    take name, like text
+    host message, out/warning-messages/{at}
+    found/push(<{name}: {message}>)
+    save at, add(at, 1)
+  back found
+
+# true when one text of the list contains both words
+task any-holding-both
+  take texts, like list, like text
+  take first, like text
+  take second, like text
+  like boolean
+
+  walk texts
+    take one, like text
+    fork test, and(text-contains(one, first), text-contains(one, second))
+      hold
+        back true
+  back false
+
+# the word at `at` of a text split at each space, <> past its end
+task word-at
+  take said, like text
+  take at, like number
+  like text
+
+  save words, text-split(said, < >)
+  fork test, is-below(at, words/length)
+    hold
+      back words/{at}
+  back <>
+
+# whether the text parses, and the tree it parses to
+task parsed-of
+  take source, like text
+  take file, like text
+  like dynamic
+
+  back gaps-parser/parse(make(gaps-source, bind(file, file), bind(text, source)))
+
+# the tree a parse gave, printed back
+task printed-of
+  take parsed, like dynamic
+  like text
+
+  fork test, truth(parsed/ok)
+    hold
+      back gaps-parser/print-tree(parsed/tree)
+  back <>
+
+form gaps-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(gaps-answers, bind(held, make hash))
+
+# what the emitted module of `out` printed under a main making `calls`, or why it did not run
+task run-module
+  take out, like compile-outcome
+  take calls, like text
+  like text
+
+  fork test, not(out/ok)
+    hold
+      back <refused: {said(out)}>
+  save folder, temp-folder(<term-guide-gaps->)
+  write-file(path-join(folder, <module.mts>), out/emitted)
+  save main, path-join(folder, <main.mts>)
+  write-file(main, <{main-head}{calls}{main-tail}>)
+  save result, run(running-node(0), make list(<--import>, <tsx>, main))
+  fork test, is-unequal(result/code, 0)
+    hold
+      back <exit {result/code}: {result/error}>
+  back result/output
+
+# the module's output, run once per name
+task answers
+  take out, like compile-outcome
+  take calls, like text
+  take name, like text
+  like text
+
+  fork test, kept/held/has(name)
+    hold
+      back kept/held/{name}
+  save printed, run-module(out, calls)
+  save kept/held/{name}, printed
+  back printed
+
+# what the call at `at` answered, as the host's String() writes it, else the whole output, which says why
+task answer
+  take out, like compile-outcome
+  take calls, like text
+  take name, like text
+  take at, like number
+  like text
+
+  save printed, answers(out, calls, name)
+  save mark-at, text-index-of(printed, <~said~>)
+  fork test, is-below(mark-at, 0)
+    hold
+      back printed
+  save parts, text-split(text-substring(printed, add(mark-at, 6)), <~|~>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back printed
+
+# what the calls logged, trimmed, before the answers
+task logged
+  take out, like compile-outcome
+  take calls, like text
+  take name, like text
+  like text
+
+  save printed, answers(out, calls, name)
+  save mark-at, text-index-of(printed, <~said~>)
+  fork test, is-below(mark-at, 0)
+    hold
+      back printed
+  back trim(text-substring(printed, 0, mark-at))

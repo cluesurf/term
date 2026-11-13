@@ -1,0 +1,118 @@
+note <A rewrite rule whose left side is one of its own holes (check/elaborating-rewrite.tree `rewrite-with-lemmas`)>
+
+# Ported from the TypeScript original by statement (item term-self-host-001-0610), one test per `ok` in its order. The
+# rewriting module is the subject, docked (decision 106), and its kernel terms are made by test/support/judging.
+#
+# Such a rule (a proven `x == mul(g(x), x)`, cited) matches EVERY term, so rewriting to a fixed point by it never ends,
+# and a right side holding the hole twice doubles the term at each rewrite. `ac-rewrite-fix` rewrites 200 times between
+# its AC steps, so one such rule took the whole heap (2^200 nodes): pair-elaborating died at its round 312 on
+# 2026-10-07. The fixed point now skips the rule, while one rewrite by it (`rewrite-once`, what `cite` uses to see a goal
+# as an instance) still fires, and a rule with a real left side still rewrites to its fixed point. Each acceptance
+# stands beside the refusal, so the suite cannot pass by refusing every rule. The original compared terms by their JSON
+# text, and the port compares the values with `is-equal`.
+
+load ../support/judging
+  find make-record
+  find var
+  find const-term
+  find app
+
+load @term/base/clock
+  find now, name clock-now
+
+dock load
+  load <@term/make/code/check/elaborating-rewrite>, name rewriting
+
+# op(a, b), an operator applied to two arguments
+task binary
+  take op, like text
+  take a, like dynamic
+  take b, like dynamic
+  like dynamic
+
+  back app(app(const-term(op), a), b)
+
+# a rewrite rule with the binder holes it names, the hole indices as the module's map of index to true
+task rule-of
+  take binders, like number
+  take lhs, like dynamic
+  take rhs, like dynamic
+  take holes, like list, like number
+  like dynamic
+
+  host held, make hash
+  walk holes
+    take hole, like number
+    held/set(hole, true)
+  back make-record(make(list, <binderCount>, binders, <lhs>, lhs, <rhs>, rhs, <holes>, held))
+
+task term-size
+  take t, like dynamic
+  like number
+
+  fork test, is-equal(t/tag, <app>)
+    hold
+      back add(add(1, term-size(t/fun)), term-size(t/arg))
+  fork test, is-equal(t/tag, <lam>)
+    hold
+      back add(1, term-size(t/body))
+  back 1
+
+task no-holes
+  like list, like number
+
+  back make list
+
+# x -> mul(g(x, v2), add(zero, x)): the round-312 rule, the hole twice on the right
+host doubling, rule-of(1, var(0), binary(<mul>, binary(<g>, var(0), var(2)), binary(<add>, const-term(<zero>), var(0))), no-holes())
+host target, binary(<mul>, var(2), binary(<add>, const-term(<one>), const-term(<zero>)))
+
+host started, clock-now()
+host fixed, rewriting/rewrite-with-lemmas(target, make(list,doubling), 200)
+
+task ac-operators
+  like dynamic
+
+  host operators, make hash
+  operators/set(<add>, true)
+  back operators
+
+task no-rules
+  like list, like dynamic
+
+  back make list
+
+host ac, rewriting/ac-rewrite-fix(target, ac-operators(), no-rules(), make(list,doubling), 20)
+host took, subtract(clock-now(), started)
+
+test <a rule whose left side is a binder hole is skipped by the fixed point>
+  want hold, is-equal(fixed, target)
+
+test <and by the AC fixed point, which rewrote 200 times between steps>
+  want hold, not(is-above(term-size(ac), add(term-size(target), 2)))
+
+test <both in well under a second (the heap went before)>
+  want hold, is-below(took, 1000)
+
+# a set hole (a generalized induction hypothesis's non-recursive variable) as the whole left side, likewise
+test <a rule whose left side is a set hole is skipped too>
+  host set-hole, rule-of(0, var(3), binary(<add>, var(3), var(3)), make(list,3))
+  want hold, is-equal(rewriting/rewrite-with-lemmas(target, make(list,set-hole), 50), target)
+
+# one rewrite by it still fires: `cite` sees `a == mul(g(a, v2), add(zero, a))` as an instance this way
+test <one rewrite by a hole rule still fires>
+  host once, rewriting/rewrite-once(target, doubling)
+  want hold, is-equal(once/form, <some>)
+  want hold, is-above(term-size(once/value), term-size(target))
+
+# a variable that is NOT a hole (a hypothesis `v5 == one`, binderCount 0) is a real left side, and still rewrites
+test <a left side that is a free variable, no hole, still rewrites to its fixed point>
+  host hypothesis, rule-of(0, var(5), const-term(<one>), no-holes())
+  host with-five, binary(<add>, var(5), var(5))
+  want hold, is-equal(rewriting/rewrite-with-lemmas(with-five, make(list,hypothesis), 10), binary(<add>, const-term(<one>), const-term(<one>)))
+
+# and a rule with a real left side beside the hole rule still reaches its fixed point: add(zero, y) -> y
+test <a real rule beside a hole rule rewrites to its fixed point>
+  host unit, rule-of(1, binary(<add>, const-term(<zero>), var(0)), var(0), no-holes())
+  host nested, binary(<add>, const-term(<zero>), binary(<add>, const-term(<zero>), const-term(<two>)))
+  want hold, is-equal(rewriting/rewrite-with-lemmas(nested, make(list,doubling, unit), 200), const-term(<two>))

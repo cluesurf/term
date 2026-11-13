@@ -1,0 +1,137 @@
+note <Nothing in the CLI prints except through the terminal output library: each file's direct-print sites held to the baseline>
+
+# Ported from the TypeScript original by statement (item term-self-host-001-0606). A command builds events and hands
+# them to code/output.ts. It never calls `console.*`, writes to `process.stdout` / `process.stderr`, or imports the old
+# `@term/make/code/tint` helpers (note/project/term/output/readme.md). A RATCHET while the commands are converted
+# (note/project/term/terminal-output-standard.md, phase 2): every file's count of direct-print sites is held to the
+# baseline, test/call/output-only.json. A count may fall and never rise, a file that is not in the baseline must have
+# none, and a file that reached zero stays there. The original passed one count per file scanned, so each file is a case
+# of one walked test here. Its `--commit`, which rewrites the baseline, is a writer and not a test, so it stays with the
+# original until REMOVE batch 4.
+
+load ../support/compiling
+  find file-text
+
+load ../support/walking
+  find kind-of
+
+load ../support/reading
+  find lines-of
+
+load @term/base/json
+  find parse, name parse-json
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find ends-with
+  find starts-with
+  find trim
+
+dock load
+  load <node:fs>, name print-file
+  load <node:path>, name print-path
+
+host code-root, print-path/join(print-path/resolve(<.>), <deck/call/code>)
+
+# the shapes that print without the library. A comment that names one is not a call: only code lines count
+host prints, make list(make(pattern, <<\bconsole\.(log|error|warn|info|debug)\(>>), make(pattern, <<\bprocess\.(stdout|stderr)\.write\(>>), make(pattern, <<from '@term\/make\/code\/tint'>>), make(pattern, <<\b(logGood|logWarn|logFail|logStep|logHead|showBanner|showInfo)\(>>))
+
+# a line written to another PROCESS rather than to a person, or TEXT of a generated program, says so on the line itself
+host protocol, make pattern, <<\/\/ output: (protocol|generated)\b>>
+
+# the library itself, the one module that owns the process, and hook-dispatch.ts, the runtime of a USER's compiled
+# command line, are where printing is meant to happen: each is left out at the top of the code folder
+task is-owner
+  take name, like text
+  like boolean
+
+  back or(is-equal(name, <work>), or(is-equal(name, <output.ts>), is-equal(name, <hook-dispatch.ts>)))
+
+# every `.ts` file under a folder, at any depth, the owners at the top left out
+task scripts-under
+  take dir, like text
+  take out, like list, like text
+  like list, like text
+
+  walk print-file/readdir-sync(dir)
+    take name, like text
+    fork test, and(is-owner(name), is-equal(dir, code-root))
+      hold
+        turn next
+    save full, print-path/join(dir, name)
+    save info, print-file/stat-sync(full)
+    fork test, info/is-directory()
+      hold
+        scripts-under(full, out)
+      miss
+        fork test, ends-with(name, <.ts>)
+          hold
+            out/push(full)
+  back out
+
+task scanned
+  like list, like text
+
+  save none, make list
+  back scripts-under(code-root, none)
+
+task prints-on
+  take line, like text
+  like boolean
+
+  walk prints
+    take shape, like dynamic
+    fork test, matches(shape, line)
+      hold
+        back true
+  back false
+
+# a file's direct-print sites: code lines, no protocol marker, a printing shape
+task sites
+  take file, like text
+  like number
+
+  save found, 0
+  walk lines-of(file-text(file))
+    take line, like text
+    fork test, and(not(starts-with(trim(line), <//>)), and(not(matches(protocol, line)), prints-on(line)))
+      hold
+        save found, add(found, 1)
+  back found
+
+# the baseline, empty when it is missing or does not parse
+task read-baseline
+  like dynamic
+
+  fork
+    mark unsafe
+    back parse-json(file-text(print-path/join(print-path/resolve(<.>), <test/call/output-only.json>)))
+  halt take
+    take cause
+    back parse-json(<\{\}>)
+
+host baseline, read-baseline()
+
+# a file's held count, 0 when the baseline does not name it
+task held-of
+  take file, like text
+  like number
+
+  save key, print-path/relative(code-root, file)
+  save held, baseline/{key}
+  fork test, is-equal(kind-of(held), <number>)
+    hold
+      back held
+  back 0
+
+# each file scanned is held at or under its count
+test <deck/call/code prints only through code/output.ts>
+  take file, like text
+    walk scanned()
+  want hold, not(is-above(sites(file), held-of(file)))

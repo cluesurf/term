@@ -4,8 +4,8 @@ note <every head a mill grammar anchors is a four-letter word of the vocabulary,
 # that can START A LINE: a rule named as an alternative inside some `mine list` (directly, or inside that list's
 # `mine any`) is a LINE RULE, and the word it is anchored on (its first `mine term, term <word>`, or each
 # alternative's in a leading `mine any`) is a head. The three literals can stand alone on a line as a value and are not
-# held. The grammars are read with the compiler's own parser through deck/deck/code/package/read.ts, the subject this
-# suite docks (decision 106). KNOWN holds the heads outside the list on the day this gate went up (2026-10-02), and may
+# held. The grammars are read with the compiler's own parser through @term/deck's tree reader, its port
+# tree-reading.tree, loaded (decision 157: the reader is a helper here, not the subject). KNOWN holds the heads outside the list on the day this gate went up (2026-10-02), and may
 # only shrink (proof-by-default-0020). The vocabulary is its own checkout, outside this repository, and TERM_VOCABULARY
 # names its terms.json: without it every test SKIPS, saying why, as the original's gate did.
 
@@ -29,10 +29,11 @@ load @term/base/json
 load @term/base/list
   find push
 
+load @term/deck/package/tree-reading
+  find read-tree
+
 dock load
-  load <@term/deck/code/package/read>, name words-read
   load <node:path>, name words-path
-  load <global:Array>, name words-array
 
 host mill, project-path(<.>, <deck/mill/code/tree>)
 
@@ -201,8 +202,8 @@ task counted
   save lines, make hash
   walk mine-files(mill, make list)
     take file, like text
-    save parsed, words-read/readTree(make(named-source, bind(file, file), bind(text, read-file(file))))
-    fork test, not(words-array/is-array(parsed/forms))
+    save parsed, read-tree(file, read-file(file))
+    fork test, not(parsed/ok)
       hold
         save unreadable, add(unreadable, 1)
       miss
@@ -227,10 +228,6 @@ task counted
   save made, make(head-count, bind(vocabulary, terms), bind(unreadable, unreadable), bind(rules, rules), bind(outside, outside))
   told/held/push(made)
   back made
-
-form named-source
-  link file, like text
-  link text, like text
 
 # <missing> when no vocabulary is named or the one named is not there, else <there>. It answers text, so term test
 # never collects it as a test of its own (T-1127)

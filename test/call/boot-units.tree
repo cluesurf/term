@@ -1,0 +1,139 @@
+note <term boot on units: an edit rebuilds the edited unit and its reader, no other, and the whole boot answers alike>
+
+# Ported from boot-units.ts by statement (item term-self-host-001-1306), one test per `ok` in its order. A program is
+# built one unit at a time, and a rebuild in the same process (the dev loop) reads every unit an edit did not reach
+# from memory. A command-line program of two modules is booted into an `--out` folder and run, a module it loads is
+# edited, and it is booted again in the same process: the rebuild builds the edited unit and what reads it and no
+# other, and runs the edited program. Then the same program is booted whole, and the two answer alike. The subject is
+# deck/call/code/boot.ts (decision 106), docked, finding its dispatcher from the install root (item 1197). The boots
+# depend on one another, so they are made once, by the first test, and kept in `units-now`.
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/clock
+  find now, name clock-now
+
+load @term/base/environment
+  find set-variable
+  find remove-variable
+
+dock load
+  load <@term/call/code/boot>, name units-boot
+  load <node:fs>, name units-file
+  load <node:path>, name units-path
+
+bind units-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+form units-ask
+  link root, like text
+  link entry, like text
+  link out, like text
+
+form units-count
+  link built, like number
+  link reused, like number
+
+# what each boot left, in the original's order
+form units-state
+  mark shared
+  link made, like boolean
+  link first, like units-count
+  link first-code, like number
+  link edited, like units-count
+  link edited-code, like number
+  link merged-code, like number
+
+task no-count
+  like units-count
+
+  back make(units-count, bind(built, -1), bind(reused, -1))
+
+host units-now, make(units-state, bind(made, false), bind(first, no-count()), bind(first-code, -1), bind(edited, no-count()), bind(edited-code, -1), bind(merged-code, -1))
+
+# the helper module, answering `answer`, under a line no earlier run wrote: unit keys are the same in every clone, so
+# the same text would be read from the store a previous run of this test filled, and nothing would be built
+task helper-text
+  take fresh, like text
+  take answer, like number
+  like text
+
+  back <{fresh}load @term/base/text\n  find trim\n\ntask answer\n  take who, like text\n  like number\n  save said, trim(who)\n  back {answer}\n>
+
+# the units the last boot built and reused, copied
+task last-count
+  like units-count
+
+  save read, units-boot/last-boot-units
+  back make(units-count, bind(built, read/built), bind(reused, read/reused))
+
+# the booted program run as a person runs it, `say --who you`, its exit code being what the task answered
+task run-program
+  take out, like text
+  like number
+  mark async
+
+  save ran, run(<node>, make list(units-path/join(out, <run.mjs>), <say>, <--who>, <you>))
+  back ran/code
+
+task the-boots
+  like units-state
+  mark async
+
+  fork test, units-now/made
+    hold
+      back units-now
+  save units-now/made, true
+  save root, units-file/realpath-sync(temp-folder(<boot-units->))
+  units-file/mkdir-sync(units-path/join(root, <code>), units-folder-options(0))
+  units-file/write-file-sync(units-path/join(root, <deck.tree>), <deck @probe/boot\n  mark \<0.0.1\>\n>)
+  save fresh, <# run {units-path/basename(root)} at {clock-now()}\n>
+  save helper, units-path/join(root, <code>, <helper.tree>)
+  units-file/write-file-sync(helper, helper-text(fresh, 3))
+  save entry, units-path/join(root, <code>, <base.tree>)
+  units-file/write-file-sync(entry, <{fresh}load ./helper\n  find answer\n\n# Answer with the helper's number\nhook say\n  take who\n  task answer\n>)
+  save out, units-path/join(root, <out>)
+  save ask, make(units-ask, bind(root, root), bind(entry, entry), bind(out, out))
+  save booted, wait units-boot/call-boot(ask)
+  save units-now/first, last-count()
+  save units-now/first-code, run-program(out)
+  units-file/write-file-sync(helper, helper-text(fresh, 5))
+  save edited, wait units-boot/call-boot(ask)
+  save units-now/edited, last-count()
+  save units-now/edited-code, run-program(out)
+  set-variable(<TERM_BOOT_MERGED>, <1>)
+  save merged, wait units-boot/call-boot(ask)
+  remove-variable(<TERM_BOOT_MERGED>)
+  save units-now/merged-code, run-program(out)
+  back units-now
+
+test <the program boots through units>
+  save state, the-boots()
+  want hold, is-above(state/first/built, 0)
+
+test <and runs, answering the helper's number>
+  save state, the-boots()
+  want hold, is-equal(state/first-code, 3)
+
+test <a rebuild after an edit to the helper builds its unit and the one reading it, no other>
+  save state, the-boots()
+  want hold, and(is-above(state/edited/built, 0), not(is-above(state/edited/built, 2)))
+
+test <and reads every other unit>
+  save state, the-boots()
+  want hold, not(is-below(state/edited/reused, subtract(add(state/first/built, state/first/reused), 2)))
+
+test <and runs the edited program>
+  save state, the-boots()
+  want hold, is-equal(state/edited-code, 5)
+
+test <the same program booted whole answers alike>
+  save state, the-boots()
+  want hold, is-equal(state/merged-code, 5)

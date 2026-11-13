@@ -111,9 +111,9 @@ const NODE_BUILTINS = [
 const alias = {
   path: PATH,
   'node:path': PATH,
-  // the package manager's barrel re-exports its registry, OCI and signing code, all Node. The compile path reads
-  // only the role reader from it (call/code/role-of.ts), so the barrel is narrowed to that one module
-  '@cluesurf/deck.tree': path.join(termRoot, 'deck', 'deck', 'code', 'package', 'role.ts'),
+  // the package manager's barrel re-exports its registry, OCI and signing code, all Node, so it is narrowed to the
+  // role reader's port, never its TypeScript face (decision 153). No module of the compile path imports it today
+  '@cluesurf/deck.tree': path.join(termRoot, 'deck', 'deck', 'host', 'port', 'code', 'package', 'role-reading.ts'),
 }
 
 for (const name of ABSENT_BUILTINS) {

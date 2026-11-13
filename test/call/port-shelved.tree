@@ -1,0 +1,148 @@
+note <port-build shelves a module by a `mark draft` line anywhere in it, as the build walk does>
+
+# Ported from the TypeScript original by statement (item term-self-host-001-0606), one test per `ok` in its order: two
+# per case of its literal list, then three over port-build's text, then one walked test over the compiler's `.tree`
+# files (term-self-host-001-0296, traps.md T-0294 of term/self-host/change/001-finish-self-host). The reading,
+# task/port-shelved, answers what deck/call/code/draft answers on every case, port-build reads the marker only through
+# it, and every shelved compiler `.tree` of the working tree is shelved by both. Both readers are the subject, docked
+# (decision 106). The walk reads every file, shelved ones too, so it lists the folder itself: @term/test/corpus leaves
+# the shelved ones out. The original's one test over the folder named its count, and each file is now a case of it.
+
+load ../support/compiling
+  find file-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find ends-with
+
+dock load
+  load <@term/term/task/port-shelved>, name port-shelved
+  load <@term/call/code/draft>, name build-draft
+  load <node:fs>, name shelf-file
+  load <node:path>, name shelf-path
+
+# thirty lines of a long header comment, past the first 2000 characters
+task long-header
+  like text
+
+  save line, <# a long header comment line, a long header comment line, a long header comment line, a long header comment line, \n>
+  save out, <>
+  save n, 0
+  walk test
+    hook test, is-below(n, 30)
+    hook hold
+      save out, <{out}{line}>
+      save n, add(n, 1)
+  back out
+
+host header, long-header()
+
+# whether port-build's reading and the build walk's agree on a text
+task agrees
+  take text, like text
+  like boolean
+
+  back is-equal(build-draft/declares-draft(text), port-shelved/shelved-text(text))
+
+test <marker on line 1: port-build reads shelved>
+  want hold, is-equal(port-shelved/shelved-text(<mark draft\n\ntask a\n>), true)
+
+test <marker on line 1: the build walk agrees>
+  want hold, agrees(<mark draft\n\ntask a\n>)
+
+test <marker past the first 2000 characters: port-build reads shelved>
+  want hold, is-equal(port-shelved/shelved-text(<{header}\nmark draft\n\ntask a\n>), true)
+
+test <marker past the first 2000 characters: the build walk agrees>
+  want hold, agrees(<{header}\nmark draft\n\ntask a\n>)
+
+test <the old spelling, past 2000 characters: port-build reads shelved>
+  want hold, is-equal(port-shelved/shelved-text(<{header}note draft\n>), true)
+
+test <the old spelling, past 2000 characters: the build walk agrees>
+  want hold, agrees(<{header}note draft\n>)
+
+test <a trailing space after the marker: port-build reads shelved>
+  want hold, is-equal(port-shelved/shelved-text(<mark draft  \ntask a\n>), true)
+
+test <a trailing space after the marker: the build walk agrees>
+  want hold, agrees(<mark draft  \ntask a\n>)
+
+test <no marker: port-build reads built>
+  want hold, is-equal(port-shelved/shelved-text(<{header}task a\n>), false)
+
+test <no marker: the build walk agrees>
+  want hold, agrees(<{header}task a\n>)
+
+test <an indented marker belongs to its definition: port-build reads built>
+  want hold, is-equal(port-shelved/shelved-text(<task a\n  mark draft\n>), false)
+
+test <an indented marker belongs to its definition: the build walk agrees>
+  want hold, agrees(<task a\n  mark draft\n>)
+
+test <a marker inside a comment: port-build reads built>
+  want hold, is-equal(port-shelved/shelved-text(<# mark draft\ntask a\n>), false)
+
+test <a marker inside a comment: the build walk agrees>
+  want hold, agrees(<# mark draft\ntask a\n>)
+
+test <more after the marker word: port-build reads built>
+  want hold, is-equal(port-shelved/shelved-text(<mark draft now\n>), false)
+
+test <more after the marker word: the build walk agrees>
+  want hold, agrees(<mark draft now\n>)
+
+test <empty text: port-build reads built>
+  want hold, is-equal(port-shelved/shelved-text(<>), false)
+
+test <empty text: the build walk agrees>
+  want hold, agrees(<>)
+
+# port-build reads the marker only through shelvedText, never a slice of the text
+host port-build, file-text(<task/port-build.ts>)
+
+test <port-build imports shelvedText>
+  want hold, matches(make(pattern, <<import \{ shelvedText \} from '\./port-shelved'>>), port-build)
+
+test <port-build tests no marker itself>
+  want hold, not(matches(make(pattern, <<\(mark\|note\) draft>>), port-build))
+
+test <port-build reads no 2000-character slice>
+  want hold, not(matches(make(pattern, <<slice\(0, 2000\)>>), port-build))
+
+# every `.tree` file under a folder, at any depth, shelved ones too
+task trees-under
+  take dir, like text
+  take out, like list, like text
+  like list, like text
+
+  walk shelf-file/readdir-sync(dir)
+    take name, like text
+    save full, shelf-path/join(dir, name)
+    save info, shelf-file/stat-sync(full)
+    fork test, info/is-directory()
+      hold
+        trees-under(full, out)
+      miss
+        fork test, ends-with(name, <.tree>)
+          hold
+            out/push(full)
+  back out
+
+task compiler-trees
+  like list, like text
+
+  save none, make list
+  back trees-under(<deck/make/code>, none)
+
+# every compiler .tree the build walk shelves, port-build shelves too, and the other way round
+test <deck/make/code: the .tree files read alike>
+  take file, like text
+    walk compiler-trees()
+  want hold, agrees(file-text(file))

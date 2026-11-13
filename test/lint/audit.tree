@@ -1,0 +1,102 @@
+note <every lint rule is named by a test>
+
+# Ported from audit.ts by statement (item term-self-host-001-0634, decision 116). The linter's rule table is the
+# subject (decision 106). The original asked three questions per rule and failed on one: a rule no test names. That
+# one is a walked test here, a case per rule, matched as the original matched it: the rule's name or code quoted in
+# any TypeScript test under test/, or its code as a whole word. The original's other column, how many findings each
+# rule makes over the stdlib, the app framework, the UI library and the data package, was a report it never failed
+# on (its header says so), so it is not ported (10-tests.md, "What not to port").
+
+dock load
+  load <@term/make/code/lint/lint>, name lint-module
+  load <node:fs>, name audit-fs
+  load <node:path>, name audit-path
+
+load @term/base/text
+  find contains, name text-contains
+  find ends-with
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/hash
+  find hash
+
+form audit-listing
+  link recursive, like boolean
+
+# every TypeScript file under test/ but the original itself, its text joined: what the original searched
+task test-text
+  like text
+
+  host names, audit-fs/readdir-sync(<test>, make(audit-listing, bind(recursive, true)))
+  save out, <>
+  walk names
+    take name, like text
+    fork test, and(ends-with(name, <.ts>), is-unequal(audit-path/basename(name), <audit.ts>))
+      hold
+        host text, audit-fs/read-file-sync(audit-path/join(<test>, name), <utf8>)
+        save out, <{out}\n{text}>
+  back out
+
+host haystack, test-text()
+
+# host value: the rule table, as the linter lists it
+bind audit-rules
+  take module, like dynamic
+  like list, like dynamic
+  case node
+    text <$module.RULES>
+
+bind audit-field
+  take rule, like dynamic
+  take field, like text
+  like text
+  case node
+    text <String(($rule)[$field])>
+
+# the original's test: the name or the code inside one kind of quote, or the code as a whole word
+task names-it
+  take word, like text
+  like boolean
+
+  back or(text-contains(haystack, <'{word}'>), or(text-contains(haystack, <"{word}">), text-contains(haystack, <`{word}`>)))
+
+# each rule's name by its code
+task rule-names
+  like hash, like text, like text
+
+  host names, make hash
+  walk audit-rules(lint-module)
+    take rule, like dynamic
+    host code, audit-field(rule, <code>)
+    save names/{code}, audit-field(rule, <name>)
+  back names
+
+host names-by-code, rule-names()
+
+# the rules' codes, in the linter's order
+task rule-codes
+  like list, like text
+
+  host codes, make list
+  walk audit-rules(lint-module)
+    take rule, like dynamic
+    codes/push(audit-field(rule, <code>))
+  back codes
+
+task is-named
+  take code, like text
+  like boolean
+
+  host name, get-or-default(names-by-code, code, <>)
+  fork test, or(names-it(name), names-it(code))
+    hold
+      back true
+  back matches(make(pattern, bind(text, <\\b{code}\\b>)), haystack)
+
+test <a test names the rule>
+  take code, like text
+    walk rule-codes()
+  want hold, is-named(code)

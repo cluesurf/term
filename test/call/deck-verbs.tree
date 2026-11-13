@@ -6,7 +6,8 @@ note <the dependency and version verbs on a real project: each keeps code and bo
 # `boot ./code/boot`, and the install's `lock.tree` compiled as Term code. Both show only by running the verb and then
 # building, which is what this does. Each verb is the `term` under test (@term/test/self) in a project `term wake`
 # scaffolds in a temporary folder, with HOME redirected beside it, so `term link` never writes the real registry. The
-# manifest is read with the package manager's own reader (deck/deck/code/package/manifest.ts). The original's `save`
+# manifest is read with the package manager's own reader, its port manifest-reading.tree, loaded (decision 157: a .tree
+# whose subject is not the face loads the port), so a field the manifest leaves out reads as <>. The original's `save`
 # fetch went to the default registry and failed: here a `base` line in the project's manifest, written before `save`,
 # routes the @term scope to a closed port on 127.0.0.1, so the fetch fails and never leaves the machine. The steps build on one another, so
 # they run once, in order, by the first test.
@@ -29,26 +30,30 @@ load @term/base/pattern
   find pattern
   find matches
 
-dock load
-  load <@term/deck/code/package/manifest>, name verbs-manifest
+load @term/deck/package/manifest-reading
+  find parse-manifest
 
-form manifest-ask
-  link text, like text
+load @term/deck/package/manifest-shape
+  find deck-manifest
+  find deck-link
 
-# host value: whether a manifest's links name a package
-bind links-name
-  take manifest, like dynamic
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+host grammars, make-grammars()
+
+# whether a manifest's links name a package
+task links-name
+  take manifest, like deck-manifest
   take name, like text
   like boolean
-  case node
-    text <$manifest.link.some(one =\> one.name === $name)>
 
-# host value: a manifest field as text, `undefined` when it is not there
-bind field-text
-  take value, like dynamic
-  like text
-  case node
-    text <String($value)>
+  walk manifest/link
+    take one, like deck-link
+    fork test, is-equal(one/name, name)
+      hold
+        back true
+  back false
 
 # what a manifest says of the fields every verb must keep
 form manifest-read
@@ -98,13 +103,21 @@ task term-in
   save ran, run-self(arguments, dir, 120000, environment)
   back <{ran/output}{ran/error}>
 
+# a project's deck.tree. Its own task: in a task with a local `read`, a call of `read-file` (base/file's `read` under
+# another name) compiled to that local, read before it was set (Cannot access 'read2' before initialization, M3 l1277c)
+task deck-text
+  take root, like text
+  like text
+
+  back read-file(<{root}/deck.tree>)
+
 # the manifest as the package manager reads it
 task manifest-of
   take root, like text
   like manifest-read
 
-  save read, verbs-manifest/parse-manifest(make(manifest-ask, bind(text, read-file(<{root}/deck.tree>))))
-  back make(manifest-read, bind(code, field-text(read/code)), bind(boot, field-text(read/boot)), bind(major, read/mark/major), bind(minor, read/mark/minor), bind(patch, read/mark/patch), bind(has-base, links-name(read, <@term/base>)))
+  save read, parse-manifest(deck-text(root), grammars)
+  back make(manifest-read, bind(code, read/code), bind(boot, read/boot), bind(major, read/mark/major), bind(minor, read/mark/minor), bind(patch, read/mark/patch), bind(has-base, links-name(read, <@term/base>)))
 
 task the-steps
   like verbs-state
@@ -166,7 +179,7 @@ test <`wake` scaffolds a project to work on>
 # the scaffold writes no `code` line (`./code` is the default code root), and starts at 0.0.1
 test <the scaffold declares an entry and a version, and no code root>
   save state, the-steps()
-  want hold, and(is-unequal(state/before/boot, <undefined>), and(is-equal(state/before/patch, 1), is-equal(state/before/code, <undefined>)))
+  want hold, and(is-unequal(state/before/boot, <>), and(is-equal(state/before/patch, 1), is-equal(state/before/code, <>)))
 
 test <`toss` answers>
   want hold, matches(make(pattern, <Removed>), the-steps()/tossed)

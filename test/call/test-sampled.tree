@@ -1,0 +1,255 @@
+note <sampled tests: a property runs on a hundred sampled inputs, and a failure is shrunk and named with its input>
+
+# Ported from test-sampled.ts by statement (item term-self-host-001-0605), one test per `ok`. A `test` whose body begins
+# with `take` lines is a property, run on a hundred sampled values of the inputs' types from a seed the phrase fixes,
+# and a failure is shrunk to the smallest input that still fails and reported with the `want` line that did not hold
+# and that input (decisions-2026-10.md, D11). A project of six tests, run by the `term` under test (@term/test/self):
+# two that hold, three that fail and must each name their line and their shrunk input, and one whose input type no
+# sample is drawn for. Run twice, to be the same twice, and on each native backend this machine has the toolchain for,
+# where the same tests must fail at the same inputs. The original's five checks of one run are five tests here, each
+# walked over node and the native backends, so a case is one `ok` of the original. A backend without its toolchain
+# skips its case. The child collects only the temporary project's own test folder, never this one (T-0705).
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load ../support/running
+  find missing-tools
+
+load @term/base/process/run
+  find run-result
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains
+  find split, name text-split
+  find starts-with
+  find substring
+  find trim
+
+host manifest-text, <deck @probe/sampled\n  mark \<0.0.1\>\n>
+
+host math-test-text, <test \<adding nothing changes a number\>\n  take n, like number\n  want hold, is-equal add(n, 0), n\n\ntest \<adding is the same either way\>\n  take a, like number\n  take b, like number\n  want hold, is-equal add(a, b), add(b, a)\n\ntest \<every number is below ten\>\n  take n, like number\n  want hold, is-below n, 10\n\ntest \<every flag is on\>\n  take b, like boolean\n  want hold, b\n\ntest \<every list is short\>\n  take xs, like list, like number\n  want hold, is-below xs/length, 3\n\ntest \<a fraction is sampled\>\n  take f, like float\n  want hold, is-equal f, f\n>
+
+host every-env, make list(<node>, <rust>, <swift>, <kotlin>)
+
+host natives, make list(<rust>, <swift>, <kotlin>)
+
+form sampled-run
+  link code, like number
+  link out, like text
+
+form sampled-state
+  mark shared
+  link made, like boolean
+  link root, like text
+  link envs, like list, like text
+  link runs, like list, like sampled-run
+
+host sampled-now, make(sampled-state, bind(made, false), bind(root, <>), bind(envs, make list), bind(runs, make list))
+
+task the-project
+  like text
+
+  fork test, sampled-now/made
+    hold
+      back sampled-now/root
+  save root, temp-folder(<test-sampled->)
+  make-folder(<{root}/test>)
+  write-file(<{root}/deck.tree>, manifest-text)
+  write-file(<{root}/test/math.tree>, math-test-text)
+  save sampled-now/root, root
+  save sampled-now/made, true
+  back root
+
+# the report wraps a long reason onto a line indented four spaces: read as one line, as the original's
+# `replace(/\n {4}(?=\S)/g, ' ')` did
+task unwrapped
+  take said, like text
+  like text
+
+  save out, <>
+  save first, true
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, first
+      hold
+        save out, line
+        save first, false
+        turn next
+    fork test, and(starts-with(line, <    >), is-unequal(trim(substring(line, 4, 5)), <>))
+      hold
+        save out, <{out} {substring(line, 4)}>
+      miss
+        save out, <{out}\n{line}>
+  back out
+
+# `term test` in the project with these arguments, then `--color never`
+task run-test
+  take arguments, like list, like text
+  like sampled-run
+  mark async
+
+  save argument-list, make list(<test>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(<--color>)
+  argument-list/push(<never>)
+  save ran, run-self(argument-list, the-project(), 900000)
+  back make(sampled-run, bind(code, ran/code), bind(out, unwrapped(<{ran/output}{ran/error}>)))
+
+# the first run on a backend, once: the original's checks of one run read the same run
+task run-on
+  take env, like text
+  like sampled-run
+  mark async
+
+  save at, 0
+  walk sampled-now/envs
+    take one, like text
+    fork test, is-equal(one, env)
+      hold
+        back sampled-now/runs/{at}
+    save at, add(at, 1)
+  save arguments, make list
+  fork test, is-unequal(env, <node>)
+    hold
+      arguments/push(<--env>)
+      arguments/push(env)
+  save ran, run-test(arguments)
+  sampled-now/envs/push(env)
+  sampled-now/runs/push(ran)
+  back ran
+
+# whether a backend's case runs here
+task here
+  take env, like text
+  like boolean
+
+  fork test, is-equal(env, <rust>)
+    hold
+      back is-equal(missing-tools(make list(<rustc>)), <>)
+  fork test, is-equal(env, <swift>)
+    hold
+      back is-equal(missing-tools(make list(<swiftc>)), <>)
+  fork test, is-equal(env, <kotlin>)
+    hold
+      back is-equal(missing-tools(make list(<kotlinc>, <java>)), <>)
+  back true
+
+# what follows `did not hold` in a reason: nothing on node, ` on <env>` on a native backend
+task where-of
+  take env, like text
+  like text
+
+  fork test, is-equal(env, <node>)
+    hold
+      back <>
+  back < on {env}>
+
+# the line and the input each failing property named, without the times around it
+task reasons
+  take out, like text
+  like text
+
+  save kept, <>
+  walk text-split(out, <\n>)
+    take line, like text
+    fork test, matches(make(pattern, <<^\s+why line \d+ did not hold>>), line)
+      hold
+        fork test, is-equal(kept, <>)
+          hold
+            save kept, line
+          miss
+            save kept, <{kept}\n{line}>
+  back kept
+
+# every ` on <env>` taken out of a text
+task without-on
+  take said, like text
+  take env, like text
+  like text
+
+  save out, <>
+  save first, true
+  walk text-split(said, < on {env}>)
+    take part, like text
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{part}>
+  back out
+
+test <two of six hold>
+  take env, like text
+    walk every-env
+  fork test, not(here(env))
+    hold
+      skip <its toolchain is not here>
+  save ran, run-on(env)
+  want hold, contains(ran/out, <6 tests · 2 passed · 4 failed>)
+  want hold, is-equal(ran/code, 1)
+
+# the greedy shrink walks a whole number down one at a time, so the smallest failing one is ten exactly
+test <a number shrinks to the smallest that fails>
+  take env, like text
+    walk every-env
+  fork test, not(here(env))
+    hold
+      skip <its toolchain is not here>
+  want hold, contains(run-on(env)/out, <line 12 did not hold{where-of(env)}: want hold, is-below n, 10, at n 10>)
+
+test <a flag shrinks to off>
+  take env, like text
+    walk every-env
+  fork test, not(here(env))
+    hold
+      skip <its toolchain is not here>
+  want hold, contains(run-on(env)/out, <line 16 did not hold{where-of(env)}: want hold, b, at b false>)
+
+# a list shrinks by dropping items, never below the three that fail
+test <a list shrinks to three items>
+  take env, like text
+    walk every-env
+  fork test, not(here(env))
+    hold
+      skip <its toolchain is not here>
+  want hold, matches(make(pattern, <line 20 did not hold{where-of(env)}: want hold, is-below xs/length, 3, at xs \\[-?\\d+, -?\\d+, -?\\d+\\]>), run-on(env)/out)
+
+test <an input no sample is drawn for is named>
+  take env, like text
+    walk every-env
+  fork test, not(here(env))
+    hold
+      skip <its toolchain is not here>
+  want hold, contains(run-on(env)/out, <"f" is float>)
+
+test <node: a second run fails at the same inputs>
+  save first, reasons(run-on(<node>)/out)
+  save again, run-test(make list)
+  want hold, is-unequal(reasons(again/out), <>)
+  want hold, is-equal(reasons(again/out), first)
+
+# the seed is the phrase's, and the generator is Term on every backend, so each fails at node's inputs
+test <the same inputs as node>
+  take env, like text
+    walk natives
+  fork test, not(here(env))
+    hold
+      skip <its toolchain is not here>
+  want hold, is-equal(without-on(reasons(run-on(env)/out), env), reasons(run-on(<node>)/out))

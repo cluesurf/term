@@ -1,0 +1,323 @@
+note <.base/@cluesurf/term becomes .base/@term/code, in every state a machine can be found in>
+
+# Ported from home-move.ts by statement (item 0648). deck/call/code/home.ts (`settle`, `settle-front`, `front-dir`) and
+# wake-text.ts (`GITIGNORE`) are the subjects (decision 106), and the shipped CLI through run-self (decision 111):
+#
+#   the usual case: the folder moved whole, a link left at the old name, every file reachable by both names
+#   a project's .gitignore written by `term wake`: its five rules renamed and nothing else, one a person wrote alone
+#   both folders there (something wrote the new one first): merged entry by entry, the new copy kept on a clash
+#   a move the filesystem refuses: the old folder used whole, nothing split, and the next run tries again
+#   asked twice: the second answer is the first, and nothing moves again
+#   the CLI: `term self list` with a home holding only the old folder leaves it moved
+#
+# Each block of the original is a task that runs once, from the first test that asks, and answers each of its facts
+# in order. Test n of a block reads its fact n. The original skipped its CLI block when host/line.js was not built: the
+# port runs the `term` under test, always there under `term test`.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+  find exists, name file-exists
+
+load @term/base/text
+  find replace-all, name text-replace-all
+
+load @term/test/self
+  find run-self
+
+dock load
+  load <@term/call/code/home>, name home-module
+  load <@term/call/code/wake-text>, name wake-module
+  load <node:fs>, name home-fs
+  load <node:path>, name home-path
+  load <global:process>, name home-process
+
+# host value: whether this process runs as root, which no permission refuses
+bind is-root
+  take seed, like number
+  like boolean
+  case node
+    text <(process.getuid?.() === 0)>
+
+form home-facts
+  mark shared
+  link usual, like list, like boolean
+  link front, like list, like boolean
+  link unsettled, like list, like boolean
+  link theirs, like list, like boolean
+  link both, like list, like boolean
+  link both-clean, like list, like boolean
+  link refused, like list, like boolean
+  link cli, like list, like boolean
+
+host facts, make(home-facts, bind(usual, make list), bind(front, make list), bind(unsettled, make list), bind(theirs, make list), bind(both, make list), bind(both-clean, make list), bind(refused, make list), bind(cli, make list))
+
+task scratch
+  like text
+
+  back temp-folder(<term-home-move->)
+
+# the block `term wake` wrote before 2026-10-05
+task old-ignore
+  like text
+
+  back text-replace-all(text-replace-all(wake-module/GITIGNORE, <@term/code>, <@cluesurf/term>), <@term/>, <@cluesurf/>)
+
+task is-link
+  take path, like text
+  like boolean
+
+  save stat, home-fs/lstat-sync(path)
+  back stat/is-symbolic-link()
+
+task is-folder
+  take path, like text
+  like boolean
+
+  save stat, home-fs/lstat-sync(path)
+  back stat/is-directory()
+
+# ---- the usual case ----
+task usual
+  like list, like boolean
+
+  fork test, is-above(facts/usual/length, 0)
+    hold
+      back facts/usual
+  save root, scratch()
+  save base, home-path/join(root, <.base>)
+  save old, home-path/join(base, <@cluesurf>, <term>)
+  make-folder(home-path/join(old, <memory>))
+  write-file(home-path/join(old, <memory>, <index.md>), <- a fact\n>)
+  write-file(home-path/join(old, <auth>), <ws-token\n>)
+  write-file(home-path/join(root, <.gitignore>), old-ignore())
+  save home, home-module/settle(base, root)
+  save out, make list
+  out/push(and(is-equal(home, home-path/join(base, <@term>, <code>)), is-equal(read-file(home-path/join(home, <auth>)), <ws-token\n>)))
+  out/push(and(is-link(old), is-equal(home-fs/readlink-sync(old), home-path/join(<..>, <@term>, <code>))))
+  out/push(is-equal(read-file(home-path/join(old, <memory>, <index.md>)), <- a fact\n>))
+  out/push(is-equal(read-file(home-path/join(root, <.gitignore>)), wake-module/GITIGNORE))
+  out/push(is-equal(home-module/settle(base, root), home))
+  save facts/usual, out
+  back out
+
+# ---- the front's folder, bin/ to call/ ----
+task front
+  like list, like boolean
+
+  fork test, is-above(facts/front/length, 0)
+    hold
+      back facts/front
+  save home, scratch()
+  make-folder(home-path/join(home, <bin>))
+  write-file(home-path/join(home, <bin>, <term>), <#!/bin/sh\n>)
+  home-module/settle-front(home)
+  save out, make list
+  out/push(is-equal(read-file(home-path/join(home, <call>, <term>)), <#!/bin/sh\n>))
+  out/push(and(is-link(home-path/join(home, <bin>)), file-exists(home-path/join(home, <bin>, <term>))))
+  out/push(is-equal(home-module/front-dir(home), home-path/join(home, <call>)))
+  save facts/front, out
+  back out
+
+task unsettled
+  like list, like boolean
+
+  fork test, is-above(facts/unsettled/length, 0)
+    hold
+      back facts/unsettled
+  save home, scratch()
+  make-folder(home-path/join(home, <bin>))
+  save out, make list
+  out/push(is-equal(home-module/front-dir(home), home-path/join(home, <bin>)))
+  save empty, scratch()
+  out/push(is-equal(home-module/front-dir(empty), home-path/join(empty, <call>)))
+  save facts/unsettled, out
+  back out
+
+# ---- a .gitignore a person wrote ----
+task theirs
+  like list, like boolean
+
+  fork test, is-above(facts/theirs/length, 0)
+    hold
+      back facts/theirs
+  save root, scratch()
+  save base, home-path/join(root, <.base>)
+  save written, <node_modules\n.base/@cluesurf/term/*\n>
+  make-folder(home-path/join(base, <@cluesurf>, <term>))
+  write-file(home-path/join(root, <.gitignore>), written)
+  home-module/settle(base, root)
+  save out, make list
+  out/push(is-equal(read-file(home-path/join(root, <.gitignore>)), written))
+  save facts/theirs, out
+  back out
+
+# ---- both folders there ----
+task both
+  like list, like boolean
+
+  fork test, is-above(facts/both/length, 0)
+    hold
+      back facts/both
+  save root, scratch()
+  save base, home-path/join(root, <.base>)
+  save old, home-path/join(base, <@cluesurf>, <term>)
+  save current, home-path/join(base, <@term>, <code>)
+  make-folder(home-path/join(old, <memory>))
+  make-folder(home-path/join(old, <tmp>))
+  write-file(home-path/join(old, <memory>, <index.md>), <- the old fact\n>)
+  write-file(home-path/join(old, <tmp>, <clash>), <old\n>)
+  make-folder(home-path/join(current, <tmp>))
+  write-file(home-path/join(current, <tmp>, <clash>), <new\n>)
+  save home, home-module/settle(base, root)
+  save out, make list
+  out/push(and(is-equal(home, current), is-equal(read-file(home-path/join(current, <memory>, <index.md>)), <- the old fact\n>)))
+  out/push(is-equal(read-file(home-path/join(current, <tmp>, <clash>)), <new\n>))
+  out/push(and(is-folder(old), and(file-exists(home-path/join(old, <tmp>, <clash>)), not(file-exists(home-path/join(old, <memory>))))))
+  save facts/both, out
+  back out
+
+task both-clean
+  like list, like boolean
+
+  fork test, is-above(facts/both-clean/length, 0)
+    hold
+      back facts/both-clean
+  save root, scratch()
+  save base, home-path/join(root, <.base>)
+  save old, home-path/join(base, <@cluesurf>, <term>)
+  make-folder(home-path/join(old, <memory>))
+  write-file(home-path/join(old, <memory>, <index.md>), <- a fact\n>)
+  make-folder(home-path/join(base, <@term>, <code>, <tmp>))
+  home-module/settle(base, root)
+  save out, make list
+  out/push(is-link(old))
+  save facts/both-clean, out
+  back out
+
+# ---- a move the filesystem refuses ----
+# a value, never a zero-argument boolean task, which term test would run as a test (T-0978)
+host can-refuse, and(is-unequal(home-process/platform, <win32>), not(is-root(0)))
+
+task refused
+  like list, like boolean
+
+  fork test, is-above(facts/refused/length, 0)
+    hold
+      back facts/refused
+  save root, scratch()
+  save base, home-path/join(root, <.base>)
+  save old, home-path/join(base, <@cluesurf>, <term>)
+  make-folder(old)
+  write-file(home-path/join(old, <auth>), <ws-token\n>)
+  # a rename needs to write both parents: .base/@cluesurf read-only refuses it, as a held file does on Windows
+  home-fs/chmod-sync(home-path/join(base, <@cluesurf>), 365)
+  save home, home-module/settle(base, root)
+  save out, make list
+  out/push(and(is-equal(home, old), is-equal(read-file(home-path/join(home, <auth>)), <ws-token\n>)))
+  out/push(not(file-exists(home-path/join(base, <@term>, <code>))))
+  home-fs/chmod-sync(home-path/join(base, <@cluesurf>), 493)
+  save facts/refused, out
+  back out
+
+# ---- the shipped CLI ----
+task cli
+  like list, like boolean
+  mark async
+
+  fork test, is-above(facts/cli/length, 0)
+    hold
+      back facts/cli
+  save home, scratch()
+  save old, home-path/join(home, <.base>, <@cluesurf>, <term>)
+  make-folder(home-path/join(old, <bin>))
+  write-file(home-path/join(old, <auth>), <ws-cli\n>)
+  write-file(home-path/join(old, <bin>, <term>), <#!/bin/sh\n>)
+  # a command that reads the user folder, so both renames happen: the folder, then its front
+  save environment
+    make hash
+      save <HOME>, home
+      save <USERPROFILE>, home
+  save ran, run-self(make(list, <self>, <list>, <--plain>), bind(environment, environment))
+  fork test, is-unequal(ran/code, 0)
+    hold
+      halt <term self list exited {ran/code}: {ran/error}>
+  save current, home-path/join(home, <.base>, <@term>, <code>)
+  save out, make list
+  out/push(and(is-equal(read-file(home-path/join(current, <auth>)), <ws-cli\n>), is-link(old)))
+  out/push(and(file-exists(home-path/join(current, <call>, <term>)), is-link(home-path/join(current, <bin>))))
+  out/push(is-equal(read-file(home-path/join(old, <bin>, <term>)), <#!/bin/sh\n>))
+  save facts/cli, out
+  back out
+
+test <the folder moves to .base/@term/code>
+  want hold, usual()/0
+
+test <a link is left at the old name>
+  want hold, usual()/1
+
+test <every file reads the same through the old name>
+  want hold, usual()/2
+
+test <the project's .gitignore keeps the moved memory in git>
+  want hold, usual()/3
+
+test <asked again, the same answer and nothing moves>
+  want hold, usual()/4
+
+test <the front moves from bin/ to call/>
+  want hold, front()/0
+
+test <a link is left at bin/, so a PATH line naming it still runs term>
+  want hold, front()/1
+
+test <frontDir answers call/>
+  want hold, front()/2
+
+test <a home not settled yet: frontDir answers bin/, the folder that exists>
+  want hold, unsettled()/0
+
+test <a home with neither: frontDir answers call/, where the installer will put it>
+  want hold, unsettled()/1
+
+test <a .gitignore that is not the wake block is left as it is>
+  want hold, theirs()/0
+
+test <both there: what only the old folder held is moved in>
+  want hold, both()/0
+
+test <both there: on a clash the new copy is kept>
+  want hold, both()/1
+
+test <both there: the old folder, left holding only clashes, stays a folder>
+  want hold, both()/2
+
+test <both there with no clash: the old folder empties and becomes the link>
+  want hold, both-clean()/0
+
+test <a refused move uses the old folder, whole>
+  fork test, not(can-refuse)
+    hold
+      skip <a read-only folder refuses a rename only off Windows and not as root>
+  want hold, refused()/0
+
+test <and nothing was split into the new one>
+  fork test, not(can-refuse)
+    hold
+      skip <a read-only folder refuses a rename only off Windows and not as root>
+  want hold, refused()/1
+
+test <the CLI moves the user folder on its first run>
+  want hold, cli()/0
+
+test <and its front, bin/ to call/>
+  want hold, cli()/1
+
+test <the old PATH entry still reaches the front, through both links>
+  want hold, cli()/2

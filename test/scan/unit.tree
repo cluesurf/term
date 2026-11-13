@@ -1,0 +1,299 @@
+note <the scanner's pure parts: version ranges, advisory matching and upgrade planning, OSV import, the code rules, SARIF and the manifest fixer>
+
+# Ported from unit.ts by statement (item term-self-host-001-0637), one test per `ok` in its order. @term/scan's
+# modules are the subject (decision 106), docked as the original imported them: their values are the scanner's host
+# records, so an advisory, an OSV record and a scan result are made here from their parts. A program for the code rules
+# comes from the front end of test/support/compiling, under the name `t.tree`, as the original parsed and milled it.
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+load ../support/judging
+  find make-record
+  find empty-list
+  find set-field
+  find read-field
+  find read-at
+  find truth
+
+load ../support/compiling
+  find front-end
+  find compile-choice
+
+dock load
+  load <@term/scan/code/version-range>, name version-range
+  load <@term/scan/code/advisory-matching>, name advisory-matching
+  load <@term/scan/code/osv-reading>, name osv-reading
+  load <@term/scan/code/rule-running>, name rule-running
+  load <@term/scan/code/dangerous-import>, name dangerous-import
+  load <@term/scan/code/taint-tracking>, name taint-tracking
+  load <@term/scan/code/sarif-writing>, name sarif-writing
+  load <@term/scan/code/upgrade-fixing>, name upgrade-fixing
+
+bind is-undefined
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind is-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+task count-of
+  take items, like dynamic
+  like number
+
+  save count, 0
+  walk items
+    take one, like dynamic
+    save count, add(count, 1)
+  back count
+
+# the findings of the native-danger and taint rules over a program
+task milled
+  take source, like text
+  like list, like dynamic
+
+  save out, front-end(source, make(compile-choice, bind(file, <t.tree>)))
+  back rule-running/run-rules(out/program, <t.tree>, make(list, dangerous-import/native-danger-rule(), taint-tracking/taint-rule()))
+
+task some-rule
+  take findings, like dynamic
+  take rule, like text
+  like boolean
+
+  walk findings
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <ruleId>), rule)
+      hold
+        back true
+  back false
+
+task window
+  take introduced, like text
+  take fixed, like text
+  like dynamic
+
+  back make-record(make(list, <introduced>, introduced, <fixed>, fixed))
+
+# an advisory of left-pad.tree, as the original's `adv`, with the given id, ranges and fixed versions
+task advisory
+  take id, like text
+  take ranges, like list, like dynamic
+  take fixed, like list, like text
+  like dynamic
+
+  back make-record(make(list, <id>, id, <packageName>, <left-pad.tree>, <severity>, <high>, <title>, <test>, <url>, <https://example.com>, <ranges>, ranges, <fixedVersions>, fixed))
+
+host adv, advisory(<GHSA-test>, make(list, window(<1.0.0>, <1.3.0>)), make(list, <1.3.0>))
+
+# ---- semver ----
+
+test <toCode parses a full version>
+  want hold, is-equal(read-field(version-range/to-code(<1.2.3>), <patch>), 3)
+
+test <toCode strips v and pads missing patch>
+  want hold, is-equal(read-field(version-range/to-code(<v1.2>), <minor>), 2)
+
+test <toCode rejects non-versions>
+  want hold, is-undefined(version-range/to-code(<nope>))
+
+test <compareVersion is numeric not lexical>
+  want hold, is-below(version-range/compare-version(<1.2.0>, <1.10.0>), 0)
+
+test <compareVersion equal>
+  want hold, is-equal(version-range/compare-version(<2.0.0>, <2.0.0>), 0)
+
+test <satisfies AND range>
+  want hold, version-range/satisfies(<1.2.3>, <\>=1.0.0 \<2.0.0>)
+
+test <satisfies excludes upper bound>
+  want hold, not(version-range/satisfies(<2.0.0>, <\>=1.0.0 \<2.0.0>))
+
+test <satisfies OR range>
+  want hold, version-range/satisfies(<1.5.0>, <\<1.2.0 || \>=1.4.0>)
+
+test <satisfies hyphen range>
+  want hold, version-range/satisfies(<1.2.3>, <1.0.0 - 1.3.0>)
+
+test <satisfies caret range>
+  want hold, version-range/satisfies(<1.9.9>, <^1.2.0>)
+
+test <caret excludes next major>
+  want hold, not(version-range/satisfies(<2.0.0>, <^1.2.0>))
+
+test <satisfies wildcard any>
+  want hold, version-range/satisfies(<3.1.4>, <*>)
+
+# ---- match ----
+
+test <isAffected inside range>
+  want hold, advisory-matching/is-affected(<1.2.0>, adv)
+
+test <isAffected excludes fixed version>
+  want hold, not(advisory-matching/is-affected(<1.3.0>, adv))
+
+test <isAffected excludes below introduced>
+  want hold, not(advisory-matching/is-affected(<0.9.0>, adv))
+
+test <isAffected matches an explicit version>
+  save explicit, advisory(<GHSA-test>, empty-list(), make(list, <1.3.0>))
+  set-field(explicit, <versions>, make(list, <1.4.4>))
+  want hold, advisory-matching/is-affected(<1.4.4>, explicit)
+
+test <isAffected matches an npm range expression>
+  save ranged, advisory(<GHSA-test>, empty-list(), make(list, <1.3.0>))
+  set-field(ranged, <rangeExpression>, <\<1.2.0>)
+  want hold, advisory-matching/is-affected(<1.1.0>, ranged)
+
+test <planUpgrade picks the fixed version>
+  want hold, is-equal(advisory-matching/plan-upgrade(<1.1.0>, make(list, adv)), <1.3.0>)
+
+test <planUpgrade clears every advisory (takes the higher fix)>
+  save second, advisory(<GHSA-2>, make(list, window(<1.0.0>, <1.5.0>)), make(list, <1.5.0>))
+  want hold, is-equal(advisory-matching/plan-upgrade(<1.1.0>, make(list, adv, second)), <1.5.0>)
+
+# ---- OSV import ----
+
+task osv-record
+  like dynamic
+
+  save events, make(list, make-record(make(list, <introduced>, <0>)), make-record(make(list, <fixed>, <4.17.21>)))
+  save ranges, make(list, make-record(make(list, <type>, <SEMVER>, <events>, events)))
+  save affected, make(list, make-record(make(list, <package>, make-record(make(list, <ecosystem>, <npm>, <name>, <lodash>)), <ranges>, ranges)))
+  save references, make(list, make-record(make(list, <type>, <ADVISORY>, <url>, <https://github.com/advisories/GHSA-abcd>)))
+  back make-record(make(list, <id>, <GHSA-abcd>, <summary>, <Prototype pollution>, <affected>, affected, <references>, references, <database_specific>, make-record(make(list, <severity>, <HIGH>))))
+
+host osv, osv-record()
+
+host imported, osv-reading/from-osv(osv, <npm>)
+
+test <OSV maps package to registry name>
+  want hold, is-equal(read-field(imported, <packageName>), <lodash.tree>)
+
+test <OSV maps textual severity>
+  want hold, is-equal(read-field(imported, <severity>), <high>)
+
+test <OSV reads the fixed event>
+  want hold, is-equal(read-field(read-at(read-field(imported, <ranges>), 0), <fixed>), <4.17.21>)
+
+test <OSV-imported advisory matches an affected version>
+  want hold, advisory-matching/is-affected(<4.17.20>, imported)
+
+test <OSV-imported advisory excludes the fix>
+  want hold, not(advisory-matching/is-affected(<4.17.21>, imported))
+
+test <OSV feed filters by ecosystem>
+  want hold, and(is-equal(count-of(osv-reading/from-osv-feed(make(list, osv), <npm>)), 1), is-equal(count-of(osv-reading/from-osv-feed(make(list, osv), <term>)), 0))
+
+# ---- rules: native-danger ----
+
+host danger-findings, milled(<dock load\n  load \<node:child_process\>, name cp\n\ntask run-it\n  take command, like text\n  like text\n  send back\n    call cp/exec\n      read command\n>)
+
+host injection, make pattern, <<command . code injection>>
+
+test <native-danger flags child_process import>
+  want hold, some-rule(danger-findings, <scan/native-danger>)
+
+test <taint flags param -\> cp/exec>
+  save flagged, false
+  walk danger-findings
+    take one, like dynamic
+    fork test, and(is-equal(read-field(one, <ruleId>), <scan/taint>), matches(injection, read-field(one, <message>)))
+      hold
+        save flagged, true
+  want hold, flagged
+
+# ---- rules: taint is silenced by a sanitizer ----
+
+test <taint is cleared when input passes through a sanitizer>
+  save sanitized, milled(<dock load\n  load \<node:child_process\>, name cp\n\ntask run-it\n  take command, like text\n  like text\n  save safe\n    call shell-escape\n      read command\n  send back\n    call cp/exec\n      read safe\n>)
+  want hold, not(some-rule(sanitized, <scan/taint>))
+
+# ---- rules: no taint when the sink argument is a constant ----
+
+test <taint does not fire on a constant sink argument>
+  save constant, milled(<dock load\n  load \<node:child_process\>, name cp\n\ntask run-it\n  take command, like text\n  like text\n  send back\n    call cp/exec\n      text \<ls -la\>\n>)
+  want hold, not(some-rule(constant, <scan/taint>))
+
+# ---- SARIF ----
+
+task trace-step
+  take line, like number
+  take column, like number
+  take label, like text
+  like dynamic
+
+  back make-record(make(list, <file>, </repo/deck/x/code/a.tree>, <line>, line, <column>, column, <label>, label))
+
+task scan-result
+  like dynamic
+
+  save node, make-record(make(list, <name>, <left-pad>, <registryName>, <left-pad.tree>, <version>, <1.1.0>, <direct>, true, <path>, make(list, <left-pad>)))
+  save dependency, make-record(make(list, <kind>, <dependency>, <advisory>, adv, <node>, node, <severity>, <high>, <fixVersion>, <1.3.0>))
+  save place, make-record(make(list, <file>, </repo/deck/x/code/a.tree>, <line>, 5, <column>, 3))
+  save code-finding, make-record(make(list, <kind>, <code>, <ruleId>, <scan/taint>, <severity>, <high>, <message>, <tainted>, <at>, place, <trace>, make(list, trace-step(3, 8, <tainted input>), trace-step(5, 3, <sink>))))
+  save tally, make-record(make(list, <critical>, 0, <high>, 2, <moderate>, 0, <low>, 0, <info>, 0))
+  back make-record(make(list, <findings>, make(list, dependency, code-finding), <dependencyCount>, 1, <fileCount>, 1, <bySeverity>, tally, <advisorySources>, make(list, <local:/repo/advisory>), <unavailableSources>, empty-list()))
+
+host result, scan-result()
+
+host sarif-run, read-at(read-field(sarif-writing/to-sarif(result, make-record(make(list, <root>, </repo>))), <runs>), 0)
+
+task result-at
+  take index, like number
+  like dynamic
+
+  back read-at(read-field(sarif-run, <results>), index)
+
+task physical-of
+  take index, like number
+  like dynamic
+
+  back read-field(read-at(read-field(result-at(index), <locations>), 0), <physicalLocation>)
+
+test <SARIF emits one result per finding>
+  want hold, is-equal(count-of(read-field(sarif-run, <results>)), 2)
+
+test <SARIF anchors a dependency finding at the manifest, relative to root>
+  want hold, is-equal(read-field(read-field(physical-of(0), <artifactLocation>), <uri>), <deck.tree>)
+
+test <SARIF makes code-finding paths repo-relative>
+  want hold, is-equal(read-field(read-field(physical-of(1), <artifactLocation>), <uri>), <deck/x/code/a.tree>)
+
+test <SARIF keeps the code finding line>
+  want hold, is-equal(read-field(read-field(physical-of(1), <region>), <startLine>), 5)
+
+test <SARIF renders the taint trace as a code flow>
+  want hold, is-list(read-field(result-at(1), <codeFlows>))
+
+# ---- fix ----
+
+task upgrade-of-left-pad
+  like dynamic
+
+  back make-record(make(list, <name>, <@term/left-pad>, <from>, <1.1.0>, <to>, <1.3.0>, <clears>, make(list, <GHSA-test>)))
+
+test <planUpgrades collapses to one upgrade per package>
+  save upgrades, upgrade-fixing/plan-upgrades(make(list, read-at(read-field(result, <findings>), 0)))
+  want hold, and(is-equal(count-of(upgrades), 1), is-equal(read-field(read-at(upgrades, 0), <to>), <1.3.0>))
+
+host patched, upgrade-fixing/apply-upgrades-to-manifest(<deck app\n  mark \<1.0.0\>\n\n  link @term/left-pad, mark \<^1.1.0\>\n  link @term/other, mark \<^2.0.0\>\n>, make(list, upgrade-of-left-pad()))
+
+test <fixer rewrites the vulnerable dependency line>
+  want hold, text-contains(patched, <link @term/left-pad, mark \<^1.3.0\>>)
+
+test <fixer leaves other lines untouched>
+  want hold, text-contains(patched, <link @term/other, mark \<^2.0.0\>>)
+
+# a manifest still in the old spelling: the rewritten line comes out as `mark`, the rest stays as it was
+test <fixer reads the old `code \<range\>` spelling and writes `mark`>
+  save old-spelling, upgrade-fixing/apply-upgrades-to-manifest(<deck app\n  link @term/left-pad, code \<^1.1.0\>\n  link @term/other, code \<^2.0.0\>\n>, make(list, upgrade-of-left-pad()))
+  want hold, and(text-contains(old-spelling, <link @term/left-pad, mark \<^1.3.0\>>), text-contains(old-spelling, <link @term/other, code \<^2.0.0\>>))

@@ -1,0 +1,93 @@
+note <End-to-end hold-checking>
+
+# Ported from the TypeScript original by task/term/suite-port.ts, its last three tests by hand (item
+# term-self-host-001-0610), one test per expect call in its order. A `hold` clause proven (or not) from parameter
+# refinements via the prover, each source compiled as h.tree. `unchecked-hold` moved from warning to error on
+# 2026-09-18: a claim the prover could not reach used to compile, and two plainly false laws did. See
+# note/project/term/proof/archive/law-proof-gate.md.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+
+load @term/base/list
+  find contains
+
+# the original compiled every source as h.tree
+task held
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <h.tree>)))
+
+# the original's expectDischarged: the build passes, and no warning says the hold went unchecked
+task discharged
+  take source, like text
+  like boolean
+
+  host result, held(source)
+  fork test, not(result/ok)
+    hold
+      back false
+  back not(contains(result/warnings, <unchecked-hold>))
+
+test <natural =\> n \>= 0 holds>
+  host result, held(<task safe\n  take n, like natural-number\n  hold\n    call is-minimum\n      read n\n      code 0\n>)
+  want hold, result/ok
+
+test <natural =/=\> n \> 0>
+  host result, held(<task risky\n  take n, like natural-number\n  hold\n    call is-above\n      read n\n      code 0\n>)
+  want hold, refused-as(result, <unproven>)
+
+test <natural =\> n + 1 \> 0 holds>
+  host result, held(<task safe\n  take n, like natural-number\n  hold\n    call is-above\n      call add\n        read n\n        code 1\n      code 0\n>)
+  want hold, result/ok
+
+test <false hold rejected>
+  host result, held(<task bad\n  take n\n  hold\n    call is-minimum\n      code 0\n      code 1\n>)
+  want hold, refused-as(result, <unproven>)
+
+test <branch condition is assumed inside the branch>
+  host result, held(<task guarded\n  take n\n  fork test\n    hook test\n      call is-minimum\n        read n\n        code 5\n    hook hold\n      hold\n        call is-minimum\n          read n\n          code 0\n>)
+  want hold, result/ok
+
+test <else branch assumes the negated condition>
+  host result, held(<task guarded-else\n  take n\n  fork test\n    hook test\n      call is-minimum\n        read n\n        code 5\n    hook hold\n      hold\n        call is-minimum\n          read n\n          code 0\n    hook miss\n      hold\n        call is-below\n          read n\n          code 5\n>)
+  want hold, result/ok
+
+test <immutable binding propagates an equality>
+  host result, held(<task bound\n  take n, like natural-number\n  host m\n    call add\n      read n\n      code 1\n  hold\n    call is-minimum\n      read m\n      code 1\n>)
+  want hold, result/ok
+
+test <mutable binding propagates until reassigned>
+  host result, held(<task bound\n  take n, like natural-number\n  save m\n    call add\n      read n\n      code 1\n  hold\n    call is-minimum\n      read m\n      code 1\n>)
+  want hold, result/ok
+
+test <mutable binding stops propagating once reassigned>
+  host result, held(<task unbound\n  take n, like natural-number\n  save m\n    call add\n      read n\n      code 1\n  save m, code 0\n  hold\n    call is-minimum\n      read m\n      code 1\n>)
+  want hold, refused-as(result, <unproven>)
+
+test <mod result is bounded (n mod 3 \< 3)>
+  host result, held(<task wrap\n  take n\n  hold\n    call is-below\n      call modulo\n        read n\n        code 3\n      code 3\n>)
+  want hold, result/ok
+
+test <mod result is non-negative for a natural (n mod 3 \>= 0)>
+  host result, held(<task wrap\n  take n, like natural-number\n  hold\n    call is-minimum\n      call modulo\n        read n\n        code 3\n      code 0\n>)
+  want hold, result/ok
+
+
+# kernel fallback: a non-linear equality hold is discharged by the kernel's definitional equality
+test <reflexive non-linear hold discharged by the kernel>
+  want hold, discharged(<task check-it\n  take n\n  hold\n    call is-equal\n      call multiply\n        read n\n        read n\n      call multiply\n        read n\n        read n\n  send back n\n>)
+
+# and via delta: a transparent function call equals its unfolding, so the kernel proves the equality
+test <definitional hold discharged via a transparent function (delta)>
+  want hold, discharged(<task double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n\ntask check-it\n  take n, like number\n  like number\n  hold\n    call is-equal\n      call double\n        read n\n      call add\n        read n\n        read n\n  send back n\n>)
+
+# a non-linear hold the prover cannot decide REFUSES THE BUILD: `n*n >= 1` is outside the linear fragment and has real
+# roots, so the univariate Sturm route declines too
+test <non-linear hold the prover cannot reach refuses the build>
+  host result, held(<task nonlinear\n  take n\n  hold\n    call is-minimum\n      call multiply\n        read n\n        read n\n      code 1\n>)
+  want hold, refused-as(result, <unchecked-hold>)

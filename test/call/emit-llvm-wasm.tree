@@ -1,0 +1,235 @@
+note <term make --emit llvm and --emit wasm, the two targets built through the program's Rust>
+
+# Ported from emit-llvm-wasm.ts by statement (item 0648). call/code/native-build.ts `buildThroughRust` through the
+# `term` under test (run-self, decision 111). The IR needs rustc alone and is always checked. A build of the IR needs
+# `llc` from rustup's llvm-tools, and a module needs the wasm32-wasip1 target: where either is missing, the refusal must
+# name the rustup command that installs it, and where it is present the program must answer.
+#
+# Mapping: the original printed one of two titles for the llc case and for the wasm case, by what the machine has.
+# Here both are tests, and the one for the other machine skips: 10 tests, 8 run and 2 skipped. With no rustc every test
+# skips, where the original printed one skip. The project is written once, by the first test that asks.
+
+load @term/test/self
+  find run-self
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+  find split, name text-split
+  find starts-with
+  find substring
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <node:path>, name emit-path
+
+# host value: the text with every run of white space one space, the report's wrapping undone
+bind one-line
+  take value, like text
+  like text
+  case node
+    text <$value.replace(/\\s+/g, " ")>
+
+form emit-run
+  link code, like number
+  link stdout, like text
+  link stderr, like text
+
+form emit-state
+  mark shared
+  link project, like text
+
+host now, make(emit-state, bind(project, <>))
+
+# whether `which` finds the tool
+task have
+  take tool, like text
+  like boolean
+  mark async
+
+  save ran, run(<which>, make(list, tool))
+  back is-equal(ran/code, 0)
+
+# the host triple rustc names in `rustc --version --verbose`
+task rust-triple
+  take said, like text
+  like text
+
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, starts-with(line, <host: >)
+      hold
+        back trim(substring(line, 6))
+  back <>
+
+form emit-tools
+  link rustc, like boolean
+  link llc, like boolean
+  link wasi, like boolean
+
+task tools-now
+  like emit-tools
+  mark async
+
+  fork test, not(have(<rustc>))
+    hold
+      back make(emit-tools, bind(rustc, false), bind(llc, false), bind(wasi, false))
+  save sysroot, trim(run(<rustc>, make(list, <--print>, <sysroot>))/output)
+  save triple, rust-triple(run(<rustc>, make(list, <--version>, <--verbose>))/output)
+  save llc, file-exists(emit-path/join(sysroot, <lib>, <rustlib>, triple, <bin>, <llc>))
+  save wasi, file-exists(emit-path/join(sysroot, <lib>, <rustlib>, <wasm32-wasip1>, <lib>))
+  back make(emit-tools, bind(rustc, true), bind(llc, llc), bind(wasi, wasi))
+
+form emit-tools-state
+  mark shared
+  link read, like boolean
+  link found, like emit-tools
+
+host tools-held, make(emit-tools-state, bind(read, false), bind(found, make(emit-tools, bind(rustc, false), bind(llc, false), bind(wasi, false))))
+
+# what the machine has, read once
+task tools
+  like emit-tools
+  mark async
+
+  fork test, not(tools-held/read)
+    hold
+      save tools-held/found, tools-now()
+      save tools-held/read, true
+  back tools-held/found
+
+task project
+  like text
+
+  fork test, is-unequal(now/project, <>)
+    hold
+      back now/project
+  save folder, temp-folder(<term-emit-llvm->)
+  make-folder(emit-path/join(folder, <code>))
+  write-file(emit-path/join(folder, <deck.tree>), <deck @probe/emit-llvm\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>)
+  write-file(emit-path/join(folder, <code/answer.tree>), <task double\n  take n, like number\n  like number\n  back multiply(n, 2)\n\ntask run\n  like text\n  back \<answer \{double(21)\}\>\n>)
+  # a program that names a crate: refused, since neither target takes one
+  write-file(emit-path/join(folder, <code/money.tree>), <load @term/base/decimal\n  find make-big-decimal\n  find decimal-add\n\ntask run\n  like text\n  back text(decimal-add(make-big-decimal(\<0.1\>), make-big-decimal(\<0.2\>)))\n>)
+  write-file(emit-path/join(folder, <code/library.tree>), <task helper\n  take n, like number\n  like number\n  back n\n>)
+  save now/project, folder
+  back folder
+
+# `term` in the project: stderr with the report's wrapping undone, so a command broken across two lines reads as one
+task run-term
+  take arguments, like list, like text
+  like emit-run
+  mark async
+
+  save ran, run-self(arguments, bind(directory, project()))
+  back make(emit-run, bind(code, ran/code), bind(stdout, ran/output), bind(stderr, one-line(ran/error)))
+
+host no-rust, <rustc not installed>
+host main-pattern, make pattern, <<define .*@main\(>>
+host crate-pattern, make pattern, <<num-bigint|num_bigint>>
+
+# the IR, to stdout and to --out
+test <llvm: the IR is printed, with the entry and a main in it>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  save ir, run-term(make(list, <make>, <--emit>, <llvm>, <code/answer.tree>))
+  want hold, and(is-equal(ir/code, 0), and(matches(main-pattern, ir/stdout), text-contains(ir/stdout, <target triple>)))
+
+test <llvm: --out writes the IR and prints nothing>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  save out, run-term(make(list, <make>, <--emit>, <llvm>, <code/answer.tree>, <--out>, <out/answer.ll>))
+  save file, emit-path/join(project(), <out/answer.ll>)
+  save written, <>
+  fork test, file-exists(file)
+    hold
+      save written, read-file(file)
+  want hold, and(is-equal(out/code, 0), and(is-equal(out/stdout, <>), text-contains(written, <target triple>)))
+
+# built from the IR
+test <llvm: --run builds the IR with llc and answers>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  fork test, not(tools()/llc)
+    hold
+      skip <llc is absent: the refusal is the test>
+  save ran, run-term(make(list, <make>, <--emit>, <llvm>, <code/answer.tree>, <--run>))
+  want hold, and(is-equal(ran/code, 0), is-equal(ran/stdout, <answer 42>))
+
+test <llvm: --run without llc is refused, naming rustup component add llvm-tools>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  fork test, tools()/llc
+    hold
+      skip <llc is present: the build is the test>
+  save ran, run-term(make(list, <make>, <--emit>, <llvm>, <code/answer.tree>, <--run>))
+  want hold, and(is-unequal(ran/code, 0), text-contains(ran/stderr, <rustup component add llvm-tools>))
+
+# the module
+test <wasm: --run builds the module and node runs it under WASI>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  fork test, not(tools()/wasi)
+    hold
+      skip <wasm32-wasip1 is absent: the refusal is the test>
+  save ran, run-term(make(list, <make>, <--emit>, <wasm>, <code/answer.tree>, <--run>))
+  want hold, and(is-equal(ran/code, 0), is-equal(ran/stdout, <answer 42>))
+
+test <wasm: without the target it is refused, naming rustup target add wasm32-wasip1>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  fork test, tools()/wasi
+    hold
+      skip <wasm32-wasip1 is present: the build is the test>
+  save ran, run-term(make(list, <make>, <--emit>, <wasm>, <code/answer.tree>, <--run>))
+  want hold, and(is-unequal(ran/code, 0), text-contains(ran/stderr, <rustup target add wasm32-wasip1>))
+
+test <llvm: a program naming a crate is refused, naming the crate>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  save money, run-term(make(list, <make>, <--emit>, <llvm>, <code/money.tree>, <--run>))
+  want hold, and(is-unequal(money/code, 0), matches(crate-pattern, money/stderr))
+
+test <llvm: a program with nothing to start is refused, naming --main>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  save library, run-term(make(list, <make>, <--emit>, <llvm>, <code/library.tree>, <--run>))
+  want hold, and(is-unequal(library/code, 0), text-contains(library/stderr, <--main>))
+
+test <wasm: a program naming a crate is refused, naming the crate>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  save money, run-term(make(list, <make>, <--emit>, <wasm>, <code/money.tree>, <--run>))
+  want hold, and(is-unequal(money/code, 0), matches(crate-pattern, money/stderr))
+
+test <wasm: a program with nothing to start is refused, naming --main>
+  fork test, not(tools()/rustc)
+    hold
+      skip no-rust
+  save library, run-term(make(list, <make>, <--emit>, <wasm>, <code/library.tree>, <--run>))
+  want hold, and(is-unequal(library/code, 0), text-contains(library/stderr, <--main>))

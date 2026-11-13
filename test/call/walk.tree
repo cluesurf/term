@@ -1,0 +1,103 @@
+note <term walk, the REPL, driven through a pipe>
+
+# Ported from walk.ts by statement (item 0648). `term walk` did not work on piped input at all: it printed its banner,
+# a prompt and `bye`, and evaluated nothing. Readline does not await an async `line` listener, so piped lines fired
+# back to back and `close` exited while evaluations were in flight, and the buffer mutated outside the queue, so a
+# definition block swallowed every expression after it. A pasted block is the same case as a pipe. It also holds that
+# the REPL says Term, never the old name, on the first line a person sees.
+#
+# The REPL is the `term` under test (run-self-with-input, decision 111), in a temporary folder with its own HOME. Both
+# streams are read: a value prints on stdout and a defect on stderr. A script run by two tests runs once.
+
+load @term/test/self
+  find run-self-with-input
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains
+
+form walk-state
+  mark shared
+  link box, like text
+  link opened, like text
+  link ran, like text
+
+host walk-now, make(walk-state, bind(box, <>), bind(opened, <>), bind(ran, <>))
+
+# the REPL fed a script on standard input, both streams (named for the original's `walk`, a keyword here)
+task run-walk
+  take input, like text
+  like text
+  mark async
+
+  fork test, is-equal(walk-now/box, <>)
+    hold
+      save walk-now/box, temp-folder(<term-walk->)
+      make-folder(<{walk-now/box}/home>)
+  save environment
+    make hash
+      save <HOME>, <{walk-now/box}/home>
+  save run, run-self-with-input(make(list, <walk>), input, bind(directory, walk-now/box), bind(limit, 180000), bind(environment, environment))
+  back <{run/output}{run/error}>
+
+task opened
+  like text
+  mark async
+
+  fork test, is-equal(walk-now/opened, <>)
+    hold
+      save walk-now/opened, run-walk(<exit\n>)
+  back walk-now/opened
+
+# a definition is the input that spans more than one `line` event, so everything after it went into the same buffer
+task ran
+  like text
+  mark async
+
+  fork test, is-equal(walk-now/ran, <>)
+    hold
+      save walk-now/ran, run-walk(<task twice\n  take n, like number\n  like number\n  send back\n    call multiply(read(n), code 2)\n\ncall twice(code 21)\n\nexit\n>)
+  back walk-now/ran
+
+# a number standing alone, as \b<n>\b reads it
+task has-number
+  take said, like text
+  take number, like text
+  like boolean
+
+  back matches(make(pattern, bind(text, <(^|[^A-Za-z0-9_]){number}([^A-Za-z0-9_]|$)>)), said)
+
+test <the REPL announces itself as Term>
+  want hold, contains(opened(), <Term REPL>)
+
+test <and prompts with `term\>`, not `seed\>`>
+  save said, opened()
+  want hold, and(contains(said, <term\> >), not(contains(said, <seed\> >)))
+
+test <a one-line expression evaluates and prints its value>
+  # `code(2)` closed: a comma after the literal `2` would stay inside `code` (the comma rule since 2026-10-02)
+  want hold, has-number(run-walk(<call add(code(2), code 3)\n\nexit\n>), <5>)
+
+test <a definition is added>
+  want hold, contains(ran(), <added twice>)
+
+test <and the expression after it CALLS it: twice(21) is 42>
+  want hold, has-number(ran(), <42>)
+
+test <an unknown name is reported, and the REPL carries on to say goodbye>
+  save bad, run-walk(<call nope(code 1)\n\nexit\n>)
+  want hold, and(contains(bad, <is not defined>), contains(bad, <bye>))
+
+# a script file rarely ends in a blank line, and a block left in the buffer at `close` used to be dropped without a
+# word: ending on the expression itself, with no `exit` and no trailing blank, is `term walk < script.tree`
+test <a script that ends mid-block is still evaluated rather than dropped>
+  want hold, has-number(run-walk(<call add(code(20), code 20)>), <40>)

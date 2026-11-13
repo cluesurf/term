@@ -1,0 +1,183 @@
+note <The hive: the roll wakes into it, a raise reaches an ear, and the roster can be read back>
+
+# Ported from hive.ts by statement (item term-self-host-001-0616). An app that loads the stdlib's `exception` and `hive`
+# modules compiles through the stdlib resolver with the project's deck reader, its emitted wake chain is read, and then the
+# program runs once: a main appended to the emitted TypeScript calls its tasks in the original's order and prints what each
+# answered, one `key=value` line per observation. The tests judge those lines, one test per `ok` of the original, in its
+# order. The original imported the module into its own process: here it runs as a child by `typescript-answer`
+# (decision 111), so every observation is taken in one run and the tests read it after. The main only calls and records,
+# every judgment is Term.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ./shared/rust-native
+  find typescript-answer
+
+load ../support/reading
+  find lines-of
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+  find starts-with
+  find substring
+  find char-count
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/list
+  find contains, name list-contains
+
+host source, <load @term/base/code/exception\n  find exception\n  find absence\n\nload @term/base/code/hive\n  find hive-wake\n  find hive-tell\n  find hive-roll\n  find hive-hear\n  find hive-size\n  find hive-wake-typed\n  find hive-tells\n  find hive-docks\n  find hive-exceptions\n  find hive-clear\n  find hive-entry\n  find exception-roll\n  find tell-roll\n  find dock-roll\n\nload @term/base/list\n  find push\n  find length\n\nform user-absence\n  like absence\n    bind note, \<No such user\>\n    bind thing, \<user\>\n    link key, like text\n\ntask find-user\n  take key, like text\n  like text\n  fork test\n    hook test\n      call is-equal\n        read key\n        text \<a\>\n    hook hold\n      send back, text \<alice\>\n    hook miss\n      halt user-absence\n        bind key, read key\n\ntask exceptions\n  like list\n  send back\n    call hive-roll\n      text \<exception\>\n\ntask decks\n  like number\n  send back\n    call hive-size\n\ntask listen\n  take work, like task\n    take entry, like unknown\n  call hive-hear\n    text \<exception\>\n    read work\n\nform metric\n  link name, like text\n  link unit, like text\n\nroll metric\n  like metric\n\nhost request-count\n  make metric\n    bind name, text \<requests\>\n    bind unit, text \<count\>\n\ntask metrics\n  like list\n  send back\n    call hive-roll\n      text \<metric\>\n\n# the typed wake: one exception, one tell and one dock of the deck \<typed-deck\>\ntask wake-typed\n  save exceptions\n    make list\n  save tells\n    make list\n  save docks\n    make list\n  call push\n    read exceptions\n    make hive-entry\n      bind host, text \<typed-deck\>\n      bind kind, text \<exception\>\n      bind name, text \<typed-absence\>\n      bind site, text \<\>\n      bind base\n        make exception-roll\n          bind like, text \<absence\>\n          bind chain\n            make list\n          bind note, text \<Gone\>\n          bind link\n            make list\n  call push\n    read tells\n    make hive-entry\n      bind host, text \<typed-deck\>\n      bind kind, text \<tell\>\n      bind name, text \<typed-absence\>\n      bind site, text \<\>\n      bind base\n        make tell-roll\n          bind note, text \<Not here\>\n          bind hint, text \<\>\n          bind link\n            make list\n          bind alias, text \<\>\n  call push\n    read docks\n    make hive-entry\n      bind host, text \<typed-deck\>\n      bind kind, text \<dock\>\n      bind name, text \<typed-route\>\n      bind site, text \<\>\n      bind base\n        make dock-roll\n          bind halt\n            make list\n  call hive-wake-typed\n    text \<typed-deck\>\n    read exceptions\n    read tells\n    read docks\n\n# the first static tell, its note read as text through the typed roll\ntask first-tell-note\n  like text\n  save all\n    call hive-tells\n  send back, read all/0/base/note\n\ntask tell-count\n  like number\n  save all\n    call hive-tells\n  send back\n    call length\n      read all\n\ntask dock-count\n  like number\n  save all\n    call hive-docks\n  send back\n    call length\n      read all\n\ntask exception-note\n  like text\n  save all\n    call hive-exceptions\n      text \<typed-deck\>\n  send back, read all/0/base/note\n\n# a static exception the WAKE put in the typed list (seam-0003): its `like` and `note`, read off the record\ntask static-exception\n  take name, like text\n  like text\n  save all\n    call hive-exceptions\n  walk list\n    read all\n    hook next\n      take site, name entry\n      fork test\n        hook test\n          call is-equal\n            read entry/name\n            read name\n        hook hold\n          send back, text \<\{entry/base/like\}: \{entry/base/note\}\>\n  send back, text \<none\>\n\ntask clear-tells\n  call hive-clear\n    text \<tell\>\n\ntask tell-entries\n  like list\n  send back\n    call hive-roll\n      text \<tell\>\n\ntask listen-tell\n  take work, like task\n    take entry, like unknown\n  call hive-hear\n    text \<tell\>\n    read work\n>
+
+# The run, in the original's order: what each call answered, one `key=value` line each. It only calls the program's tasks
+# and records their answers (names joined by commas, parts by slashes), so the judging stays in the tests below.
+host main, <const seen = []\nconst say = (key, value) =\> seen.push(key + "=" + value)\nconst names = (list) =\> list.map((one) =\> one.name).join(",")\nwakeHive()\nsay("decks", decks())\nsay("exceptions", names(exceptions()))\nconst heard = []\nlisten((entry) =\> heard.push(entry))\ntry \{\n  findUser("zed")\n\} catch \{\}\nsay("heard", names(heard))\nsay("heard-count", heard.length)\nsay("alice", findUser("a"))\nsay("heard-after", heard.length)\nsay("metrics", metrics().map((one) =\> one.kind + "/" + one.name + "/" + one.base.name + "/" + one.base.unit).join(","))\nsay("static-user", staticException("user-absence"))\nsay("static-absence", staticException("absence"))\nconst told = []\nlistenTell((entry) =\> told.push(entry))\nsay("typed-before", tellCount() + "/" + dockCount())\nwakeTyped()\nsay("tell-note", firstTellNote())\nsay("exception-note", exceptionNote())\nsay("docks", dockCount())\nsay("rolled", tellEntries().map((one) =\> one.name + "/" + one.base.note).join(","))\nsay("told", told.map((one) =\> one.kind).join(","))\nsay("before", exceptions().length + "/" + decks())\nwakeHive()\nwakeTyped()\nsay("after", exceptions().length + "/" + decks() + "/" + tellCount() + "/" + dockCount() + "/" + tellEntries().length)\nclearTells()\nsay("cleared", tellEntries().length + "/" + tellCount() + "/" + dockCount())\nprocess.stdout.write(seen.join("\\n"))\n>
+
+host built, compile-text(source, make(compile-choice, bind(file, </tmp/hive-test/h.tree>), bind(stdlib, <node>), bind(project-deck, true)))
+
+form hive-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(hive-answers, bind(held, make hash))
+
+# what the run printed, run once and kept for every test after
+task said
+  like text
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save printed, typescript-answer(built, main, temp-folder(<term-hive->), <h>)
+  save kept/held/{key}, printed
+  back printed
+
+# what the run recorded under `key`, <missing> when it recorded nothing
+task fact
+  take key, like text
+  like text
+
+  walk lines-of(said())
+    take line, like text
+    fork test, starts-with(line, <{key}=>)
+      hold
+        back substring(line, add(char-count(key), 1))
+  back <missing>
+
+# the parts of a recorded value, split by `by`
+task parts
+  take key, like text
+  take by, like text
+  like list, like text
+
+  back text-split(fact(key), by)
+
+# how many of the parts equal `word`
+task count-of
+  take items, like list, like text
+  take word, like text
+  like number
+
+  save count, 0
+  walk items
+    take item, like text
+    fork test, is-equal(item, word)
+      hold
+        save count, add(count, 1)
+  back count
+
+test <an app that loads the hive compiles>
+  want hold, built/ok
+
+test <the wake chain is emitted>
+  want hold, text-contains(built/emitted, <export function wakeHive()>)
+
+test <the chain wakes the stdlib deck>
+  want hold, text-contains(built/emitted, <hiveWake("@term/base">)
+
+test <the chain hooks raises into the hive>
+  want hold, text-contains(built/emitted, <__termRaise>)
+
+test <decks woke>
+  want hold, is-above(parse-float(fact(<decks>)), 0)
+
+test <the roster lists the stdlib exceptions>
+  want hold, list-contains(parts(<exceptions>, <,>), <absence>)
+
+test <the roster lists the app exception>
+  want hold, list-contains(parts(<exceptions>, <,>), <user-absence>)
+
+test <an ear hears the raise>
+  want hold, list-contains(parts(<heard>, <,>), <user-absence>)
+
+test <the happy path is unheard>
+  want hold, is-equal(fact(<heard-count>), <1>)
+  want hold, is-equal(fact(<alice>), <alice>)
+  want hold, is-equal(fact(<heard-after>), <1>)
+
+# a kind the app declares (`roll metric`): its constant is on the roster at boot, by reference, as a typed value
+test <a declared kind wakes into the hive>
+  host all, parts(<metrics>, <,>)
+  host first, text-split(all/0, </>)
+  want hold, is-equal(all/length, 1)
+  want hold, is-equal(first/0, <metric>)
+  want hold, is-equal(first/1, <request-count>)
+
+test <its entry is the constant's value, typed>
+  host all, parts(<metrics>, <,>)
+  host first, text-split(all/0, </>)
+  want hold, is-equal(first/2, <requests>)
+  want hold, is-equal(first/3, <count>)
+
+# the compiler's typed wake (seam-0003): `wakeHive` hands each deck's static exceptions to `hiveWakeTyped` as
+# `exception-roll` records, so a declared exception's `like` and `note` read back as text
+test <the chain wakes the typed rolls>
+  want hold, text-contains(built/emitted, <hiveWakeTyped("@term/base">)
+
+test <a static exception reads back through hive-exceptions with its like and note>
+  want hold, is-equal(fact(<static-user>), <absence: No such user>)
+
+test <a stdlib exception is in the typed list too>
+  want hold, is-unequal(fact(<static-absence>), <none>)
+
+# the typed wake: the three static kinds are kept in typed lists AND told, so the roster still sees them
+test <the typed lists are empty before a typed wake>
+  want hold, is-equal(fact(<typed-before>), <0/0>)
+
+test <a tell reads back through hive-tells with its note as text>
+  want hold, is-equal(fact(<tell-note>), <Not here>)
+
+test <an exception reads back through hive-exceptions>
+  want hold, is-equal(fact(<exception-note>), <Gone>)
+
+test <a dock reads back through hive-docks>
+  want hold, is-equal(fact(<docks>), <1>)
+
+test <hive-roll answers the typed tell too>
+  want hold, is-equal(fact(<rolled>), <typed-absence/Not here>)
+
+test <an ear on tell hears the typed tell once>
+  want hold, is-equal(count-of(parts(<told>, <,>), <tell>), 1)
+
+# the typed wake is idempotent on the deck name, as `hive-wake` is (seam-0015): a second wake of every deck, and a second
+# typed wake of one, add no entry to the roster or to a typed list
+test <a second wake adds nothing>
+  host before, fact(<before>)
+  want hold, is-equal(fact(<after>), <{before}/1/1/1>)
+
+test <hive-clear on tell empties the roll and the typed list>
+  host cleared, parts(<cleared>, </>)
+  want hold, is-equal(cleared/0, <0>)
+  want hold, is-equal(cleared/1, <0>)
+
+test <hive-clear on tell leaves the other kinds>
+  host cleared, parts(<cleared>, </>)
+  want hold, is-equal(cleared/2, <1>)

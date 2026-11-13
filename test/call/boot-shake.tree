@@ -1,1 +1,86 @@
-note <draft moved out: boot.ts finds hook-dispatch.ts by import.meta.url, which a docked bundle cannot reach>
+note <a program booted from units carries what its run reaches: another file's command task, and of the text module trim alone>
+
+# Ported from boot-shake.ts by statement (items term-self-host-001-0602 and 1306), one test per `ok` in its order. The
+# bundle's entry exports the entry file's own names, what it imports, and every task a command calls, which a hook
+# table names only in its routes: zone's commands are other files' tasks, and narrowing to the entry's own names alone
+# left `zone call` answering `task "call" is not exported by the program` (2026-10-05). And nothing else: a command that
+# trims one text carries `trim`, not the text module's other tasks. The subject is deck/call/code/boot.ts (decision
+# 106), called in this process once, by the first test, over a project in a temporary folder whose text no earlier run
+# wrote. Docked, boot.ts finds its dispatcher from the install root (item 1197), never from its own url.
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/clock
+  find now, name clock-now
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/call/code/boot>, name shake-boot
+  load <node:fs>, name shake-file
+  load <node:path>, name shake-path
+
+bind shake-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+form shake-ask
+  link root, like text
+  link entry, like text
+  link out, like text
+
+# what the boot left: the run's exit code and the bundle's text
+form shake-state
+  mark shared
+  link made, like boolean
+  link code, like number
+  link app, like text
+
+host shake-now, make(shake-state, bind(made, false), bind(code, -1), bind(app, <>))
+
+task the-boot
+  like shake-state
+  mark async
+
+  fork test, shake-now/made
+    hold
+      back shake-now
+  save shake-now/made, true
+  save root, shake-file/realpath-sync(temp-folder(<boot-shake->))
+  shake-file/mkdir-sync(shake-path/join(root, <code>), shake-folder-options(0))
+  shake-file/write-file-sync(shake-path/join(root, <deck.tree>), <deck @probe/shake\n  mark \<0.0.2\>\n  link @term/base, mark \<0.0.x\>\n>)
+  # fresh text, so no earlier run's units answer for these (unit keys are the same in every clone)
+  save fresh, <# run {shake-path/basename(root)} at {clock-now()}\n>
+  # the command's task lives in another file, and trims a text
+  shake-file/write-file-sync(shake-path/join(root, <code>, <work.tree>), <{fresh}load @term/base/text\n  find trim\n\ntask answer\n  take who, like text\n  like number\n  save said, trim(who)\n  fork test\n    hook test, is-equal(said, \<you\>)\n    hook hold\n      back 3\n  back 4\n>)
+  shake-file/write-file-sync(shake-path/join(root, <code>, <base.tree>), <{fresh}load ./work\n  find answer\n\n# Answer by the trimmed name\nhook say\n  take who\n  task answer\n>)
+  save out, shake-path/join(root, <out>)
+  save booted, wait shake-boot/call-boot(make(shake-ask, bind(root, root), bind(entry, shake-path/join(root, <code>, <base.tree>)), bind(out, out)))
+  save ran, run(<node>, make list(shake-path/join(out, <run.mjs>), <say>, <--who>, < you >))
+  save shake-now/code, ran/code
+  save shake-now/app, <{shake-file/read-file-sync(shake-path/join(out, <app.mjs>), <utf8>)}>
+  back shake-now
+
+test <a command whose task is another file's runs it>
+  save state, the-boot()
+  want hold, is-equal(state/code, 3)
+
+test <the bundle carries the text task it calls>
+  save state, the-boot()
+  want hold, matches(make(pattern, <<function trim\(>>), state/app)
+
+test <and none it does not>
+  save state, the-boot()
+  want hold, not(matches(make(pattern, <<function (padLeft|replaceAll|toUpperCase|contains)\(>>), state/app))
+
+test <and of the text runtime, trim alone>
+  save state, the-boot()
+  want hold, and(matches(make(pattern, <<__termText_trim>>), state/app), not(matches(make(pattern, <<__termText_(pad|replaceAll|compare)\b>>), state/app)))

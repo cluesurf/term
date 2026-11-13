@@ -1,0 +1,21 @@
+note <every plain kind a parallel walk's turn may carry crosses melt, to-code, from-code and fill on Rust and reads back equal>
+
+# Part of the port of parallel-walk.ts (item 0652): its Rust round trips of the plain kinds (text, number, decimal,
+# flag, data), one walked test, a case per kind. The shaped kinds are parallel-walk-rust-shapes.tree's, the kinds and the
+# project parallel-walk-kinds.tree's, the TypeScript round trips and the compile checks parallel-walk.tree's. Split
+# because in one file the whole ran past term test's 300 s a file on the M3 under load, and the ten Rust kinds alone took
+# 3m 20s.
+
+load ./parallel-walk-kinds
+  find crossing-of
+  find crossed
+
+test <rust: a kind crosses melt, to-code, from-code and fill unchanged>
+  take kind, like text
+    walk make list(<text>, <number>, <decimal>, <flag>, <data>)
+  host ran, crossed(kind, <rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <{ran/reason}>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, crossing-of(kind)/want)

@@ -111,7 +111,18 @@ task server-start
     make server
       bind dock, read raw
       bind host, read host
-      bind port, read port
+      bind port
+        call bound-port
+          read raw
+
+# the port a started server is bound to: the one the OS chose when `start` asked for port 0 (item
+# term-self-host-001-1326)
+task bound-port
+  take raw, like server-dock
+  like size
+  send back
+    call runtime/port
+      read raw
 
 # stop accepting and answer once the port is closed
 task server-stop

@@ -6,7 +6,8 @@ note <a manifest read and written back still declares every field it declared>
 # the property over every real `deck.tree` under deck/: every top-level field a manifest declares is still declared
 # after a load and a write. It compares field heads, read with the one parser, never text, since a manifest is
 # rewritten canonically on purpose. Then one manifest using every field the grammar knows makes the same trip. The
-# manifest module, the parser and the mill's head word are the subject (decision 106). The sweep is made once, and the
+# manifest module is @term/deck's port (manifest-reading.tree and manifest-text.tree), loaded in its own shapes (decision
+# 157), and the parser and the mill's head word are the subject (decision 106). The sweep is made once, and the
 # titles hold no counts, so the original's counted titles are plain here.
 
 load @term/base/file
@@ -24,8 +25,16 @@ load @term/base/list
 load @term/base/text
   find starts-with
 
+load @term/deck/package/manifest-reading
+  find parse-manifest
+
+load @term/deck/package/manifest-text
+  find write-manifest
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
 dock load
-  load <@term/deck/code/package/manifest>, name deck-manifest
   load <@term/make/code/parser/tree>, name tree-parser
   load <@term/make/code/compile/mill-run>, name mill-run
 
@@ -37,11 +46,7 @@ form parse-source
   link file, like text
   link text, like text
 
-form manifest-source
-  link text, like text
-
-form manifest-written
-  link manifest, like dynamic
+host grammars, make-grammars()
 
 # a host value, or the empty text when it has none
 bind or-empty
@@ -107,7 +112,7 @@ task written
   take text, like text
   like text
 
-  back deck-manifest/write-manifest(make(manifest-written, bind(manifest, deck-manifest/parse-manifest(make(manifest-source, bind(text, text))))))
+  back write-manifest(parse-manifest(text, grammars))
 
 # the sweep: how many manifests made the trip, the fields lost on it, and the distinct heads seen
 form sweep

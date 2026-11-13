@@ -1,0 +1,457 @@
+note <stateful zone HMR end to end: the signal survives the swap and the fresh view is the one mounted>
+
+# Ported from zone-hmr.ts by statement (item term-self-host-001-0668, decision 116: its body is one async main), one test
+# per `ok` in its order. A zone app is compiled in per-module mode (so each module is its own ESM file with the hot
+# wiring emitZone and emitModules emit), every module written to disk, run against the headless dom in this process, a
+# signal changed, then the real `apply-hmr` (deck/make/code/dev/hmr-client.tree, the subject) is driven through an actual
+# re-import of an edited module. The signal value must survive the swap and the freshly compiled view must be the one
+# mounted. Each module goes from TypeScript to JavaScript through esbuild, as the original transformed it.
+#
+# The boundary registry is Term: a hash from a query-stripped url to its entry, and `__seedHot`, which the emitted
+# modules call, a Term task over it, exactly as the browser client installs window.__seedHot. The written modules are
+# imported into this process, since the test drives their live signals and dom across the swap, which a child cannot
+# hand back. The whole sequence runs once, by the first test that asks, and is kept in `hmr-now`.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/make/dev/hmr-client
+  find apply-hmr
+  find hmr-message
+  find hmr-environment
+  find hmr-change
+
+load @term/base/process/run
+  find run-with-input
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/list
+  find push
+  find contains, name list-contains
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find replace-matches
+
+dock load
+  load <node:fs>, name hmr-file
+  load <node:url>, name hmr-url
+
+host entry-file, <face/counter.tree>
+
+# a zone reading a signal, with a static label so v1 and v2 are visibly different. The signal holds text: a text node
+# takes text, and a number read into one is refused since the lowered component is checked (check/views.ts)
+task app
+  take label, like text
+  like text
+
+  back <load @cluesurf/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\nload @cluesurf/site/code/dom/dom\n  find view\n  find append\nload @cluesurf/site/code/view/reactive\n  find make-signal\n  find read-signal\n\nview counter\n  take host, like view\n  save count\n    call make-signal\n      text \<0\>\n  view div\n    text \<{label}\>\n    read\n      call read-signal\n        bind self, read count\n>
+
+# a module's file name on disk
+task safe
+  take file, like text
+  like text
+
+  back <{replace-matches(make(pattern, <<[^a-zA-Z0-9]+>>), file, <_>)}.mjs>
+
+# the url a module is imported by, beside the others
+task url-of
+  take file, like text
+  like text
+
+  back <./{safe(file)}>
+
+# host value: the module the driver emitted for a file
+bind module-of
+  take modules, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$modules.get($file)>
+
+# host value: the files the driver emitted a module for, in its order
+bind module-files
+  take modules, like dynamic
+  like list, like text
+  case node
+    text <[...$modules.keys()]>
+
+bind module-code
+  take module, like dynamic
+  like text
+  case node
+    text <$module.code>
+
+bind module-is-zone
+  take module, like dynamic
+  like boolean
+  case node
+    text <$module.isZone === true>
+
+# whether the driver gave a module map
+bind has-modules
+  take outcome, like dynamic
+  like boolean
+  case node
+    text <$outcome instanceof Map>
+
+# host native: a written module imported into this process, since the test drives its live signals and dom across the swap
+bind imported
+  take url, like text
+  like dynamic
+  mark async
+  case node
+    text <import($url)>
+
+bind href-of
+  take url, like dynamic
+  like text
+  case node
+    text <$url.href>
+
+# host value: the empty object a boundary keeps its data in, which the emitted module fills
+bind empty-data
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{\})>
+
+# host value: the hook the emitted modules call, installed where they look for it
+bind install-hot
+  take hot, like dynamic
+  like dynamic
+  case node
+    text <(globalThis.__seedHot = $hot)>
+
+# host value: the original's `undefined`, what a boundary with no callback answers
+bind nothing
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-given
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+bind call-with
+  take callback, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$callback($value)>
+
+# the runtime helpers the test drives, each a call on a written module
+bind make-element-in
+  take render, like dynamic
+  take tag, like text
+  like dynamic
+  case node
+    text <$render.makeElement($tag)>
+
+bind mount-counter
+  take entry, like dynamic
+  take host, like dynamic
+  like dynamic
+  case node
+    text <$entry.counter($host)>
+
+bind write-signal-in
+  take reactive, like dynamic
+  take signal, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$reactive.writeSignal($signal, $value)>
+
+bind read-signal-in
+  take reactive, like dynamic
+  take signal, like dynamic
+  like dynamic
+  case node
+    text <$reactive.readSignal($signal)>
+
+# host value: the live `count` signal of a boundary's first mounted instance
+bind live-count
+  take data, like dynamic
+  like dynamic
+  case node
+    text <$data.instances[0].signals.count>
+
+# a dom node's own text, <> when it holds none, and its children
+bind node-text
+  take node, like dynamic
+  like text
+  case node
+    text <String($node?.handle?.text ?? "")>
+
+bind node-children
+  take node, like dynamic
+  like list, like dynamic
+  case node
+    text <($node?.handle?.children ?? [])>
+
+bind number-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# one boundary of the registry: its data, and the callbacks its module gave
+form hot-entry
+  mark shared
+  link data, like dynamic
+  link accept, like dynamic
+  link dispose, like dynamic
+
+# what `__seedHot(url)` answers a module
+form hot-handle
+  link data, like dynamic
+  link accept, like dynamic
+  link dispose, like dynamic
+  link invalidate, like dynamic
+
+# what the whole run saw, in the original's order
+form hmr-seen
+  mark shared
+  link made, like boolean
+  link registry, like hash, like text, like hot-entry
+  link compiled, like boolean
+  link is-zone, like boolean
+  link entry-code, like text
+  link mounted, like list, like text
+  link written, like list, like text
+  link reloaded, like boolean
+  link swapped, like list, like text
+  link restored, like text
+
+host hmr-now, make(hmr-seen, bind(made, false), bind(registry, make hash), bind(compiled, false), bind(is-zone, false), bind(entry-code, <>), bind(mounted, make list), bind(written, make list), bind(reloaded, false), bind(swapped, make list), bind(restored, <>))
+
+# a url with its query taken off, the registry's key
+task key-of
+  take url, like text
+  like text
+
+  back text-split(url, <?>)/0
+
+# the registry's entry for a url, made the first time it is asked
+task entry-at
+  take url, like text
+  like hot-entry
+
+  save key, key-of(url)
+  fork test, hmr-now/registry/has(key)
+    hold
+      back hmr-now/registry/{key}
+  save made, make(hot-entry, bind(data, empty-data(0)), bind(accept, nothing(0)), bind(dispose, nothing(0)))
+  save hmr-now/registry/{key}, made
+  back made
+
+# the stable, query-stripped boundary registry, exactly as the browser client installs window.__seedHot
+task hot-for
+  take url, like text
+  like hot-handle
+
+  save entry, entry-at(url)
+  save accept
+    task
+      take callback, like dynamic
+      like void
+      save entry/accept, callback
+  save dispose
+    task
+      take callback, like dynamic
+      like void
+      save entry/dispose, callback
+  save invalidate
+    task
+      like void
+      back
+  back make(hot-handle, bind(data, entry/data), bind(accept, accept), bind(dispose, dispose), bind(invalidate, invalidate))
+
+# every text a node and its children hold, in order
+task texts-of
+  take node, like dynamic
+  like list, like text
+
+  save out, make list
+  save own, node-text(node)
+  fork test, is-unequal(own, <>)
+    hold
+      out/push(own)
+  walk node-children(node)
+    take child, like dynamic
+    walk texts-of(child)
+      take one, like text
+      out/push(one)
+  back out
+
+# TypeScript to an ES module, through esbuild as the original's transform
+task to-javascript
+  take code, like text
+  like text
+  mark async
+
+  save esbuild, <{term-root()}/node_modules/.bin/esbuild>
+  save made, run-with-input(esbuild, make(list, <--loader=ts>, <--format=esm>), code)
+  back made/output
+
+task compiled
+  take label, like text
+  like compile-outcome
+
+  back compile-text(app(label), make(compile-choice, bind(file, entry-file), bind(project, <.>), bind(project-env, <node>), bind(modules, url-of)))
+
+task the-run
+  like hmr-seen
+  mark async
+
+  fork test, hmr-now/made
+    hold
+      back hmr-now
+  save hmr-now/made, true
+  # realpath so the path matches Node's resolved import.meta.url (macOS /var vs /private/var), which keys the registry
+  save dir, hmr-file/realpath-sync(temp-folder(<seed-zone-hmr->))
+  save v1, compiled(<v1>)
+  save hmr-now/compiled, and(v1/ok, has-modules(v1/modules))
+  fork test, not(hmr-now/compiled)
+    hold
+      back hmr-now
+  save entry-module, module-of(v1/modules, entry-file)
+  save hmr-now/is-zone, module-is-zone(entry-module)
+  save hmr-now/entry-code, module-code(entry-module)
+  # the native prelude goes in front of whichever module uses a docked global
+  save files, module-files(v1/modules)
+  walk files
+    take file, like text
+    save code, module-code(module-of(v1/modules, file))
+    save javascript, to-javascript(<{prelude-text(v1, <node>, code)}\n{code}>)
+    write-file(<{dir}/{safe(file)}>, javascript)
+  install-hot(hot-for)
+  save entry-path, <{dir}/{safe(entry-file)}>
+  save entry-url, href-of(hmr-url/pathToFileURL(entry-path))
+  save reactive-file, <>
+  save render-file, <>
+  walk files
+    take file, like text
+    fork test, and(is-equal(reactive-file, <>), text-contains(file, <reactive>))
+      hold
+        save reactive-file, file
+    fork test, and(is-equal(render-file, <>), text-contains(file, <render>))
+      hold
+        save render-file, file
+  save reactive, imported(href-of(hmr-url/pathToFileURL(<{dir}/{safe(reactive-file)}>)))
+  save render, imported(href-of(hmr-url/pathToFileURL(<{dir}/{safe(render-file)}>)))
+  save host, make-element-in(render, <root>)
+  save module-one, imported(entry-url)
+  mount-counter(module-one, host)
+  save hmr-now/mounted, texts-of(host)
+  # change the signal, then read it back through the live instance to confirm it is reactive before the swap
+  save live, live-count(entry-at(entry-url)/data)
+  write-signal-in(reactive, live, 7)
+  save hmr-now/written, texts-of(host)
+  # EDIT: recompile with a new label and overwrite the entry module on disk (same url, cache-busted on reimport)
+  save v2, compiled(<v2>)
+  write-file(entry-path, to-javascript(module-code(module-of(v2/modules, entry-file))))
+  # drive the real client: dispose (snapshot and tear down), reimport fresh, accept (mount again from the snapshot)
+  save reload
+    task
+      like void
+      save hmr-now/reloaded, true
+  save reimport
+    task
+      take url, like text
+      take stamp, like number
+      like dynamic
+      mark async
+      back imported(<{url}?t={stamp}>)
+  save accept-of
+    task
+      take boundary, like text
+      like dynamic
+      back entry-at(boundary)/accept
+  save dispose-of
+    task
+      take boundary, like text
+      like dynamic
+      save entry, entry-at(boundary)
+      fork test, not(is-given(entry/dispose))
+        hold
+          back nothing(0)
+      save disposing
+        task
+          like dynamic
+          back call-with(entry/dispose, entry/data)
+      back disposing
+  save log
+    task
+      take line, like text
+      like void
+      back
+  save environment, make(hmr-environment, bind(reload, reload), bind(reimport, reimport), bind(accept-of, accept-of), bind(dispose-of, dispose-of), bind(log, log))
+  apply-hmr(make(update, bind(updates, make(list, make(hmr-change, bind(boundary, entry-url), bind(accepted, entry-url), bind(timestamp, 2))))), environment)
+  save hmr-now/swapped, texts-of(host)
+  save fresh, live-count(entry-at(entry-url)/data)
+  save hmr-now/restored, number-text(read-signal-in(reactive, fresh))
+  back hmr-now
+
+test <v1 compiles in per-module mode>
+  save seen, the-run()
+  want hold, seen/compiled
+
+test <the zone module is a self-accepting boundary>
+  save seen, the-run()
+  want hold, seen/is-zone
+
+test <it emits the hot boundary wiring>
+  save seen, the-run()
+  want hold, matches(make(pattern, <<hot\.accept\(>>), seen/entry-code)
+  want hold, matches(make(pattern, <<hot\.dispose\(>>), seen/entry-code)
+
+test <it seeds signals from the kept snapshot>
+  save seen, the-run()
+  want hold, matches(make(pattern, <<makeSignal\("count" in __seed>>), seen/entry-code)
+
+test <v1 mounts with its label>
+  save seen, the-run()
+  want hold, list-contains(seen/mounted, <v1>)
+
+test <the live signal updates the view>
+  save seen, the-run()
+  want hold, list-contains(seen/written, <7>)
+
+test <the swap did not fall back to a full reload>
+  save seen, the-run()
+  want hold, seen/compiled
+  want miss, seen/reloaded
+
+test <the fresh view (v2) is mounted>
+  save seen, the-run()
+  want hold, list-contains(seen/swapped, <v2>)
+  want miss, list-contains(seen/swapped, <v1>)
+
+test <the signal value survived the swap>
+  save seen, the-run()
+  want hold, list-contains(seen/swapped, <7>)
+
+test <the re-mounted instance restored the signal>
+  save seen, the-run()
+  want hold, is-equal(seen/restored, <7>)

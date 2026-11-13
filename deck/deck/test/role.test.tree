@@ -1,0 +1,289 @@
+note <a role file is read into its rules, a path is matched to the first rule that takes it, and no lean rule reaches a mill grammar>
+
+# Ported from role.test.ts by statement (item term-self-host-001-0628), one test per `it` in its order. The subject is
+# the face code/package/role.ts (it hands the grammars to code/package/role-reading.tree and turns a `none` into null),
+# docked, so the test holds what a TypeScript caller is given (decision 157). The Term root is two folders up from the
+# working directory: run it from deck/deck, as the package's other suites run.
+
+dock load
+  load <@term/deck/code/package/role>, name role-face
+  load <node:fs>, name role-file
+  load <node:path>, name role-path
+
+form role-text
+  link text, like text
+  link root, like text
+
+form role-match
+  link file-path, like text
+  link config, like dynamic
+
+form role-glob
+  link pattern, like text
+  link path, like text
+
+# host reflect: the face answers null for a path no rule takes
+bind is-null
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === null>
+
+# host reflect: whether two answers are the one record, as `toBe` asks
+bind is-same
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <$left === $right>
+
+# host native: a list the face answered, written as JSON, to compare it with the empty list
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <String(JSON.stringify($value))>
+
+host two-roles, <\nrole book\n  take @/book/**/*.tree\n\nrole code\n  take @/code/**/*.tree\n>
+
+host book-with-miss, <\nrole book\n  take @/book/**/*.tree\n    miss @/book/**/\\\{code,view\\\}/**/*.tree\n>
+
+host code-twice, <\nrole code\n  take @/code/**/*.tree\n  take @/book/**/\\\{code,view\\\}/**/*.tree\n>
+
+host with-load, <\nload @cluesurf/code\n  find code\n  find book\n\nrole code\n  take @/code/**/*.tree\n>
+
+host with-comments, <\n# This is a comment\n\nrole code\n  take @/code/**/*.tree\n  # another comment\n>
+
+host book-and-code, <\nrole book\n  take @/book/**/*.tree\n    miss @/book/**/\\\{code,view\\\}/**/*.tree\n\nrole code\n  take @/code/**/*.tree\n  take @/book/**/\\\{code,view\\\}/**/*.tree\n>
+
+host code-only, <\nrole code\n  take @/code/**/*.tree\n>
+
+host special-first, <\nrole special\n  take @/code/special/**/*.tree\n\nrole code\n  take @/code/**/*.tree\n>
+
+host lean-first, <\nrole code\n  mark lean\n  take @/code/grammar/**/*.tree\n\nrole code\n  take @/code/**/*.tree\n\nrole book\n  take @/book/**/*.tree\n>
+
+host lean-last, <\nrole code\n  take @/code/**/*.tree\n\nrole code\n  mark lean\n  take @/code/grammar/**/*.tree\n>
+
+host lean-over-mill, <\nrole code\n  mark lean\n  take @/deck/mill/code/tree/**/*.tree\n>
+
+host plain-over-mill, <\nrole code\n  take @/deck/mill/code/tree/**/*.tree\n>
+
+task read-roles
+  take text, like text
+  take root, like text
+  like dynamic
+
+  back role-face/parse-role-file(make(role-text, bind(text, text), bind(root, root)))
+
+task role-of
+  take file-path, like text
+  take config, like dynamic
+  like dynamic
+
+  back role-face/match-role(make(role-match, bind(file-path, file-path), bind(config, config)))
+
+task rule-of
+  take file-path, like text
+  take config, like dynamic
+  like dynamic
+
+  back role-face/match-role-rule(make(role-match, bind(file-path, file-path), bind(config, config)))
+
+# the Term root, the folder that holds deck/
+task term-root
+  like text
+
+  back role-path/resolve(<../..>)
+
+# one real mill grammar file, as the thing no lean glob may reach
+task mill-file
+  like text
+
+  back role-path/join(term-root(), <deck/mill/code/tree/code/call/mine.tree>)
+
+# whether a rule carries this mark
+task has-mark
+  take rule, like dynamic
+  take word, like text
+  like boolean
+
+  save found, false
+  walk rule/mark
+    take one, like text
+    fork test, is-equal(one, word)
+      hold
+        save found, true
+  back found
+
+# every lean `take` glob in a config that matches the mill file
+task lean-reaching
+  take text, like text
+  take root, like text
+  like list, like text
+
+  save config, read-roles(text, root)
+  save reaching, make list
+  save mill, mill-file()
+  walk config/rules
+    take rule, like dynamic
+    fork test, has-mark(rule, <lean>)
+      hold
+        walk rule/take
+          take entry, like dynamic
+          fork test, role-face/glob-match(make(role-glob, bind(pattern, entry/pattern), bind(path, mill)))
+            hold
+              reaching/push(entry/pattern)
+  back reaching
+
+# every root holding a base/role.tree under deck/, then the Term root itself
+task role-roots
+  like list, like text
+
+  save root, term-root()
+  save deck-folder, role-path/join(root, <deck>)
+  save roots, make list
+  walk role-file/readdir-sync(deck-folder)
+    take name, like text
+    save dir, role-path/join(deck-folder, name)
+    fork test, role-file/exists-sync(role-path/join(dir, <base>, <role.tree>))
+      hold
+        roots/push(dir)
+  roots/push(root)
+  back roots
+
+test <parseRoleFile: parses basic role definitions>
+  host config, read-roles(two-roles, </project>)
+  want hold, is-equal(config/rules/length, 2)
+  want hold, is-equal(config/rules/0/name, <book>)
+  want hold, is-equal(config/rules/0/take/length, 1)
+  want hold, is-equal(config/rules/0/take/0/pattern, </project/book/**/*.tree>)
+  want hold, is-equal(config/rules/1/name, <code>)
+  want hold, is-equal(config/rules/1/take/0/pattern, </project/code/**/*.tree>)
+
+test <parseRoleFile: parses take with miss exclusions>
+  host config, read-roles(book-with-miss, </project>)
+  want hold, is-equal(config/rules/length, 1)
+  want hold, is-equal(config/rules/0/take/0/miss/length, 1)
+  want hold, is-equal(config/rules/0/take/0/miss/0, </project/book/**/\{code,view\}/**/*.tree>)
+
+test <parseRoleFile: parses multiple take entries per role>
+  host config, read-roles(code-twice, </project>)
+  want hold, is-equal(config/rules/0/take/length, 2)
+
+test <parseRoleFile: skips load blocks>
+  host config, read-roles(with-load, </project>)
+  want hold, is-equal(config/rules/length, 1)
+  want hold, is-equal(config/rules/0/name, <code>)
+
+test <parseRoleFile: skips comments and empty lines>
+  host config, read-roles(with-comments, </project>)
+  want hold, is-equal(config/rules/length, 1)
+
+test <matchRole: matches code files>
+  want hold, is-equal(role-of(</project/code/base.tree>, read-roles(book-and-code, </project>)), <code>)
+
+test <matchRole: matches nested code files>
+  want hold, is-equal(role-of(</project/code/math/add.tree>, read-roles(book-and-code, </project>)), <code>)
+
+test <matchRole: matches book files>
+  want hold, is-equal(role-of(</project/book/intro.tree>, read-roles(book-and-code, </project>)), <book>)
+
+test <matchRole: excludes code subdirs within book from book role>
+  want hold, is-equal(role-of(</project/book/chapter/code/example.tree>, read-roles(book-and-code, </project>)), <code>)
+
+test <matchRole: excludes view subdirs within book from book role>
+  want hold, is-equal(role-of(</project/book/chapter/view/demo.tree>, read-roles(book-and-code, </project>)), <code>)
+
+test <matchRole: returns null for unmatched files>
+  want hold, is-null(role-of(</project/other/file.tree>, read-roles(book-and-code, </project>)))
+
+test <matchRole: returns null for non-tree files>
+  want hold, is-null(role-of(</project/code/readme.md>, read-roles(book-and-code, </project>)))
+
+test <matchRole edge cases: handles single role with no miss>
+  host config, read-roles(code-only, </app>)
+  want hold, is-equal(role-of(</app/code/main.tree>, config), <code>)
+  want hold, is-null(role-of(</app/book/main.tree>, config))
+
+test <matchRole edge cases: first matching role wins>
+  host config, read-roles(special-first, </app>)
+  want hold, is-equal(role-of(</app/code/special/foo.tree>, config), <special>)
+  want hold, is-equal(role-of(</app/code/normal.tree>, config), <code>)
+
+# The package's OWN role.tree, read from disk. It answered null for every file until 2026-08-29, because it was written
+# with `bind` and `~/` while this reader takes `take` and `@/`. This asserts the file the reader actually reads.
+test <matchRole edge cases: the @term/code role file resolves real paths>
+  host root, term-root()
+  host config, read-roles(role-file/read-file-sync(role-path/join(root, <base>, <role.tree>), <utf8>), root)
+  # the second `code` rule is the lean test/ suites (decision 104, item 0544)
+  want hold, is-equal(config/rules/length, 3)
+  want hold, is-equal(config/rules/0/name, <book>)
+  want hold, is-equal(config/rules/1/name, <code>)
+  want hold, is-equal(config/rules/2/name, <code>)
+  want hold, is-above(config/rules/0/take/length, 0)
+  want hold, is-above(config/rules/1/take/length, 0)
+  want hold, is-above(config/rules/2/take/length, 0)
+  want hold, is-equal(role-of(role-path/join(root, <book/cli/base.tree>), config), <book>)
+  want hold, is-equal(role-of(role-path/join(root, <book/cli/code/example.tree>), config), <code>)
+  want hold, is-equal(role-of(role-path/join(root, <book/web/view/example.tree>), config), <code>)
+  want hold, is-equal(role-of(role-path/join(root, <code/a/b.tree>), config), <code>)
+  want hold, is-null(role-of(role-path/join(root, <deck/make/code/x.tree>), config))
+
+# THE LEAN MARK. Scoping lean to a subtree depends on `matchRoleRule` returning the FIRST matching rule, and on one role
+# name being allowed to appear twice with different marks. lean-0010.
+test <the lean mark: carries the mark on the rule that declares it>
+  host rule, rule-of(</project/code/grammar/sound.tree>, read-roles(lean-first, </project>))
+  want hold, has-mark(rule, <lean>)
+
+test <the lean mark: leaves a rule that does not declare it unmarked>
+  host rule, rule-of(</project/code/other/thing.tree>, read-roles(lean-first, </project>))
+  want hold, is-equal(rule/name, <code>)
+  want hold, not(has-mark(rule, <lean>))
+
+test <the lean mark: a rule with no mark at all carries an empty list, never undefined>
+  host rule, rule-of(</project/book/page.tree>, read-roles(lean-first, </project>))
+  want hold, is-equal(json-of(rule/mark), <[]>)
+
+# WRITTEN ORDER IS THE PRECEDENCE. Both rules are called `code` and both match the grammar file; the narrower one is
+# written first, so it wins and the file is lean.
+test <the lean mark: the narrower rule written first wins, so both spellings keep one role name>
+  host config, read-roles(lean-first, </project>)
+  host grammar, rule-of(</project/code/grammar/sound.tree>, config)
+  host other, rule-of(</project/code/other/thing.tree>, config)
+  want hold, is-equal(grammar/name, <code>)
+  want hold, is-equal(other/name, <code>)
+  want hold, not(is-same(grammar, other))
+
+test <the lean mark: and the broad rule written first takes the mark away from the whole role>
+  host rule, rule-of(</project/code/grammar/sound.tree>, read-roles(lean-last, </project>))
+  want hold, not(has-mark(rule, <lean>))
+
+# THE MILL ROLE IS NOT LEAN, and this is the gate that says so. A grammar file is the one place where the heads ARE the
+# vocabulary under discussion, and a file describing how heads are read must not be read by a rule that rewrites
+# heads. lean-0026.
+
+# the mill file has to EXIST, or every test below passes by matching nothing
+test <the mill role stays out of lean: the mill grammar this gate is written against is on disk>
+  want hold, role-file/exists-sync(mill-file())
+
+# AND THE DETECTOR HAS TO FIRE, or the sweep passes while nobody marks lean at all
+test <the mill role stays out of lean: catches a lean rule whose glob reaches the mill grammar>
+  want hold, is-equal(lean-reaching(lean-over-mill, term-root())/length, 1)
+
+test <the mill role stays out of lean: and says nothing about the same glob without the mark>
+  want hold, is-equal(lean-reaching(plain-over-mill, term-root())/length, 0)
+
+test <the mill role stays out of lean: no role.tree in the tree marks lean over a mill grammar path>
+  host roots, role-roots()
+  want hold, is-above(roots/length, 1)
+  host offenders, make list
+  walk roots
+    take root, like text
+    walk lean-reaching(role-file/read-file-sync(role-path/join(root, <base>, <role.tree>), <utf8>), root)
+      take pattern, like text
+      offenders/push(<{root}: {pattern}>)
+  want hold, is-equal(json-of(offenders), <[]>)
+
+# `@term/mill` declares no role file of its own, so nothing there can be marked
+test <the mill role stays out of lean: deck/mill declares no role file of its own>
+  want hold, not(role-file/exists-sync(role-path/join(term-root(), <deck>, <mill>, <base>, <role.tree>)))

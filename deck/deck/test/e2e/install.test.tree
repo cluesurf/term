@@ -1,0 +1,627 @@
+note <term load end to end over a local npm-style registry: resolve, the lockfile, the manifest, dev links and offline mode>
+
+# Ported from install.test.ts by statement (item term-self-host-001-0626), one test per vitest `test`, in its order. The
+# original imported @/index, whose resolve, buildLockfile, cleanLinks, devLink, devUnlink, parseManifest, writeManifest,
+# parseCodeHold and showCode are the faces docked here (code/package/resolve, link and manifest, and code/code), the
+# same functions index re-exports. Decision 157: a suite whose subject is a face keeps docking it. Decision 153 rule 6:
+# this suite is gate 0137's proof. The original's beforeAll started one registry for the file and built a tarball of
+# every version: here each test that resolves starts its own registry, the same packages published at its own port,
+# and closes it once it has gathered what it asserts. No test fetched a tarball (resolve reads metadata only), so the
+# registry answers every tarball path 404, as the original did for one it had not built. Each test that writes
+# folders makes its own temporary folder and removes it, where the original removed its one folder after all.
+
+dock load
+  load <node:fs>, name install-file
+  load <node:os>, name install-os
+  load <node:path>, name install-path
+  load <node:http>, name install-http
+  load <node:events>, name install-events
+  load <@term/deck/code/package/resolve>, name resolve-face
+  load <@term/deck/code/package/link>, name link-face
+  load <@term/deck/code/package/manifest>, name manifest-face
+  load <@term/deck/code/code>, name code-face
+
+bind folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true, force: true })>>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# the message of what a call raised
+bind cause-message
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+# the resolved decks, in the map's order
+bind deck-list
+  take resolution, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$resolution.decks.values()]>
+
+# host reflect: a code hold whose `form` field is a word Term reserves
+bind exact-mark
+  take major, like number
+  take minor, like number
+  take patch, like number
+  like dynamic
+  case node
+    text <<({ form: "exact", code: { major: $major, minor: $minor, patch: $patch } })>>
+
+# one published version: its dependencies are the members of a JSON object, the empty text when it has none
+form published
+  link name, like text
+  link version, like text
+  link links, like text
+
+form registry
+  link server, like dynamic
+  link port, like number
+
+form deck-code
+  link major, like number
+  link minor, like number
+  link patch, like number
+
+form manifest-link
+  link name, like text
+  link mark, like dynamic
+
+form deck-manifest
+  link host, like text
+  link name, like text
+  link mark, like deck-code
+  link link, like list, like manifest-link
+
+form fetch-ask
+  link registry, like text
+  link concurrency, like number
+  link offline, like boolean
+
+form resolve-ask
+  link manifest, like deck-manifest
+  link config, like fetch-ask
+
+form resolve-again
+  link manifest, like deck-manifest
+  link config, like fetch-ask
+  link lockfile, like dynamic
+
+form lockfile-ask
+  link resolution, like dynamic
+
+form refusal
+  link raised, like boolean
+  link message, like text
+
+form text-input
+  link text, like text
+
+form manifest-write
+  link manifest, like dynamic
+
+form dev-link-ask
+  link root, like text
+  link package-dir, like text
+
+form dev-unlink-ask
+  link root, like text
+  link name, like text
+
+form root-ask
+  link root, like text
+
+# the packages the original's beforeAll seeded, in its order: a version added later is the latest
+task seeded
+  like list, like published
+
+  host out, make list
+  out/push(make(published, bind(name, <seed-e2e-leaf-a>), bind(version, <1.0.0>), bind(links, <>)))
+  out/push(make(published, bind(name, <seed-e2e-leaf-a>), bind(version, <1.0.2>), bind(links, <>)))
+  out/push(make(published, bind(name, <seed-e2e-leaf-a>), bind(version, <1.2.0>), bind(links, <>)))
+  out/push(make(published, bind(name, <seed-e2e-leaf-a>), bind(version, <2.0.0>), bind(links, <>)))
+  out/push(make(published, bind(name, <seed-e2e-leaf-b>), bind(version, <0.1.0>), bind(links, <>)))
+  out/push(make(published, bind(name, <seed-e2e-leaf-b>), bind(version, <0.2.0>), bind(links, <>)))
+  out/push(make(published, bind(name, <seed-e2e-mid-c>), bind(version, <1.0.0>), bind(links, <"seed-e2e-leaf-a":"^1.0.0">)))
+  out/push(make(published, bind(name, <seed-e2e-top-d>), bind(version, <1.0.0>), bind(links, <"seed-e2e-mid-c":"^1.0.0","seed-e2e-leaf-b":"^0.1.0">)))
+  back out
+
+# a package's metadata as the registry serves it: every version with its tarball, and the last one added as latest
+task meta-text
+  take name, like text
+  take port, like number
+  like text
+
+  save entries, <>
+  save latest, <>
+  walk seeded()
+    take one, like published
+    fork test, is-equal(one/name, name)
+      hold
+        save dependencies, <>
+        fork test, is-unequal(one/links, <>)
+          hold
+            save dependencies, <,"dependencies":\{{one/links}\}>
+        save entry, <"{one/version}":\{"dist":\{"shasum":"abc123","tarball":"http://localhost:{port}/{name}/-/{name}-{one/version}.tgz","integrity":""\}{dependencies}\}>
+        fork test, is-equal(entries, <>)
+          hold
+            save entries, entry
+          miss
+            save entries, <{entries},{entry}>
+        save latest, one/version
+  back <\{"name":"{name}","versions":\{{entries}\},"dist-tags":\{"latest":"{latest}"\}\}>
+
+# a tarball path is not found, a package's path answers its metadata, and any other path is not found
+task answer-registry
+  take metas, like dynamic
+  take request, like dynamic
+  take response, like dynamic
+  like void
+
+  host url, request/url
+  fork test, url/ends-with(<.tgz>)
+    hold
+      response/write-head(404)
+      response/end(<Not found>)
+      back
+  host rest, url/slice(1)
+  host lower, rest/replace-all(<%2f>, </>)
+  host name, lower/replace-all(<%2F>, </>)
+  fork test, metas/has(name)
+    hold
+      response/write-head(200, make list(<content-type>, <application/json>))
+      response/end(metas/get(name))
+      back
+  response/write-head(404)
+  response/end(<\{"error":"Not found"\}>)
+
+# the registry, listening at a free port, holding every seeded package
+task open-registry
+  like registry
+  mark async
+
+  host metas, make hash
+  save server
+    install-http/create-server
+      task
+        take request, like dynamic
+        take response, like dynamic
+        like void
+        answer-registry(metas, request, response)
+  server/listen(0)
+  save heard, wait install-events/once(server, <listening>)
+  host port, server/address()/port
+  walk seeded()
+    take one, like published
+    metas/set(one/name, meta-text(one/name, port))
+  back make(registry, bind(server, server), bind(port, port))
+
+task close-registry
+  take open, like registry
+  like void
+  mark async
+
+  open/server/close-all-connections()
+  open/server/close()
+  save closed, wait install-events/once(open/server, <close>)
+
+task config-of
+  take open, like registry
+  like fetch-ask
+
+  back make(fetch-ask, bind(registry, <http://localhost:{open/port}>), bind(concurrency, 4), bind(offline, false))
+
+task offline-config
+  take open, like registry
+  like fetch-ask
+
+  back make(fetch-ask, bind(registry, <http://localhost:{open/port}>), bind(concurrency, 4), bind(offline, true))
+
+task link-of
+  take name, like text
+  take hold, like text
+  like manifest-link
+
+  back make(manifest-link, bind(name, name), bind(mark, code-face/parse-code-hold(hold)))
+
+task manifest-of
+  take links, like list, like manifest-link
+  like deck-manifest
+
+  back make(deck-manifest, bind(host, <>), bind(name, <test-project>), bind(mark, make(deck-code, bind(major, 0), bind(minor, 1), bind(patch, 0))), bind(link, links))
+
+task one-link
+  take name, like text
+  take hold, like text
+  like deck-manifest
+
+  back manifest-of(make list(link-of(name, hold)))
+
+task resolved
+  take manifest, like deck-manifest
+  take config, like fetch-ask
+  like dynamic
+  mark async
+
+  back wait resolve-face/resolve(make(resolve-ask, bind(manifest, manifest), bind(config, config)))
+
+task resolved-over
+  take manifest, like deck-manifest
+  take config, like fetch-ask
+  take lockfile, like dynamic
+  like dynamic
+  mark async
+
+  back wait resolve-face/resolve(make(resolve-again, bind(manifest, manifest), bind(config, config), bind(lockfile, lockfile)))
+
+task lockfile-of
+  take resolution, like dynamic
+  like dynamic
+
+  back resolve-face/build-lockfile(make(lockfile-ask, bind(resolution, resolution)))
+
+# whether resolving raised, and its message
+task resolve-refusal
+  take manifest, like deck-manifest
+  take config, like fetch-ask
+  like refusal
+  mark async
+
+  save raised, false
+  save message, <>
+  fork
+    mark unsafe
+    save resolution, wait resolve-face/resolve(make(resolve-ask, bind(manifest, manifest), bind(config, config)))
+  halt take
+    take cause
+    save raised, true
+    save message, cause-message(cause)
+  back make(refusal, bind(raised, raised), bind(message, message))
+
+# the resolved deck named `name`, else void
+task deck-named
+  take resolution, like dynamic
+  take name, like text
+  like dynamic
+
+  walk deck-list(resolution)
+    take deck, like dynamic
+    fork test, is-equal(deck/name, name)
+      hold
+        back deck
+  back void
+
+task names-of
+  take resolution, like dynamic
+  like list, like text
+
+  host names, make list
+  walk deck-list(resolution)
+    take deck, like dynamic
+    names/push(deck/name)
+  back names
+
+# the lockfile entry named `name`, else void
+task entry-named
+  take lockfile, like dynamic
+  take name, like text
+  like dynamic
+
+  walk lockfile/decks
+    take one, like dynamic
+    fork test, is-equal(one/name, name)
+      hold
+        back one
+  back void
+
+task code-text
+  take code, like dynamic
+  like text
+
+  back code-face/show-code(code)
+
+task read-manifest
+  take text, like text
+  like dynamic
+
+  back manifest-face/parse-manifest(make(text-input, bind(text, text)))
+
+# a temporary folder of the test's own
+task work-folder
+  like text
+
+  back install-file/mkdtemp-sync(install-path/join(install-os/tmpdir(), <seed-e2e->))
+
+task folder-in
+  take work, like text
+  take name, like text
+  like text
+
+  host dir, install-path/join(work, name)
+  install-file/mkdir-sync(dir, folder-options(0))
+  back dir
+
+task write-decktree
+  take dir, like text
+  take content, like text
+  like void
+
+  install-file/write-file-sync(install-path/join(dir, <deck.tree>), content, <utf-8>)
+
+# whether reading a path's own entry raised, as a missing path does
+task lstat-refused
+  take place, like text
+  like boolean
+
+  save refused, false
+  fork
+    mark unsafe
+    save found, install-file/lstat-sync(place)
+  halt take
+    take cause
+    save refused, true
+  back refused
+
+task stat-refused
+  take place, like text
+  like boolean
+
+  save refused, false
+  fork
+    mark unsafe
+    save found, install-file/stat-sync(place)
+  halt take
+    take cause
+    save refused, true
+  back refused
+
+# whether cleaning the links of a folder raised
+task clean-refused
+  take root, like text
+  like boolean
+  mark async
+
+  save refused, false
+  fork
+    mark unsafe
+    save cleaned, wait link-face/clean-links(make(root-ask, bind(root, root)))
+  halt take
+    take cause
+    save refused, true
+  back refused
+
+test <resolve: resolves a single direct dependency>
+  host open, open-registry()
+  host result, resolved(one-link(<seed-e2e-leaf-a>, <1.x.x>), config-of(open))
+  close-registry(open)
+  want hold, not(is-below(result/decks/size, 1))
+  host leaf-a, deck-named(result, <seed-e2e-leaf-a>)
+  want hold, not(is-absent(leaf-a))
+  want hold, is-equal(leaf-a/code/major, 1)
+
+test <resolve: resolves wildcard to latest matching version>
+  host open, open-registry()
+  host result, resolved(one-link(<seed-e2e-leaf-a>, <1.x.x>), config-of(open))
+  close-registry(open)
+  host leaf-a, deck-named(result, <seed-e2e-leaf-a>)
+  want hold, not(is-absent(leaf-a))
+  # should pick 1.2.0 (latest 1.x.x)
+  want hold, is-equal(leaf-a/code/minor, 2)
+  want hold, is-equal(leaf-a/code/patch, 0)
+
+test <resolve: resolves exact version>
+  host open, open-registry()
+  host link, make(manifest-link, bind(name, <seed-e2e-leaf-a>), bind(mark, exact-mark(1, 0, 2)))
+  host result, resolved(manifest-of(make list(link)), config-of(open))
+  close-registry(open)
+  host leaf-a, deck-named(result, <seed-e2e-leaf-a>)
+  want hold, not(is-absent(leaf-a))
+  want hold, is-equal(code-text(leaf-a/code), <1.0.2>)
+
+test <resolve: resolves transitive dependencies>
+  host open, open-registry()
+  host result, resolved(one-link(<seed-e2e-mid-c>, <1.x.x>), config-of(open))
+  close-registry(open)
+  host names, names-of(result)
+  want hold, names/includes(<seed-e2e-mid-c>)
+  want hold, names/includes(<seed-e2e-leaf-a>)
+
+test <resolve: resolves deep transitive dependencies>
+  host open, open-registry()
+  host result, resolved(one-link(<seed-e2e-top-d>, <1.x.x>), config-of(open))
+  close-registry(open)
+  host names, names-of(result)
+  want hold, names/includes(<seed-e2e-top-d>)
+  want hold, names/includes(<seed-e2e-mid-c>)
+  want hold, names/includes(<seed-e2e-leaf-a>)
+  want hold, names/includes(<seed-e2e-leaf-b>)
+
+test <resolve: throws on non-existent package>
+  host open, open-registry()
+  host refused, resolve-refusal(one-link(<seed-e2e-does-not-exist>, <1.x.x>), config-of(open))
+  close-registry(open)
+  want hold, refused/raised
+
+test <resolve: throws on no matching version>
+  host open, open-registry()
+  host refused, resolve-refusal(one-link(<seed-e2e-leaf-a>, <99.x.x>), config-of(open))
+  close-registry(open)
+  want hold, refused/raised
+  want hold, refused/message/includes(<No version>)
+
+test <resolve: resolves multiple direct dependencies>
+  host open, open-registry()
+  host links, make list(link-of(<seed-e2e-leaf-a>, <1.x.x>), link-of(<seed-e2e-leaf-b>, <0.x.x>))
+  host result, resolved(manifest-of(links), config-of(open))
+  close-registry(open)
+  host names, names-of(result)
+  want hold, names/includes(<seed-e2e-leaf-a>)
+  want hold, names/includes(<seed-e2e-leaf-b>)
+
+test <resolve: resolves band constraint>
+  host open, open-registry()
+  host result, resolved(one-link(<seed-e2e-leaf-a>, <1.0.0..1.1.0>), config-of(open))
+  close-registry(open)
+  host leaf-a, deck-named(result, <seed-e2e-leaf-a>)
+  want hold, not(is-absent(leaf-a))
+  # should pick 1.0.2 (latest in range 1.0.0..1.1.0)
+  want hold, is-equal(leaf-a/code/major, 1)
+  want hold, is-equal(leaf-a/code/minor, 0)
+
+test <lockfile: buildLockfile creates valid lockfile from resolution>
+  host open, open-registry()
+  host result, resolved(one-link(<seed-e2e-mid-c>, <1.x.x>), config-of(open))
+  close-registry(open)
+  host lockfile, lockfile-of(result)
+  want hold, is-equal(lockfile/version, 1)
+  want hold, not(is-below(lockfile/decks/length, 2))
+  host mid-c, entry-named(lockfile, <seed-e2e-mid-c>)
+  want hold, not(is-absent(mid-c))
+  want hold, mid-c/site/includes(<http>)
+
+test <lockfile: lockfile preserves resolved versions on re-resolve>
+  host open, open-registry()
+  host manifest, one-link(<seed-e2e-leaf-a>, <1.x.x>)
+  host config, config-of(open)
+  host resolution1, resolved(manifest, config)
+  host lockfile, lockfile-of(resolution1)
+  host resolution2, resolved-over(manifest, config, lockfile)
+  close-registry(open)
+  host v1, deck-named(resolution1, <seed-e2e-leaf-a>)
+  host v2, deck-named(resolution2, <seed-e2e-leaf-a>)
+  want hold, is-equal(code-text(v1/code), code-text(v2/code))
+
+test <lockfile: lockfile includes transitive dependency metadata>
+  host open, open-registry()
+  host result, resolved(one-link(<seed-e2e-top-d>, <1.x.x>), config-of(open))
+  close-registry(open)
+  host lockfile, lockfile-of(result)
+  host top-d, entry-named(lockfile, <seed-e2e-top-d>)
+  want hold, not(is-absent(top-d))
+  want hold, is-equal(top-d/link/length, 2)
+  host dep-names, make list
+  walk top-d/link
+    take one, like dynamic
+    dep-names/push(one/name)
+  want hold, dep-names/includes(<seed-e2e-mid-c>)
+  want hold, dep-names/includes(<seed-e2e-leaf-b>)
+
+test <manifest: parseManifest and writeManifest round-trip>
+  host manifest, read-manifest(<deck @myorg/mypackage\n  mark \<1.2.4\>\n  head \<A test package\>\n  link seed-e2e-leaf-a, mark \<1.x.x\>\n  link seed-e2e-leaf-b, mark \<0.1.0..1.0.0\>>)
+  want hold, is-equal(manifest/host, <myorg>)
+  want hold, is-equal(manifest/name, <mypackage>)
+  want hold, is-equal(json-text(manifest/mark), <\{"major":1,"minor":2,"patch":4\}>)
+  want hold, is-equal(manifest/link/length, 2)
+  host written, manifest-face/write-manifest(make(manifest-write, bind(manifest, manifest)))
+  host reparsed, read-manifest(written)
+  want hold, is-equal(reparsed/host, <myorg>)
+  want hold, is-equal(reparsed/name, <mypackage>)
+  want hold, is-equal(reparsed/link/length, 2)
+
+test <manifest: parseManifest handles unscoped package>
+  host manifest, read-manifest(<deck simple-pkg\n  code \<0.1.0\>>)
+  want hold, is-equal(manifest/host, <>)
+  want hold, is-equal(manifest/name, <simple-pkg>)
+
+test <manifest: parseManifest reads hooks>
+  host manifest, read-manifest(<deck test-pkg\n  code \<1.0.0\>\n  hook build, task tsc\n  hook test, task vitest run>)
+  want hold, not(is-absent(manifest/hook))
+  want hold, is-equal(manifest/hook/build, <tsc>)
+  want hold, is-equal(manifest/hook/test, <vitest run>)
+
+test <devLink and devUnlink: devLink creates symlink to local package>
+  host work, work-folder()
+  host project-dir, folder-in(work, <devlink-project>)
+  host local-pkg-dir, folder-in(work, <devlink-pkg>)
+  write-decktree(project-dir, <deck test-project\n  code \<0.1.0\>>)
+  write-decktree(local-pkg-dir, <deck @myorg/local-pkg\n  code \<0.1.0\>>)
+  host linked, wait link-face/dev-link(make(dev-link-ask, bind(root, project-dir), bind(package-dir, local-pkg-dir)))
+  host link-path, install-path/join(project-dir, <link>, <@myorg>, <local-pkg>)
+  host stat, install-file/lstat-sync(link-path)
+  host is-link, stat/is-symbolic-link()
+  host target, install-file/readlink-sync(link-path)
+  host reached, install-path/resolve(install-path/dirname(link-path), target)
+  host wanted, install-path/resolve(local-pkg-dir)
+  install-file/rm-sync(work, folder-options(0))
+  want hold, is-link
+  want hold, is-equal(reached, wanted)
+
+test <devLink and devUnlink: devUnlink removes the symlink>
+  host work, work-folder()
+  host project-dir, folder-in(work, <devunlink-project>)
+  host local-pkg-dir, folder-in(work, <devunlink-pkg>)
+  write-decktree(project-dir, <deck test-project\n  code \<0.1.0\>>)
+  write-decktree(local-pkg-dir, <deck @myorg/local-pkg\n  code \<0.1.0\>>)
+  host linked, wait link-face/dev-link(make(dev-link-ask, bind(root, project-dir), bind(package-dir, local-pkg-dir)))
+  host unlinked, wait link-face/dev-unlink(make(dev-unlink-ask, bind(root, project-dir), bind(name, <@myorg/local-pkg>)))
+  host link-path, install-path/join(project-dir, <link>, <@myorg>, <local-pkg>)
+  host gone, lstat-refused(link-path)
+  install-file/rm-sync(work, folder-options(0))
+  want hold, gone
+
+test <devLink and devUnlink: devLink with unscoped package>
+  host work, work-folder()
+  host project-dir, folder-in(work, <devlink-unscoped>)
+  host local-pkg-dir, folder-in(work, <devlink-unscoped-pkg>)
+  write-decktree(project-dir, <deck test-project\n  code \<0.1.0\>>)
+  write-decktree(local-pkg-dir, <deck local-pkg\n  code \<0.1.0\>>)
+  host linked, wait link-face/dev-link(make(dev-link-ask, bind(root, project-dir), bind(package-dir, local-pkg-dir)))
+  host link-path, install-path/join(project-dir, <link>, <local-pkg>)
+  host stat, install-file/lstat-sync(link-path)
+  host is-link, stat/is-symbolic-link()
+  install-file/rm-sync(work, folder-options(0))
+  want hold, is-link
+
+test <cleanLinks: removes the entire link directory>
+  host work, work-folder()
+  host dir, folder-in(work, <clean>)
+  host link-dir, install-path/join(dir, <link>)
+  install-file/mkdir-sync(install-path/join(link-dir, <some-pkg>), folder-options(0))
+  install-file/write-file-sync(install-path/join(link-dir, <some-pkg>, <index.js>), <test>)
+  host cleaned, wait link-face/clean-links(make(root-ask, bind(root, dir)))
+  host gone, stat-refused(link-dir)
+  install-file/rm-sync(work, folder-options(0))
+  want hold, gone
+
+test <cleanLinks: cleanLinks is idempotent on missing dir>
+  host work, work-folder()
+  host dir, folder-in(work, <clean-noop>)
+  # no link dir exists
+  host refused, clean-refused(dir)
+  install-file/rm-sync(work, folder-options(0))
+  # should not throw
+  want hold, not(refused)
+
+test <offline mode: resolve throws in offline mode without lockfile>
+  host open, open-registry()
+  host refused, resolve-refusal(one-link(<seed-e2e-leaf-a>, <1.x.x>), offline-config(open))
+  close-registry(open)
+  want hold, refused/raised
+  want hold, refused/message/includes(<offline>)
+
+test <offline mode: resolve works offline with lockfile>
+  host open, open-registry()
+  host manifest, one-link(<seed-e2e-leaf-a>, <1.x.x>)
+  # first resolve online to get lockfile
+  host resolution1, resolved(manifest, config-of(open))
+  host lockfile, lockfile-of(resolution1)
+  # now resolve offline with the lockfile
+  host resolution2, resolved-over(manifest, offline-config(open), lockfile)
+  close-registry(open)
+  host v1, deck-named(resolution1, <seed-e2e-leaf-a>)
+  host v2, deck-named(resolution2, <seed-e2e-leaf-a>)
+  want hold, is-equal(code-text(v1/code), code-text(v2/code))

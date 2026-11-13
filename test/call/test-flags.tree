@@ -1,0 +1,172 @@
+note <`term test --case` and `term test --env`, run as a person runs them on a project of one task and three tests>
+
+# Ported from test-flags.ts by statement (item term-self-host-001-0605), one test per `ok` in its order. A project of
+# one task and three tests, one of which does not hold, run by the `term` under test (@term/test/self): whole, one test
+# by its phrase, a phrase no test holds, and on each native backend this machine has the toolchain for, where the same
+# test must fail on the same line. A test inside the original's loop over the native backends is walked over them
+# here, and a backend without its toolchain skips its case, as the original skipped its turn. The child collects only
+# the temporary project's own test folder, never this one (T-0705).
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load ../support/running
+  find missing-tools
+
+load @term/base/process/run
+  find run-result
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/text
+  find contains
+
+host manifest-text, <deck @probe/flags\n  mark \<0.0.1\>\n>
+
+host math-text, <task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n>
+
+# the fixture's third test fails, on line 11
+host math-test-text, <load ../code/math\n  find double\n\ntest \<double of two is four\>\n  want hold, is-equal double(2), 4\n\ntest \<double of zero is zero\>\n  want hold, is-equal double(0), 0\n\ntest \<double of one is three\>\n  want hold, is-equal double(1), 3\n>
+
+host natives, make list(<rust>, <swift>, <kotlin>)
+
+form flags-state
+  mark shared
+  link made, like boolean
+  link root, like text
+
+host flags-now, make(flags-state, bind(made, false), bind(root, <>))
+
+task the-project
+  like text
+
+  fork test, flags-now/made
+    hold
+      back flags-now/root
+  save root, temp-folder(<test-flags->)
+  make-folder(<{root}/code>)
+  make-folder(<{root}/test>)
+  write-file(<{root}/deck.tree>, manifest-text)
+  write-file(<{root}/code/math.tree>, math-text)
+  write-file(<{root}/test/math.tree>, math-test-text)
+  save flags-now/root, root
+  save flags-now/made, true
+  back root
+
+form flags-run
+  link code, like number
+  link out, like text
+
+# `term test` in the project with these arguments, then `--color never`, both streams read as one
+task run-test
+  take arguments, like list, like text
+  like flags-run
+  mark async
+
+  save argument-list, make list(<test>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(<--color>)
+  argument-list/push(<never>)
+  save ran, run-self(argument-list, the-project(), 600000)
+  back make(flags-run, bind(code, ran/code), bind(out, <{ran/output}{ran/error}>))
+
+# the tools a native backend's case needs, as the original named them
+task tools-of
+  take env, like text
+  like list, like text
+
+  fork test, is-equal(env, <rust>)
+    hold
+      back make list(<cargo>)
+  fork test, is-equal(env, <swift>)
+    hold
+      back make list(<swiftc>)
+  back make list(<kotlinc>, <java>)
+
+test <whole: two of three hold>
+  save whole, run-test(make list)
+  want hold, contains(whole/out, <3 tests · 2 passed · 1 failed>)
+  want hold, is-equal(whole/code, 1)
+
+test <--case runs the one test whose phrase holds it>
+  save one, run-test(make list(<--case>, <zero>))
+  want hold, contains(one/out, <1 test · 1 passed>)
+  want hold, is-equal(one/code, 0)
+
+test <in any case, and the one it names fails>
+  save named, run-test(make list(<--case>, <DOUBLE OF ONE>))
+  want hold, contains(named/out, <1 test · 0 passed · 1 failed>)
+  want hold, is-equal(named/code, 1)
+
+test <a phrase no test holds is no pass>
+  save none, run-test(make list(<--case>, <nothing-like-this>))
+  want hold, contains(none/out, <No test matched>)
+  want hold, is-unequal(none/code, 0)
+
+test <a backend term test does not run on is refused>
+  save strange, run-test(make list(<--env>, <cobol>))
+  want hold, contains(strange/out, <not on cobol>)
+  want hold, is-unequal(strange/code, 0)
+
+form native-runs
+  mark shared
+  link envs, like list, like text
+  link runs, like list, like flags-run
+
+host native-now, make(native-runs, bind(envs, make list), bind(runs, make list))
+
+# the whole run on a native backend, once: the original read one run for its first two `ok`s
+task native-run
+  take env, like text
+  like flags-run
+  mark async
+
+  save at, 0
+  walk native-now/envs
+    take one, like text
+    fork test, is-equal(one, env)
+      hold
+        back native-now/runs/{at}
+    save at, add(at, 1)
+  save ran, run-test(make list(<--env>, env))
+  native-now/envs/push(env)
+  native-now/runs/push(ran)
+  back ran
+
+test <on a native backend: two of three hold>
+  take env, like text
+    walk natives
+  fork test, is-unequal(missing-tools(tools-of(env)), <>)
+    hold
+      skip <its toolchain is not here>
+  save native, native-run(env)
+  want hold, contains(native/out, <3 tests · 2 passed · 1 failed>)
+  want hold, is-equal(native/code, 1)
+
+test <on a native backend: the failing test names its line>
+  take env, like text
+    walk natives
+  fork test, is-unequal(missing-tools(tools-of(env)), <>)
+    hold
+      skip <its toolchain is not here>
+  save native, native-run(env)
+  want hold, contains(native/out, <line 11 did not hold on {env}>)
+
+test <on a native backend: --case runs the one test>
+  take env, like text
+    walk natives
+  fork test, is-unequal(missing-tools(tools-of(env)), <>)
+    hold
+      skip <its toolchain is not here>
+  save chosen, run-test(make list(<--env>, env, <--case>, <four>))
+  want hold, contains(chosen/out, <1 test · 1 passed>)
+  want hold, is-equal(chosen/code, 0)

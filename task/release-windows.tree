@@ -22,7 +22,15 @@
 #
 #   TERM_MACHINE_MODULE=<machine.ts> node host/line.js boot task/release.tree -- windows --stage <dir> --out <tar.gz>
 #     [--hours 2] [--fail-at tools|native|packed|smoke]   throw at that step, to prove the machine still ends (never
-#     in a release)
+#     in a release) [--early]   started before the stage exists (THE EARLY START)
+#
+# THE EARLY START (term-self-host-001-1263). Renting and booting the machine took 3.3 minutes of the release of
+# 2026-11-11, and the toolchain check and the Windows build of term.exe most of the rest of its 6.6, all after the
+# other platforms were packed. With --early the release starts this child at its first step, before its port build, so
+# steps 1 to 3 run while the release builds and packs: the machine is rented, its toolchain checked and term.exe built
+# there, and then the child says `waiting` and reads its stdin. The release writes `go` once windows-x64 is staged, and
+# only then is term.exe brought into the stage, packed and smoke-run. Its stdin ending without `go` (the release failed
+# or ended first) is a failure here like any other, so the machine is destroyed as after one.
 #
 # Ported from task/release-windows.ts (item term-self-host-001-0717).
 #
@@ -55,6 +63,7 @@ form windows-context
   link cross, like text
   link sent, like text
   link fail-at, like text
+  link early, like boolean
   link machines, like dynamic
 
 form windows-answer
@@ -110,6 +119,18 @@ bind failed-said
   like dynamic
   case node
     text <<({ form: "failed", message: $message })>>
+
+bind waiting-said
+  like dynamic
+  case node
+    text <<({ form: "waiting" })>>
+
+# THE EARLY START's go: true once a line `go` arrives on stdin, false when stdin ends without one. stdin is let go
+# after, so it holds the process open no longer
+bind stdin-go
+  like dynamic
+  case node
+    text <<new Promise((settle_) => { let done_ = false; const lines_ = require("node:readline").createInterface({ input: process.stdin }); const end_ = (went_) => { if (!done_) { done_ = true; lines_.close(); process.stdin.destroy(); settle_(went_) } }; lines_.on("line", (line_) => { if (line_.trim() === "go") end_(true) }); lines_.on("close", () => end_(false)) })>>
 
 bind error-message
   take problem, like dynamic
@@ -321,6 +342,56 @@ task halt-when-stopped
     hook hold
       call raise-error, text <stopped>
 
+# the stage holds a staged term/ (bin\term.cmd in it), and both paths are given
+task check-staged
+  take stage, like text
+  take out, like text
+  like void
+  fork test
+    hook test
+      call or
+        call is-equal
+          read stage
+          text <>
+        call or
+          call is-equal
+            read out
+            text <>
+          call not
+            call node-fs/exists-sync
+              call node-path/join
+                read stage
+                text <term>
+                text <bin>
+                text <term.cmd>
+    hook hold
+      call raise-error, text <--stage \<dir\> holding a staged term/ (bin\\term.cmd in it) and --out \<tar.gz\> are needed>
+
+# THE EARLY START: wait for the release's `go`, then for a staged term/. Without --early the stage was checked at the
+# start, so nothing waits
+task wait-staged
+  mark async
+  take context, like windows-context
+  like void
+  fork test
+    hook test
+      read context/early
+    hook hold
+      call say-line
+        call waiting-said
+      save went
+        call stdin-go
+          wait true
+      fork test
+        hook test
+          call not
+            read went
+        hook hold
+          call raise-error, text <the release ended before windows-x64 was staged>
+      call check-staged
+        read context/stage
+        read context/out
+
 # the smoke run's script, one PowerShell line each
 task smoke-script
   like text
@@ -415,6 +486,18 @@ task work-on-windows
       read machine
       text <cd /d %USERPROFILE%\\{remote}\\launcher && set CGO_ENABLED=0&& set GOOS=windows&& set GOARCH=amd64&& go build -trimpath -ldflags "-s -w" -o term.exe term.go>
       code 600000
+  fork test
+    hook test
+      call not
+        call is-exit-zero
+          read built
+    hook hold
+      call raise-error, text <term.exe was not built there:\n{ran-stdout(built)}{ran-stderr(built)}>
+  # with --early, the stage is only now staged: everything above ran while the release built and packed
+  call wait-staged
+    read context
+  call halt-when-stopped
+    read stopped
   save exe
     call node-path/join
       read context/stage
@@ -426,16 +509,12 @@ task work-on-windows
     call force-options
   fork test
     hook test
-      call or
-        call not
-          call is-exit-zero
-            read built
-        call not
-          call machine-ship-out
-            read machines
-            read machine
-            text <{remote}/launcher/term.exe>
-            read exe
+      call not
+        call machine-ship-out
+          read machines
+          read machine
+          text <{remote}/launcher/term.exe>
+          read exe
     hook hold
       call raise-error, text <term.exe was not built there:\n{ran-stdout(built)}{ran-stderr(built)}>
   save native
@@ -570,30 +649,32 @@ task release-on-windows
   take out, like text
   take hours, like number
   take fail-at, like text
+  take early, like boolean
   like void
   save machines, text <>
   save loaded, false
   fork
     mark unsafe
+    # with --early the stage is staged later (wait-staged), so only the two paths are asked for here
     fork test
       hook test
-        call or
-          call is-equal
-            read stage
-            text <>
-          call or
-            call is-equal
-              read out
-              text <>
-            call not
-              call node-fs/exists-sync
-                call node-path/join
-                  read stage
-                  text <term>
-                  text <bin>
-                  text <term.cmd>
+        read early
       hook hold
-        call raise-error, text <--stage \<dir\> holding a staged term/ (bin\\term.cmd in it) and --out \<tar.gz\> are needed>
+        fork test
+          hook test
+            call or
+              call is-equal
+                read stage
+                text <>
+              call is-equal
+                read out
+                text <>
+          hook hold
+            call raise-error, text <--stage \<dir\> and --out \<tar.gz\> are needed>
+      hook miss
+        call check-staged
+          read stage
+          read out
     save launcher
       call node-path/join
         read root
@@ -687,6 +768,7 @@ task release-on-windows
         bind cross, read cross
         bind sent, read sent
         bind fail-at, read fail-at
+        bind early, read early
         bind machines, read machines
     save session
       call open-session

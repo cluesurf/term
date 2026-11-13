@@ -1,0 +1,2102 @@
+note <the language server against today's language and protocol: lean, roles, scope, placement, tests, keywords, lint, pull, timing, sync, robust, memory, buffers, workspace and features>
+
+# Ported from current.ts by statement (item term-self-host-001-0595), one test per `ok` in its order (118). The server
+# is driven through its ports with the messages an editor sends: @term/flow's language-server and request-loop are the
+# subject (decision 106). Each block of the original is one sequence, run once by the first test that asks for it, and
+# it keeps each `ok`'s condition as a named fact that its test reads. The original's loops over literal lists (the
+# CLI's lean files, the fork dialect's files, the two readers, the ten words, the five edits) are one test per element.
+# A package root on disk (decision 098 rule 5) is a temporary folder with a deck.tree and, for a reader, a role.tree.
+# A resolver a block gives the server is a Term task over a shared table of module texts.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/clock
+  find sleep
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+  find starts-with
+  find ends-with
+  find contains, name text-contains
+  find replace, name text-replace
+  find substring
+  find char-count
+
+load ../support/judging
+  find make-record
+  find empty-record
+  find empty-list
+  find set-field
+  find read-field
+  find read-at
+  find truth
+
+load ../support/compiling
+  find file-text
+
+load ../support/cli
+  find term-root
+
+dock load
+  load <@term/flow/code/language-server>, name flow-server
+  load <@term/flow/code/request-loop>, name flow-loop
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+  load <node:url>, name dock-url
+
+bind file-uri
+  take url, like dynamic
+  like text
+  case node
+    text <$url.href>
+
+bind is-null
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === null)>
+
+bind is-undefined
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind no-value
+  like dynamic
+  case node
+    text <undefined>
+
+bind null-value
+  like dynamic
+  case node
+    text <null>
+
+# host value: a missing list reads as none, `items ?? []`
+bind or-empty
+  take items, like dynamic
+  like dynamic
+  case node
+    text <($items ?? [])>
+
+bind is-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+bind is-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+# host value: a message as the wire carries it, to look for a word anywhere in it
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <(JSON.stringify($value) ?? "")>
+
+# host value: a column in UTF-16 units, as the protocol counts it past an emoji
+bind wide-index-of
+  take value, like text
+  take search, like text
+  like number
+  case node
+    text <$value.indexOf($search)>
+
+# host value: the last such column
+bind wide-last-index-of
+  take value, like text
+  take search, like text
+  like number
+  case node
+    text <$value.lastIndexOf($search)>
+
+# host value: three control characters, which a Term literal cannot spell
+bind control-text
+  like text
+  case node
+    text <"\u0000\u0001\u0002">
+
+host root, term-root()
+
+# ---- the facts each block keeps, and the blocks already run ----
+
+form facts-run
+  mark shared
+  link made, like hash, like text, like boolean
+  link facts, like hash, like text, like boolean
+  link next, like number
+
+host run-now, make(facts-run, bind(made, make hash), bind(facts, make hash), bind(next, 1))
+
+# true the first time a block asks, so each block runs once
+task first-time
+  take name, like text
+  like boolean
+
+  fork test, run-now/made/has(name)
+    hold
+      back false
+  run-now/made/set(name, true)
+  back true
+
+task hold-fact
+  take name, like text
+  take value, like boolean
+  like void
+
+  run-now/facts/set(name, value)
+
+# a fact the block kept, false when it never got that far
+task fact
+  take name, like text
+  like boolean
+
+  fork test, run-now/facts/has(name)
+    hold
+      back run-now/facts/get(name)
+  back false
+
+task next-id
+  like number
+
+  save id, run-now/next
+  save run-now/next, add(id, 1)
+  back id
+
+# ---- the server ----
+
+task serve
+  take options, like dynamic
+  like dynamic
+
+  back flow-server/make-language-server(options)
+
+task serve-plain
+  like dynamic
+
+  back serve(empty-record())
+
+task deliver
+  take server, like dynamic
+  take message, like dynamic
+  like list, like dynamic
+  mark async
+
+  set-field(message, <jsonrpc>, <2.0>)
+  back wait flow-loop/dispatch(server, message)
+
+# the answer to a request, by its id
+task request
+  take server, like dynamic
+  take method, like text
+  take params, like dynamic
+  like dynamic
+  mark async
+
+  save id, next-id()
+  save out, deliver(server, make-record(make(list, <id>, id, <method>, method, <params>, params)))
+  walk out
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <id>), id)
+      hold
+        back one
+  back no-value()
+
+task result-of
+  take server, like dynamic
+  take method, like text
+  take params, like dynamic
+  like dynamic
+  mark async
+
+  back read-field(request(server, method, params), <result>)
+
+task notify
+  take server, like dynamic
+  take method, like text
+  take params, like dynamic
+  like list, like dynamic
+  mark async
+
+  back deliver(server, make-record(make(list, <method>, method, <params>, params)))
+
+task document
+  take uri, like text
+  like dynamic
+
+  back make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri))))
+
+task open
+  take server, like dynamic
+  take uri, like text
+  take text, like text
+  take version, like number, fall 1
+  like list, like dynamic
+  mark async
+
+  back notify(server, <textDocument/didOpen>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri, <languageId>, <tree>, <version>, version, <text>, text)))))
+
+task change
+  take server, like dynamic
+  take uri, like text
+  take version, like number
+  take text, like text
+  like list, like dynamic
+  mark async
+
+  save changes, empty-list()
+  changes/push(make-record(make(list, <text>, text)))
+  back notify(server, <textDocument/didChange>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri, <version>, version)), <contentChanges>, changes)))
+
+task ranged-change
+  take server, like dynamic
+  take uri, like text
+  take version, like number
+  take ranged, like dynamic
+  take text, like text
+  like list, like dynamic
+  mark async
+
+  save changes, empty-list()
+  changes/push(make-record(make(list, <range>, ranged, <text>, text)))
+  back notify(server, <textDocument/didChange>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri, <version>, version)), <contentChanges>, changes)))
+
+task close
+  take server, like dynamic
+  take uri, like text
+  like list, like dynamic
+  mark async
+
+  back notify(server, <textDocument/didClose>, document(uri))
+
+# the diagnostics published for the uri, undefined when none was
+task published
+  take out, like dynamic
+  take uri, like text
+  like dynamic
+
+  walk out
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <method>), <textDocument/publishDiagnostics>)
+      hold
+        save params, read-field(one, <params>)
+        fork test, is-equal(read-field(params, <uri>), uri)
+          hold
+            back read-field(params, <diagnostics>)
+  back no-value()
+
+task errors
+  take found, like dynamic
+  like list, like dynamic
+
+  save out, empty-list()
+  walk or-empty(found)
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <severity>), 1)
+      hold
+        out/push(one)
+  back out
+
+task count-of
+  take items, like dynamic
+  like number
+
+  save count, 0
+  walk or-empty(items)
+    take one, like dynamic
+    save count, add(count, 1)
+  back count
+
+task error-count
+  take out, like dynamic
+  take uri, like text
+  like number
+
+  back count-of(errors(published(out, uri)))
+
+task position
+  take line, like number
+  take character, like number
+  like dynamic
+
+  back make-record(make(list, <line>, line, <character>, character))
+
+task span
+  take start, like dynamic
+  take end, like dynamic
+  like dynamic
+
+  back make-record(make(list, <start>, start, <end>, end))
+
+task start-line
+  take ranged, like dynamic
+  like number
+
+  back read-field(read-field(read-field(ranged, <range>), <start>), <line>)
+
+task start-character
+  take ranged, like dynamic
+  like number
+
+  back read-field(read-field(read-field(ranged, <range>), <start>), <character>)
+
+task end-character
+  take ranged, like dynamic
+  like number
+
+  back read-field(read-field(read-field(ranged, <range>), <end>), <character>)
+
+task message-of
+  take one, like dynamic
+  like text
+
+  save message, read-field(one, <message>)
+  fork test, is-text(message)
+    hold
+      back message
+  back <>
+
+task data-name
+  take one, like dynamic
+  like dynamic
+
+  back read-field(read-field(one, <data>), <name>)
+
+task some-named
+  take items, like dynamic
+  take name, like text
+  like boolean
+
+  walk or-empty(items)
+    take one, like dynamic
+    fork test, is-equal(data-name(one), name)
+      hold
+        back true
+  back false
+
+task first-named
+  take items, like dynamic
+  take name, like text
+  like dynamic
+
+  walk or-empty(items)
+    take one, like dynamic
+    fork test, is-equal(data-name(one), name)
+      hold
+        back one
+  back no-value()
+
+task some-message-holding
+  take items, like dynamic
+  take word, like text
+  like boolean
+
+  walk or-empty(items)
+    take one, like dynamic
+    fork test, text-contains(message-of(one), word)
+      hold
+        back true
+  back false
+
+task some-message-matching
+  take items, like dynamic
+  take shape, like pattern
+  like boolean
+
+  walk or-empty(items)
+    take one, like dynamic
+    fork test, matches(shape, message-of(one))
+      hold
+        back true
+  back false
+
+task some-field
+  take items, like dynamic
+  take field, like text
+  take value, like dynamic
+  like boolean
+
+  walk or-empty(items)
+    take one, like dynamic
+    fork test, is-equal(read-field(one, field), value)
+      hold
+        back true
+  back false
+
+task first-field
+  take items, like dynamic
+  take field, like text
+  take value, like dynamic
+  like dynamic
+
+  walk or-empty(items)
+    take one, like dynamic
+    fork test, is-equal(read-field(one, field), value)
+      hold
+        back one
+  back no-value()
+
+task lines
+  take text, like text
+  like list, like text
+
+  back text-split(text, <\n>)
+
+# the index of the first line holding the needle, -1 for none
+task line-holding
+  take text, like text
+  take needle, like text
+  like number
+
+  save index, 0
+  walk lines(text)
+    take one, like text
+    fork test, text-contains(one, needle)
+      hold
+        back index
+    save index, add(index, 1)
+  back -1
+
+task line-starting
+  take text, like text
+  take prefix, like text
+  like number
+
+  save index, 0
+  walk lines(text)
+    take one, like text
+    fork test, starts-with(one, prefix)
+      hold
+        back index
+    save index, add(index, 1)
+  back -1
+
+task line-number
+  take text, like text
+  take index, like number
+  like text
+
+  save all, lines(text)
+  fork test, and(is-above(index, -1), is-below(index, all/length))
+    hold
+      back all/{index}
+  back <>
+
+task repeat-text
+  take piece, like text
+  take times, like number
+  like text
+
+  save out, <>
+  save index, 0
+  walk test
+    hook test, is-below(index, times)
+    hook hold
+      save out, <{out}{piece}>
+      save index, add(index, 1)
+  back out
+
+task holds-number
+  take numbers, like list, like number
+  take wanted, like number
+  like boolean
+
+  walk numbers
+    take one, like number
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+# where a position falls in a text, in characters from its start
+task offset-of
+  take all, like list, like text
+  take place, like dynamic
+  like number
+
+  save total, 0
+  save index, 0
+  save line, read-field(place, <line>)
+  walk test
+    hook test, is-below(index, line)
+    hook hold
+      save total, add(total, add(char-count(all/{index}), 1))
+      save index, add(index, 1)
+  back add(total, read-field(place, <character>))
+
+# apply LSP text edits to a text, the last first
+task apply-edits
+  take text, like text
+  take edits, like dynamic
+  like text
+
+  save all, lines(text)
+  save starts, make list
+  save ends, make list
+  save news, make list
+  walk or-empty(edits)
+    take edit, like dynamic
+    save ranged, read-field(edit, <range>)
+    starts/push(offset-of(all, read-field(ranged, <start>)))
+    ends/push(offset-of(all, read-field(ranged, <end>)))
+    news/push(read-field(edit, <newText>))
+  save used, make list
+  save out, text
+  walk test
+    hook test, is-below(used/length, starts/length)
+    hook hold
+      save best, -1
+      save index, 0
+      walk starts
+        take start, like number
+        fork test, not(holds-number(used, index))
+          hold
+            fork test, is-equal(best, -1)
+              hold
+                save best, index
+              miss
+                fork test, is-above(start, starts/{best})
+                  hold
+                    save best, index
+        save index, add(index, 1)
+      used/push(best)
+      save out, <{substring(out, 0, starts/{best})}{news/{best}}{substring(out, ends/{best})}>
+  back out
+
+# the edits a code action's workspace edit makes to one document
+task edits-for
+  take action, like dynamic
+  take uri, like text
+  like dynamic
+
+  back read-field(read-field(read-field(action, <edit>), <changes>), uri)
+
+task title-of
+  take one, like dynamic
+  like text
+
+  save title, read-field(one, <title>)
+  fork test, is-text(title)
+    hold
+      back title
+  back <>
+
+task action-titled
+  take actions, like dynamic
+  take word, like text
+  like dynamic
+
+  walk or-empty(actions)
+    take one, like dynamic
+    fork test, text-contains(title-of(one), word)
+      hold
+        back one
+  back no-value()
+
+task action-starting
+  take actions, like dynamic
+  take prefix, like text
+  like dynamic
+
+  walk or-empty(actions)
+    take one, like dynamic
+    fork test, starts-with(title-of(one), prefix)
+      hold
+        back one
+  back no-value()
+
+form counter
+  mark shared
+  link next, like number
+
+host package-count, make(counter, bind(next, 0))
+
+# A PACKAGE ROOT ON DISK: a deck.tree, a role.tree when a role is given, and a code folder
+task package-with
+  take role, like text
+  take has-role, like boolean
+  like text
+
+  save package-count/next, add(package-count/next, 1)
+  host made, dock-file/realpath-sync(temp-folder(<term-server-current->))
+  dock-file/write-file-sync(dock-path/join(made, <deck.tree>), <deck @test/server-{package-count/next}\n  mark \<0.0.0\>\n>)
+  fork test, has-role
+    hold
+      dock-file/write-file-sync(dock-path/join(made, <role.tree>), role)
+  dock-file/mkdir-sync(dock-path/join(made, <code>))
+  back made
+
+# a document's uri in a package's code/
+task uri-in
+  take folder, like text
+  take name, like text
+  like text
+
+  back file-uri(dock-url/pathToFileURL(dock-path/join(folder, <code>, name)))
+
+task uri-of-path
+  take path, like text
+  like text
+
+  back file-uri(dock-url/pathToFileURL(path))
+
+host lean-role, <role code\n  mark lean\n  take @/code/**/*.tree\n>
+
+host code-role, <role code\n  take @/code/**/*.tree\n>
+
+# a table of module texts by import path, and a resolver over it the server is given: `{ file: /virtual/<name>.tree }`
+form module-table
+  mark shared
+  link texts, like hash, like text, like text
+
+task resolver-over
+  take table, like module-table
+  like dynamic
+
+  back
+    task
+      take path, like text
+      like dynamic
+      fork test, table/texts/has(path)
+        hold
+          back make-record(make(list, <file>, </virtual/{substring(path, 5)}.tree>, <text>, table/texts/get(path)))
+      back no-value()
+
+task serve-over
+  take table, like module-table
+  like dynamic
+
+  back serve(make-record(make(list, <resolve>, resolver-over(table))))
+
+# ---- lean ----
+
+host lean-text, <task twice\n  take n, like number\n\n  like number\n\n  back add(n, n)\n>
+
+# a construct only the lean surface reads: a bare call with its arguments named by property heads, in the order the
+# author chose rather than the order declared
+host named-text, <task join-two\n  take left, like text\n  take right, like text\n\n  like text\n\n  back left\n\ntask use\n  like text\n\n  back\n    join-two\n      right \<b\>\n      left \<a\>\n>
+
+task lean-run
+  like void
+  mark async
+
+  fork test, first-time(<lean>)
+    hold
+      # the real lean files of the CLI, under their package's own role.tree (`mark lean` on code/work/**)
+      save server, serve-plain()
+      walk make(list, <halt>, <wash>, <lint>)
+        take name, like text
+        save file, dock-path/join(root, <deck/call/code/work/{name}.tree>)
+        save uri, uri-of-path(file)
+        save out, open(server, uri, file-text(file))
+        hold-fact(<lean {name}>, is-equal(error-count(out, uri), 0))
+      # and a package whose role.tree marks its code lean: a bare head is a call, `back` returns
+      save lean-at, package-with(lean-role, true)
+      save lean, serve-plain()
+      save out, open(lean, uri-in(lean-at, <lean.tree>), lean-text)
+      hold-fact(<lean clean>, is-equal(error-count(out, uri-in(lean-at, <lean.tree>)), 0))
+      save out-named, open(lean, uri-in(lean-at, <named.tree>), named-text)
+      hold-fact(<lean named>, is-equal(error-count(out-named, uri-in(lean-at, <named.tree>)), 0))
+      # a package whose role reads its code longhand
+      save long-at, package-with(code-role, true)
+      save longhand, serve-plain()
+      save out-long, open(longhand, uri-in(long-at, <named.tree>), named-text)
+      hold-fact(<lean longhand>, is-above(error-count(out-long, uri-in(long-at, <named.tree>)), 0))
+
+test <lean: halt.tree has no errors, as `term make` says>
+  lean-run()
+  want hold, fact(<lean halt>)
+
+test <lean: wash.tree has no errors, as `term make` says>
+  lean-run()
+  want hold, fact(<lean wash>)
+
+test <lean: lint.tree has no errors, as `term make` says>
+  lean-run()
+  want hold, fact(<lean lint>)
+
+test <lean: a lean task compiles clean under the lean reader>
+  lean-run()
+  want hold, fact(<lean clean>)
+
+test <lean: named arguments by property head compile under the lean reader>
+  lean-run()
+  want hold, fact(<lean named>)
+
+test <lean: the same text read longhand is an error (the flag reaches the compile)>
+  lean-run()
+  want hold, fact(<lean longhand>)
+
+# ---- roles: a mill definition is read as one, never as code ----
+
+host undefined-or-short, make pattern, <<is not defined|leaves out>>
+
+host not-defined, make pattern, <<is not defined>>
+
+task roles-run
+  like void
+  mark async
+
+  fork test, first-time(<roles>)
+    hold
+      # @term/mill's role.tree names `role mill` for code/**: these files DEFINE the fork dialect
+      save server, serve-plain()
+      save fork-folder, dock-path/join(root, <deck/mill/code/tree/code/fork>)
+      walk make(list, <base>, <mine>, <mint>)
+        take name, like text
+        save file, dock-path/join(fork-folder, <{name}.tree>)
+        save uri, uri-of-path(file)
+        save out, open(server, uri, file-text(file))
+        hold-fact(<roles {name}>, is-equal(count-of(published(out, uri)), 0))
+      # the control: the same text in a package with no role.tree, so no rule names it a mill, is read as code and
+      # fails
+      save as-code, serve-plain()
+      save fork-mine, uri-in(package-with(<>, false), <mine.tree>)
+      save mine, dock-path/join(fork-folder, <mine.tree>)
+      save mine-text, file-text(mine)
+      save code-errors, errors(published(open(as-code, fork-mine, mine-text), fork-mine))
+      hold-fact(<roles as code>, and(is-above(code-errors/length, 0), some-message-matching(code-errors, undefined-or-short)))
+      # a `find` of a rule its target does not declare: the real problem, on the line it is on
+      save mine-uri, uri-of-path(mine)
+      save broken, text-replace(mine-text, <  find link\n>, <  find link\n  find no-such-rule\n>)
+      save found, or-empty(published(open(server, mine-uri, broken, 2), mine-uri))
+      save line, line-holding(broken, <no-such-rule>)
+      save first, read-at(found, 0)
+      hold-fact(<roles broken>, and(is-equal(count-of(found), 1), and(is-equal(start-line(first), line), text-contains(message-of(first), <no-such-rule>))))
+      hold-fact(<roles no code error>, not(some-message-matching(found, not-defined)))
+      save unloadable, text-replace(mine-text, <load @term/mill/tree/code/seed/mine>, <load @term/mill/tree/code/no-such-dialect/mine>)
+      save load-found, published(open(server, mine-uri, unloadable, 3), mine-uri)
+      save load-line, line-holding(unloadable, <no-such-dialect>)
+      save on-load, false
+      walk or-empty(load-found)
+        take one, like dynamic
+        fork test, and(text-contains(message-of(one), <no-such-dialect>), is-equal(start-line(one), load-line))
+          hold
+            save on-load, true
+      hold-fact(<roles unloadable>, on-load)
+      save unparsed, open(server, mine-uri, <mine fork\n  mine term, term \<fork\n>, 4)
+      hold-fact(<roles unparsed>, is-above(count-of(published(unparsed, mine-uri)), 0))
+
+test <roles: fork/base.tree, a mill definition, has no diagnostics>
+  roles-run()
+  want hold, fact(<roles base>)
+
+test <roles: fork/mine.tree, a mill definition, has no diagnostics>
+  roles-run()
+  want hold, fact(<roles mine>)
+
+test <roles: fork/mint.tree, a mill definition, has no diagnostics>
+  roles-run()
+  want hold, fact(<roles mint>)
+
+test <roles: read as code instead, fork/mine.tree fails (the defect the role closes)>
+  roles-run()
+  want hold, fact(<roles as code>)
+
+test <roles: a broken mill definition reports its real error, on its line>
+  roles-run()
+  want hold, fact(<roles broken>)
+
+test <roles: and no code-reading error with it>
+  roles-run()
+  want hold, fact(<roles no code error>)
+
+test <roles: a load of a grammar file that does not exist is reported on the load>
+  roles-run()
+  want hold, fact(<roles unloadable>)
+
+test <roles: a mill definition that does not parse reports the parse error>
+  roles-run()
+  want hold, fact(<roles unparsed>)
+
+# ---- scope: mark private, binding by import ----
+
+host scope-modules, make(module-table, bind(texts, make hash))
+
+# two modules define `pick` at different types: this file imports the text one and passes a number
+host wrong-text, <load @app/pick-text\n  find pick\n\nload @app/pick-number\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      code 3\n>
+
+task scope-run
+  like void
+  mark async
+
+  fork test, first-time(<scope>)
+    hold
+      scope-modules/texts/set(<@app/a>, <task secret\n  mark private\n  like text\n  send back, text \<s\>\n\ntask open-one\n  like text\n  send back\n    call secret\n>)
+      scope-modules/texts/set(<@app/pick-text>, <task pick\n  take x, like text\n  like text\n  send back, text \<text\>\n>)
+      scope-modules/texts/set(<@app/pick-number>, <task pick\n  take x, like number\n  like text\n  send back, text \<number\>\n\ntask other\n  like text\n  send back, text \<o\>\n>)
+      scope-modules/texts/set(<@app/broken>, <task broken\n  like number\n  send back, text \<not a number\>\n>)
+      save server, serve-over(scope-modules)
+      save main, <file:///virtual/main.tree>
+      save private-out, open(server, main, <load @app/a\n  find secret\n\ntask run\n  like text\n  send back\n    call secret\n>)
+      hold-fact(<scope private>, some-named(errors(published(private-out, main)), <private-name>))
+      save public-uri, <file:///virtual/public.tree>
+      save public-out, open(server, public-uri, <load @app/a\n  find open-one\n\ntask run\n  like text\n  send back\n    call open-one\n>)
+      hold-fact(<scope public>, is-equal(error-count(public-out, public-uri), 0))
+      save bound, <file:///virtual/bind.tree>
+      hold-fact(<scope wrong>, is-above(error-count(open(server, bound, wrong-text), bound), 0))
+      save right, text-replace(wrong-text, <code 3>, <text \<x\>>)
+      hold-fact(<scope right>, is-equal(error-count(open(server, bound, right, 2), bound), 0))
+      # placement: an error inside an imported module is shown on the `load` that reached it
+      save importer, <file:///virtual/importer.tree>
+      save placed, errors(published(open(server, importer, <task first\n  like number\n  send back, code 1\n\nload @app/broken\n  find broken\n>), importer))
+      save on-load, true
+      walk placed
+        take one, like dynamic
+        fork test, not(is-equal(start-line(one), 4))
+          hold
+            save on-load, false
+      hold-fact(<placement>, and(is-above(placed/length, 0), and(on-load, some-message-holding(placed, <broken.tree>))))
+
+test <scope: a `find` of a task private to another file is refused>
+  scope-run()
+  want hold, fact(<scope private>)
+
+test <scope: a public task of the same module is not refused>
+  scope-run()
+  want hold, fact(<scope public>)
+
+test <scope: a call binds to the definition its file imported (a number does not fit it)>
+  scope-run()
+  want hold, fact(<scope wrong>)
+
+test <scope: the same call with text fits the imported one>
+  scope-run()
+  want hold, fact(<scope right>)
+
+test <placement: an imported module's error sits on the `load` line, naming the file>
+  scope-run()
+  want hold, fact(<placement>)
+
+# ---- tests: a file of `test` blocks maps its diagnostics back to the lines the author wrote ----
+
+host test-text, <task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n\ntest \<doubles\>\n  want hold\n    call is-equal\n      call double\n        read nope\n      code 4\n>
+
+task tests-run
+  like void
+  mark async
+
+  fork test, first-time(<tests>)
+    hold
+      save server, serve-plain()
+      save uri, <file:///virtual/double.tree>
+      save found, errors(published(open(server, uri, test-text), uri))
+      save line, line-holding(test-text, <read nope>)
+      save first, read-at(found, 0)
+      hold-fact(<tests line>, and(is-above(found/length, 0), is-equal(start-line(first), line)))
+      hold-fact(<tests column>, and(is-above(found/length, 0), is-equal(start-character(first), wide-index-of(line-number(test-text, line), <read nope>))))
+      save clean, text-replace(test-text, <read nope>, <code 2>)
+      hold-fact(<tests clean>, is-equal(error-count(open(server, uri, clean, 2), uri), 0))
+
+test <tests: an error inside a `want` lands on the line the author wrote>
+  tests-run()
+  want hold, fact(<tests line>)
+
+test <tests: and at the column the author wrote>
+  tests-run()
+  want hold, fact(<tests column>)
+
+test <tests: a passing test file has no errors (not raw `test` heads read as names)>
+  tests-run()
+  want hold, fact(<tests clean>)
+
+# ---- keywords ----
+
+# metadata is `mark`: `note <metadata>` is the old spelling and is never offered
+host retired, make pattern, <<\bwave\b|\bbust\b|send kink|\bauto\b|\bnote (private|async|native|unsafe|stable|unstable|deprecated|keep|draft|roam|open|feature|platform)\b>>
+
+form keyword-run
+  mark shared
+  link longhand, like dynamic
+  link lean, like dynamic
+
+host keywords-now, make(keyword-run, bind(longhand, empty-list()), bind(lean, empty-list()))
+
+# the completion items at the start of a document's last line
+task labels
+  take server, like dynamic
+  take uri, like text
+  take text, like text
+  like dynamic
+  mark async
+
+  open(server, uri, text)
+  save answer, result-of(server, <textDocument/completion>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <position>, position(subtract(lines(text)/length, 1), 0))))
+  back read-field(answer, <items>)
+
+task insert-text
+  take one, like dynamic
+  like text
+
+  save inserted, read-field(one, <insertText>)
+  fork test, is-text(inserted)
+    hold
+      back inserted
+  back <>
+
+task offered
+  take items, like dynamic
+  take word, like text
+  like boolean
+
+  walk or-empty(items)
+    take one, like dynamic
+    fork test, or(is-equal(read-field(one, <label>), word), is-equal(read-field(one, <insertText>), word))
+      hold
+        back true
+  back false
+
+task keywords-run
+  like void
+  mark async
+
+  fork test, first-time(<keywords>)
+    hold
+      save keywords-now/longhand, labels(serve-plain(), uri-in(package-with(code-role, true), <k.tree>), <task f\n  like number\n  send back, code 1\n\n>)
+      save keywords-now/lean, labels(serve-plain(), uri-in(package-with(lean-role, true), <k.tree>), <task f\n  like number\n\n  back 1\n\n>)
+      walk make(list, <longhand>, <lean>)
+        take label, like text
+        save items, keywords-now/longhand
+        fork test, is-equal(label, <lean>)
+          hold
+            save items, keywords-now/lean
+        save none-retired, true
+        walk or-empty(items)
+          take one, like dynamic
+          fork test, matches(retired, <{read-field(one, <label>)} {insert-text(one)}>)
+            hold
+              save none-retired, false
+        hold-fact(<retired {label}>, none-retired)
+        walk make(list, <mark async>, <mark unsafe>, <tick>, <halt>, <seek>, <have>, <must>, <down>, <mark private>, <halt kink>)
+          take word, like text
+          hold-fact(<offered {label} {word}>, offered(items, word))
+      save longhand, keywords-now/longhand
+      save lean, keywords-now/lean
+      hold-fact(<send back>, and(some-field(longhand, <label>, <send back>), not(some-field(longhand, <label>, <back>))))
+      hold-fact(<bare back>, some-field(lean, <label>, <back>))
+      hold-fact(<walk scaffold>, text-contains(insert-text(first-field(longhand, <label>, <walk>)), <hook next\n    take site, name>))
+      hold-fact(<lean task>, text-contains(insert-text(first-field(lean, <label>, <task>)), <\n  back $0>))
+      save lean-fork, insert-text(first-field(lean, <label>, <fork>))
+      hold-fact(<lean fork>, and(text-contains(lean-fork, <\n  hold\n>), not(text-contains(lean-fork, <hook>))))
+
+test <keywords: no retired word offered (longhand)>
+  keywords-run()
+  want hold, fact(<retired longhand>)
+
+test <keywords: `mark async` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand mark async>)
+
+test <keywords: `mark unsafe` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand mark unsafe>)
+
+test <keywords: `tick` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand tick>)
+
+test <keywords: `halt` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand halt>)
+
+test <keywords: `seek` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand seek>)
+
+test <keywords: `have` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand have>)
+
+test <keywords: `must` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand must>)
+
+test <keywords: `down` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand down>)
+
+test <keywords: `mark private` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand mark private>)
+
+test <keywords: `halt kink` offered (longhand)>
+  keywords-run()
+  want hold, fact(<offered longhand halt kink>)
+
+test <keywords: no retired word offered (lean)>
+  keywords-run()
+  want hold, fact(<retired lean>)
+
+test <keywords: `mark async` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean mark async>)
+
+test <keywords: `mark unsafe` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean mark unsafe>)
+
+test <keywords: `tick` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean tick>)
+
+test <keywords: `halt` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean halt>)
+
+test <keywords: `seek` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean seek>)
+
+test <keywords: `have` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean have>)
+
+test <keywords: `must` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean must>)
+
+test <keywords: `down` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean down>)
+
+test <keywords: `mark private` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean mark private>)
+
+test <keywords: `halt kink` offered (lean)>
+  keywords-run()
+  want hold, fact(<offered lean halt kink>)
+
+test <keywords: `send back` in longhand, and no bare `back`>
+  keywords-run()
+  want hold, fact(<send back>)
+
+test <keywords: bare `back` in a lean file>
+  keywords-run()
+  want hold, fact(<bare back>)
+
+test <keywords: the longhand `walk` binds its item under `hook next` as `take site, name`>
+  keywords-run()
+  want hold, fact(<walk scaffold>)
+
+test <keywords: the lean `task` returns with `back`>
+  keywords-run()
+  want hold, fact(<lean task>)
+
+test <keywords: the lean `fork` has `hold` / `miss` arms with no `hook`>
+  keywords-run()
+  want hold, fact(<lean fork>)
+
+# ---- lint ----
+
+host lint-text, <task five\n  like number\n  save x\n    code 5\n  send back, read x\n>
+
+host note-text, <task helper\n  note private\n  like number\n  send back, code 1\n\ntask main\n  like number\n  send back\n    call helper\n>
+
+host meta-text, <task fetch\n  note async\n  like number\n  send back, code 1\n>
+
+host hole-text, <task total\n  take count, like number\n  take label, like text\n  like number\n\n  send back\n    call add\n      read count\n      read hole\n>
+
+host typo-text, <task greet\n  take who, like text\n  like text\n\n  send back, read whom\n>
+
+task actions-for
+  take server, like dynamic
+  take uri, like text
+  take ranged, like dynamic
+  take diagnostics, like dynamic
+  like dynamic
+  mark async
+
+  save context, make-record(make(list, <diagnostics>, diagnostics))
+  back result-of(server, <textDocument/codeAction>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <range>, ranged, <context>, context)))
+
+task listed
+  take one, like dynamic
+  like list, like dynamic
+
+  save out, empty-list()
+  fork test, truth(one)
+    hold
+      out/push(one)
+  back out
+
+task lint-run
+  like void
+  mark async
+
+  fork test, first-time(<lint>)
+    hold
+      save server, serve-plain()
+      save uri, <file:///virtual/lint.tree>
+      save lint, empty-list()
+      walk or-empty(published(open(server, uri, lint-text), uri))
+        take one, like dynamic
+        fork test, is-equal(read-field(one, <source>), <term lint>)
+          hold
+            lint/push(one)
+      hold-fact(<lint finding>, some-field(lint, <code>, <L004>))
+      save ranged, span(position(2, 0), position(2, 0))
+      fork test, is-above(lint/length, 0)
+        hold
+          save ranged, read-field(lint/0, <range>)
+      save actions, actions-for(server, uri, ranged, lint)
+      save fix, no-value()
+      walk or-empty(actions)
+        take one, like dynamic
+        fork test, and(is-equal(read-field(one, <kind>), <quickfix>), text-contains(title-of(one), <L004>))
+          hold
+            fork test, is-undefined(fix)
+              hold
+                save fix, one
+      hold-fact(<lint quick fix>, truth(fix))
+      save writes-host, false
+      fork test, truth(fix)
+        hold
+          save writes-host, text-contains(apply-edits(lint-text, edits-for(fix, uri)), <host x>)
+      hold-fact(<lint host>, writes-host)
+      # the old spelling of privacy: warned, and rewritten by a quick fix
+      save note-uri, <file:///virtual/note.tree>
+      save warned, empty-list()
+      walk or-empty(published(open(server, note-uri, note-text), note-uri))
+        take one, like dynamic
+        fork test, is-equal(data-name(one), <note-private>)
+          hold
+            warned/push(one)
+      hold-fact(<note warned>, is-equal(warned/length, 1))
+      save warned-range, no-value()
+      fork test, is-above(warned/length, 0)
+        hold
+          save warned-range, read-field(warned/0, <range>)
+      save rewrite, action-titled(actions-for(server, note-uri, warned-range, warned), <mark private>)
+      save rewritten, <>
+      fork test, truth(rewrite)
+        hold
+          save rewritten, apply-edits(note-text, edits-for(rewrite, note-uri))
+      hold-fact(<note rewritten>, and(text-contains(rewritten, <  mark private\n>), not(text-contains(rewritten, <note private>))))
+      # the old spelling of metadata, the diagnostic given here, so this holds the quick fix alone
+      save meta-uri, <file:///virtual/meta.tree>
+      open(server, meta-uri, meta-text)
+      save meta-range, span(position(1, 2), position(1, 12))
+      save meta-diagnostic, make-record(make(list, <range>, meta-range, <message>, <`note async` is the old spelling of `mark async`>, <data>, make-record(make(list, <name>, <note-metadata>))))
+      save meta-fix, action-titled(actions-for(server, meta-uri, meta-range, listed(meta-diagnostic)), <mark>)
+      save meta-fixed, <>
+      fork test, truth(meta-fix)
+        hold
+          save meta-fixed, apply-edits(meta-text, edits-for(meta-fix, meta-uri))
+      hold-fact(<meta fix>, is-equal(meta-fixed, text-replace(meta-text, <note async>, <mark async>)))
+      # the compiler's own fixes as quick fixes: a typed hole offers each value in scope of its type, none preferred
+      save hole-uri, <file:///virtual/hole.tree>
+      save hole-diagnostic, first-named(published(open(server, hole-uri, hole-text), hole-uri), <typed-hole>)
+      hold-fact(<hole diagnostic>, and(truth(hole-diagnostic), starts-with(message-of(hole-diagnostic), <this hole needs a value of type number>)))
+      save hole-actions, actions-for(server, hole-uri, read-field(hole-diagnostic, <range>), listed(hole-diagnostic))
+      save fill-count, action-starting(hole-actions, <Write "count">)
+      hold-fact(<hole offered>, and(truth(fill-count), not(truth(action-starting(hole-actions, <Write "label">)))))
+      hold-fact(<hole not preferred>, and(truth(fill-count), not(is-equal(read-field(fill-count, <isPreferred>), true))))
+      save fills, false
+      fork test, truth(fill-count)
+        hold
+          save fills, text-contains(apply-edits(hole-text, edits-for(fill-count, hole-uri)), <      read count\n      read count\n>)
+      hold-fact(<hole applied>, fills)
+      # a near spelling, the edit on the name alone
+      save typo-uri, <file:///virtual/typo.tree>
+      save typo-diagnostic, first-named(published(open(server, typo-uri, typo-text), typo-uri), <unknown-name>)
+      save respell, first-field(actions-for(server, typo-uri, read-field(typo-diagnostic, <range>), listed(typo-diagnostic)), <title>, <Write "who">)
+      save respelled, false
+      fork test, truth(respell)
+        hold
+          save respelled, is-equal(apply-edits(typo-text, edits-for(respell, typo-uri)), text-replace(typo-text, <read whom>, <read who>))
+      hold-fact(<near spelling>, respelled)
+
+test <lint: a finding is a diagnostic, with its rule code>
+  lint-run()
+  want hold, fact(<lint finding>)
+
+test <lint: its fix is a quick fix>
+  lint-run()
+  want hold, fact(<lint quick fix>)
+
+test <lint: the fix writes `host`>
+  lint-run()
+  want hold, fact(<lint host>)
+
+test <lint: `note private` is warned>
+  lint-run()
+  want hold, fact(<note warned>)
+
+test <lint: the quick fix writes `mark private`>
+  lint-run()
+  want hold, fact(<note rewritten>)
+
+test <lint: the `note-metadata` quick fix writes `mark async`>
+  lint-run()
+  want hold, fact(<meta fix>)
+
+test <fix: a typed hole is a diagnostic naming its type>
+  lint-run()
+  want hold, fact(<hole diagnostic>)
+
+test <fix: the hole is offered each value of its type, and only those>
+  lint-run()
+  want hold, fact(<hole offered>)
+
+test <fix: a guess is not the preferred action>
+  lint-run()
+  want hold, fact(<hole not preferred>)
+
+test <fix: applied, it writes the name where `hole` was>
+  lint-run()
+  want hold, fact(<hole applied>)
+
+test <fix: a near spelling is a quick fix that writes the name>
+  lint-run()
+  want hold, fact(<near spelling>)
+
+# ---- pull ----
+
+task capabilities-with
+  take diagnostic, like dynamic
+  like dynamic
+
+  back make-record(make(list, <capabilities>, make-record(make(list, <textDocument>, make-record(make(list, <diagnostic>, diagnostic))))))
+
+task pull-run
+  like void
+  mark async
+
+  fork test, first-time(<pull>)
+    hold
+      save server, serve-plain()
+      request(server, <initialize>, capabilities-with(make-record(make(list, <dynamicRegistration>, false))))
+      save init, result-of(serve-plain(), <initialize>, capabilities-with(empty-record()))
+      hold-fact(<pull advertised>, truth(read-field(read-field(init, <capabilities>), <diagnosticProvider>)))
+      save uri, <file:///virtual/pull.tree>
+      save out, open(server, uri, <task f\n  like number\n  send back\n    read nope\n>)
+      hold-fact(<pull none pushed>, is-undefined(published(out, uri)))
+      save first, result-of(server, <textDocument/diagnostic>, document(uri))
+      hold-fact(<pull full>, and(is-equal(read-field(first, <kind>), <full>), is-above(count-of(errors(read-field(first, <items>))), 0)))
+      save again-params, document(uri)
+      set-field(again-params, <previousResultId>, read-field(first, <resultId>))
+      save again, result-of(server, <textDocument/diagnostic>, again-params)
+      hold-fact(<pull unchanged>, is-equal(read-field(again, <kind>), <unchanged>))
+      change(server, uri, 2, <task f\n  like number\n  send back, code 1\n>)
+      save after, result-of(server, <textDocument/diagnostic>, again-params)
+      hold-fact(<pull again>, and(is-equal(read-field(after, <kind>), <full>), is-equal(count-of(errors(read-field(after, <items>))), 0)))
+
+test <pull: advertised when the client can pull>
+  pull-run()
+  want hold, fact(<pull advertised>)
+
+test <pull: nothing is pushed to a client that pulls>
+  pull-run()
+  want hold, fact(<pull none pushed>)
+
+test <pull: a full report with the error>
+  pull-run()
+  want hold, fact(<pull full>)
+
+test <pull: unchanged when nothing changed>
+  pull-run()
+  want hold, fact(<pull unchanged>)
+
+test <pull: a full report again after an edit, now clean>
+  pull-run()
+  want hold, fact(<pull again>)
+
+# ---- timing: debounce, settle, close ----
+
+# the server's `send`: every message it sends on its own is kept
+task keeper
+  take sent, like list, like dynamic
+  like dynamic
+
+  back
+    task
+      take message, like dynamic
+      like void
+      sent/push(message)
+
+task timing-run
+  like void
+  mark async
+
+  fork test, first-time(<timing>)
+    hold
+      save sent, empty-list()
+      save server, serve(make-record(make(list, <debounce>, 40, <send>, keeper(sent))))
+      save uri, <file:///virtual/timing.tree>
+      open(server, uri, <task f\n  like number\n  send back, code 1\n>)
+      save before, sent/length
+      save version, 2
+      walk test
+        hook test, is-below(version, 7)
+        hook hold
+          save out, change(server, uri, version, <task f\n  like number\n  send back\n    read nope{version}\n>)
+          hold-fact(<edit {subtract(version, 1)}>, is-equal(out/length, 0))
+          save version, add(version, 1)
+      sleep(150)
+      save publishes, empty-list()
+      save index, 0
+      walk sent
+        take one, like dynamic
+        fork test, and(not(is-below(index, before)), is-equal(read-field(one, <method>), <textDocument/publishDiagnostics>))
+          hold
+            publishes/push(one)
+        save index, add(index, 1)
+      hold-fact(<burst once>, is-equal(publishes/length, 1))
+      save last, read-at(publishes, 0)
+      hold-fact(<burst last>, and(is-equal(read-field(read-field(last, <params>), <version>), 6), text-contains(json-of(last), <nope6>)))
+      # a request right after an edit is answered about the edited text, not the one analyzed before it
+      change(server, uri, 7, <task fresh-name\n  like number\n  send back, code 1\n>)
+      save symbols, result-of(server, <textDocument/documentSymbol>, document(uri))
+      hold-fact(<settles>, some-field(symbols, <name>, <fresh-name>))
+      # an edit then a close before the debounce fires: nothing is published for the closed document
+      change(server, uri, 8, <task g\n  like number\n  send back\n    read gone\n>)
+      save mark-at, sent/length
+      close(server, uri)
+      sleep(120)
+      save quiet, true
+      save index, 0
+      walk sent
+        take one, like dynamic
+        fork test, and(not(is-below(index, mark-at)), text-contains(json-of(one), <gone>))
+          hold
+            save quiet, false
+        save index, add(index, 1)
+      hold-fact(<closed quiet>, quiet)
+      save held, flow-server/held(server)
+      hold-fact(<timer gone>, and(is-equal(held/timers, 0), is-equal(held/documents, 0)))
+
+test <timing: edit 1 of 5 publishes nothing at once>
+  timing-run()
+  want hold, fact(<edit 1>)
+
+test <timing: edit 2 of 5 publishes nothing at once>
+  timing-run()
+  want hold, fact(<edit 2>)
+
+test <timing: edit 3 of 5 publishes nothing at once>
+  timing-run()
+  want hold, fact(<edit 3>)
+
+test <timing: edit 4 of 5 publishes nothing at once>
+  timing-run()
+  want hold, fact(<edit 4>)
+
+test <timing: edit 5 of 5 publishes nothing at once>
+  timing-run()
+  want hold, fact(<edit 5>)
+
+test <timing: a burst of five edits is analyzed once>
+  timing-run()
+  want hold, fact(<burst once>)
+
+test <timing: and that once is the last version>
+  timing-run()
+  want hold, fact(<burst last>)
+
+test <timing: a request settles the pending edit first>
+  timing-run()
+  want hold, fact(<settles>)
+
+test <timing: a closed document's pending analysis never publishes>
+  timing-run()
+  want hold, fact(<closed quiet>)
+
+test <timing: and its timer is gone>
+  timing-run()
+  want hold, fact(<timer gone>)
+
+# ---- sync: ranged edits and UTF-16 columns ----
+
+# one emoji is two UTF-16 units: a column counted in code points lands one left of everything after it
+host utf-text, <task pair\n  take a, like text\n  take b, like text\n  like text\n  send back, read b\n\ntask use\n  take y, like text\n  like text\n  send back\n    call pair(text(\<ἀ😀\>), read y)\n>
+
+task sync-run
+  like void
+  mark async
+
+  fork test, first-time(<sync>)
+    hold
+      save server, serve-plain()
+      save uri, <file:///virtual/utf.tree>
+      open(server, uri, utf-text)
+      save line, 10
+      save emoji-line, line-number(utf-text, line)
+      save column, add(wide-index-of(emoji-line, <read y>), 5)
+      save highlights, result-of(server, <textDocument/documentHighlight>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <position>, position(line, column))))
+      save found, false
+      walk or-empty(highlights)
+        take one, like dynamic
+        fork test, and(is-equal(start-line(one), line), and(is-equal(start-character(one), column), is-equal(end-character(one), add(column, 1))))
+          hold
+            save found, true
+      hold-fact(<utf name>, found)
+      # a ranged change: rename `use` to `apply` by its range, on the line after the emoji's
+      save use-at, wide-index-of(line-number(utf-text, 6), <use>)
+      ranged-change(server, uri, 2, span(position(6, use-at), position(6, add(use-at, 3))), <apply>)
+      save symbols, result-of(server, <textDocument/documentSymbol>, document(uri))
+      hold-fact(<sync ranged>, and(some-field(symbols, <name>, <apply>), not(some-field(symbols, <name>, <use>))))
+      # a ranged change after the emoji, on its own line, measured in UTF-16
+      save y-at, wide-last-index-of(emoji-line, <y>)
+      ranged-change(server, uri, 3, span(position(line, y-at), position(line, add(y-at, 1))), <nope>)
+      save diagnostics, result-of(server, <textDocument/diagnostic>, document(uri))
+      save unknown, no-value()
+      walk errors(read-field(diagnostics, <items>))
+        take one, like dynamic
+        fork test, and(is-undefined(unknown), text-contains(message-of(one), <nope>))
+          hold
+            save unknown, one
+      hold-fact(<utf edit>, and(truth(unknown), and(not(is-above(start-character(unknown), y-at)), not(is-below(end-character(unknown), add(y-at, 4))))))
+      save encodings, make-record(make(list, <general>, make-record(make(list, <positionEncodings>, make(list, <utf-8>, <utf-16>)))))
+      save init, result-of(serve-plain(), <initialize>, make-record(make(list, <capabilities>, encodings)))
+      hold-fact(<utf stated>, is-equal(read-field(read-field(init, <capabilities>), <positionEncoding>), <utf-16>))
+
+test <utf-16: a name after an emoji is found at its UTF-16 column>
+  sync-run()
+  want hold, fact(<utf name>)
+
+test <sync: a ranged change is applied>
+  sync-run()
+  want hold, fact(<sync ranged>)
+
+test <utf-16: an edit after an emoji replaces exactly the character asked for>
+  sync-run()
+  want hold, fact(<utf edit>)
+
+test <utf-16: the position encoding is stated when the client offers a choice>
+  sync-run()
+  want hold, fact(<utf stated>)
+
+# ---- robust: malformed documents and requests never throw ----
+
+form robust-tally
+  mark shared
+  link answered, like number
+  link asked, like number
+  link threw, like number
+  link handled, like number
+
+host robust-now, make(robust-tally, bind(answered, 0), bind(asked, 0), bind(threw, 0), bind(handled, 0))
+
+# true when the open raised
+task open-raises
+  take server, like dynamic
+  take uri, like text
+  take text, like text
+  like boolean
+  mark async
+
+  fork
+    mark unsafe
+    open(server, uri, text)
+    back false
+  halt take
+    take cause
+    back true
+
+# the answer to a request, <answered>, <silent> or <threw>
+task asked-of
+  take server, like dynamic
+  take method, like text
+  take params, like dynamic
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    save answer, request(server, method, params)
+    fork test, and(truth(answer), or(not(is-undefined(read-field(answer, <result>))), not(is-undefined(read-field(answer, <error>)))))
+      hold
+        back <answered>
+    back <silent>
+  halt take
+    take cause
+    back <threw>
+
+task tally-answer
+  take said, like text
+  like void
+
+  save robust-now/asked, add(robust-now/asked, 1)
+  fork test, is-equal(said, <answered>)
+    hold
+      save robust-now/answered, add(robust-now/answered, 1)
+  fork test, is-equal(said, <threw>)
+    hold
+      save robust-now/threw, add(robust-now/threw, 1)
+
+# a message of malformed params, <handled>, <not handled> or <threw>
+task shaped-of
+  take server, like dynamic
+  take message, like dynamic
+  take asking, like boolean
+  take method, like text
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    save out, deliver(server, message)
+    fork test, asking
+      hold
+        save answer, first-field(out, <id>, 900)
+        fork test, and(truth(answer), or(not(is-undefined(read-field(answer, <error>))), not(is-undefined(read-field(answer, <result>)))))
+          hold
+            back <handled>
+        back <not handled>
+    # a change to a document that is not open is nothing to do, an open with a uri and no text opens it empty,
+    # anything else malformed is logged
+    fork test, or(or(some-field(out, <method>, <window/logMessage>), some-field(out, <method>, <textDocument/publishDiagnostics>)), is-equal(method, <textDocument/didChange>))
+      hold
+        back <handled>
+    back <not handled>
+  halt take
+    take cause
+    back <threw>
+
+task tally-shape
+  take said, like text
+  like void
+
+  fork test, is-equal(said, <handled>)
+    hold
+      save robust-now/handled, add(robust-now/handled, 1)
+  fork test, is-equal(said, <threw>)
+    hold
+      save robust-now/threw, add(robust-now/threw, 1)
+
+task robust-run
+  like void
+  mark async
+
+  fork test, first-time(<robust>)
+    hold
+      save server, serve-plain()
+      save indent, repeat-text(<  >, 400)
+      save texts, make(list, <>, <\n\n\n>, <task>, <task f\n  take>, <task f\n\tlike number\n>, <task f\r\n  like number\r\n  send back, code 1\r\n>, <text \<unclosed>, <\>\>\>\> \<\<\<\< ,,,, ((((>, <task f\n{indent}call x\n>, <load @nowhere/at/all\n  find nothing\n>, repeat-text(<task f\n  like number\n  send back, code 1\n>, 50), <{control-text()} task>, repeat-text(<x>, 20000), <task 😀\n  like text\n>, <fork test\n  hook test\n  hook hold\n>)
+      save methods, make(list, <textDocument/hover>, <textDocument/definition>, <textDocument/references>, <textDocument/rename>, <textDocument/prepareRename>, <textDocument/completion>, <textDocument/signatureHelp>, <textDocument/documentHighlight>, <textDocument/selectionRange>, <textDocument/prepareCallHierarchy>, <textDocument/implementation>)
+      save whole, make(list, <textDocument/documentSymbol>, <textDocument/foldingRange>, <textDocument/semanticTokens/full>, <textDocument/codeLens>, <textDocument/inlayHint>, <textDocument/codeAction>, <textDocument/diagnostic>)
+      save places, make(list, position(0, 0), position(1, 3), position(999, 999))
+      save n, 0
+      walk texts
+        take text, like text
+        save uri, <file:///virtual/bad-{n}.tree>
+        fork test, open-raises(server, uri, text)
+          hold
+            save robust-now/threw, add(robust-now/threw, 1)
+        walk methods
+          take method, like text
+          walk places
+            take place, like dynamic
+            save params, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <position>, place, <positions>, listed(place), <newName>, <renamed>, <context>, make-record(make(list, <includeDeclaration>, true))))
+            tally-answer(asked-of(server, method, params))
+        walk whole
+          take method, like text
+          save params, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <range>, span(position(0, 0), position(999, 0)), <context>, make-record(make(list, <diagnostics>, empty-list()))))
+          tally-answer(asked-of(server, method, params))
+        save n, add(n, 1)
+      hold-fact(<robust none threw>, is-equal(robust-now/threw, 0))
+      hold-fact(<robust answered>, is-equal(robust-now/answered, robust-now/asked))
+      # params that are not the method's shape: a request is answered (an error, or null for a document not open), a
+      # notification is reported to the client's log, and nothing throws
+      save bad-uri, make-record(make(list, <textDocument>, make-record(make(list, <uri>, 5))))
+      save bad-position, make-record(make(list, <textDocument>, make-record(make(list, <uri>, <file:///virtual/bad-0.tree>)), <position>, <x>))
+      save shapes, make(list, null-value(), empty-record(), make-record(make(list, <textDocument>, empty-record())), bad-uri, bad-position)
+      walk shapes
+        take params, like dynamic
+        walk make(list, <textDocument/hover>, <textDocument/completion>, <textDocument/rename>)
+          take method, like text
+          tally-shape(shaped-of(server, make-record(make(list, <jsonrpc>, <2.0>, <id>, 900, <method>, method, <params>, params)), true, method))
+        walk make(list, <textDocument/didOpen>, <textDocument/didChange>)
+          take method, like text
+          tally-shape(shaped-of(server, make-record(make(list, <jsonrpc>, <2.0>, <method>, method, <params>, params)), false, method))
+      hold-fact(<robust shapes>, and(is-equal(robust-now/threw, 0), is-equal(robust-now/handled, 25)))
+
+test <robust: 600 requests over 15 malformed documents, none threw>
+  robust-run()
+  want hold, fact(<robust none threw>)
+
+test <robust: every one answered>
+  robust-run()
+  want hold, fact(<robust answered>)
+
+test <robust: 25 messages with malformed params, all handled, none threw>
+  robust-run()
+  want hold, fact(<robust shapes>)
+
+# ---- memory: a closed document is released ----
+
+task memory-run
+  like void
+  mark async
+
+  fork test, first-time(<memory>)
+    hold
+      save server, serve-plain()
+      save i, 0
+      walk test
+        hook test, is-below(i, 40)
+        hook hold
+          open(server, <file:///virtual/many-{i}.tree>, <task f{i}\n  like number\n  send back, code {i}\n>)
+          save i, add(i, 1)
+      save held, flow-server/held(server)
+      hold-fact(<memory held>, and(is-equal(held/documents, 40), is-equal(held/files, 40)))
+      save i, 0
+      walk test
+        hook test, is-below(i, 40)
+        hook hold
+          close(server, <file:///virtual/many-{i}.tree>)
+          save i, add(i, 1)
+      save after, flow-server/held(server)
+      hold-fact(<memory released>, and(is-equal(after/documents, 0), is-equal(after/files, 0)))
+
+test <memory: forty documents held while open>
+  memory-run()
+  want hold, fact(<memory held>)
+
+test <memory: none held once closed>
+  memory-run()
+  want hold, fact(<memory released>)
+
+# ---- files outside a project, unsaved buffers, deleted files ----
+
+host disk, make(module-table, bind(texts, make hash))
+
+task watched
+  take uri, like text
+  take kind, like number
+  like dynamic
+
+  save changes, empty-list()
+  changes/push(make-record(make(list, <uri>, uri, <type>, kind)))
+  back make-record(make(list, <changes>, changes))
+
+task buffers-run
+  like void
+  mark async
+
+  fork test, first-time(<buffers>)
+    hold
+      disk/texts/set(<@app/lib>, <task greet\n  like text\n  send back, text \<hi\>\n>)
+      save server, serve-over(disk)
+      save main, <file:///virtual/uses-lib.tree>
+      save out, open(server, main, <load @app/lib\n  find greet\n\ntask run\n  like text\n  send back\n    call greet\n>)
+      hold-fact(<buffers import>, is-equal(error-count(out, main), 0))
+      # the module open in the editor with an unsaved edit that renames its task: the importer reads the BUFFER
+      save lib, <file:///virtual/lib.tree>
+      save edited, open(server, lib, <task welcome\n  like text\n  send back, text \<hi\>\n>)
+      hold-fact(<buffers edit>, is-above(error-count(edited, main), 0))
+      # closing the buffer goes back to the disk's text
+      save closed, close(server, lib)
+      hold-fact(<buffers closed>, some-field(closed, <method>, <textDocument/publishDiagnostics>))
+      notify(server, <workspace/didChangeWatchedFiles>, watched(lib, 2))
+      save settled, result-of(server, <textDocument/diagnostic>, document(main))
+      hold-fact(<buffers clean>, is-equal(count-of(errors(read-field(settled, <items>))), 0))
+      # the module deleted on disk: the watcher says so and the importer is analyzed again
+      disk/texts/remove(<@app/lib>)
+      save deleted, notify(server, <workspace/didChangeWatchedFiles>, watched(lib, 3))
+      hold-fact(<deleted>, is-above(error-count(deleted, main), 0))
+      # a file outside every project (no deck.tree above it) still compiles against the stdlib
+      save outside, serve-plain()
+      save alone, <file:///no-project-here/alone.tree>
+      hold-fact(<outside>, is-equal(error-count(open(outside, alone, <task f\n  like number\n  send back, code 1\n>), alone), 0))
+      save first, <untitled:Untitled-1>
+      hold-fact(<untitled error>, is-above(error-count(open(outside, first, <task f\n  like number\n  send back\n    read nope\n>), first), 0))
+      save second, <untitled:Untitled-2>
+      hold-fact(<untitled stdlib>, is-equal(error-count(open(outside, second, <load @term/base/code/text\n  find to-upper-case\n\ntask shout\n  take m, like text\n  like text\n  send back\n    call to-upper-case\n      read m\n>), second), 0))
+
+test <buffers: a file importing a module compiles>
+  buffers-run()
+  want hold, fact(<buffers import>)
+
+test <buffers: an unsaved edit to an imported module re-checks the open importer>
+  buffers-run()
+  want hold, fact(<buffers edit>)
+
+test <buffers: closed, the module reads from disk again>
+  buffers-run()
+  want hold, fact(<buffers closed>)
+
+test <buffers: and the importer is clean again>
+  buffers-run()
+  want hold, fact(<buffers clean>)
+
+test <deleted: an importer of a deleted module is re-analyzed and fails>
+  buffers-run()
+  want hold, fact(<deleted>)
+
+test <outside a project: compiles alone>
+  buffers-run()
+  want hold, fact(<outside>)
+
+test <an untitled buffer: analyzed, its error published>
+  buffers-run()
+  want hold, fact(<untitled error>)
+
+test <an untitled buffer: resolves the stdlib>
+  buffers-run()
+  want hold, fact(<untitled stdlib>)
+
+# ---- workspace: references, rename, symbols, call hierarchy across a package ----
+
+host workspace-code, dock-path/join(root, <test/server/fixture/workspace/code>)
+
+task fixture-uri
+  take name, like text
+  like text
+
+  back uri-of-path(dock-path/join(workspace-code, <{name}.tree>))
+
+task fixture-text
+  take name, like text
+  like text
+
+  back file-text(dock-path/join(workspace-code, <{name}.tree>))
+
+task some-uri-ending
+  take items, like dynamic
+  take suffix, like text
+  like boolean
+
+  walk or-empty(items)
+    take one, like dynamic
+    fork test, ends-with(read-field(one, <uri>), suffix)
+      hold
+        back true
+  back false
+
+task renamed
+  take changes, like dynamic
+  take name, like text
+  like text
+
+  back apply-edits(fixture-text(name), read-field(changes, fixture-uri(name)))
+
+task workspace-run
+  like void
+  mark async
+
+  fork test, first-time(<workspace>)
+    hold
+      save server, serve-plain()
+      save b-text, fixture-text(<b>)
+      open(server, fixture-uri(<b>), b-text)
+      # the call of `shout` in b.tree
+      save call-line, line-holding(b-text, <call shout>)
+      save place, position(call-line, add(wide-index-of(line-number(b-text, call-line), <shout>), 1))
+      save at-call, make-record(make(list, <textDocument>, make-record(make(list, <uri>, fixture-uri(<b>))), <position>, place, <context>, make-record(make(list, <includeDeclaration>, true))))
+      save refs, result-of(server, <textDocument/references>, at-call)
+      hold-fact(<refs defining>, some-uri-ending(refs, </a.tree>))
+      hold-fact(<refs aliased>, some-uri-ending(refs, </d.tree>))
+      hold-fact(<refs unrelated>, not(some-uri-ending(refs, </c.tree>)))
+      save in-b, 0
+      walk or-empty(refs)
+        take one, like dynamic
+        fork test, is-equal(read-field(one, <uri>), fixture-uri(<b>))
+          hold
+            save in-b, add(in-b, 1)
+      hold-fact(<refs in b>, is-equal(in-b, 2))
+      save rename-params, make-record(make(list, <textDocument>, make-record(make(list, <uri>, fixture-uri(<b>))), <position>, place, <newName>, <holler>))
+      save changes, read-field(result-of(server, <textDocument/rename>, rename-params), <changes>)
+      save after-a, renamed(changes, <a>)
+      hold-fact(<rename definition>, and(text-contains(after-a, <task holler>), not(text-contains(after-a, <shout\n>))))
+      save after-b, renamed(changes, <b>)
+      hold-fact(<rename import>, and(text-contains(after-b, <find holler>), and(text-contains(after-b, <call holler>), not(text-contains(after-b, <shout>)))))
+      save after-d, renamed(changes, <d>)
+      hold-fact(<rename aliased>, and(text-contains(after-d, <find holler, name yell>), text-contains(after-d, <call yell>)))
+      hold-fact(<rename unrelated>, is-undefined(read-field(changes, fixture-uri(<c>))))
+      save prepare, result-of(server, <textDocument/prepareRename>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, fixture-uri(<b>))), <position>, position(call-line, 4))))
+      hold-fact(<prepare refuses>, is-null(prepare))
+      save symbols, result-of(server, <workspace/symbol>, make-record(make(list, <query>, <shout>)))
+      save shouts, 0
+      walk or-empty(symbols)
+        take one, like dynamic
+        fork test, is-equal(read-field(one, <name>), <shout>)
+          hold
+            save shouts, add(shouts, 1)
+      hold-fact(<symbol search>, is-equal(shouts, 2))
+      # call hierarchy: who calls `shout`, from its definition
+      save a-text, fixture-text(<a>)
+      open(server, fixture-uri(<a>), a-text)
+      save def-line, line-starting(a-text, <task shout>)
+      save items, result-of(server, <textDocument/prepareCallHierarchy>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, fixture-uri(<a>))), <position>, position(def-line, 6))))
+      save item, read-at(or-empty(items), 0)
+      hold-fact(<calls prepare>, is-equal(read-field(item, <name>), <shout>))
+      save incoming, result-of(server, <callHierarchy/incomingCalls>, make-record(make(list, <item>, item)))
+      save from-loud, false
+      save from-quiet, false
+      walk or-empty(incoming)
+        take one, like dynamic
+        save caller, read-field(read-field(one, <from>), <name>)
+        fork test, is-equal(caller, <loud>)
+          hold
+            save from-loud, true
+        fork test, is-equal(caller, <quiet>)
+          hold
+            save from-quiet, true
+      hold-fact(<calls incoming>, and(from-loud, from-quiet))
+      save loud-line, line-starting(b-text, <task loud>)
+      save loud, result-of(server, <textDocument/prepareCallHierarchy>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, fixture-uri(<b>))), <position>, position(loud-line, 6))))
+      save outgoing, result-of(server, <callHierarchy/outgoingCalls>, make-record(make(list, <item>, read-at(loud, 0))))
+      save to-shout, false
+      walk or-empty(outgoing)
+        take one, like dynamic
+        save callee, read-field(one, <to>)
+        fork test, and(is-equal(read-field(callee, <name>), <shout>), is-equal(read-field(callee, <uri>), fixture-uri(<a>)))
+          hold
+            save to-shout, true
+      hold-fact(<calls outgoing>, to-shout)
+
+test <workspace: references reach the defining file>
+  workspace-run()
+  want hold, fact(<refs defining>)
+
+test <workspace: and the importer under another name, by its `find`>
+  workspace-run()
+  want hold, fact(<refs aliased>)
+
+test <workspace: but not a same-named task nobody imported>
+  workspace-run()
+  want hold, fact(<refs unrelated>)
+
+test <workspace: b.tree has its `find` and its call>
+  workspace-run()
+  want hold, fact(<refs in b>)
+
+test <workspace: rename renames the definition>
+  workspace-run()
+  want hold, fact(<rename definition>)
+
+test <workspace: rename renames the import and the call>
+  workspace-run()
+  want hold, fact(<rename import>)
+
+test <workspace: an aliased import has only its `find` renamed>
+  workspace-run()
+  want hold, fact(<rename aliased>)
+
+test <workspace: the unrelated same-named task is untouched>
+  workspace-run()
+  want hold, fact(<rename unrelated>)
+
+test <workspace: prepareRename refuses a position on `call`, not a name>
+  workspace-run()
+  want hold, fact(<prepare refuses>)
+
+test <workspace: symbol search finds both definitions of `shout`>
+  workspace-run()
+  want hold, fact(<symbol search>)
+
+test <calls: prepare at a definition>
+  workspace-run()
+  want hold, fact(<calls prepare>)
+
+test <calls: incoming from b.tree's `loud` and d.tree's `quiet`>
+  workspace-run()
+  want hold, fact(<calls incoming>)
+
+test <calls: outgoing from `loud` reach `shout` in a.tree>
+  workspace-run()
+  want hold, fact(<calls outgoing>)
+
+# ---- features ----
+
+host features-text, <# one\n# two\nload @term/base/code/text\n  find split\n\ntask outer\n  take n, like number\n  like number\n  save x\n    call add\n      read n\n      read n\n  send back, read x\n>
+
+host hints-text, <task join-two\n  take left, like text\n  take right, like text\n\n  like text\n\n  back left\n\ntask use\n  like text\n\n  back join-two(\<a\>, \<b\>)\n>
+
+host whole-name, make pattern, <<^[a-z][A-Za-z0-9-]*$>>
+
+task some-fold
+  take folds, like dynamic
+  take start, like number
+  take end, like number
+  take kind, like text
+  like boolean
+
+  walk or-empty(folds)
+    take one, like dynamic
+    fork test, and(is-equal(read-field(one, <startLine>), start), is-equal(read-field(one, <endLine>), end))
+      hold
+        fork test, or(is-equal(kind, <>), is-equal(read-field(one, <kind>), kind))
+          hold
+            back true
+  back false
+
+task hint-at
+  take hints, like dynamic
+  take label, like text
+  take line, like number
+  take character, like number
+  like boolean
+
+  walk or-empty(hints)
+    take one, like dynamic
+    save place, read-field(one, <position>)
+    fork test, and(is-equal(read-field(one, <label>), label), and(is-equal(read-field(place, <line>), line), is-equal(read-field(place, <character>), character)))
+      hold
+        back true
+  back false
+
+task delta-params
+  take uri, like text
+  take previous, like dynamic
+  like dynamic
+
+  save params, document(uri)
+  set-field(params, <previousResultId>, previous)
+  back params
+
+task features-run
+  like void
+  mark async
+
+  fork test, first-time(<features>)
+    hold
+      save server, serve-plain()
+      save uri, <file:///virtual/features.tree>
+      open(server, uri, features-text)
+      save folds, result-of(server, <textDocument/foldingRange>, document(uri))
+      hold-fact(<fold comments>, some-fold(folds, 0, 1, <comment>))
+      hold-fact(<fold imports>, some-fold(folds, 2, 3, <imports>))
+      hold-fact(<fold task>, some-fold(folds, 5, 12, <>))
+      hold-fact(<fold call>, some-fold(folds, 9, 11, <>))
+      save selection, result-of(server, <textDocument/selectionRange>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <positions>, listed(position(10, 11)))))
+      save chain, empty-list()
+      save step, read-at(or-empty(selection), 0)
+      walk test
+        hook test, truth(step)
+        hook hold
+          chain/push(step)
+          save step, read-field(step, <parent>)
+      save word-wide, false
+      fork test, is-above(chain/length, 0)
+        hold
+          save word-wide, is-equal(subtract(end-character(chain/0), start-character(chain/0)), 1)
+      hold-fact(<selection>, and(not(is-below(chain/length, 5)), word-wide))
+      save marks, result-of(server, <textDocument/documentHighlight>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <position>, position(10, 11))))
+      save writes, 0
+      save narrow, true
+      walk or-empty(marks)
+        take one, like dynamic
+        fork test, is-equal(read-field(one, <kind>), 3)
+          hold
+            save writes, add(writes, 1)
+        fork test, not(is-equal(subtract(end-character(one), start-character(one)), 1))
+          hold
+            save narrow, false
+      hold-fact(<highlight>, and(is-equal(count-of(marks), 3), and(is-equal(writes, 1), narrow)))
+      save full, result-of(server, <textDocument/semanticTokens/full>, document(uri))
+      save token-data, read-field(full, <data>)
+      hold-fact(<tokens id>, and(is-text(read-field(full, <resultId>)), is-above(count-of(token-data), 0)))
+      save same, result-of(server, <textDocument/semanticTokens/full/delta>, delta-params(uri, read-field(full, <resultId>)))
+      hold-fact(<tokens none>, and(is-list(read-field(same, <edits>)), is-equal(count-of(read-field(same, <edits>)), 0)))
+      change(server, uri, 2, text-replace(text-replace(features-text, <save x>, <save total>), <read x>, <read total>))
+      save changed, result-of(server, <textDocument/semanticTokens/full/delta>, delta-params(uri, read-field(same, <resultId>)))
+      hold-fact(<tokens one>, and(is-list(read-field(changed, <edits>)), is-equal(count-of(read-field(changed, <edits>)), 1)))
+      save stale, result-of(server, <textDocument/semanticTokens/full/delta>, delta-params(uri, <not-a-result>))
+      hold-fact(<tokens unknown>, is-list(read-field(stale, <data>)))
+      # every token is a name: decode and check each against the text
+      save numbers, make list
+      walk or-empty(token-data)
+        take one, like number
+        numbers/push(one)
+      save line, 0
+      save character, 0
+      save every, true
+      save i, 0
+      walk test
+        hook test, is-below(i, numbers/length)
+        hook hold
+          save step-at, add(i, 1)
+          save width-at, add(i, 2)
+          save line, add(line, numbers/{i})
+          fork test, is-equal(numbers/{i}, 0)
+            hold
+              save character, add(character, numbers/{step-at})
+            miss
+              save character, numbers/{step-at}
+          save token, substring(line-number(features-text, line), character, add(character, numbers/{width-at}))
+          fork test, not(matches(whole-name, token))
+            hold
+              save every, false
+          save i, add(i, 5)
+      hold-fact(<tokens names>, every)
+      # lean parameter-name hints
+      save lean, serve-plain()
+      save lean-uri, uri-in(package-with(lean-role, true), <hints.tree>)
+      open(lean, lean-uri, hints-text)
+      save whole-range, span(position(0, 0), position(20, 0))
+      save hints, result-of(lean, <textDocument/inlayHint>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, lean-uri)), <range>, whole-range)))
+      save call-line, line-number(hints-text, 11)
+      hold-fact(<hints lean>, and(hint-at(hints, <left:>, 11, wide-index-of(call-line, <\<a\>>)), hint-at(hints, <right:>, 11, wide-index-of(call-line, <\<b\>>))))
+      save long-hints, result-of(server, <textDocument/inlayHint>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <range>, whole-range)))
+      save named, false
+      walk or-empty(long-hints)
+        take one, like dynamic
+        save label, read-field(one, <label>)
+        fork test, and(ends-with(label, <:>), not(starts-with(label, <:>)))
+          hold
+            save named, true
+      hold-fact(<hints longhand>, not(named))
+
+test <folding: the comment run>
+  features-run()
+  want hold, fact(<fold comments>)
+
+test <folding: the load block as imports>
+  features-run()
+  want hold, fact(<fold imports>)
+
+test <folding: the task>
+  features-run()
+  want hold, fact(<fold task>)
+
+test <folding: the nested call>
+  features-run()
+  want hold, fact(<fold call>)
+
+test <selection: word, line, block, task, document>
+  features-run()
+  want hold, fact(<selection>)
+
+test <highlight: the parameter where declared (write) and at both reads>
+  features-run()
+  want hold, fact(<highlight>)
+
+test <tokens: full carries a result id>
+  features-run()
+  want hold, fact(<tokens id>)
+
+test <tokens: a delta with nothing changed has no edits>
+  features-run()
+  want hold, fact(<tokens none>)
+
+test <tokens: a delta after an edit is one edit, not the whole array>
+  features-run()
+  want hold, fact(<tokens one>)
+
+test <tokens: an unknown previous id answers in full>
+  features-run()
+  want hold, fact(<tokens unknown>)
+
+test <tokens: every token is a whole name>
+  features-run()
+  want hold, fact(<tokens names>)
+
+test <hints: a lean call shows each argument's parameter>
+  features-run()
+  want hold, fact(<hints lean>)
+
+test <hints: a longhand file gets no parameter-name hints>
+  features-run()
+  want hold, fact(<hints longhand>)

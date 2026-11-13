@@ -1,0 +1,172 @@
+note <a case named like a union never renames it, and a record form named like a case still is>
+
+# Ported from case-names-a-form.ts by statement (item 0652). A CASE NAMED LIKE A UNION NEVER RENAMES IT (decision 066
+# section 2, term-self-host-001-0378). A form with a case `maybe`, in a module that loads @term/base/maybe, made
+# check/scope rename the stdlib's union `maybe__form` (the renaming meant for a record form a construction could take,
+# scope.ts / scope.tree `separateCaseNames`). Every construction and type still bound right, but the emitters know the
+# stdlib's `maybe` by its name: on TypeScript a `need false` field `like maybe` stopped being `f?: T` and was boxed, so a
+# field left out read undefined and a match on it threw, and the type was emitted `MaybeForm` (Rust `Maybe__form`) beside
+# every other module's `Maybe`.
+#
+# Held here: the union keeps its name on TypeScript and Rust, a `need false` maybe field is `f?: T`, the form with the
+# case keeps its own name, `make rule/maybe` and `case maybe` reach the case, and the program runs alike on the four
+# backends, the shape built as the entry and loaded by another file. A union of the user's own named like another form's
+# case keeps its name too, and a RECORD form named like a case is still renamed (it can be built by its name).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+  find emit-text
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host rule-module, <load @term/base/maybe\n  find maybe\n\nform rule\n  mark tag, name kind\n  case leaf\n    link name, like text\n    link note\n      like maybe, like text\n      need false\n  case maybe\n    link test\n      like maybe, like text\n      need false\n    link children, like list, like rule\n\ntask first-test\n  take r, like rule\n  like maybe, like text\n  fork case, read r\n    case maybe\n      send back, read test\n    case leaf\n      send back, read note\n  send back, make none\n\ntask describe\n  take m, like maybe, like text\n  like text\n  fork case, read m\n    case some\n      send back, read value\n    case none\n      send back, text \<none\>\n  send back, text \<none\>\n\ntask build-maybe\n  like rule\n  save kids, make list\n  send back\n    make rule/maybe\n      bind test, make(some, text \<x\>)\n      bind children, read kids\n\ntask build-leaf\n  like rule\n  send back\n    make leaf\n      bind name, text \<n\>\n      bind note, make none\n>
+
+# the same module with `bind note, make none` left out of build-leaf
+host rule-omitted, <load @term/base/maybe\n  find maybe\n\nform rule\n  mark tag, name kind\n  case leaf\n    link name, like text\n    link note\n      like maybe, like text\n      need false\n  case maybe\n    link test\n      like maybe, like text\n      need false\n    link children, like list, like rule\n\ntask first-test\n  take r, like rule\n  like maybe, like text\n  fork case, read r\n    case maybe\n      send back, read test\n    case leaf\n      send back, read note\n  send back, make none\n\ntask describe\n  take m, like maybe, like text\n  like text\n  fork case, read m\n    case some\n      send back, read value\n    case none\n      send back, text \<none\>\n  send back, text \<none\>\n\ntask build-maybe\n  like rule\n  save kids, make list\n  send back\n    make rule/maybe\n      bind test, make(some, text \<x\>)\n      bind children, read kids\n\ntask build-leaf\n  like rule\n  send back\n    make leaf\n      bind name, text \<n\>\n>
+
+host run-module, <task run\n  like text\n  save a\n    call describe\n      call first-test\n        call build-maybe\n  save b\n    call describe\n      call first-test\n        call build-leaf\n  send back, text \<\{a\} \{b\}\>\n>
+
+host loaded-module, <load @app/rule\n  find rule\n  find first-test\n  find describe\n  find build-maybe\n  find build-leaf\n\nload @term/base/maybe\n  find maybe\n\ntask again\n  take r, like rule\n  like maybe, like text\n  send back\n    call first-test\n      read r\n\n{run-module}>
+
+# the case `pair` sits in a module the entry loads but whose union it never finds, so the entry's `make pair` naming the
+# record's fields is the record form, renamed `pair__form` and exported by its written name too (decision 045)
+host shape-module, <form shape\n  case circle\n    link radius, like number\n  case dot\n\nform couple\n  case pair\n    link one, like text\n  case none-yet\n\ntask area\n  take s, like shape\n  like number\n  fork case, read s\n    case circle\n      send back, read radius\n    case dot\n      send back, code 0\n  send back, code 0\n>
+
+host draw-module, <load @app/shape\n  find shape\n  find area\n\nform drawing\n  case shape\n    link inner, like shape\n  case blank\n\nform pair\n  link left, like number\n  link right, like number\n\ntask run\n  like number\n  save d\n    make drawing/shape\n      bind inner\n        make circle\n          bind radius, code 2\n  save p\n    make pair\n      bind left, code 1\n      bind right, code 3\n  fork case, read d\n    case shape\n      send back\n        call add\n          call area\n            read inner\n          read p/right\n    case blank\n      send back, code 0\n  send back, code 0\n>
+
+# `how` is <the entry> (the shape and the run in one file) or <loaded> (the shape in @app/rule, loaded by main)
+task compiled
+  take how, like text
+  take env, like text
+  like compile-outcome
+
+  fork test, is-equal(how, <the entry>)
+    hold
+      back compile-text(<{rule-module}\n{run-module}>, make(compile-choice, bind(file, </gate/code/rule.tree>), bind(stdlib, env), bind(env, env)))
+  host rule, make(compiling-source, bind(file, <@app/rule>), bind(text, rule-module), bind(answer, </gate/code/rule.tree>))
+  back compile-text(loaded-module, make(compile-choice, bind(file, </gate/code/main.tree>), bind(stdlib, env), bind(env, env), bind(files, make list(rule))))
+
+host entry-typescript, compiled(<the entry>, <node>)
+host entry-rust, compiled(<the entry>, <rust>)
+host loaded-typescript, compiled(<loaded>, <node>)
+host loaded-rust, compiled(<loaded>, <rust>)
+
+host union-named, make pattern, <<export type Maybe<T = any> =>>
+host union-renamed, make pattern, <<MaybeForm>>
+host rule-named, make pattern, <<export type Rule =>>
+host test-optional, make pattern, <<kind: "maybe"; test\?: string;>>
+host note-optional, make pattern, <<note\?: string>>
+host maybe-built, make pattern, <<\{ kind: "maybe", test: >>
+host maybe-tested, make pattern, <<\.kind === "maybe">>
+host rust-union, make pattern, <<enum Maybe<T[>]>>
+host rust-renamed, make pattern, <<Maybe__form>>
+host rust-rule, make pattern, <<enum Rule \{>>
+host rust-variant, make pattern, <<Maybe \{ test: Maybe<String[>]>>
+
+host folder, temp-folder(<term-case-names-a-form->)
+
+# ---- the shape as the entry, and loaded by another file: the TypeScript and the Rust ----
+
+test <the entry: it compiles for TypeScript>
+  want hold, entry-typescript/ok
+
+test <the entry: the stdlib union keeps its name>
+  want hold, and(matches(union-named, entry-typescript/emitted), not(matches(union-renamed, entry-typescript/emitted)))
+
+test <the entry: the form with the case keeps its own name>
+  want hold, matches(rule-named, entry-typescript/emitted)
+
+test <the entry: a need-false maybe field is f?: T>
+  want hold, and(matches(test-optional, entry-typescript/emitted), matches(note-optional, entry-typescript/emitted))
+
+test <the entry: make rule/maybe builds the case>
+  want hold, matches(maybe-built, entry-typescript/emitted)
+
+test <the entry: case maybe tests the case>
+  want hold, matches(maybe-tested, entry-typescript/emitted)
+
+test <the entry: it compiles for Rust>
+  want hold, entry-rust/ok
+
+test <the entry: Rust keeps the union's name>
+  host rust, emit-text(entry-rust, <rust>)
+  want hold, and(matches(rust-union, rust), not(matches(rust-renamed, rust)))
+
+test <the entry: Rust keeps the form's name, its case a variant>
+  host rust, emit-text(entry-rust, <rust>)
+  want hold, and(matches(rust-rule, rust), matches(rust-variant, rust))
+
+test <loaded: it compiles for TypeScript>
+  want hold, loaded-typescript/ok
+
+test <loaded: the stdlib union keeps its name>
+  want hold, and(matches(union-named, loaded-typescript/emitted), not(matches(union-renamed, loaded-typescript/emitted)))
+
+test <loaded: the form with the case keeps its own name>
+  want hold, matches(rule-named, loaded-typescript/emitted)
+
+test <loaded: a need-false maybe field is f?: T>
+  want hold, and(matches(test-optional, loaded-typescript/emitted), matches(note-optional, loaded-typescript/emitted))
+
+test <loaded: make rule/maybe builds the case>
+  want hold, matches(maybe-built, loaded-typescript/emitted)
+
+test <loaded: case maybe tests the case>
+  want hold, matches(maybe-tested, loaded-typescript/emitted)
+
+test <loaded: it compiles for Rust>
+  want hold, loaded-rust/ok
+
+test <loaded: Rust keeps the union's name>
+  host rust, emit-text(loaded-rust, <rust>)
+  want hold, and(matches(rust-union, rust), not(matches(rust-renamed, rust)))
+
+test <loaded: Rust keeps the form's name, its case a variant>
+  host rust, emit-text(loaded-rust, <rust>)
+  want hold, and(matches(rust-rule, rust), matches(rust-variant, rust))
+
+# ---- run on the four backends ----
+
+test <the program answers x none>
+  take backend, like text
+    walk make list(<typescript>, <rust>, <swift>, <kotlin>)
+  host ran, run-text(<{rule-module}\n{run-module}>, backend, folder, <case-maybe>, make(compile-choice, bind(stdlib, <node>)))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <{ran/reason}>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <x none>)
+
+# a field left out reads none on TypeScript (it read undefined, and the match on it threw)
+test <typescript: a need-false maybe field left out reads none>
+  host ran, run-text(<{rule-omitted}\n{run-module}>, <typescript>, folder, <case-maybe-omitted>, make(compile-choice, bind(stdlib, <node>)))
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <x none>)
+
+# ---- a union of the user's own named like another form's case, and a record form named like one ----
+
+host drawn, compile-text(draw-module, make(compile-choice, bind(file, </gate/code/draw.tree>), bind(stdlib, <node>), bind(env, <node>), bind(files, make list(make(compiling-source, bind(file, <@app/shape>), bind(text, shape-module), bind(answer, </gate/code/shape.tree>))))))
+
+host shape-named, make pattern, <<export type Shape =>>
+host shape-renamed, make pattern, <<ShapeForm>>
+host pair-renamed, make pattern, <<PairForm>>
+
+test <a loaded union named like a case: it compiles>
+  want hold, drawn/ok
+
+test <a loaded union named like a case keeps its name>
+  want hold, and(matches(shape-named, drawn/emitted), not(matches(shape-renamed, drawn/emitted)))
+
+test <a record form named like a case is still renamed apart>
+  want hold, matches(pair-renamed, drawn/emitted)

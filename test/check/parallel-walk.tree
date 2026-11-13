@@ -1,0 +1,175 @@
+note <what a parallel walk's turn may write, hold and do, and every kind that crosses a turn reads back equal>
+
+# Ported from parallel-walk.ts by statement (item 0652). What a parallel walk's turn may write, hold and do (decision 021
+# sections 3 to 5 of note/project/term/self-host/change/001-finish-self-host, amended by decisions 076 and 078):
+# check/parallel.tree's five refusals, each by its code and naming its variable, and the walks it accepts. Item
+# term-self-host-001-0232.
+#   - parallel-write: an outer name, a list changed in place, a list handed to a task that writes it
+#   - parallel-slot-read: a slot list read in the turn
+#   - parallel-crossing: a task value; a raise whose props hold a hash keyed by numbers (decision 078). A text-keyed
+#     hash, a maybe outside a field and a union cross since item 0400 widened `form-kind-with` (decision 076)
+#   - parallel-await, parallel-escape
+# Accepted: slot writes into two lists, captures of a record and a list, a list the turn makes and pushes, `turn next`,
+# a nested unmarked walk, a call to a pure task, a raise of `failure` and of a declared exception with text and number
+# props. Then decision 076 section 3's arbiter: one value of every kind the predicate accepts goes through melt,
+# to-code, from-code and fill on TypeScript and Rust and reads back equal, one walked test per backend, a case per kind.
+# The kinds are parallel-walk-kinds.tree's and the Rust round trips parallel-walk-rust.tree's: in one file the whole ran
+# 4m 23s alone and past term test's 300 s a file under load on the M3.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compile-note
+
+load ./parallel-walk-kinds
+  find crossing-of
+  find crossed
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <node:path>, name walk-path
+
+host list-loads, <load @term/base/list\n  find list\n>
+
+host folder, temp-folder(<term-parallel-walk->)
+
+# the program compiled against the project, on node
+task check
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, walk-path/join(folder, <walk.tree>)), bind(project, <.>), bind(env, <node>)))
+
+# whether the message holds every one of the words
+task holds-all
+  take message, like text
+  take words, like list, like text
+  like boolean
+
+  walk words
+    take word, like text
+    fork test, not(text-contains(message, word))
+      hold
+        back false
+  back true
+
+# refused with `code`, by an error naming every one of `words`
+task refused
+  take text, like text
+  take code, like text
+  take words, like list, like text
+  like boolean
+
+  host out, check(text)
+  fork test, out/ok
+    hold
+      back false
+  walk out/notes
+    take note, like compile-note
+    fork test, and(is-unequal(note/severity, <warning>), and(is-equal(note/name, code), holds-all(note/message, words)))
+      hold
+        back true
+  back false
+
+# built, with no error
+task accepted
+  take text, like text
+  like boolean
+
+  host out, check(text)
+  fork test, not(out/ok)
+    hold
+      back false
+  walk out/notes
+    take note, like compile-note
+    fork test, is-unequal(note/severity, <warning>)
+      hold
+        back false
+  back true
+
+# ---- refused ----
+
+test <parallel-write: an outer number written in the turn>
+  want hold, refused(<{list-loads}\ntask total\n  take xs, like list, like number\n  like number\n  save sum, 0\n  walk xs, mark parallel\n    take x\n    save sum, add(sum, x)\n  back sum\n>, <parallel-write>, make list(<`sum`>))
+
+test <parallel-write: an outer list pushed in the turn>
+  want hold, refused(<{list-loads}\ntask gather\n  take xs, like list, like number\n  like list, like number\n  save seen, make list\n  walk xs, mark parallel\n    take x\n    seen/push(x)\n  back seen\n>, <parallel-write>, make list(<`seen`>))
+
+test <parallel-write: an outer list handed to a task that pushes into it>
+  want hold, refused(<{list-loads}\ntask keep\n  take into, like list, like number\n  take x, like number\n  into/push(x)\n\ntask gather\n  take xs, like list, like number\n  like list, like number\n  save seen, make list\n  walk xs, mark parallel\n    take x\n    keep(seen, x)\n  back seen\n>, <parallel-write>, make list(<`seen`>))
+
+test <parallel-slot-read: a slot list read in the turn>
+  want hold, refused(<{list-loads}\ntask doubled\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save out/\{at\}, add(x, out/length)\n  back out\n>, <parallel-slot-read>, make list(<`out`>))
+
+test <parallel-crossing: a captured task value>
+  want hold, refused(<{list-loads}\ntask mapped\n  take xs, like list, like number\n  take f\n    like task\n      take x, like number\n      like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save out/\{at\}, f(x)\n  back out\n>, <parallel-crossing>, make list(<`f`>))
+
+test <accepted: a captured text-keyed hash (decision 076, item 0400)>
+  want hold, accepted(<{list-loads}\ntask looked\n  take xs, like list, like text\n  take table, like hash, like text, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save out/\{at\}, table/get(x)\n  back out\n>)
+
+test <accepted: a captured maybe outside a field (decision 076, item 0400)>
+  want hold, accepted(<{list-loads}\nload @term/base/maybe\n  find maybe\n\ntask capped\n  take xs, like list, like number\n  take bound, like maybe, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save top, x\n    sift bound\n      case some\n        link given\n        save top, given\n      case none\n        save top, x\n    save out/\{at\}, top\n  back out\n>)
+
+test <accepted: a captured union (decision 076, item 0400)>
+  want hold, accepted(<{list-loads}\nform figure\n  case dot\n  case box\n    link side, like number\n\ntask scaled\n  take xs, like list, like number\n  take shape, like figure\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save size, x\n    sift shape\n      case box\n        save size, add(x, side)\n      case dot\n        save size, x\n    save out/\{at\}, size\n  back out\n>)
+
+test <parallel-crossing: a raise whose props hold a hash keyed by numbers names the form and the field (decision 078)>
+  want hold, refused(<{list-loads}\nload @term/base/exception\n  find exception\n\nform lookup-miss\n  like exception\n    bind note, \<Not in the table\>\n    link table, like hash, like number, like number\n\ntask looked\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    fork test, is-above(x, 3)\n      hold\n        halt lookup-miss\n          bind table, make hash\n    save out/\{at\}, x\n  back out\n>, <parallel-crossing>, make list(<`lookup-miss`>, <`table`>))
+
+test <parallel-await: an awaited call in the turn>
+  want hold, refused(<{list-loads}\ntask later\n  take x, like number\n  like number\n  mark async\n  back x\n\ntask total\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save out/\{at\}, later(x)\n  back out\n>, <parallel-await>, make list(<`later`>))
+
+test <parallel-escape: a `back` in the turn>
+  want hold, refused(<{list-loads}\ntask first-big\n  take xs, like list, like number\n  like number\n  walk xs, mark parallel\n    take x\n    fork test, is-above(x, 3)\n      hold\n        back x\n  back 0\n>, <parallel-escape>, make list(<`back`>))
+
+test <parallel-escape: a bare `halt` of the walk itself>
+  want hold, refused(<{list-loads}\ntask until-big\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    fork test, is-above(x, 3)\n      hold\n        halt\n    save out/\{at\}, x\n  back out\n>, <parallel-escape>, make list(<bare `halt`>))
+
+# ---- accepted ----
+
+test <accepted: slot writes into two outer lists>
+  want hold, accepted(<{list-loads}\nform split\n  link low, like list, like number\n  link high, like list, like number\n\ntask halves\n  take xs, like list, like number\n  like split\n  save low, make list\n  save high, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save low/\{at\}, subtract(x, 1)\n    save high/\{at\}, add(x, 1)\n  back\n    make split\n      bind low, low\n      bind high, high\n>)
+
+test <accepted: captures of a record and a list read in the turn>
+  want hold, accepted(<{list-loads}\nform pair\n  link a, like number\n  link b, like text\n\ntask shifted\n  take xs, like list, like number\n  take p, like pair\n  take weights, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save out/\{at\}, add(add(x, p/a), weights/length)\n  back out\n>)
+
+test <accepted: a list the turn makes and pushes>
+  want hold, accepted(<{list-loads}\ntask sizes\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save mine, make list\n    mine/push(x)\n    mine/push(add(x, 1))\n    save out/\{at\}, mine/length\n  back out\n>)
+
+test <accepted: `turn next` ends the turn>
+  want hold, accepted(<{list-loads}\ntask kept\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save out/\{at\}, 0\n    fork test, is-above(x, 3)\n      hold\n        turn next\n    save out/\{at\}, x\n  back out\n>)
+
+test <accepted: a nested unmarked walk with its own halt>
+  want hold, accepted(<{list-loads}\ntask sums\n  take rows, like list, like list, like number\n  like list, like number\n  save out, make list\n  walk rows, mark parallel\n    take row\n    take at\n    save total, 0\n    walk row\n      take cell\n      fork test, is-above(cell, 100)\n        hold\n          halt\n      save total, add(total, cell)\n    save out/\{at\}, total\n  back out\n>)
+
+test <accepted: a call to a pure task>
+  want hold, accepted(<{list-loads}\ntask square\n  take x, like number\n  like number\n  back multiply(x, x)\n\ntask squares\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save out/\{at\}, square(x)\n  back out\n>)
+
+test <accepted: a turn that raises `failure` by `halt \<text\>` (decision 078 section 5)>
+  want hold, accepted(<{list-loads}\ntask checked\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    fork test, is-above(x, 3)\n      hold\n        halt \<too big\>\n    save out/\{at\}, x\n  back out\n>)
+
+test <accepted: a turn that raises a declared exception with text and number props (decision 078 section 5)>
+  want hold, accepted(<{list-loads}\nload @term/base/exception\n  find exception\n\nform upload-excess\n  like exception\n    bind note, \<Upload too large\>\n    link policy, like text\n    link size, like number\n\ntask checked\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    fork test, is-above(x, 3)\n      hold\n        halt upload-excess\n          bind policy, \<small\>\n          bind size, x\n    save out/\{at\}, x\n  back out\n>)
+
+test <accepted: the same walk with no mark writes what it likes>
+  want hold, accepted(<{list-loads}\ntask total\n  take xs, like list, like number\n  like number\n  save sum, 0\n  walk xs\n    take x\n    save sum, add(sum, x)\n  back sum\n>)
+
+# ---- decision 076 section 3: every kind the predicate accepts round-trips on TypeScript here, on Rust in
+# parallel-walk-rust.tree, the kinds in parallel-walk-kinds.tree ----
+
+test <typescript: a kind crosses melt, to-code, from-code and fill unchanged>
+  take kind, like text
+    walk make list(<text>, <number>, <decimal>, <flag>, <data>, <list>, <form>, <list of forms>, <need false maybe field, some>, <need false maybe field, none>)
+  host ran, crossed(kind, <typescript>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <{ran/reason}>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, crossing-of(kind)/want)
+

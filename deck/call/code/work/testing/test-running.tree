@@ -526,30 +526,30 @@ task tsconfig-path-keys
     save unread, true
   back make list
 
-# whether a `paths` key maps a specifier: `x/*` every specifier under `x/`, a key with no star that one alone
-task path-key-maps
-  take key, like text
-  take specifier, like text
-  like boolean
+# The esbuild `external` patterns that make every bare specifier external but the ones the tsconfig's `paths` keys map
+# (decision 152, item 1284: options only, no onResolve plugin, so the command line says them too). esbuild checks an
+# `external` pattern (one `*`, a prefix before it) before it applies `paths`, and it also checks each specifier cut back
+# at a `/`, so the patterns walk the keys' prefixes: at each prefix, one pattern per printable character leaving every
+# key, and a step deeper where a key goes on. A key `x/*` maps all under `x/`, a key with no star itself alone, and a
+# key with text after its star is read as its part before the star. The specifiers left to esbuild that the onResolve
+# plugin made external: a proper prefix of a key written whole (`@term`), and one beginning with a character outside
+# printable ASCII. `packages: 'external'` is not used: esbuild 0.28 drops an unused import of a node builtin under it,
+# which the plugin kept, so the bytes were not the plugin's (M3 l1283a)
+bind dock-externals-of
+  take keys, like list, like text
+  like list, like text
+  case node
+    text <<((e_keys) => { const e_chars = Array.from({ length: 95 }, (e_none, e_at) => String.fromCharCode(32 + e_at)).filter((e_char) => e_char !== "*"); const e_heads = e_keys.filter((e_key) => e_key.includes("*")).map((e_key) => e_key.slice(0, e_key.indexOf("*"))); const e_exacts = e_keys.filter((e_key) => !e_key.includes("*")); if (e_heads.includes("")) return []; const e_named = [...e_heads, ...e_exacts]; const e_out = e_chars.slice(0, 0); const e_visit = (e_prefix) => { for (const e_char of e_chars) { if (e_prefix === "" && (e_char === "." || e_char === "/")) continue; const e_next = e_prefix + e_char; if (e_heads.includes(e_next)) continue; if (e_exacts.includes(e_next) || e_named.some((e_one) => e_one.length > e_next.length && e_one.startsWith(e_next))) e_visit(e_next); else e_out.push(e_next + "*") } }; e_visit(""); return e_out })($keys)>>
 
-  save star, key/index-of(<*>)
-  fork test, is-below(star, 0)
-    hold
-      back is-equal(specifier, key)
-  save head, substring(key, 0, star)
-  save tail, substring(key, add(star, 1), key/length)
-  back and(is-minimum(specifier/length, subtract(key/length, 1)), and(specifier/starts-with(head), specifier/ends-with(tail)))
-
-# the esbuild options of a bundle that resolves its docks by the rule: the tsconfig when there is one, and a plugin
-# that leaves a mapped specifier to esbuild (which applies the tsconfig's paths) and marks every other bare one external
+# the esbuild options of a bundle that resolves its docks by the rule: the tsconfig when there is one, and every bare
+# specifier it does not map external
 bind dock-options-of
   take tsconfig, like text
-  take mapped, like dynamic
+  take external, like list, like text
   like dynamic
   case node
-    text <<((d_tsconfig, d_mapped) => ({ ...(d_tsconfig ? { tsconfig: d_tsconfig } : {}), plugins: [{ name: "term-docks", setup(d_on) { d_on.onResolve({ filter: /^[^./]/ }, (d_args) => (process.getBuiltinModule("node:path").isAbsolute(d_args.path) || d_mapped(d_args.path) ? undefined : { path: d_args.path, external: true })) } }] }))($tsconfig, $mapped)>>
+    text <<({ ...($tsconfig ? { tsconfig: $tsconfig } : {}), external: $external })>>
 
-# esbuild's own `packages: 'external'` is not used: it decides by the specifier's look, before any tsconfig
 task dock-options
   take root, like text
   like dynamic
@@ -559,18 +559,7 @@ task dock-options
   fork test, not(is-equal(tsconfig, <>))
     hold
       save keys, tsconfig-path-keys(tsconfig)
-  save mapped
-    task
-      take specifier, like text
-      like boolean
-      save maps, false
-      walk keys
-        take key, like text
-        fork test, path-key-maps(key, specifier)
-          hold
-            save maps, true
-      back maps
-  back dock-options-of(tsconfig, mapped)
+  back dock-options-of(tsconfig, dock-externals-of(keys))
 
 # what decides which docks a bundle inlines: the nearest tsconfig and the specifiers its `paths` maps, one per line
 task dock-key

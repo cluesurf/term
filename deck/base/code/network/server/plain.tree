@@ -5,7 +5,9 @@
 # form it names must keep its name there. They did not: a program that also loads network/http (its own `response`)
 # has the server's form split by file as `Response__in0_1`, and the rust, swift and kotlin shims that named `Response`
 # did not build. So no shim names a Term form: it calls the task the native module hands it with the request's parts,
-# and reads back a list of text, `[status, body, name, value, name, value, ...]`, as network/http reads its host's.
+# and reads back a list of text, `[status, body, hex, name, value, name, value, ...]`, as network/http reads its host's.
+# `hex` is a bytes body (the response's `data`) as two hex digits a byte, <> for a text body: a list of text carries any
+# byte that way, and each shim turns it back into the bytes it sends (item term-self-host-001-1326).
 
 load @term/base/network/server/request
   find request
@@ -14,7 +16,11 @@ load @term/base/network/server/response
   find response
   find header
 
-# the handler called on a request made of `method` ... `dock`, its response as `[status, body, name, value, ...]`
+load @term/base/bytes
+  find to-hex
+  find length, name bytes-length
+
+# the handler called on a request made of `method` ... `dock`, its response as `[status, body, hex, name, value, ...]`
 task answer-plain
   take handler
     like task
@@ -47,6 +53,19 @@ task answer-plain
     text <{answered/status}>
   call out/push
     read answered/body
+  save hex, text <>
+  fork test
+    hook test
+      call is-above
+        call bytes-length
+          read answered/data
+        code 0
+    hook hold
+      save hex
+        call to-hex
+          read answered/data
+  call out/push
+    read hex
   walk list
     read answered/headers
     hook next

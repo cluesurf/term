@@ -1,0 +1,49 @@
+note <a match subject held in a block after a parenthesized value parses as TypeScript>
+
+# Ported from held-block.ts by statement (item term-self-host-001-0571), one test per `ok` in its order. A match whose
+# subject is held in a block (`const __at1 = ...`) right after a statement ending in a parenthesized value
+# (`let markers = ([] as Marker[])`) must parse as TypeScript. tsc read `([] as Marker[])` and the block's `{` as an
+# arrow function missing its `=>`, and refused the whole module, which JavaScript runs fine because it inserts the
+# semicolon (parser/diagnostic.tree, 2026-10-05). TypeScript's own parser is asked through test/support/compiling
+# `typescript-syntax-errors`. The original's one "builds" line stood in for the rest when a compile refused: here each
+# test wants the compile first.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find typescript-syntax-errors
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text/util
+  find join
+
+host source, <load @term/base/maybe\n  find maybe\n\nload @term/base/list\n  find list\n\nform box\n  link items\n    like maybe, like list, like number\n    need false\n\ntask items-of\n  take value, like box\n  like list, like number\n\n  save items, make list\n  sift value/items\n    case some\n      link given\n      save items, given\n    case none\n      push(items, 0)\n  back items\n\n# a counted walk (one that names its index) right after an empty list: the walk's own block, the same shape\ntask first-two\n  take values, like list, like number\n  like list, like number\n\n  save out, make list\n  walk values\n    take value\n    take at\n    fork test, is-below(at, 2)\n      hold\n        push(out, value)\n  back out\n\n# a form of one case: the sift over it is its only arm, a bare block, right after an empty list\nform crate\n  mark tag, name kind\n  case only\n    link counts, like list, like number\n\ntask counts-of\n  take value, like crate\n  like list, like number\n\n  save out, make list\n  sift value\n    case only\n      walk counts\n        take one\n        push(out, one)\n  back out\n>
+
+host held-subject, make pattern, <<const __at\d+ = __termMaybe\(value\.items\)>>
+host only-arm, make pattern, <<;\{\s*\n\s*const counts = value\.counts>>
+
+# the program compiled as a lean library on node's stdlib
+task built
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <held-block.tree>), bind(lean, true), bind(stdlib, <node>), bind(library, true)))
+
+test <the emitted module parses as TypeScript>
+  host out, built()
+  want hold, out/ok
+  host errors, typescript-syntax-errors(out/emitted)
+  want hold, is-equal(join(errors, < | >), <>)
+
+test <the held subject is in its block>
+  host out, built()
+  want hold, out/ok
+  want hold, matches(held-subject, out/emitted)
+
+test <the only arm of a one-case match opens its block with `;`>
+  host out, built()
+  want hold, out/ok
+  want hold, matches(only-arm, out/emitted)

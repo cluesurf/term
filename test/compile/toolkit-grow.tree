@@ -1,0 +1,663 @@
+note <free room in a stack goes to the growing children, else to the stack's own rest spacer, on AppKit and UIKit>
+
+# Ported from toolkit-grow.ts by statement (item term-self-host-001-0696). Free room in a stack goes to the growing
+# children, else to the stack's own rest spacer (D028, T018, T019, beat-term-0061). On the Apple toolkits a view with no
+# intrinsic size has no hugging, so a `div`, a `span`, a scroll and a spacer share free room by the solver's leftovers
+# unless the host states every preference as a constraint. Eleven cases on one root, one after another, each screen
+# removed before the next mounts, each printing `grow <case> <frames>` (x,y,w,h in the window):
+#   tall, short  a growing scroll that arrives after a layout pass, with more content than the window and with less
+#   hug          a screen with no flex-grow keeps its own height
+#   nested       screen, body div and scroll all grow: the scroll and the body end at the safe area's bottom
+#   inner        a growing screen where nothing grows: its header keeps its height and its rest spacer takes the room
+#   two          two growing scrolls, 3 rows and 13 rows, share the room in the ratio of their factors
+#   empty        an empty `div` before a growing screen is 0 tall
+#   spacer       a growing empty `div` between a screen and a footer pushes the footer to the bottom
+#   row          Back and a title across a screen: the title keeps its own width
+#   cross        two columns stretched down a 200 tall row: each label keeps its height at the top
+#   still        a scroll with no flex-grow is as tall as its rows
+# Judged on UIKit and AppKit. The Android hosts are not covered by D021 and D028: their judge cases skip. Built and run
+# on each leg by test/support/device/toolkit-run (item 0548), which skips a leg whose toolchain or device is not here.
+# GROW_ONLY=macos (or ios, android) runs one leg. A leg's PNG goes to SNAPSHOT_GROW, SNAPSHOT_GROW_IOS or
+# SNAPSHOT_GROW_ANDROID when set.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way are one walked test, a
+# case each, labeled by the check's name. Each `ok` of the original's judge is one walked test, a case for each leg (and
+# for tall and short, each leg and case), skipped where the leg was, where it stopped before the original would have
+# judged it, or on Android.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find index-of
+  find substring
+  find trim
+  find char-count
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/list
+  find push
+
+# the original's program, its PNG path filled in
+task grow-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  back <load @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find show-window\n  find run-app\n  find exit-app\n  find child-at\n  find child-count\n  find frame-of\n  find safe-area\n  find remove\n  find snapshot\n  find say\n\n# a growing screen holding only its header\nview grown-screen\n  take host, like view\n  view div\n    bind style, text \<display: flex; flex-direction: column; gap: 12px; padding: 12px 0px 0px 0px; align-items: stretch; flex-grow: 1\>\n    view span\n      text \<Header\>\n\n# the same screen with no flex-grow\nview hugging-screen\n  take host, like view\n  view div\n    bind style, text \<display: flex; flex-direction: column; gap: 12px; padding: 12px 0px 0px 0px; align-items: stretch\>\n    view span\n      text \<Header\>\n\n# a growing scroll of 13 rows, taller than the window\nview tall-body\n  take host, like view\n  view scroll\n    bind style, text \<flex-grow: 1\>\n    view div\n      bind style, text \<display: flex; flex-direction: column; gap: 12px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n\n# a growing scroll of 3 rows, shorter than the window\nview short-body\n  take host, like view\n  view scroll\n    bind style, text \<flex-grow: 1\>\n    view div\n      bind style, text \<display: flex; flex-direction: column; gap: 12px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n\n# a growing screen's body: a growing column holding a span and a growing scroll of 3 rows\nview nested-body\n  take host, like view\n  view div\n    bind style, text \<display: flex; flex-direction: column; gap: 12px; align-items: stretch; flex-grow: 1\>\n    view span\n      text \<Note\>\n    view scroll\n      bind style, text \<flex-grow: 1\>\n      view div\n        bind style, text \<display: flex; flex-direction: column; gap: 12px\>\n        view div\n          bind style, text \<height: 64px\>\n        view div\n          bind style, text \<height: 64px\>\n        view div\n          bind style, text \<height: 64px\>\n\n# a column of two spans with no flex-grow anywhere in it\nview inner-body\n  take host, like view\n  view div\n    bind style, text \<display: flex; flex-direction: column; gap: 12px; align-items: stretch\>\n    view span\n      text \<First line\>\n    view span\n      text \<Second line\>\n\n# a div with no style and nothing in it\nview empty-box\n  take host, like view\n  view div\n\n# a growing div with nothing in it, the vocabulary's spacer\nview spacer-box\n  take host, like view\n  view div\n    bind style, text \<flex-grow: 1\>\n\nview footer-box\n  take host, like view\n  view span\n    text \<Footer\>\n\n# Back and a title in a row\nview row-body\n  take host, like view\n  view div\n    bind style, text \<display: flex; flex-direction: row; gap: 12px\>\n    view button\n      bind style, text \<min-width: 88px; min-height: 44px\>\n      text \<Back\>\n    view span\n      text \<Title\>\n\n# a row 200 tall that stretches two columns, each holding one span\nview cross-body\n  take host, like view\n  view div\n    bind style, text \<display: flex; flex-direction: row; gap: 12px; height: 200px; align-items: stretch\>\n    view div\n      view span\n        text \<left\>\n    view div\n      view span\n        text \<right column\>\n\n# a scroll with no style holding 3 rows\nview still-body\n  take host, like view\n  view scroll\n    view div\n      bind style, text \<display: flex; flex-direction: column; gap: 12px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n      view div\n        bind style, text \<height: 64px\>\n\n# the root's last child is the screen (T016); a node's last child is the scroll\ntask last-child\n  take node, like view\n  like view\n  send back\n    call child-at\n      read node\n      call subtract\n        call child-count\n          read node\n        code 1\n\ntask main\n  save root\n    call open-root\n      text \<Term grow\>\n      code 402\n      code 874\n  call after-launch\n    task check\n      call show-window\n\n      call grown-screen\n        read root\n      save tall-screen\n        call last-child\n          read root\n      call safe-area\n      call tall-body\n        read tall-screen\n      save tall-scroll\n        call last-child\n          read tall-screen\n      save tall-safe\n        call safe-area\n      save tall-root\n        call frame-of\n          read root\n      save tall-screen-frame\n        call frame-of\n          read tall-screen\n      save tall-scroll-frame\n        call frame-of\n          read tall-scroll\n      call say\n        text \<grow tall \{tall-safe\} \{tall-root\} \{tall-screen-frame\} \{tall-scroll-frame\}\>\n      call snapshot\n        text \<{shot}\>\n      call remove\n        read tall-screen\n\n      call grown-screen\n        read root\n      save short-screen\n        call last-child\n          read root\n      call safe-area\n      call short-body\n        read short-screen\n      save short-scroll\n        call last-child\n          read short-screen\n      save short-safe\n        call safe-area\n      save short-root\n        call frame-of\n          read root\n      save short-screen-frame\n        call frame-of\n          read short-screen\n      save short-scroll-frame\n        call frame-of\n          read short-scroll\n      call say\n        text \<grow short \{short-safe\} \{short-root\} \{short-screen-frame\} \{short-scroll-frame\}\>\n      call remove\n        read short-screen\n\n      call hugging-screen\n        read root\n      save hug-screen\n        call last-child\n          read root\n      save hug-safe\n        call safe-area\n      save hug-frame\n        call frame-of\n          read hug-screen\n      call say\n        text \<grow hug \{hug-safe\} \{hug-frame\}\>\n      call remove\n        read hug-screen\n\n      call grown-screen\n        read root\n      save nested-screen\n        call last-child\n          read root\n      call safe-area\n      call nested-body\n        read nested-screen\n      save nested-div\n        call last-child\n          read nested-screen\n      save nested-scroll\n        call last-child\n          read nested-div\n      save nested-safe\n        call safe-area\n      save nested-root\n        call frame-of\n          read root\n      save nested-screen-frame\n        call frame-of\n          read nested-screen\n      save nested-div-frame\n        call frame-of\n          read nested-div\n      save nested-scroll-frame\n        call frame-of\n          read nested-scroll\n      call say\n        text \<grow nested \{nested-safe\} \{nested-root\} \{nested-screen-frame\} \{nested-div-frame\} \{nested-scroll-frame\}\>\n      call remove\n        read nested-screen\n\n      call grown-screen\n        read root\n      save inner-screen\n        call last-child\n          read root\n      call safe-area\n      call inner-body\n        read inner-screen\n      save inner-div\n        call last-child\n          read inner-screen\n      save inner-safe\n        call safe-area\n      save inner-root\n        call frame-of\n          read root\n      save inner-screen-frame\n        call frame-of\n          read inner-screen\n      save inner-div-frame\n        call frame-of\n          read inner-div\n      call say\n        text \<grow inner \{inner-safe\} \{inner-root\} \{inner-screen-frame\} \{inner-div-frame\}\>\n      call remove\n        read inner-screen\n\n      call grown-screen\n        read root\n      save two-screen\n        call last-child\n          read root\n      call safe-area\n      call short-body\n        read two-screen\n      save two-first\n        call last-child\n          read two-screen\n      call tall-body\n        read two-screen\n      save two-second\n        call last-child\n          read two-screen\n      save two-safe\n        call safe-area\n      save two-screen-frame\n        call frame-of\n          read two-screen\n      save two-first-frame\n        call frame-of\n          read two-first\n      save two-second-frame\n        call frame-of\n          read two-second\n      call say\n        text \<grow two \{two-safe\} \{two-screen-frame\} \{two-first-frame\} \{two-second-frame\}\>\n      call remove\n        read two-screen\n\n      call empty-box\n        read root\n      save empty-box-node\n        call last-child\n          read root\n      call grown-screen\n        read root\n      save empty-screen\n        call last-child\n          read root\n      call safe-area\n      call short-body\n        read empty-screen\n      save empty-scroll\n        call last-child\n          read empty-screen\n      save empty-safe\n        call safe-area\n      save empty-box-frame\n        call frame-of\n          read empty-box-node\n      save empty-scroll-frame\n        call frame-of\n          read empty-scroll\n      call say\n        text \<grow empty \{empty-safe\} \{empty-box-frame\} \{empty-scroll-frame\}\>\n      call remove\n        read empty-screen\n      call remove\n        read empty-box-node\n\n      call hugging-screen\n        read root\n      save spacer-screen\n        call last-child\n          read root\n      call spacer-box\n        read root\n      save spacer-box-node\n        call last-child\n          read root\n      call footer-box\n        read root\n      save spacer-footer\n        call last-child\n          read root\n      save spacer-safe\n        call safe-area\n      save spacer-screen-frame\n        call frame-of\n          read spacer-screen\n      save spacer-box-frame\n        call frame-of\n          read spacer-box-node\n      save spacer-footer-frame\n        call frame-of\n          read spacer-footer\n      call say\n        text \<grow spacer \{spacer-safe\} \{spacer-screen-frame\} \{spacer-box-frame\} \{spacer-footer-frame\}\>\n      call remove\n        read spacer-footer\n      call remove\n        read spacer-box-node\n      call remove\n        read spacer-screen\n\n      call grown-screen\n        read root\n      save row-screen\n        call last-child\n          read root\n      call safe-area\n      call row-body\n        read row-screen\n      save row-div\n        call last-child\n          read row-screen\n      save row-title\n        call child-at\n          read row-div\n          code 1\n      call short-body\n        read row-screen\n      save row-scroll\n        call last-child\n          read row-screen\n      save row-safe\n        call safe-area\n      save row-screen-frame\n        call frame-of\n          read row-screen\n      save row-div-frame\n        call frame-of\n          read row-div\n      save row-title-frame\n        call frame-of\n          read row-title\n      save row-scroll-frame\n        call frame-of\n          read row-scroll\n      call say\n        text \<grow row \{row-safe\} \{row-screen-frame\} \{row-div-frame\} \{row-title-frame\} \{row-scroll-frame\}\>\n      call remove\n        read row-screen\n\n      call grown-screen\n        read root\n      save cross-screen\n        call last-child\n          read root\n      call safe-area\n      call cross-body\n        read cross-screen\n      save cross-row\n        call last-child\n          read cross-screen\n      save cross-left\n        call child-at\n          read cross-row\n          code 0\n      save cross-right\n        call child-at\n          read cross-row\n          code 1\n      save cross-left-text\n        call child-at\n          read cross-left\n          code 0\n      save cross-right-text\n        call child-at\n          read cross-right\n          code 0\n      save cross-safe\n        call safe-area\n      save cross-left-frame\n        call frame-of\n          read cross-left\n      save cross-right-frame\n        call frame-of\n          read cross-right\n      save cross-left-text-frame\n        call frame-of\n          read cross-left-text\n      save cross-right-text-frame\n        call frame-of\n          read cross-right-text\n      call say\n        text \<grow cross \{cross-safe\} \{cross-left-frame\} \{cross-right-frame\} \{cross-left-text-frame\} \{cross-right-text-frame\}\>\n      call remove\n        read cross-screen\n\n      call grown-screen\n        read root\n      save still-screen\n        call last-child\n          read root\n      call safe-area\n      call still-body\n        read still-screen\n      save still-scroll\n        call last-child\n          read still-screen\n      save still-safe\n        call safe-area\n      save still-scroll-frame\n        call frame-of\n          read still-scroll\n      call say\n        text \<grow still \{still-safe\} \{still-scroll-frame\}\>\n      call exit-app\n        code 0\n  call run-app\n>
+
+# where a leg's PNG goes, by leg, when the run names one
+task shots
+  like hash, like text, like text
+
+  save named, make hash
+  save value, variable(<SNAPSHOT_GROW>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/macos, value
+  save value, variable(<SNAPSHOT_GROW_IOS>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/ios, value
+  save value, variable(<SNAPSHOT_GROW_ANDROID>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/android, value
+  back named
+
+form grow-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host grow-now, make(grow-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# the app and the legs GROW_ONLY allows, made once
+task the-app
+  like grow-state
+
+  fork test, grow-now/made
+    hold
+      back grow-now
+  save grow-now/made, true
+  save grow-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-toolkit-grow->)), bind(name, <Grow>), bind(who, <toolkit-grow>), bind(ios-identifier, <surf.term.toolkit-grow-test>), bind(android-identifier, <surf.term.toolkitgrow>), bind(shots, shots()))
+  save grow-now/legs, legs-of(grow-now/app, variable(<GROW_ONLY>))
+  back grow-now
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, grow-program, prepare-no-device)
+  save grow-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  fork test, and(is-unequal(ran/leg, <ios>), is-unequal(ran/leg, <macos>))
+    hold
+      back <D021 and D028 do not cover the Android hosts>
+  back <>
+
+# the text after `<marker> ` on the first line holding it
+task after
+  take output, like text
+  take marker, like text
+  like text
+
+  save mark, <{marker} >
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        save from, add(index-of(line, mark), char-count(mark))
+        back trim(substring(line, from, char-count(line)))
+  back <>
+
+# x,y,w,h as numbers, none when a part is not one
+task numbers-of
+  take part, like text
+  like list, like float
+
+  save out, make list
+  fork
+    mark unsafe
+    walk text-split(part, <,>)
+      take one, like text
+      out/push(parse-float(one))
+  halt take
+    take cause
+    back make list
+  back out
+
+# the frames said after the marker, each x,y,w,h
+task frames
+  take output, like text
+  take marker, like text
+  like list, like list, like float
+
+  save out, make list
+  walk text-split(after(output, marker), < >)
+    take part, like text
+    out/push(numbers-of(part))
+  back out
+
+# frame `at` of the frames, empty when there is none. A frame that is not four numbers holds nothing the judge reads
+task frame-at
+  take seen, like list, like list, like float
+  take at, like number
+  like list, like float
+
+  fork test, is-minimum(at, seen/length)
+    hold
+      back make list
+  save frame, seen/{at}
+  fork test, is-unequal(frame/length, 4)
+    hold
+      back make list
+  back frame
+
+task whole
+  take frame, like list, like float
+  like boolean
+
+  back is-equal(frame/length, 4)
+
+task near-by
+  take a, like float
+  take b, like float
+  take by, like float
+  like boolean
+
+  back and(is-maximum(a, add(b, by)), is-minimum(a, subtract(b, by)))
+
+task near
+  take a, like float
+  take b, like float
+  like boolean
+
+  back near-by(a, b, 1.0)
+
+# a frame's bottom edge
+task bottom
+  take frame, like list, like float
+  like float
+
+  back add(frame/1, frame/3)
+
+# two frames equal within half a point each
+task equal
+  take a, like list, like float
+  take b, like list, like float
+  like boolean
+
+  fork test, not(and(whole(a), whole(b)))
+    hold
+      back false
+  walk make(list, 0, 1, 2, 3)
+    take at, like number
+    fork test, not(near-by(a/{at}, b/{at}, 0.5))
+      hold
+        back false
+  back true
+
+# the frames of a case on a leg's output, the leg skipped or judged
+task grown
+  take leg, like text
+  take marker, like text
+  like list, like list, like float
+
+  back frames(leg-run(leg)/output, marker)
+
+# tall and short on each leg, `<leg> <name>` a case
+task tall-short
+  like list, like text
+
+  save out, make list
+  walk leg-names()
+    take leg, like text
+    walk make(list, <tall>, <short>)
+      take name, like text
+      out/push(<{leg} {name}>)
+  back out
+
+task leg-of-case
+  take case, like text
+  like text
+
+  back text-split(case, < >)/0
+
+task name-of-case
+  take case, like text
+  like text
+
+  back text-split(case, < >)/1
+
+test <the root equals the safe area>
+  take case, like text
+    walk tall-short()
+  save why, skip-reason(leg-run(leg-of-case(case)))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg-of-case(case), <grow {name-of-case(case)}>)
+  want hold, equal(frame-at(seen, 1), frame-at(seen, 0))
+
+test <the screen's top and bottom equal the root's>
+  take case, like text
+    walk tall-short()
+  save why, skip-reason(leg-run(leg-of-case(case)))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg-of-case(case), <grow {name-of-case(case)}>)
+  save root, frame-at(seen, 1)
+  save screen, frame-at(seen, 2)
+  want hold, and(whole(screen), whole(root))
+  want hold, near(screen/1, root/1)
+  want hold, near(bottom(screen), bottom(root))
+
+test <the scroll ends at the safe area's bottom>
+  take case, like text
+    walk tall-short()
+  save why, skip-reason(leg-run(leg-of-case(case)))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg-of-case(case), <grow {name-of-case(case)}>)
+  save safe, frame-at(seen, 0)
+  save scroll, frame-at(seen, 3)
+  want hold, and(whole(scroll), whole(safe))
+  want hold, near(bottom(scroll), bottom(safe))
+
+test <the scroll is at least 300 tall>
+  take case, like text
+    walk tall-short()
+  save why, skip-reason(leg-run(leg-of-case(case)))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save scroll, frame-at(grown(leg-of-case(case), <grow {name-of-case(case)}>), 3)
+  want hold, whole(scroll)
+  want hold, is-minimum(scroll/3, 300.0)
+
+test <hug: a screen with no flex-grow keeps its own height>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save screen, frame-at(grown(leg, <grow hug>), 1)
+  want hold, whole(screen)
+  want hold, is-below(screen/3, 200.0)
+
+test <hug: its top is the safe area's top>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow hug>)
+  save safe, frame-at(seen, 0)
+  save screen, frame-at(seen, 1)
+  want hold, and(whole(screen), whole(safe))
+  want hold, near(screen/1, safe/1)
+
+test <nested: the scroll ends at the safe area's bottom>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow nested>)
+  save safe, frame-at(seen, 0)
+  save scroll, frame-at(seen, 4)
+  want hold, and(whole(scroll), whole(safe))
+  want hold, near(bottom(scroll), bottom(safe))
+
+test <nested: the body ends at the safe area's bottom>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow nested>)
+  save safe, frame-at(seen, 0)
+  save body, frame-at(seen, 3)
+  want hold, and(whole(body), whole(safe))
+  want hold, near(bottom(body), bottom(safe))
+
+test <nested: the screen is the root's height>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow nested>)
+  save root, frame-at(seen, 1)
+  save screen, frame-at(seen, 2)
+  want hold, and(whole(screen), whole(root))
+  want hold, near(screen/3, root/3)
+
+test <inner: the screen's top and bottom are the root's>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow inner>)
+  save root, frame-at(seen, 1)
+  save screen, frame-at(seen, 2)
+  want hold, and(whole(screen), whole(root))
+  want hold, near(screen/1, root/1)
+  want hold, near(bottom(screen), bottom(root))
+
+test <inner: the column with no growing child is below 100 tall>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save body, frame-at(grown(leg, <grow inner>), 3)
+  want hold, whole(body)
+  want hold, is-below(body/3, 100.0)
+
+test <two: the scrolls' heights differ by 1 or less>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow two>)
+  save first, frame-at(seen, 2)
+  save second, frame-at(seen, 3)
+  want hold, and(whole(first), whole(second))
+  want hold, near(first/3, second/3)
+
+test <two: each is at least 200 tall>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow two>)
+  save first, frame-at(seen, 2)
+  save second, frame-at(seen, 3)
+  want hold, and(whole(first), whole(second))
+  want hold, and(is-minimum(first/3, 200.0), is-minimum(second/3, 200.0))
+
+test <two: the second ends at the safe area's bottom>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow two>)
+  save safe, frame-at(seen, 0)
+  save second, frame-at(seen, 3)
+  want hold, and(whole(second), whole(safe))
+  want hold, near(bottom(second), bottom(safe))
+
+test <empty: the empty div is 0 tall>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save box, frame-at(grown(leg, <grow empty>), 1)
+  want hold, whole(box)
+  want hold, is-below(box/3, 1.0)
+
+test <empty: the scroll ends at the safe area's bottom>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow empty>)
+  save safe, frame-at(seen, 0)
+  save scroll, frame-at(seen, 2)
+  want hold, and(whole(scroll), whole(safe))
+  want hold, near(bottom(scroll), bottom(safe))
+
+test <spacer: the footer ends at the safe area's bottom>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow spacer>)
+  save safe, frame-at(seen, 0)
+  save footer, frame-at(seen, 3)
+  want hold, and(whole(footer), whole(safe))
+  want hold, near(bottom(footer), bottom(safe))
+
+test <spacer: the screen with no flex-grow is below 200 tall>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save screen, frame-at(grown(leg, <grow spacer>), 1)
+  want hold, whole(screen)
+  want hold, is-below(screen/3, 200.0)
+
+test <spacer: the growing div is at least 300 tall>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save box, frame-at(grown(leg, <grow spacer>), 2)
+  want hold, whole(box)
+  want hold, is-minimum(box/3, 300.0)
+
+test <row: the row is as wide as the screen>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow row>)
+  save screen, frame-at(seen, 1)
+  save row, frame-at(seen, 2)
+  want hold, and(whole(row), whole(screen))
+  want hold, near(row/2, screen/2)
+
+test <row: the title keeps its own width (below 150)>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save title, frame-at(grown(leg, <grow row>), 3)
+  want hold, whole(title)
+  want hold, is-below(title/2, 150.0)
+
+# without a rest spacer in the row, Back is stretched and the title is pushed to the far edge
+test <row: the title sits next to Back (left edge below 150)>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save title, frame-at(grown(leg, <grow row>), 3)
+  want hold, whole(title)
+  want hold, is-below(title/0, 150.0)
+
+test <row: the scroll ends at the safe area's bottom>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow row>)
+  save safe, frame-at(seen, 0)
+  save scroll, frame-at(seen, 4)
+  want hold, and(whole(scroll), whole(safe))
+  want hold, near(bottom(scroll), bottom(safe))
+
+test <cross: each column is 200 tall>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow cross>)
+  save left, frame-at(seen, 1)
+  save right, frame-at(seen, 2)
+  want hold, and(whole(left), whole(right))
+  want hold, and(near(left/3, 200.0), near(right/3, 200.0))
+
+test <cross: each label is below 60 tall>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow cross>)
+  save left-text, frame-at(seen, 3)
+  save right-text, frame-at(seen, 4)
+  want hold, and(whole(left-text), whole(right-text))
+  want hold, and(is-below(left-text/3, 60.0), is-below(right-text/3, 60.0))
+
+test <cross: each label's top is its column's top>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save seen, grown(leg, <grow cross>)
+  save left, frame-at(seen, 1)
+  save right, frame-at(seen, 2)
+  save left-text, frame-at(seen, 3)
+  save right-text, frame-at(seen, 4)
+  want hold, and(and(whole(left), whole(right)), and(whole(left-text), whole(right-text)))
+  want hold, and(near(left-text/1, left/1), near(right-text/1, right/1))
+
+test <still: a scroll with no flex-grow is 216 tall (its rows)>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(leg-run(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save scroll, frame-at(grown(leg, <grow still>), 1)
+  want hold, whole(scroll)
+  want hold, near(scroll/3, 216.0)

@@ -252,8 +252,70 @@ task boot
           text <ok>
 `
 
-async function rustServer(): Promise<void> {
-  const name = 'rust: compiled HTTP server echoes the request path'
+// every byte value 0 to 255, in order
+const EVERY_BYTE = Buffer.from(Array.from({ length: 256 }, (_, at) => at))
+
+// a second server program, answering every request with a bytes body of every byte value (item
+// term-self-host-001-1326): it must come back byte for byte, which a text body could not carry. A program of its own,
+// so the echo server above stays as it was
+const BYTES_SERVER = (
+  port: number,
+): string => `load @term/base/code/network/server
+  find serve
+
+load @term/base/code/network/server/request
+  find request
+
+load @term/base/code/network/server/response
+  find response
+  find make-bytes
+
+load @term/base/code/bytes
+  find from-hex
+
+task boot
+  like void
+  call serve
+    code ${port}
+    text <127.0.0.1>
+    task handler
+      take req, like request
+      like response
+      send back
+        call make-bytes
+          call from-hex
+            text <${EVERY_BYTE.toString('hex')}>
+`
+
+// the raw bytes of a GET, with no text decoding
+function getBytes(port: number, path: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    http
+      .get(`http://127.0.0.1:${port}${path}`, r => {
+        const chunks: Buffer[] = []
+        r.on('data', (c: Buffer) => chunks.push(c))
+        r.on('end', () => resolve(Buffer.concat(chunks)))
+      })
+      .on('error', reject)
+  })
+}
+
+// one backend's bytes server: what it answered must be every byte value, as sent
+type Leg = { name: string; port: number; source: string; check: (port: number) => Promise<void> }
+
+const bytesLeg = (env: string, port: number): Leg => ({
+  name: `${env}: compiled HTTP server answers a bytes body`,
+  port,
+  source: BYTES_SERVER(port),
+  check: async at => {
+    const got = await getBytes(at, '/payload')
+    ok(`${env}: a bytes body comes back byte for byte`, got.toString('hex'), EVERY_BYTE.toString('hex'))
+  },
+})
+
+// the echo server, or with `leg` another program and its own check
+async function rustServer(leg?: Leg): Promise<void> {
+  const name = leg?.name ?? 'rust: compiled HTTP server echoes the request path'
 
   if (!have('cargo')) {
     skip++
@@ -262,9 +324,9 @@ async function rustServer(): Promise<void> {
     return
   }
 
-  const port = 8771
+  const port = leg?.port ?? 8771
   const dir = mkdtempSync(join(tmpdir(), 'seed-server-rs-'))
-  const program = frontEnd(SERVER(port), 'rust')
+  const program = frontEnd(leg?.source ?? SERVER(port), 'rust')
   const main = `\nfn main() { boot(); }\n`
   mkdirSync(join(dir, 'src'), { recursive: true })
   const file = join(dir, 'src', 'main.rs')
@@ -327,6 +389,13 @@ path = "src/main.rs"
 
   try {
     await waitForPort(port)
+
+    if (leg) {
+      await leg.check(port)
+
+      return
+    }
+
     const echo = await get(port, '/hello/world?x=1')
     ok(name, echo.body, '/hello/world')
     ok('rust: compiled server returns 200', echo.status, 200)
@@ -347,8 +416,9 @@ path = "src/main.rs"
   }
 }
 
-async function kotlinServer(): Promise<void> {
-  const name = 'kotlin: compiled HTTP server echoes the request path'
+// the echo server, or with `leg` another program and its own check
+async function kotlinServer(leg?: Leg): Promise<void> {
+  const name = leg?.name ?? 'kotlin: compiled HTTP server echoes the request path'
 
   if (!have('kotlinc') || !have('java')) {
     skip++
@@ -357,9 +427,9 @@ async function kotlinServer(): Promise<void> {
     return
   }
 
-  const port = 8772
+  const port = leg?.port ?? 8772
   const dir = mkdtempSync(join(tmpdir(), 'seed-server-kt-'))
-  const program = frontEnd(SERVER(port), 'kotlin')
+  const program = frontEnd(leg?.source ?? SERVER(port), 'kotlin')
   const file = join(dir, 'server.kt')
   writeFileSync(
     file,
@@ -403,6 +473,13 @@ async function kotlinServer(): Promise<void> {
 
   try {
     await waitForPort(port)
+
+    if (leg) {
+      await leg.check(port)
+
+      return
+    }
+
     const echo = await get(port, '/hello/world?x=1')
     ok(name, echo.body, '/hello/world')
     ok('kotlin: compiled server returns 200', echo.status, 200)
@@ -423,8 +500,9 @@ async function kotlinServer(): Promise<void> {
   }
 }
 
-async function swiftServer(): Promise<void> {
-  const name = 'swift: compiled HTTP server echoes the request path'
+// the echo server, or with `leg` another program and its own check
+async function swiftServer(leg?: Leg): Promise<void> {
+  const name = leg?.name ?? 'swift: compiled HTTP server echoes the request path'
 
   if (!have('swift')) {
     skip++
@@ -433,9 +511,9 @@ async function swiftServer(): Promise<void> {
     return
   }
 
-  const port = 8773
+  const port = leg?.port ?? 8773
   const dir = mkdtempSync(join(tmpdir(), 'seed-server-sw-'))
-  const program = frontEnd(SERVER(port), 'swift')
+  const program = frontEnd(leg?.source ?? SERVER(port), 'swift')
   // A SwiftPM PACKAGE, not a bare `swiftc -o`. The server shim is Hummingbird now, and a bare swiftc can be given
   // the module search paths (that is what nativeFlags does, and it is enough to TYPECHECK) but not the libraries:
   // producing an executable then fails at the link step with no useful message. SwiftPM does both.
@@ -570,6 +648,13 @@ let package = Package(
 
   try {
     await waitForPort(port)
+
+    if (leg) {
+      await leg.check(port)
+
+      return
+    }
+
     const echo = await get(port, '/hello/world?x=1')
     ok(name, echo.body, '/hello/world')
     ok('swift: compiled server returns 200', echo.status, 200)
@@ -594,6 +679,9 @@ async function main(): Promise<void> {
   await rustServer()
   await kotlinServer()
   await swiftServer()
+  await rustServer(bytesLeg('rust', 8781))
+  await kotlinServer(bytesLeg('kotlin', 8782))
+  await swiftServer(bytesLeg('swift', 8783))
 
   console.log(
     `\nserver-roundtrip: ${pass} pass, ${fail} fail, ${skip} skipped`,

@@ -1,0 +1,28 @@
+note <Function-field W-types (general / infinitely-branching well-founded trees)>
+
+# Ported from the TypeScript original by task/term/suite-port.ts (item term-self-host-001-0610), one test per `ok`.
+# A constructor may carry a FUNCTION-typed field, `sup : (nat -> wtree) -> wtree`, the W-type shape where a node has one
+# child per element of an index type. `kernelTypeAt` lowers a function type to an arrow chain, so the constructor's
+# field is representable, the encoding is not skipped, and the type declares + reduces + eliminates (`fork case`).
+# Soundness control: a false law is rejected. Each source compiles as p.tree, as the original's did.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform wtree\n  case leaf\n  case sup\n    link kids, like task\n      take index, like nat\n      like wtree\n\ntask root-is-leaf\n  take w, like wtree\n  like nat\n  fork case, read w\n    case leaf\n      send back\n        make zero\n    case sup\n      link kids\n      send back\n        make succ\n          bind prior\n            make zero\n>
+
+task compiles
+  take source, like text
+  like boolean
+
+  back compile-text(source, make(compile-choice, bind(file, <p.tree>)))/ok
+
+# 1. the function-field W-type declares, and a function over it (eliminating both the leaf and the function-field `sup`
+# case) reduces: root-is-leaf leaf = zero.
+test <function-field W-type declares and reduces>
+  want hold, compiles(<{prelude}\nrule leaf-depth\n  show hold\n    call is-equal\n      call root-is-leaf\n        make leaf\n      make zero\n  calm hold\n>)
+
+# 2. SOUNDNESS CONTROL: root-is-leaf leaf is not succ zero. Must be rejected.
+test <false law over the W-type is rejected>
+  want hold, not(compiles(<{prelude}\nrule leaf-depth-wrong\n  show hold\n    call is-equal\n      call root-is-leaf\n        make leaf\n      make succ\n        bind prior\n          make zero\n  calm hold\n>))

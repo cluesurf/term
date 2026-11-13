@@ -1,0 +1,180 @@
+note <`term make --emit <target> <file> --build` and `--run` through the term under test, on every target>
+
+# Ported from emit-build.ts by statement (item term-self-host-001-0603), one test per `ok` in its order, each walked over
+# the four targets, so a case is one `ok` of the original's loop. `--emit` once wrote source and built nothing
+# (deck/call/code/native-build.ts, 2026-10-05). The entry is `run`, else `boot`, else `main`, or the task `--main`
+# names, and what it answers is printed and nothing after. A program that names a crate builds through cargo on Rust,
+# and a program with nothing to start it is refused. A target whose toolchain is not installed skips its case, as the
+# original skipped its loop turn. EMIT_BUILD_ONLY=node, rust, swift or kotlin skips every other target, as it did.
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run-result
+
+load ../support/temp
+  find temp-folder
+
+load ../support/running
+  find missing-tools
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find trim
+
+# the toolchain each target needs beyond node
+task tools-of
+  take target, like text
+  like list, like text
+
+  fork test, is-equal(target, <rust>)
+    hold
+      back make list(<rustc>, <cargo>)
+  fork test, is-equal(target, <swift>)
+    hold
+      back make list(<swiftc>)
+  fork test, is-equal(target, <kotlin>)
+    hold
+      back make list(<kotlinc>, <java>)
+  back make list
+
+# whether a target's case runs here: its toolchain is installed, and EMIT_BUILD_ONLY names it or nothing
+task runs-here
+  take target, like text
+  like boolean
+
+  save only, variable(<EMIT_BUILD_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, target))
+    hold
+      back false
+  back is-equal(missing-tools(tools-of(target)), <>)
+
+host targets, make list(<node>, <rust>, <swift>, <kotlin>)
+
+host manifest-text, <deck @probe/emit-build\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>
+
+# the answer of `run`, and a second entry `--main` can name
+host answer-text, <task double\n  take n, like number\n  like number\n  back multiply(n, 2)\n\ntask run\n  like text\n  back \<answer \{double(21)\}\>\n\ntask other\n  like text\n  back \<the other entry\>\n>
+
+# `boot` answers nothing: it prints through the console, and the main adds nothing
+host boot-text, <load @term/base/console\n  find log\n\ntask boot\n  log \<booted\>\n>
+
+# a program that names a crate on Rust: the exact decimal, over num-bigint
+host money-text, <load @term/base/decimal\n  find make-big-decimal\n  find decimal-add\n\ntask run\n  like text\n  back text(decimal-add(make-big-decimal(\<0.1\>), make-big-decimal(\<0.2\>)))\n>
+
+# nothing to start
+host library-text, <task helper\n  take n, like number\n  like number\n  back n\n>
+
+form emit-build-state
+  mark shared
+  link made, like boolean
+  link root, like text
+
+host emit-build-now, make(emit-build-state, bind(made, false), bind(root, <>))
+
+# the probe project, written once in a temporary folder
+task the-project
+  like text
+
+  fork test, emit-build-now/made
+    hold
+      back emit-build-now/root
+  save root, temp-folder(<term-emit-build->)
+  make-folder(<{root}/code>)
+  write-file(<{root}/deck.tree>, manifest-text)
+  write-file(<{root}/code/answer.tree>, answer-text)
+  write-file(<{root}/code/boot.tree>, boot-text)
+  write-file(<{root}/code/money.tree>, money-text)
+  write-file(<{root}/code/library.tree>, library-text)
+  save emit-build-now/root, root
+  save emit-build-now/made, true
+  back root
+
+# `term make --emit <target> <file>` and the rest, in the project
+task emit-on
+  take target, like text
+  take file, like text
+  take rest, like list, like text
+  like run-result
+  mark async
+
+  save argument-list, make list(<make>, <--emit>, target, file)
+  walk rest
+    take one, like text
+    argument-list/push(one)
+  back run-self(argument-list, the-project(), 600000)
+
+test <--run prints what run answers>
+  take target, like text
+    walk targets
+  fork test, not(runs-here(target))
+    hold
+      skip <its toolchain is not installed, or EMIT_BUILD_ONLY names another target>
+  save ran, emit-on(target, <code/answer.tree>, make list(<--run>))
+  want hold, is-equal(ran/code, 0)
+  want hold, is-equal(ran/output, <answer 42>)
+
+test <--main names the entry>
+  take target, like text
+    walk targets
+  fork test, not(runs-here(target))
+    hold
+      skip <its toolchain is not installed, or EMIT_BUILD_ONLY names another target>
+  save ran, emit-on(target, <code/answer.tree>, make list(<--run>, <--main>, <other>))
+  want hold, is-equal(ran/code, 0)
+  want hold, is-equal(ran/output, <the other entry>)
+
+test <boot answers nothing, and only its own output is printed>
+  take target, like text
+    walk targets
+  fork test, not(runs-here(target))
+    hold
+      skip <its toolchain is not installed, or EMIT_BUILD_ONLY names another target>
+  save ran, emit-on(target, <code/boot.tree>, make list(<--run>))
+  want hold, is-equal(ran/code, 0)
+  want hold, is-equal(trim(ran/output), <booted>)
+
+test <a program naming a crate builds (cargo on rust)>
+  take target, like text
+    walk targets
+  fork test, not(runs-here(target))
+    hold
+      skip <its toolchain is not installed, or EMIT_BUILD_ONLY names another target>
+  save ran, emit-on(target, <code/money.tree>, make list(<--run>))
+  want hold, is-equal(ran/code, 0)
+  want hold, is-equal(ran/output, <0.3>)
+
+test <a program with nothing to start is refused, naming --main>
+  take target, like text
+    walk targets
+  fork test, not(runs-here(target))
+    hold
+      skip <its toolchain is not installed, or EMIT_BUILD_ONLY names another target>
+  save ran, emit-on(target, <code/library.tree>, make list(<--run>))
+  want hold, is-unequal(ran/code, 0)
+  want hold, matches(make(pattern, <<--main>>), ran/error)
+
+test <--build alone writes a runnable artifact and does not run it>
+  take target, like text
+    walk targets
+  fork test, not(runs-here(target))
+    hold
+      skip <its toolchain is not installed, or EMIT_BUILD_ONLY names another target>
+  save ran, emit-on(target, <code/answer.tree>, make list(<--build>, <--out>, <out-{target}>))
+  want hold, is-equal(ran/code, 0)
+  want hold, is-equal(ran/output, <>)
+  want hold, file-exists(<{the-project()}/out-{target}>)

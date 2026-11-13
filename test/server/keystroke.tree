@@ -1,0 +1,189 @@
+note <a keystroke in the editor builds one unit: every analysis says what a whole compile says, and costs less>
+
+# Ported from keystroke.ts by statement (item term-self-host-001-0595), one test per `ok` in its order. A document that
+# loads the standard library is opened in a package on disk, then edited ten times, one of them into an error and back.
+# @term/flow's language-server and request-loop are the subject (decision 106), driven with the messages an editor
+# sends. The run is one sequence, made once in a shared form, and each test reads its part. The whole compile is
+# compile-text over the package, timed by its own `ms`.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/clock
+  find now
+
+load ../support/judging
+  find make-record
+  find empty-record
+  find empty-list
+  find set-field
+  find read-field
+  find read-at
+
+load ../support/reading
+  find count-with
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+dock load
+  load <@term/flow/code/language-server>, name flow-server
+  load <@term/flow/code/request-loop>, name flow-loop
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+  load <node:url>, name dock-url
+
+bind file-uri
+  take url, like dynamic
+  like text
+  case node
+    text <$url.href>
+
+# host value: a missing answer's items read as none, `items ?? []`
+bind or-empty
+  take items, like dynamic
+  like dynamic
+  case node
+    text <($items ?? [])>
+
+form counter
+  mark shared
+  link next, like number
+
+host ids, make(counter, bind(next, 1))
+
+task next-id
+  like number
+
+  save id, ids/next
+  save ids/next, add(id, 1)
+  back id
+
+# the package on disk: a deck.tree and its code folder, in a scratch folder by its real path
+task package-root
+  like text
+
+  host root, dock-file/realpath-sync(temp-folder(<keystroke->))
+  dock-file/mkdir-sync(dock-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  dock-file/write-file-sync(dock-path/join(root, <deck.tree>), <deck @probe/keystroke\n  mark \<0.0.1\>\n>)
+  back root
+
+# `n` x's
+task xs
+  take n, like number
+  like text
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, n)
+    hook hold
+      save out, <{out}x>
+      save at, add(at, 1)
+  back out
+
+# the document after `n` keystrokes, its count a text when it is the broken one
+task text-of
+  take n, like number
+  take broken, like boolean
+  like text
+
+  save count, <{n}>
+  fork test, broken
+    hold
+      save count, <\<not a number\>>
+  back <load @term/base/text\n  find trim\n\nload @term/base/list\n  find sort\n\ntask greet\n  take who, like text\n  like text\n  back trim(\<{xs(n)} \{who\}\>)\n\ntask count\n  like number\n  back {count}\n>
+
+task deliver
+  take record, like dynamic
+  take message, like dynamic
+  like list, like dynamic
+  mark async
+
+  set-field(message, <jsonrpc>, <2.0>)
+  back wait flow-loop/dispatch(record, message)
+
+# the document's errors as the server has them now: a pull settles any pending edit first
+task errors-now
+  take record, like dynamic
+  take uri, like text
+  like number
+  mark async
+
+  save params, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri))))
+  save out, deliver(record, make-record(make(list, <id>, next-id(), <method>, <textDocument/diagnostic>, <params>, params)))
+  back count-with(or-empty(read-field(read-field(read-at(out, 0), <result>), <items>)), <severity>, 1)
+
+form keystroke-run
+  mark shared
+  link done, like boolean
+  link opened-clean, like boolean
+  link wrong, like list, like text
+  link whole-ok, like boolean
+  link keystroke, like number
+  link merged, like number
+
+host run-now, make(keystroke-run, bind(done, false), bind(opened-clean, false), bind(wrong, make list), bind(whole-ok, false), bind(keystroke, -1), bind(merged, -1))
+
+task the-run
+  like keystroke-run
+  mark async
+
+  fork test, run-now/done
+    hold
+      back run-now
+  save run-now/done, true
+  save root, package-root()
+  save file, dock-path/join(root, <code>, <base.tree>)
+  save uri, file-uri(dock-url/pathToFileURL(file))
+  dock-file/write-file-sync(file, text-of(0, false))
+  save record, flow-server/make-language-server(empty-record())
+  save capabilities, make-record(make(list, <textDocument>, make-record(make(list, <diagnostic>, empty-record()))))
+  deliver(record, make-record(make(list, <id>, next-id(), <method>, <initialize>, <params>, make-record(make(list, <capabilities>, capabilities)))))
+  save document, make-record(make(list, <uri>, uri, <languageId>, <tree>, <version>, 1, <text>, text-of(0, false)))
+  deliver(record, make-record(make(list, <method>, <textDocument/didOpen>, <params>, make-record(make(list, <textDocument>, document)))))
+  save run-now/opened-clean, is-equal(errors-now(record, uri), 0)
+  save times, make list
+  save n, 1
+  walk test
+    hook test, is-below(n, 11)
+    hook hold
+      save broken, is-equal(n, 5)
+      save started, now()
+      save changes, empty-list()
+      changes/push(make-record(make(list, <text>, text-of(n, broken))))
+      save params, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri, <version>, add(n, 1))), <contentChanges>, changes))
+      deliver(record, make-record(make(list, <method>, <textDocument/didChange>, <params>, params)))
+      save errors, errors-now(record, uri)
+      times/push(subtract(now(), started))
+      fork test, not(is-equal(is-above(errors, 0), broken))
+        hold
+          run-now/wrong/push(<edit {n}: {errors} errors>)
+      save n, add(n, 1)
+  # what the same document costs compiled whole, as the server compiled it before units
+  save whole, compile-text(text-of(11, false), make(compile-choice, bind(file, file), bind(project, root), bind(optimize, false)))
+  save run-now/whole-ok, whole/ok
+  save run-now/merged, whole/ms
+  save total, 0
+  save at, 1
+  walk test
+    hook test, is-below(at, times/length)
+    hook hold
+      save total, add(total, times/{at})
+      save at, add(at, 1)
+  save run-now/keystroke, divide(total, subtract(times/length, 1))
+  back run-now
+
+test <the document opens clean>
+  want hold, the-run()/opened-clean
+
+test <every edit is analyzed to the right answer, the broken one with its error>
+  want hold, is-equal(the-run()/wrong/length, 0)
+
+test <the whole compile agrees the document builds>
+  want hold, the-run()/whole-ok
+
+test <a keystroke costs less than compiling the document whole>
+  save got, the-run()
+  want hold, is-below(got/keystroke, got/merged)

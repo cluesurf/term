@@ -1,0 +1,224 @@
+note <the parser holds every fixture of file/: each source reads as its tree, each kink is refused as written>
+
+# Ported from fixture.ts by statement (item term-self-host-001-0636, decision 116). The parser is the subject (decision
+# 106). Each file in ./file is a source, then a `---` line, then the expected canonical expanded tree, and ./file/kink
+# holds sources that must be REFUSED, the expected diagnostic message after the `---`. One walked test per folder, a
+# case per file in code point order, as the original counted one pass or fail per file.
+#
+# The original's COVERAGE rule asked, for every diagnostic name the parser can emit, that a kink fixture produce it,
+# reading "can emit" from the parser's TypeScript source (tree.ts, token.ts, event.ts). Those files are .tree now, so
+# the original finds no name it can emit and asserts nothing there. It is one plain test here, the count of names
+# emitted and never pinned, held at 0 as the original held it, read the original's way.
+#
+# Not ported: FIND=<substr> (a subset by name), which `--case` gives; DIVERGENT, an empty table.
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/parser/diagnostic>, name parser-diagnostic
+  load <node:fs>, name fixture-fs
+  load <node:path>, name fixture-path
+
+load @term/base/text
+  find split
+  find ends-with
+  find contains, name text-contains
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host fixture-folder, <test/parser/file>
+host kink-folder, <test/parser/file/kink>
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind trimmed
+  take text, like text
+  like text
+  case node
+    text <$text.trim()>
+
+# the messages of a refusal, one a line
+task refusal-text
+  take result, like dynamic
+  like text
+
+  save out, <>
+  save first, true
+  walk result/diagnostics
+    take one, like dynamic
+    fork test, first
+      hold
+        save out, <{one/message}>
+        save first, false
+      miss
+        save out, <{out}\n{one/message}>
+  back out
+
+# the names of a refusal's diagnostics
+task refusal-names
+  take result, like dynamic
+  like list, like text
+
+  host names, make list
+  walk result/diagnostics
+    take one, like dynamic
+    names/push(<{one/name}>)
+  back names
+
+# the .tree files directly in a folder, in code point order
+task fixture-names
+  take folder, like text
+  like list, like text
+
+  host names, make list
+  walk fixture-fs/readdir-sync(folder)
+    take entry, like text
+    fork test, ends-with(entry, <.tree>)
+      hold
+        names/push(entry)
+  back sort(names, from-texts)
+
+task fixture-text
+  take folder, like text
+  take name, like text
+  like text
+
+  back fixture-fs/read-file-sync(fixture-path/join(folder, name), <utf8>)
+
+# a fixture cut at its first `---` line: the source, then the expected text, both trimmed. Void parts when it has none
+form fixture-parts
+  link held, like boolean
+  link source, like text
+  link expected, like text
+
+task parts-of
+  take text, like text
+  like fixture-parts
+
+  host pieces, split(text, <\n---\n>)
+  fork test, is-below(pieces/length, 2)
+    hold
+      back make(fixture-parts, bind(held, false), bind(source, <>), bind(expected, <>))
+  save rest, get(pieces, 1)
+  save at, 2
+  walk test
+    hook test, is-below(at, pieces/length)
+    hook hold
+      save rest, <{rest}\n---\n{get(pieces, at)}>
+      save at, add(at, 1)
+  back make(fixture-parts, bind(held, true), bind(source, trimmed(get(pieces, 0))), bind(expected, trimmed(rest)))
+
+# a source reads clean and prints as the expected tree
+task reads-as-expected
+  take name, like text
+  like boolean
+
+  host parts, parts-of(fixture-text(fixture-folder, name))
+  fork test, not(parts/held)
+    hold
+      back false
+  host result, parser-tree/parse(source-of(name, parts/source))
+  fork test, not(result/ok)
+    hold
+      back false
+  back is-equal(trimmed(parser-tree/print-tree(result/tree)), parts/expected)
+
+# a kink is refused, and the expected text is inside what the parser says, or what it says inside the expected: the
+# ported messages were written for another diagnostic system
+task refused-as-expected
+  take name, like text
+  like boolean
+
+  host parts, parts-of(fixture-text(kink-folder, name))
+  fork test, not(parts/held)
+    hold
+      back false
+  host result, parser-tree/parse(source-of(<kink/{name}>, parts/source))
+  fork test, result/ok
+    hold
+      back false
+  host got, refusal-text(result)
+  back or(text-contains(got, parts/expected), text-contains(parts/expected, got))
+
+test <a fixture reads as its tree>
+  take name, like text
+    walk fixture-names(fixture-folder)
+  want hold, reads-as-expected(name)
+
+test <a kink fixture is refused with its message>
+  take name, like text
+    walk fixture-names(kink-folder)
+  want hold, refused-as-expected(name)
+
+# every diagnostic name the kink fixtures produce
+task pinned-names
+  like list, like text
+
+  host pinned, make list
+  walk fixture-names(kink-folder)
+    take name, like text
+    host parts, parts-of(fixture-text(kink-folder, name))
+    host result, parser-tree/parse(source-of(<kink/{name}>, parts/source))
+    fork test, not(result/ok)
+      hold
+        walk refusal-names(result)
+          take one, like text
+          pinned/push(one)
+  back pinned
+
+# the parser's source as the original read it, a file it cannot read as the empty text
+task parser-source
+  like text
+
+  save out, <>
+  walk make list(<tree.ts>, <token.ts>, <event.ts>)
+    take name, like text
+    host path, fixture-path/join(<deck/make/code/parser>, name)
+    fork test, fixture-fs/exists-sync(path)
+      hold
+        host text, fixture-fs/read-file-sync(path, <utf8>)
+        save out, <{out}\n{text}>
+  back out
+
+# how many names the parser can emit, by its source, that no kink fixture produces
+task unpinned-count
+  like number
+
+  host source, parser-source()
+  host pinned, pinned-names()
+  save count, 0
+  walk parser-diagnostic/diagnostic-names()
+    take name, like text
+    fork test, matches(make(pattern, bind(text, <['"`]{name}['"`]>)), source)
+      hold
+        fork test, not(list-has(pinned, name))
+          hold
+            save count, add(count, 1)
+  back count
+
+task list-has
+  take names, like list, like text
+  take name, like text
+  like boolean
+
+  walk names
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+test <every diagnostic the parser can emit is pinned by a kink fixture>
+  want hold, is-equal(unpinned-count(), 0)

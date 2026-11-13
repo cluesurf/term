@@ -1,0 +1,283 @@
+# Headers reach the server. Ported from http-header.ts by statement (item term-self-host-001-0624, decision 116).
+#
+# The original loaded code/native/node/runtime/http.ts from source and called its `request` directly. Nothing loads
+# that shim any more: the node client is network/http.tree `request` over native/node/network/http.tree
+# `send-request`, so the port asks through the public `request`, the code every caller reaches. A local server stands
+# in for an API and answers what it received, the body and the headers, as JSON, so each test reads what arrived.
+# One test per check of the original, in its order. node only, as the original.
+
+dock load
+  load <node:http>, name header-http
+  load <node:events>, name header-events
+  load <node:stream/consumers>, name header-consumers
+  load <global:JSON>, name header-json
+
+load @term/base/network/http
+  find request
+
+load @term/base/hash
+  find hash
+
+# host value: what the server received, as the JSON it answers
+bind header-echo
+  take request, like dynamic
+  take body, like text
+  like text
+  case node
+    text <<JSON.stringify({ got: $body, headers: ($request).headers })>>
+
+# host value: a header the server received, the empty text when it received none
+bind header-seen
+  take echo, like dynamic
+  take name, like text
+  like text
+  case node
+    text <String(($echo).headers[$name] ?? "")>
+
+# host value: whether the server received the header at all
+bind header-held
+  take echo, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <(($echo).headers[$name] !== undefined)>
+
+# host value: the body the server received
+bind header-got
+  take echo, like dynamic
+  like text
+  case node
+    text <String(($echo).got)>
+
+bind header-port
+  take server, like dynamic
+  like number
+  case node
+    text <($server).address().port>
+
+bind header-answer
+  take response, like dynamic
+  take reply, like text
+  like void
+  case node
+    text <<($response).writeHead(200, { "content-type": "application/json" }).end($reply)>>
+
+# the stub: it reads the body, then answers the body and the headers it was sent
+task answer-request
+  mark async
+  take request, like dynamic
+  take response, like dynamic
+  like void
+  save body
+    call header-consumers/text
+      read request
+      wait true
+  call header-answer
+    read response
+    call header-echo
+      read request
+      read body
+
+# a server listening at a free port of 127.0.0.1
+task open-server
+  mark async
+  like dynamic
+  save server
+    call header-http/create-server
+      read answer-request
+  call server/listen
+    code 0
+    text <127.0.0.1>
+  save heard
+    call header-events/once
+      read server
+      text <listening>
+      wait true
+  send back, read server
+
+task close-server
+  mark async
+  take server, like dynamic
+  like void
+  call server/close-all-connections
+  call server/close
+  save closed
+    call header-events/once
+      read server
+      text <close>
+      wait true
+
+# what one request with these headers answered: its status, and the server's record of what arrived
+form exchange
+  link status, like number
+  link echo, like dynamic
+
+task exchange-with
+  mark async
+  take method, like text
+  take body, like text
+  take header
+    like hash
+      like text
+      like text
+  like exchange
+  save server
+    call open-server
+      wait true
+  save answered
+    call request
+      read method
+      text <http://127.0.0.1:{header-port(server)}/>
+      read body
+      read header
+      wait true
+  call close-server
+    read server
+    wait true
+  send back
+    make exchange
+      bind status, read answered/status
+      bind echo
+        call header-json/parse
+          read answered/body
+
+# the same with no header map at all, which is what every existing caller passes
+task exchange-bare
+  mark async
+  take method, like text
+  take body, like text
+  like exchange
+  save server
+    call open-server
+      wait true
+  save answered
+    call request
+      read method
+      text <http://127.0.0.1:{header-port(server)}/>
+      read body
+      wait true
+  call close-server
+    read server
+    wait true
+  send back
+    make exchange
+      bind status, read answered/status
+      bind echo
+        call header-json/parse
+          read answered/body
+
+task one-header
+  like hash
+    like text
+    like text
+  save header
+    make hash
+  call header/set
+    text <authorization>
+    text <Bearer probe-token>
+  send back, read header
+
+task two-headers
+  like hash
+    like text
+    like text
+  save header
+    make hash
+  call header/set
+    text <authorization>
+    text <Bearer two>
+  call header/set
+    text <content-type>
+    text <application/json>
+  send back, read header
+
+task no-headers
+  like hash
+    like text
+    like text
+  save header
+    make hash
+  send back, read header
+
+# 1. a header is sent
+test <the header reached the server>
+  save one
+    call exchange-with
+      text <POST>
+      text <<{"a":1}>>
+      call one-header
+      wait true
+  want hold
+    call is-equal
+      call header-seen
+        read one/echo
+        text <authorization>
+      text <Bearer probe-token>
+
+test <the response came back>
+  save one
+    call exchange-with
+      text <POST>
+      text <<{"a":1}>>
+      call one-header
+      wait true
+  want hold
+    call is-equal
+      read one/status
+      code 200
+
+# the stub echoes the body inside a JSON field, so it comes back escaped
+test <the body was sent too>
+  save one
+    call exchange-with
+      text <POST>
+      text <<{"a":1}>>
+      call one-header
+      wait true
+  want hold
+    call is-equal
+      call header-got
+        read one/echo
+      text <<{"a":1}>>
+
+# 2. several headers
+test <a second header reached the server>
+  save two
+    call exchange-with
+      text <POST>
+      text <<{}>>
+      call two-headers
+      wait true
+  want hold
+    call is-equal
+      call header-seen
+        read two/echo
+        text <content-type>
+      text <application/json>
+
+# 3. NO headers, which is what every existing caller passes
+test <no header is sent when none is given>
+  save bare
+    call exchange-bare
+      text <GET>
+      text <>
+      wait true
+  want hold
+    call not
+      call header-held
+        read bare/echo
+        text <authorization>
+
+# 4. an empty map behaves as none
+test <an empty map sends no header>
+  save empty
+    call exchange-with
+      text <GET>
+      text <>
+      call no-headers
+      wait true
+  want hold
+    call not
+      call header-held
+        read empty/echo
+        text <authorization>

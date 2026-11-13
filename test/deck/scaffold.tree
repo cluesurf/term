@@ -2,9 +2,10 @@ note <what `term wake` writes holds against the formatter, the build's manifest 
 
 # Ported from deck/deck/test/scaffold.test.ts by statement (item term-self-host-001-0582), one test per `it` in its
 # order. Each rule refused the scaffold on 2026-10-02, found by running `wake` and then the next verb a guide tells a
-# reader to run, which is the only order a new user ever meets them in. The subjects are docked as the original imported
-# them: the formatter, the manifest face (code/package/manifest.ts, which hands the grammars to the Term manifest modules)
-# and the version face (code/code.ts). The original's wake-text and manifest-name faces only renamed deck/call's
+# reader to run, which is the only order a new user ever meets them in. The formatter is docked as the original imported
+# it. The manifest and version readers are @term/deck's ports (manifest-reading, manifest-text, spelling, version),
+# loaded in their own shapes (decision 157: this suite's subject is the scaffold, not a deck/deck face), so a field the
+# manifest leaves out reads as <>. The original's wake-text and manifest-name faces only renamed deck/call's
 # wake-files.tree and make's manifest-read.tree (deck/call's until decision 155), so those two are loaded: a name the
 # manifest does not declare is their `none`, where the face answered undefined. The suite lives at the root test/
 # because @term/deck links no @term/call, and the root reaches every deck (decision item term-self-host-001-1189).
@@ -23,38 +24,34 @@ load ../../deck/call/code/wake-files
 load @term/make/manifest-read
   find manifest-name
 
+load @term/deck/package/manifest-reading
+  find parse-manifest
+  find validate-manifest
+
+load @term/deck/package/manifest-text
+  find write-manifest
+
+load @term/deck/package/manifest-shape
+  find deck-manifest
+
+load @term/deck/package/spelling
+  find manifest-spellings
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/version
+  find show-code
+  find bump-code
+
 dock load
   load <@term/make/code/format/format>, name format-face
-  load <@term/deck/code/package/manifest>, name manifest-face
-  load <@term/deck/code/code>, name code-face
 
 form format-input
   link file, like text
   link text, like text
 
-form manifest-text
-  link text, like text
-
-form manifest-write
-  link manifest, like dynamic
-
-form code-bump
-  link code, like dynamic
-  link level, like number
-
-# host reflect: a field the face left out reads as undefined
-bind is-void
-  take value, like dynamic
-  like boolean
-  case node
-    text <$value === undefined>
-
-# host native: a list the face answered, written as JSON, to compare it with the empty list
-bind json-of
-  take value, like dynamic
-  like text
-  case node
-    text <JSON.stringify($value)>
+host grammars, make-grammars()
 
 # a line of `code` or `bear` with its indent, anywhere in a text of many lines
 host code-root-line, make pattern, <<(^|\n)[ \t]+(code|bear) >>
@@ -74,9 +71,9 @@ task formatted
 
 task parsed
   take text, like text
-  like dynamic
+  like deck-manifest
 
-  back manifest-face/parse-manifest(make(manifest-text, bind(text, text)))
+  back parse-manifest(text, grammars)
 
 # the name a manifest declares, <none> when it declares none
 task name-of
@@ -97,7 +94,7 @@ test <the `term wake` scaffold: writes every .tree in the formatter's canonical 
   want hold, is-equal(formatted(<code/boot.tree>, boot), boot)
 
 test <the `term wake` scaffold: keeps a manifest stacked, the way writeManifest writes it>
-  host written, manifest-face/write-manifest(make(manifest-write, bind(manifest, parsed(deck-of(<hello>)))))
+  host written, write-manifest(parsed(deck-of(<hello>)))
   want hold, is-equal(formatted(<deck.tree>, written), written)
   # a member line has one leaf child and stays on one line
   want hold, is-equal(formatted(<deck.tree>, <deck @a/b\n  mark \<1.0.0\>\n  deck ./deck/load\n>), <deck @a/b\n  mark \<1.0.0\>\n  deck ./deck/load\n>)
@@ -110,17 +107,17 @@ test <the `term wake` scaffold: keeps the user's name unscoped, and the build re
 
 test <the `term wake` scaffold: starts at 0.0.1, which `term host` accepts, and bumps by one>
   host manifest, parsed(deck-of(<hello>))
-  want hold, is-equal(code-face/show-code(manifest/mark), <0.0.1>)
-  host problems, wait manifest-face/validate-manifest(make(manifest-write, bind(manifest, manifest)))
-  want hold, is-equal(json-of(problems), <[]>)
-  want hold, is-equal(code-face/show-code(code-face/bump-code(make(code-bump, bind(code, manifest/mark), bind(level, 3)))), <0.0.2>)
+  want hold, is-equal(show-code(manifest/mark), <0.0.1>)
+  host problems, validate-manifest(manifest)
+  want hold, is-equal(problems/length, 0)
+  want hold, is-equal(show-code(bump-code(manifest/mark, 3)), <0.0.2>)
 
 test <the `term wake` scaffold: says `mark <0.0.1>` and leaves the default code root unwritten>
   host deck, deck-of(<hello>)
   want hold, text-contains(deck, <  mark \<0.0.1\>\n>)
   want hold, not(matches(code-root-line, deck))
-  want hold, is-void(parsed(deck)/code)
-  want hold, is-equal(json-of(manifest-face/manifest-spellings(make(manifest-text, bind(text, deck)))), <[]>)
+  want hold, is-equal(parsed(deck)/code, <>)
+  want hold, is-equal(manifest-spellings(deck)/length, 0)
 
 test <manifestName: reads a scoped and an unscoped `deck` statement>
   want hold, is-equal(name-of(<deck @term/call\n  mark \<0.0.16\>\n>), <@term/call>)

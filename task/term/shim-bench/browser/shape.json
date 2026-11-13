@@ -1,0 +1,39 @@
+{
+  "shim": "shape",
+  "candidate": "deck/base/code/native/browser/shape.tree",
+  "rounds": 40,
+  "ops": [
+    {
+      "op": "is-present",
+      "shim_op": "is-present",
+      "term_op": "is-present",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "any-singles"
+    },
+    {
+      "op": "is-text",
+      "shim_op": "is-text",
+      "term_op": "is-text",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "any-singles"
+    },
+    {
+      "op": "is-null",
+      "shim_op": "is-null",
+      "term_op": "is-null",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "any-singles"
+    },
+    {
+      "op": "type-of",
+      "shim_op": "type-of",
+      "term_op": "type-of",
+      "arity": 1,
+      "kind": "text",
+      "cases": "any-singles"
+    }
+  ]
+}

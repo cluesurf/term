@@ -1,0 +1,207 @@
+note <a raise's flow holds Term frames, the same bytes on TypeScript, Rust, Swift and Kotlin>
+
+# Ported from raise-flow-native.ts by statement (item term-self-host-001-0689), one test per `ok` in its order, each `ok`
+# of its loop over the backends one walked test, a backend a case of it (term/hive decision 001,
+# note/project/term/hive/decision/001-raise-records-term-frames.md): `<task> <file>:<line>`, the raise site first, then
+# each call the exception leaves through, up to the call in the guarded block that catches it, at most 64.
+#
+# raise-flow-native/flow.tree prints, by `inspect`, the flow of: a form raise three tasks below the guard (two of the
+# tasks inlined by the simplifier, which keep their frames), a `halt <text>`, a raise in a handler, a raise caught inside
+# a closure (named by the task it is written in), a recursion 100 deep (64 frames), and a call to a task that cannot
+# raise beside one that can (no frame for it). Its standard output is flow.golden on every backend. uncaught.tree raises
+# with nothing to catch it: every backend prints the form, the note and the frames to standard error, uncaught.golden,
+# and exits 1. Each program is written to one path on every backend, `<folder>/<backend>/<name>.tree`, since a frame
+# names its file. Each backend's two programs are built and run once, by the first test that asks, and kept in
+# `flow-now`, since the last two tests compare what every backend printed.
+
+load ../support/compiling
+  find compile-choice
+  find file-text
+
+load ../support/running
+  find backends
+  find build-text
+  find built-program
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/list
+  find push
+
+host here, <test/compile/raise-flow-native>
+
+# what one backend came to. `state` is <skipped> when its toolchain is not here, else <ran>. Each program's own state is
+# <built> or how it failed, then its exit code and both streams
+form flow-run
+  link state, like text
+  link reason, like text, fall <>
+  link flow-state, like text, fall <>
+  link flow-code, like number, fall -1
+  link flow-out, like text, fall <>
+  link flow-err, like text, fall <>
+  link uncaught-state, like text, fall <>
+  link uncaught-code, like number, fall -1
+  link uncaught-err, like text, fall <>
+
+form flow-state-of
+  mark shared
+  link folder, like text
+  link runs, like hash, like text, like flow-run
+
+host flow-now, make(flow-state-of, bind(folder, <>), bind(runs, make hash))
+
+task flow-folder
+  like text
+
+  fork test, is-equal(flow-now/folder, <>)
+    hold
+      save flow-now/folder, temp-folder(<term-raise-flow->)
+  back flow-now/folder
+
+# a built program run once, its exit code and both streams
+task run-built
+  take built, like built-program
+  like run-result
+
+  save rest, make list
+  save at, 0
+  walk built/command
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        rest/push(part)
+    save at, add(at, 1)
+  back run(built/command/0, rest)
+
+# a program of raise-flow-native built in the backend's own folder, at one path per backend
+task built-flow
+  take backend, like text
+  take name, like text
+  like built-program
+
+  save own, <{flow-folder()}/{backend}>
+  make-folder(own)
+  back build-text(file-text(<{here}/{name}.tree>), backend, own, name, make(compile-choice, bind(file, <{own}/{name}.tree>)), <{own}/{name}.tree>)
+
+task described
+  take built, like built-program
+  like text
+
+  fork test, is-equal(built/state, <built>)
+    hold
+      back <built>
+  back <{built/state} at {built/stage}: {built/reason}>
+
+task flow-made
+  take backend, like text
+  like flow-run
+
+  save flow, built-flow(backend, <flow>)
+  fork test, is-equal(flow/state, <skipped>)
+    hold
+      back make(flow-run, bind(state, <skipped>), bind(reason, flow/reason))
+  save one, make(flow-run, bind(state, <ran>), bind(flow-state, described(flow)))
+  fork test, is-equal(flow/state, <built>)
+    hold
+      save ran, run-built(flow)
+      save one/flow-code, ran/code
+      save one/flow-out, ran/output
+      save one/flow-err, ran/error
+  save uncaught, built-flow(backend, <uncaught>)
+  save one/uncaught-state, described(uncaught)
+  fork test, is-equal(uncaught/state, <built>)
+    hold
+      save ended, run-built(uncaught)
+      save one/uncaught-code, ended/code
+      save one/uncaught-err, ended/error
+  back one
+
+task flow-on
+  take backend, like text
+  like flow-run
+
+  fork test, flow-now/runs/has(backend)
+    hold
+      back flow-now/runs/{backend}
+  save made, flow-made(backend)
+  save flow-now/runs/{backend}, made
+  back made
+
+# whether every text of a list is the first one
+task all-same
+  take seen, like list, like text
+  like boolean
+
+  save same, true
+  walk seen
+    take one, like text
+    fork test, is-unequal(one, seen/0)
+      hold
+        save same, false
+  back same
+
+test <every caught raise prints the Term frames the golden holds>
+  take backend, like text
+    walk backends()
+  save one, flow-on(backend)
+  fork test, is-equal(one/state, <skipped>)
+    hold
+      skip one/reason
+  want hold, is-equal(one/flow-state, <built>)
+  want hold, is-equal(one/flow-code, 0)
+  want hold, is-equal(one/flow-out, file-text(<{here}/flow.golden>))
+
+test <an uncaught raise exits 1>
+  take backend, like text
+    walk backends()
+  save one, flow-on(backend)
+  fork test, is-equal(one/state, <skipped>)
+    hold
+      skip one/reason
+  want hold, is-equal(one/uncaught-state, <built>)
+  want hold, is-equal(one/uncaught-code, 1)
+
+test <an uncaught raise prints its form, note and frames as the golden holds>
+  take backend, like text
+    walk backends()
+  save one, flow-on(backend)
+  fork test, is-equal(one/state, <skipped>)
+    hold
+      skip one/reason
+  want hold, is-equal(one/uncaught-state, <built>)
+  want hold, is-equal(one/uncaught-err, file-text(<{here}/uncaught.golden>))
+
+# what every backend that ran printed on one stream: <out> of the flow program, <err> of the uncaught one
+task seen-on
+  take stream, like text
+  like list, like text
+
+  save seen, make list
+  walk backends()
+    take backend, like text
+    save one, flow-on(backend)
+    fork test, and(is-equal(stream, <out>), is-equal(one/flow-state, <built>))
+      hold
+        seen/push(one/flow-out)
+    fork test, and(is-equal(stream, <err>), is-equal(one/uncaught-state, <built>))
+      hold
+        seen/push(one/uncaught-err)
+  back seen
+
+test <the caught flows are the same bytes on every backend run>
+  save seen, seen-on(<out>)
+  want hold, is-above(seen/length, 0)
+  want hold, all-same(seen)
+
+test <the uncaught report is the same bytes on every backend run>
+  save seen, seen-on(<err>)
+  want hold, is-above(seen/length, 0)
+  want hold, all-same(seen)

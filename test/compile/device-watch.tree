@@ -1,0 +1,707 @@
+note <the device watchers on the toolkit hosts: each told the current value first, then each change the platform reports>
+
+# Ported from device-watch.ts by statement (item 0698), on the device harness (test/support/device, item 0548).
+# The device watchers on the toolkit hosts (device-layer-0016): `watch-position`, `watch-battery`, `watch-network` and
+# `watch-motion`, each with a handler that is told the current value first and then each change the platform reports.
+# The app says each answer that differs from the one before, and exits once every watcher this platform can change has
+# answered twice with two different values, and every other one has answered once.
+#
+# What changes them is the platform, told from here: a helper beside the launch (the harness's `run-leg-beside`)
+# alternates the emulator's place (`emu geo fix`), battery level (`dumpsys battery set level`) and acceleration (`emu
+# sensor set acceleration`), and the simulator's place (`simctl location set`), every two seconds until the launch is
+# over. So a second answer is one the platform reported, not one the app asked for again.
+#
+#   android, compose-android   position, battery and motion change; the network answers once
+#   ios                        the position changes; the battery, network and motion answer once
+#   macos, compose             the battery, network and motion answer once. No position on the Mac, as in
+#                              device-features: it would be the person's own
+#
+# WATCH_ONLY=android (or ios, macos, compose, compose-android) runs one. The legs run once, in the first test, and each
+# leg's checks and judgments are a walked test each. A leg that did not run skips its tests with the reason.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg-beside
+
+load ../support/device/android-log
+  find android-device
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+  find index-of
+  find substring
+  find char-count
+  find trim
+  find replace
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/float
+  find absolute
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find push
+
+# one watcher a leg starts: what it watches, whether the platform here is made to change it, and whether the app drops
+# it the moment it has started
+form watcher
+  link name, like text
+  link task, like text
+  link changes, like boolean
+  link dropped, like boolean
+
+form watch-state
+  mark shared
+  link ran, like boolean
+  link asked, like list, like text
+  link legs, like list, like toolkit-leg
+  link judged, like list, like toolkit-leg
+  link serial, like text
+  link adb, like text
+
+host state, make(watch-state, bind(ran, false), bind(asked, make list), bind(legs, make list), bind(judged, make list), bind(serial, <>), bind(adb, <>))
+
+task is-android
+  take leg, like text
+  like boolean
+
+  back or(is-equal(leg, <android>), is-equal(leg, <compose-android>))
+
+task watcher-of
+  take name, like text
+  take task, like text
+  take changes, like boolean
+  take dropped, like boolean
+  like watcher
+
+  back make(watcher, bind(name, name), bind(task, task), bind(changes, changes), bind(dropped, dropped))
+
+# The second battery watcher shares the first one's subscription and must hear every change too. The dropped motion
+# watcher is dropped as soon as it is made, so it may hear the value that was current then and nothing after
+task watchers
+  take leg, like text
+  like list, like watcher
+
+  save watching, make list
+  fork test, is-unequal(leg, <macos>)
+    hold
+      watching/push(watcher-of(<position>, <watch-position>, or(is-equal(leg, <ios>), is-android(leg)), false))
+  watching/push(watcher-of(<battery>, <watch-battery>, is-android(leg), false))
+  watching/push(watcher-of(<battery-again>, <watch-battery>, is-android(leg), false))
+  watching/push(watcher-of(<network>, <watch-network>, false, false))
+  watching/push(watcher-of(<motion>, <watch-motion>, is-android(leg), false))
+  watching/push(watcher-of(<motion-dropped>, <watch-motion>, false, true))
+  back watching
+
+# what a watcher's answers are, read off its task
+task kind-of-watcher
+  take one, like watcher
+  like text
+
+  back replace(one/task, <watch->, <>)
+
+# the app's own test of done: every watcher that changes has changed, every other one has been heard, written as nested
+# forks ending in the exit. `from` is where in `list` this level starts
+task finished
+  take watching, like list, like watcher
+  take from, like number
+  take depth, like text
+  like text
+
+  fork test, not(is-below(from, watching/length))
+    hold
+      back <{depth}call exit-app\n{depth}  code 0>
+  save first, watching/{from}
+  save state-name, <seen-{first/name}>
+  fork test, first/changes
+    hold
+      save state-name, <changed-{first/name}>
+  save lines, make list
+  lines/push(<{depth}fork test>)
+  lines/push(<{depth}  hook test>)
+  lines/push(<{depth}    call is-equal>)
+  lines/push(<{depth}      call read-signal>)
+  lines/push(<{depth}        bind self, read {state-name}>)
+  lines/push(<{depth}      text \<yes\>>)
+  lines/push(<{depth}  hook hold>)
+  lines/push(finished(watching, add(from, 1), <{depth}    >))
+  lines/push(<{depth}  hook miss>)
+  lines/push(<{depth}    save waiting, code 0>)
+  back lines/join(<\n>)
+
+# the watchers that are not dropped
+task kept-watchers
+  take watching, like list, like watcher
+  like list, like watcher
+
+  save kept, make list
+  walk watching
+    take one, like watcher
+    fork test, not(one/dropped)
+      hold
+        kept/push(one)
+  back kept
+
+# one watch, whose handler says a new answer, marks it seen or changed, and asks whether every watcher is done
+task written
+  take one, like watcher
+  take watching, like list, like watcher
+  like text
+
+  save name, one/name
+  save lines, make list
+  lines/push(<      save drop-{name}>)
+  lines/push(<        call {one/task}>)
+  lines/push(<          task heard>)
+  lines/push(<            take value, like text>)
+  lines/push(<            fork test>)
+  lines/push(<              hook test>)
+  lines/push(<                call is-equal>)
+  lines/push(<                  call read-signal>)
+  lines/push(<                    bind self, read last-{name}>)
+  lines/push(<                  read value>)
+  lines/push(<              hook hold>)
+  lines/push(<                save same, code 0>)
+  lines/push(<              hook miss>)
+  lines/push(<                call write-signal>)
+  lines/push(<                  bind self, read last-{name}>)
+  lines/push(<                  bind value, read value>)
+  lines/push(<                call say>)
+  lines/push(<                  text \<step watch-{name} \{value\}\>>)
+  lines/push(<                fork test>)
+  lines/push(<                  hook test>)
+  lines/push(<                    call is-equal>)
+  lines/push(<                      call read-signal>)
+  lines/push(<                        bind self, read seen-{name}>)
+  lines/push(<                      text \<yes\>>)
+  lines/push(<                  hook hold>)
+  lines/push(<                    call write-signal>)
+  lines/push(<                      bind self, read changed-{name}>)
+  lines/push(<                      bind value, text \<yes\>>)
+  lines/push(<                  hook miss>)
+  lines/push(<                    call write-signal>)
+  lines/push(<                      bind self, read seen-{name}>)
+  lines/push(<                      bind value, text \<yes\>>)
+  lines/push(finished(kept-watchers(watching), 0, <                >))
+  fork test, one/dropped
+    hold
+      lines/push(<      call drop-{name}>)
+  back lines/join(<\n>)
+
+# every watcher's signals made before any watch starts, since a handler may be told at once and reads all of them
+task watch-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  save watching, watchers(leg)
+  save lines, make list
+  lines/push(<load @term/site/code/view/reactive>)
+  lines/push(<  find make-signal>)
+  lines/push(<  find read-signal>)
+  lines/push(<  find write-signal>)
+  lines/push(<>)
+  lines/push(<load @term/site/code/dom/native/toolkit/dom>)
+  lines/push(<  find open-root>)
+  lines/push(<  find launch>)
+  lines/push(<  find run-app>)
+  lines/push(<  find exit-app>)
+  lines/push(<  find say>)
+  lines/push(<>)
+  lines/push(<load @term/site/code/view/location>)
+  lines/push(<  find watch-position>)
+  lines/push(<>)
+  lines/push(<load @term/site/code/view/battery>)
+  lines/push(<  find watch-battery>)
+  lines/push(<>)
+  lines/push(<load @term/site/code/view/network>)
+  lines/push(<  find watch-network>)
+  lines/push(<>)
+  lines/push(<load @term/site/code/view/motion>)
+  lines/push(<  find watch-motion>)
+  lines/push(<>)
+  lines/push(<task main>)
+  lines/push(<  save root>)
+  lines/push(<    call open-root>)
+  lines/push(<      text \<Term watch\>>)
+  lines/push(<      code 320>)
+  lines/push(<      code 200>)
+  lines/push(<  call launch>)
+  lines/push(<    task check>)
+  lines/push(<      mark async>)
+  walk watching
+    take one, like watcher
+    walk make list(<last>, <seen>, <changed>)
+      take kind, like text
+      lines/push(<      save {kind}-{one/name}>)
+      lines/push(<        call make-signal>)
+      lines/push(<          bind value, text \<none\>>)
+  walk watching
+    take one, like watcher
+    lines/push(written(one, watching))
+  lines/push(<      call say>)
+  lines/push(<        text \<step watching all\>>)
+  lines/push(<  call run-app>)
+  lines/push(<>)
+  back lines/join(<\n>)
+
+# every answer one watcher gave, in order
+task answers
+  take output, like text
+  take name, like text
+  like list, like text
+
+  save at, <step watch-{name} >
+  save found, make list
+  walk text-split(output, <\n>)
+    take line, like text
+    save where, index-of(line, at)
+    fork test, not(is-below(where, 0))
+      hold
+        found/push(trim(substring(line, add(where, char-count(at)))))
+  back found
+
+# a coordinate the app said, as a number, or 1000 (no place on Earth) when it is no number
+task coordinate
+  take said, like text
+  like float
+
+  fork
+    mark unsafe
+    back parse-float(said)
+  halt take
+    take cause
+    back 1000.0
+
+# whether `said` (`<latitude> <longitude>`) is within 0.0005 of the place
+task near
+  take said, like text
+  take latitude, like float
+  take longitude, like float
+  like boolean
+
+  save parts, text-split(said, < >)
+  save a, <>
+  save b, <>
+  fork test, is-above(parts/length, 0)
+    hold
+      save a, parts/0
+  fork test, is-above(parts/length, 1)
+    hold
+      save b, parts/1
+  back and(is-below(absolute(subtract(coordinate(a), latitude)), 0.0005), is-below(absolute(subtract(coordinate(b), longitude)), 0.0005))
+
+# whether an answer after the first is one this test told the platform
+task told
+  take kind, like text
+  take said, like text
+  like boolean
+
+  fork test, is-equal(kind, <position>)
+    hold
+      back or(near(said, 48.858370, 2.294481), near(said, 48.860611, 2.337644))
+  fork test, is-equal(kind, <battery>)
+    hold
+      back or(is-equal(said, <0.42 unplugged>), is-equal(said, <0.57 unplugged>))
+  back or(is-equal(said, <1.50 2.50 9.50>), is-equal(said, <0.50 3.50 8.50>))
+
+# how many different answers a list holds
+task distinct-count
+  take heard, like list, like text
+  like number
+
+  save seen, make list
+  walk heard
+    take one, like text
+    save fresh, true
+    walk seen
+      take other, like text
+      fork test, is-equal(other, one)
+        hold
+          save fresh, false
+    fork test, fresh
+      hold
+        seen/push(one)
+  back seen/length
+
+# every answer after the first, each told the platform
+task all-told
+  take kind, like text
+  take heard, like list, like text
+  like boolean
+
+  save at, 0
+  save every, true
+  walk heard
+    take said, like text
+    fork test, and(is-above(at, 0), not(told(kind, said)))
+      hold
+        save every, false
+    save at, add(at, 1)
+  back every
+
+task last-of-text
+  take output, like text
+  like text
+
+  save n, char-count(output)
+  fork test, is-above(n, 400)
+    hold
+      back substring(output, subtract(n, 400))
+  back output
+
+task or-tail
+  take joined, like text
+  take output, like text
+  like text
+
+  fork test, is-equal(joined, <>)
+    hold
+      back last-of-text(output)
+  back joined
+
+task judgment
+  take judged, like toolkit-leg
+  take name, like text
+  take passed, like boolean
+  take info, like text
+  like void
+
+  judged/checks/push(make(toolkit-check, bind(name, name), bind(passed, passed), bind(info, info)))
+
+# whether a leg came as far as the original's judge: its app ran to its end, the check that says so made, held or not.
+# A leg that was skipped, or stopped at its build or install, is judged on nothing, as the original never called its
+# judge there
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# the original's judge, each `ok` a judgment on a leg of its own, in the original's order
+task judge-watch
+  take ran, like toolkit-leg
+  like toolkit-leg
+
+  save leg, ran/leg
+  save output, ran/output
+  save judged, make(toolkit-leg, bind(leg, leg), bind(toolkit, ran/toolkit), bind(state, ran/state), bind(reason, ran/reason))
+  save named, <{leg} ({ran/toolkit})>
+  fork test, not(reached-judge(ran))
+    hold
+      back judged
+  walk watchers(leg)
+    take one, like watcher
+    save name, one/name
+    save heard, answers(output, name)
+    save joined, heard/join(< | >)
+    fork test, one/dropped
+      hold
+        judgment(judged, <{named}: the {name} watcher hears nothing after its drop>, is-below(heard/length, 2), joined)
+      miss
+        fork test, not(one/changes)
+          hold
+            judgment(judged, <{named}: the {name} watcher answers>, is-above(heard/length, 0), or-tail(joined, output))
+          miss
+            judgment(judged, <{named}: the {name} watcher heard the platform change it>, is-above(distinct-count(heard), 1), or-tail(joined, output))
+            # and every answer after the first is one this test told the platform
+            judgment(judged, <{named}: and each change is one the platform was told>, all-told(kind-of-watcher(one), heard), joined)
+  walk watchers(leg)
+    take one, like watcher
+    fork test, and(not(one/changes), not(one/dropped))
+      hold
+        save name, one/name
+        save heard, answers(output, name)
+        save first, <>
+        fork test, is-above(heard/length, 0)
+          hold
+            save first, heard/0
+        save kind, kind-of-watcher(one)
+        fork test, is-equal(kind, <network>)
+          hold
+            judgment(judged, <{named}: the {name} watcher's first answer is online>, matches(make(pattern, <<^online (wifi|cellular|wired|other)$>>), first), first)
+          miss
+            fork test, is-equal(kind, <motion>)
+              hold
+                judgment(judged, <{named}: no accelerometer here, the {name} watcher said so once>, is-equal(first, <unavailable>), first)
+              miss
+                fork test, is-equal(kind, <battery>)
+                  hold
+                    judgment(judged, <{named}: the {name} watcher answers in the contract's shape>, matches(make(pattern, <<^(\d\.\d\d|unknown) (charging|full|unplugged|unknown)$|^unavailable$>>), first), first)
+                  miss
+                    judgment(judged, <{named}: the {name} watcher answers once>, is-unequal(first, <>), first)
+  back judged
+
+# a tool run for its effect, its failure ignored, as the original's spawnSync never raised
+task quiet-run
+  mark async
+  take command, like text
+  take argument-list, like list, like text
+  like void
+
+  fork
+    mark unsafe
+    run(command, argument-list)
+  halt take
+    take cause
+    back
+
+# once a leg is installed and before it starts: the grants and the battery state the watchers need
+task prepare-watch
+  take leg, like text
+  take udid, like text
+  take serial, like text
+  take identifier, like text
+  like void
+
+  fork test, and(is-equal(leg, <ios>), is-unequal(udid, <>))
+    hold
+      quiet-run(<xcrun>, make list(<simctl>, <privacy>, udid, <grant>, <location>, identifier))
+  fork test, and(is-android(leg), is-unequal(serial, <>))
+    hold
+      save state/serial, serial
+      save state/adb, android-device()/adb
+      quiet-run(state/adb, make list(<-s>, serial, <shell>, <pm>, <grant>, identifier, <android.permission.ACCESS_FINE_LOCATION>))
+      quiet-run(state/adb, make list(<-s>, serial, <shell>, <dumpsys>, <battery>, <unplug>))
+      quiet-run(state/adb, make list(<-s>, serial, <shell>, <dumpsys>, <battery>, <set>, <status>, <3>))
+
+# the changer beside the launch: the next place, level and acceleration every two seconds, 150 turns at most, until the
+# launch is over and the harness stops it. Its arguments are adb, the emulator's serial and the simulator's udid, either
+# empty
+host changer-script, <i=0\nwhile [ $i -lt 150 ]; do\n  if [ $((i % 2)) -eq 0 ]; then lat=48.858370; lon=2.294481; level=42; acc=1.50:2.50:9.50\n  else lat=48.860611; lon=2.337644; level=57; acc=0.50:3.50:8.50; fi\n  if [ -n "$2" ]; then\n    "$1" -s "$2" emu geo fix $lon $lat\n    "$1" -s "$2" shell dumpsys battery set level $level\n    "$1" -s "$2" emu sensor set acceleration $acc\n  fi\n  if [ -n "$3" ]; then xcrun simctl location "$3" set $lat,$lon; fi\n  sleep 2\n  i=$((i + 1))\ndone\n>
+
+task changer
+  take leg, like text
+  take udid, like text
+  take serial, like text
+  take identifier, like text
+  like list, like text
+
+  fork test, and(is-equal(udid, <>), is-equal(serial, <>))
+    hold
+      back make list
+  save adb, <>
+  fork test, is-unequal(serial, <>)
+    hold
+      save adb, android-device()/adb
+  back make list(<sh>, <-c>, changer-script, <sh>, adb, serial, udid)
+
+# every leg asked for run and judged, then the emulator's battery put back. Once, for every test
+task run-watch
+  mark async
+  like void
+
+  fork test, state/ran
+    hold
+      back
+  save state/ran, true
+  save app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-watch->)), bind(name, <Watch>), bind(who, <device-watch>), bind(ios-identifier, <surf.term.device-watch-test>), bind(android-identifier, <surf.term.devicewatch>), bind(compose, true), bind(compose-android, true))
+  save state/asked, legs-of(app, variable(<WATCH_ONLY>))
+  walk state/asked
+    take leg, like text
+    save ran, run-leg-beside(app, leg, watch-program, prepare-watch, changer)
+    state/legs/push(ran)
+    state/judged/push(judge-watch(ran))
+  fork test, is-unequal(state/serial, <>)
+    hold
+      quiet-run(state/adb, make list(<-s>, state/serial, <shell>, <dumpsys>, <battery>, <reset>))
+
+# a leg's run, or one skipped as not asked for
+task leg-in
+  take watching, like list, like toolkit-leg
+  take leg, like text
+  like toolkit-leg
+
+  walk watching
+    take one, like toolkit-leg
+    fork test, is-equal(one/leg, leg)
+      hold
+        back one
+  back make(toolkit-leg, bind(leg, leg), bind(toolkit, <>), bind(state, <skipped>), bind(reason, <not asked for>))
+
+task skip-reason
+  take leg, like text
+  like text
+
+  save ran, leg-in(state/legs, leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back <{leg}: {ran/reason}>
+  back <>
+
+# the names of a leg's checks or judgments, in order. A leg that did not run, or stopped before its judge, has one,
+# `nothing judged`, whose case skips
+task names-of
+  take ran, like toolkit-leg
+  like list, like text
+
+  save names, make list
+  walk ran/checks
+    take one, like toolkit-check
+    names/push(one/name)
+  fork test, is-equal(names/length, 0)
+    hold
+      names/push(<nothing judged>)
+  back names
+
+# the cases of a leg's walked tests, read once the legs have run: the walk is read before the test's body
+task check-names
+  mark async
+  take leg, like text
+  like list, like text
+
+  run-watch()
+  back names-of(leg-in(state/legs, leg))
+
+task judged-names
+  mark async
+  take leg, like text
+  like list, like text
+
+  run-watch()
+  back names-of(leg-in(state/judged, leg))
+
+# whether every check of that name held: the judge names one check per watcher where the original's names repeat
+task passed-in
+  take ran, like toolkit-leg
+  take name, like text
+  like boolean
+
+  save every, true
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, and(is-equal(one/name, name), not(one/passed))
+      hold
+        save every, false
+  back every
+
+test <macos (AppKit): the leg's own checks>
+  take name, like text
+    walk check-names(<macos>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<macos>), <>)
+    hold
+      skip skip-reason(<macos>)
+  want hold, passed-in(leg-in(state/legs, <macos>), name)
+
+test <macos (AppKit): the judge>
+  take name, like text
+    walk judged-names(<macos>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<macos>), <>)
+    hold
+      skip skip-reason(<macos>)
+  fork test, is-equal(name, <nothing judged>)
+    hold
+      skip <the leg stopped before its judge>
+  want hold, passed-in(leg-in(state/judged,<macos>), name)
+
+test <ios (UIKit): the leg's own checks>
+  take name, like text
+    walk check-names(<ios>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<ios>), <>)
+    hold
+      skip skip-reason(<ios>)
+  want hold, passed-in(leg-in(state/legs, <ios>), name)
+
+test <ios (UIKit): the judge>
+  take name, like text
+    walk judged-names(<ios>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<ios>), <>)
+    hold
+      skip skip-reason(<ios>)
+  fork test, is-equal(name, <nothing judged>)
+    hold
+      skip <the leg stopped before its judge>
+  want hold, passed-in(leg-in(state/judged,<ios>), name)
+
+test <android (Android views): the leg's own checks>
+  take name, like text
+    walk check-names(<android>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<android>), <>)
+    hold
+      skip skip-reason(<android>)
+  want hold, passed-in(leg-in(state/legs, <android>), name)
+
+test <android (Android views): the judge>
+  take name, like text
+    walk judged-names(<android>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<android>), <>)
+    hold
+      skip skip-reason(<android>)
+  fork test, is-equal(name, <nothing judged>)
+    hold
+      skip <the leg stopped before its judge>
+  want hold, passed-in(leg-in(state/judged,<android>), name)
+
+test <compose (Compose): the leg's own checks>
+  take name, like text
+    walk check-names(<compose>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<compose>), <>)
+    hold
+      skip skip-reason(<compose>)
+  want hold, passed-in(leg-in(state/legs, <compose>), name)
+
+test <compose (Compose): the judge>
+  take name, like text
+    walk judged-names(<compose>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<compose>), <>)
+    hold
+      skip skip-reason(<compose>)
+  fork test, is-equal(name, <nothing judged>)
+    hold
+      skip <the leg stopped before its judge>
+  want hold, passed-in(leg-in(state/judged,<compose>), name)
+
+test <compose-android (Jetpack Compose): the leg's own checks>
+  take name, like text
+    walk check-names(<compose-android>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<compose-android>), <>)
+    hold
+      skip skip-reason(<compose-android>)
+  want hold, passed-in(leg-in(state/legs, <compose-android>), name)
+
+test <compose-android (Jetpack Compose): the judge>
+  take name, like text
+    walk judged-names(<compose-android>)
+  run-watch()
+  fork test, is-unequal(skip-reason(<compose-android>), <>)
+    hold
+      skip skip-reason(<compose-android>)
+  fork test, is-equal(name, <nothing judged>)
+    hold
+      skip <the leg stopped before its judge>
+  want hold, passed-in(leg-in(state/judged,<compose-android>), name)

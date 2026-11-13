@@ -1,0 +1,191 @@
+note <a console built as units routes each hook to the task by the name its unit exports>
+
+# Ported from hook-task-unit.ts by statement (item term-self-host-001-0571), one test per `ok` in its order. A console
+# built AS UNITS (`term boot`, the separate build) reaches the task its hook names by the name the task's module
+# exports. Since term-compiler-0034 the import binding binds a hook's `task bank` like a call, so where the name is split
+# by file the route carried the split name (`bank__in0_0`), while a unit's module exports its written name, and the
+# command failed at run time (term-compiler-0064). The zone shape: the task `bank` in one file, a form `bank` in another
+# that a third file imports. compile/separate and the hook dispatcher's command-routes are the subject (decision 106),
+# the project resolver comes through test/support/compiling. The original built once: each test here writes the project
+# to its own temp folder and builds it (writing a file waits, so no build runs outside a task). The original's one
+# "builds as units" line stood in for the rest when the build failed: here each test wants the build first.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-options-of
+
+load ../support/judging
+  find make-record
+  find set-field
+  find read-field
+  find truth
+
+load ../support/walking
+  find field-of
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/text
+  find ends-with
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/host/port/code/work/hook/parsing>, name hook-parsing
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+bind result-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <$result.ok === true>
+
+bind or-none
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <($value ?? [])>
+
+# a unit's module name, handed to the build as its `modules` closure
+task module-name
+  take file, like text
+  like text
+
+  back <./{file}>
+
+# the form `bank`, and a file that imports it
+host kind-text, <form bank\n  link name, like text\n>
+host save-text, <load ./kind\n  find bank\n\ntask keep\n  take all, like list, like bank\n  like number\n  back all/length\n>
+# the task `bank`, and an ordinary one beside it
+host work-text, <task bank\n  take sort, like text\n  like text\n  back \<saved \{sort\}\>\n\ntask tell\n  take sort, like text\n  like text\n  back \<told \{sort\}\>\n>
+host base-text, <load ./work\n  find bank\n  find tell\n\nload ./save\n  find keep\n\nhook code\n  hook save\n    slot sort\n      like text\n    task bank\n  hook show\n    slot sort\n      like text\n    task tell\n>
+
+# the project written to a temp folder and its console built as units
+task build
+  like dynamic
+
+  host root, temp-folder(<hook-task-unit->)
+  make-folder(<{root}/code>)
+  write-file(<{root}/deck.tree>, <deck @probe/hooks\n  mark \<0.0.1\>\n>)
+  write-file(<{root}/code/kind.tree>, kind-text)
+  write-file(<{root}/code/save.tree>, save-text)
+  write-file(<{root}/code/work.tree>, work-text)
+  write-file(<{root}/code/base.tree>, base-text)
+  host options, compiling-options-of(make(compile-choice, bind(project, root)))
+  set-field(options, <cache>, new-cache(cache-module))
+  set-field(options, <modules>, module-name)
+  back separate-module/compile-separate(make-record(make(list, <file>, <{root}/code/base.tree>, <text>, base-text)), options)
+
+# every task name a route or a route under it calls
+task names
+  take routes, like dynamic
+  take into, like list, like text
+  like void
+
+  walk or-none(routes)
+    take route, like dynamic
+    walk or-none(field-of(route, <calls>))
+      take called, like dynamic
+      into/push(<{field-of(called, <name>)}>)
+    names(field-of(route, <children>), into)
+
+task routed
+  take result, like dynamic
+  like list, like text
+
+  host found, make list
+  names(hook-parsing/command-routes(field-of(result, <docks>)), found)
+  back found
+
+# the export records of the units that export a value, not a type
+task value-exports
+  take result, like dynamic
+  like list, like dynamic
+
+  host kept, make list
+  walk or-none(field-of(result, <exports>))
+    take one, like dynamic
+    fork test, not(truth(read-field(one, <type>)))
+      hold
+        kept/push(one)
+  back kept
+
+task is-exported
+  take result, like dynamic
+  take name, like text
+  like boolean
+
+  walk value-exports(result)
+    take one, like dynamic
+    fork test, is-equal(<{field-of(one, <exported>)}>, name)
+      hold
+        back true
+  back false
+
+task has
+  take names, like list, like text
+  take name, like text
+  like boolean
+
+  walk names
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+test <the console builds as units>
+  host result, build()
+  want hold, result-ok(result)
+
+test <the routes name both tasks>
+  host result, build()
+  want hold, result-ok(result)
+  want hold, is-equal(routed(result)/length, 2)
+
+test <`code save` names the task as its unit exports it>
+  host result, build()
+  want hold, result-ok(result)
+  want hold, has(routed(result), <bank>)
+
+test <`code show` names its task>
+  host result, build()
+  want hold, result-ok(result)
+  want hold, has(routed(result), <tell>)
+
+test <every task a route names is exported by the units>
+  host result, build()
+  want hold, result-ok(result)
+  save every, true
+  walk routed(result)
+    take name, like text
+    fork test, not(is-exported(result, name))
+      hold
+        save every, false
+  want hold, every
+
+test <`bank` is exported from the file that defines the task>
+  host result, build()
+  want hold, result-ok(result)
+  save found, false
+  walk value-exports(result)
+    take one, like dynamic
+    fork test, and(is-equal(<{field-of(one, <exported>)}>, <bank>), ends-with(<{field-of(one, <file>)}>, </code/work.tree>))
+      hold
+        save found, true
+  want hold, found

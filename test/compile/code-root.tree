@@ -5,7 +5,8 @@ note <A package path resolves inside the package's CODE ROOT first, then its pac
 # with a match and a mismatch, the `ambiguous-load` warning, `{platform}` slots in both roots, relative loads, a bare
 # package path, and the manifest's `mark` and `code`, old spelling included. Every assertion goes through the functions the
 # build calls: `resolve-package-path` (the rule), `project-resolver` (the build's resolver), `with-native-env`, the
-# compile, and the lint and manifest readers, each the subject (decision 106).
+# compile, and the lint and manifest readers. The manifest reader is @term/deck's port, loaded, in its own shapes
+# (decision 157: a .tree whose subject is not a deck/deck face loads the port).
 
 load ../support/compiling
   find compile-text
@@ -32,9 +33,17 @@ dock load
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/load>, name load-module
   load <@term/call/code/lint>, name lint-module
-  load <@term/deck/code/package/manifest>, name manifest-module
   load <node:fs>, name root-file
   load <node:path>, name root-path
+
+load @term/deck/package/manifest-reading
+  find parse-manifest
+
+load @term/deck/package/manifest-shape
+  find deck-manifest
+
+load @term/deck/package/grammar-reading
+  find make-grammars
 
 bind call-resolver
   take resolve, like dynamic
@@ -303,24 +312,19 @@ test <`../x` resolves against the file, never the code root>
 
 host old, <deck @fixture/old\n  code \<1.4.2\>\n  link @fixture/site, code \<0.0.x\>\n>
 
+host grammars, make-grammars()
+
 task manifest-of
   take text, like text
-  like dynamic
+  like deck-manifest
 
-  back manifest-module/parse-manifest(make-record(make(list, <text>, text)))
-
-task mark-part
-  take manifest, like dynamic
-  take part, like text
-  like text
-
-  back <{read-field(read-field(manifest, <mark>), part)}>
+  back parse-manifest(text, grammars)
 
 test <`code \<1.4.2\>` still reads as the version>
   host read, manifest-of(old)
-  want hold, is-equal(mark-part(read, <major>), <1>)
-  want hold, is-equal(mark-part(read, <minor>), <4>)
-  want hold, is-equal(mark-part(read, <patch>), <2>)
+  want hold, is-equal(read/mark/major, 1)
+  want hold, is-equal(read/mark/minor, 4)
+  want hold, is-equal(read/mark/patch, 2)
 
 task each-fixable
   take findings, like dynamic
@@ -359,8 +363,8 @@ host src, src-root()
 
 test <`mark \<1.4.2\>` is the version and `code ./src` the code root>
   host parsed, manifest-of(src-manifest)
-  want hold, is-equal(mark-part(parsed, <patch>), <2>)
-  want hold, is-equal(<{read-field(parsed, <code>)}>, <./src>)
+  want hold, is-equal(parsed/mark/patch, 2)
+  want hold, is-equal(parsed/code, <./src>)
 
 test <`code ./src` reads as the code root>
   want hold, is-equal(resolve-module/code-root-of(src), <src>)

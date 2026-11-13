@@ -1,0 +1,111 @@
+note <A unit cache a second clone at another path reuses>
+
+# Ported from unit-portable.ts by statement (item term-self-host-001-0623), one test per `ok` in its order.
+# note/project/term/incremental-best-in-class.md, step 13: a unit's key, its fingerprints and its stored answer write
+# each deck's root as a token, so a second clone of the repository at another path reuses what the first one built, and
+# reads it back with its own paths. Two clones here, each with its own copy of the standard library at a different depth
+# and a project beside it, one store between them. call/code/make, call/cache-store and compile/cache are the subject
+# (decision 106).
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load @term/base/environment
+  find set-variable
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/list
+  find contains, name list-contains
+
+dock load
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/make>, name project-module
+  load <@term/make/code/resolve>, name resolve-module
+  load <node:fs>, name portable-file
+  load <node:path>, name portable-path
+
+bind new-cache
+  take module, like dynamic
+  take store, like dynamic
+  take label, like text
+  like dynamic
+  case node
+    text <new $module.CompileCache($store, $label)>
+
+form clone
+  link root, like text
+  link library, like text
+
+host stdlib, resolve-module/stdlib-base()
+host base, portable-file/realpath-sync(temp-folder(<unit-portable->))
+host store, portable-path/join(base, <store>)
+host skipped, make list(<host>, <node_modules>, <.base>, <tmp>, <link>)
+
+# a clone: the standard library copied under `at`, and a project beside it loading it
+task clone-at
+  take at, like text
+  like clone
+
+  host library, portable-path/join(base, at, <base>)
+  save keep
+    task
+      take from, like text
+      like boolean
+      back not(list-contains(skipped, portable-path/basename(from)))
+  portable-file/cp-sync(stdlib, library, make-record(make(list, <recursive>, true, <filter>, keep)))
+  host root, portable-path/join(base, at, <app>)
+  portable-file/mkdir-sync(portable-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  portable-file/write-file-sync(portable-path/join(root, <deck.tree>), <deck @probe/portable\n  mark \<0.0.1\>\n>)
+  portable-file/write-file-sync(portable-path/join(root, <code>, <base.tree>), <load @term/base/text\n  find trim\n\ntask main\n  like text\n  back trim(\< here \>)\n>)
+  back make(clone, bind(root, root), bind(library, library))
+
+task build
+  take one, like clone
+  like dynamic
+
+  set-variable(<TERM_STDLIB>, one/library)
+  host cache, new-cache(cache-module, cache-store/disk-cache-store(store, <portable>), <portable>)
+  back project-module/compile-project-separate(one/root, cache, <node>, project-module/build-session(one/root))
+
+# every module the build emitted, joined
+task emitted
+  take root, like text
+  like text
+
+  host folder, portable-path/join(root, <host>, <.unit>)
+  save texts, make list
+  walk portable-file/readdir-sync(folder)
+    take name, like text
+    texts/push(portable-file/read-file-sync(portable-path/join(folder, name), <utf8>))
+  back texts/join(<\n>)
+
+host first, clone-at(<first>)
+host second, clone-at(<second/deeper/still>)
+host a, build(first)
+host b, build(second)
+
+test <the first clone builds>
+  want hold, is-equal(a/failed, 0)
+
+test <and builds the standard library units it reaches>
+  want hold, is-above(a/built, 1)
+
+test <the second clone, at another path, builds>
+  want hold, is-equal(b/failed, 0)
+
+# its own project is the same deck with the same text, so its unit is the first clone's too
+test <and builds nothing, reading every unit the first clone built>
+  want hold, is-equal(b/built, 0)
+  want hold, is-equal(b/reused, add(a/built, a/reused))
+
+test <its output names none of the first clone's paths>
+  want hold, not(text-contains(emitted(second/root), portable-path/join(base, <first>)))
+
+test <and the two clones emit the same standard library>
+  want hold, is-equal(emitted(first/root), emitted(second/root))

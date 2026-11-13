@@ -1,0 +1,188 @@
+note <inspect and print of @term/base/debug print the same bytes on TypeScript, Rust, Swift and Kotlin>
+
+# Ported from inspect-native.ts by statement (item term-self-host-001-0689), one test per `ok` in its order, each `ok` of
+# its loop over the backends one walked test, a backend a case of it (term/base-v1 decision 001,
+# note/project/term/base-v1/decision/001-inspect-prints-term-construction.md). One program inspects a value of every kind
+# (a text with every escape, integers, decimals with NaN, a flag, void, lists, a hash, a record with a private field and a
+# nested record, a case with fields and one without, a `mark text` case, maybe, a generic form, a recursive form, a
+# closure, an unknown, a dock handle), and its standard output is the same bytes on all four and equal to
+# inspect-native/values.golden. A caught exception prints as its form and note with its flow, `print` writes to standard
+# error and nothing to standard output, and a type parameter is refused as `inspect-generic`. The flow's frames are Term
+# frames (term/hive decision 001), `<task> <file>:<line>`, compared whole: the same on all four.
+#
+# Each backend's two programs are built and run once, by the first test that asks for that backend, and kept in
+# `inspect-now`, since the last test compares what every backend printed.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find refused-saying
+  find file-text
+
+load ../support/running
+  find backends
+  find build-text
+  find built-program
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+host here, <test/compile/inspect-native>
+
+host caught-want, <absence(note \<Not found\>, flow list(\<fails raise.tree:15\>, \<run raise.tree:24\>))>
+
+# what one backend came to: `state` <ran>, <skipped> or <failed> for the values program, `reason` why not, then each
+# program's exit code and both streams, and whether the raise program built
+form inspect-run
+  link state, like text
+  link reason, like text, fall <>
+  link values-code, like number, fall -1
+  link values-out, like text, fall <>
+  link raise-state, like text, fall <>
+  link raise-reason, like text, fall <>
+  link raise-code, like number, fall -1
+  link raise-out, like text, fall <>
+  link raise-err, like text, fall <>
+
+form inspect-state
+  mark shared
+  link folder, like text
+  link runs, like hash, like text, like inspect-run
+
+host inspect-now, make(inspect-state, bind(folder, <>), bind(runs, make hash))
+
+# the one temporary folder every backend writes under
+task inspect-folder
+  like text
+
+  fork test, is-equal(inspect-now/folder, <>)
+    hold
+      save inspect-now/folder, temp-folder(<term-inspect-native->)
+  back inspect-now/folder
+
+# a built program run once, its exit code and both streams
+task run-built
+  take built, like built-program
+  like run-result
+
+  save rest, make list
+  save at, 0
+  walk built/command
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        rest/push(part)
+    save at, add(at, 1)
+  back run(built/command/0, rest)
+
+task inspect-made
+  take backend, like text
+  like inspect-run
+
+  save folder, inspect-folder()
+  save values, build-text(file-text(<{here}/values.tree>), backend, folder, <values>)
+  fork test, is-equal(values/state, <skipped>)
+    hold
+      back make(inspect-run, bind(state, <skipped>), bind(reason, values/reason))
+  fork test, is-equal(values/state, <failed>)
+    hold
+      back make(inspect-run, bind(state, <failed>), bind(reason, <{values/stage}: {values/reason}>))
+  save ran, run-built(values)
+  # one path on every backend, since a frame names its file
+  save own, <{folder}/{backend}>
+  make-folder(own)
+  save raised, build-text(file-text(<{here}/raise.tree>), backend, own, <raise>, make(compile-choice, bind(file, <{own}/raise.tree>)), <{own}/raise.tree>)
+  fork test, is-unequal(raised/state, <built>)
+    hold
+      back make(inspect-run, bind(state, <ran>), bind(values-code, ran/code), bind(values-out, ran/output), bind(raise-state, raised/state), bind(raise-reason, <{raised/stage}: {raised/reason}>))
+  save caught, run-built(raised)
+  back make(inspect-run, bind(state, <ran>), bind(values-code, ran/code), bind(values-out, ran/output), bind(raise-state, <built>), bind(raise-code, caught/code), bind(raise-out, caught/output), bind(raise-err, caught/error))
+
+# a backend's runs, made by the first test that asks
+task inspect-on
+  take backend, like text
+  like inspect-run
+
+  fork test, inspect-now/runs/has(backend)
+    hold
+      back inspect-now/runs/{backend}
+  save made, inspect-made(backend)
+  save inspect-now/runs/{backend}, made
+  back made
+
+# whether every text of a list is the first one
+task all-same
+  take seen, like list, like text
+  like boolean
+
+  save same, true
+  walk seen
+    take one, like text
+    fork test, is-unequal(one, seen/0)
+      hold
+        save same, false
+  back same
+
+test <every kind prints as the golden says>
+  take backend, like text
+    walk backends()
+  save one, inspect-on(backend)
+  fork test, is-equal(one/state, <skipped>)
+    hold
+      skip one/reason
+  want hold, is-equal(one/state, <ran>)
+  want hold, is-equal(one/values-code, 0)
+  want hold, is-equal(one/values-out, file-text(<{here}/values.golden>))
+
+test <a caught exception prints as its form, its note and its Term frames>
+  take backend, like text
+    walk backends()
+  save one, inspect-on(backend)
+  fork test, is-equal(one/state, <skipped>)
+    hold
+      skip one/reason
+  want hold, is-equal(one/raise-state, <built>)
+  want hold, is-equal(one/raise-code, 0)
+  want hold, is-equal(one/raise-out, caught-want)
+
+test <print writes to standard error alone>
+  take backend, like text
+    walk backends()
+  save one, inspect-on(backend)
+  fork test, is-equal(one/state, <skipped>)
+    hold
+      skip one/reason
+  want hold, is-equal(one/raise-state, <built>)
+  want hold, is-equal(trim(one/raise-err), <place(city \<Oslo\>)>)
+  want miss, text-contains(one/raise-out, <place(>)
+
+test <the values print the same bytes on every backend run>
+  save seen, make list
+  walk backends()
+    take backend, like text
+    save one, inspect-on(backend)
+    fork test, is-equal(one/state, <ran>)
+      hold
+        seen/push(one/values-out)
+  want hold, is-above(seen/length, 0)
+  want hold, all-same(seen)
+
+# a type parameter is refused where it is inspected, naming it
+test <inspect of a type parameter is refused as inspect-generic, naming it>
+  save folder, inspect-folder()
+  save out, compile-text(file-text(<{here}/generic.tree>), make(compile-choice, bind(file, <{folder}/generic.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, refused-saying(out, <inspect-generic>, <`t` is a type parameter>)

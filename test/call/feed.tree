@@ -1,0 +1,428 @@
+note <the browser development server calls the program's boot, checks a port before it uses it, and closes on ctrl-c>
+
+# Ported from feed.ts by statement (item term-self-host-001-0651), one test per `ok` in its order. The browser
+# development server on the scaffold `term wake` writes (guides: commands/boot, "In a browser"): the page calls the
+# program's `boot`, so its `log` reaches the browser console, and a port is checked before it is used. Until 2026-10-04
+# nothing called `boot`, the scaffold logged nothing, and a taken `-p` failed inside the server. It was `term feed`
+# until 2026-10-05 and is `term boot --env browser` (development, the default) since.
+#
+# Each server is the `term` under test (self-command, decision 111), kept running beside the test
+# (test/support/children): `sh` says its own pid, then becomes the CLI with both streams on one, as the original read
+# them together. ctrl-c is INT to that pid. A port is held by a TCP listener of the stdlib. Playwright is borrowed as
+# test/borrow.ts borrows it, from the Term root, then the folder TERM_TEST_MODULES names (`borrowed-file`, as
+# test/view/cells.tree has it). Each part runs once, by the first test that asks.
+
+load @term/test/self
+  find self-command
+  find run-self
+
+load ../support/children
+  find start-child
+  find held-child
+  find wait-for-line
+  find next-line
+  find wait-child
+  find stop-children
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/path
+  find directory
+  find resolve-path
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/network/tcp
+  find listen
+  find listener
+
+load @term/base/network/http
+  find fetch
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find trim
+
+# host native: createRequire is node's resolver, and the entry depends on each package's exports
+bind package-entry
+  take place, like text
+  take name, like text
+  like text
+  case node
+    text <process.getBuiltinModule('node:module').createRequire($place + '/package.json').resolve($name)>
+
+# host native: the borrowed package itself, loaded by node from its entry
+bind required
+  take file, like text
+  like dynamic
+  case node
+    text <process.getBuiltinModule('node:module').createRequire($file)($file)>
+
+# host value: Chromium's launch options
+bind headless
+  like dynamic
+  case node
+    text <(\{ headless: true \})>
+
+# host value: no value yet, of the host's any, for a handle a guarded block fills
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# a server kept running: the child, its pid, and every line it printed up to the one waited for
+form server-run
+  mark shared
+  link held, like held-child
+  link pid, like text
+  link log, like text
+
+form feed-state
+  mark shared
+  link made, like boolean
+  link project, like text
+  link served, like boolean
+  link shell, like text
+  link browser, like text
+  link said, like list, like text
+  link taken, like run-result
+  link default-made, like boolean
+  link default-free, like boolean
+  link default-log, like text
+  link stopped-made, like boolean
+  link stopped-code, like number
+  link stopped-log, like text
+
+task no-run
+  like run-result
+
+  back make(run-result, bind(code, 0), bind(output, <>), bind(error, <>), bind(signal, 0))
+
+host feed-now, make(feed-state, bind(made, false), bind(project, <>), bind(served, false), bind(shell, <>), bind(browser, <>), bind(said, make list), bind(taken, no-run()), bind(default-made, false), bind(default-free, false), bind(default-log, <>), bind(stopped-made, false), bind(stopped-code, 0), bind(stopped-log, <>))
+
+# ---- the borrowed package ----
+
+# the folders a package is looked for in, in order: the Term root, then the folder TERM_TEST_MODULES names
+task borrow-places
+  like list, like text
+
+  save places, make list(term-root())
+  save given, trim(variable(<TERM_TEST_MODULES>))
+  fork test, is-unequal(given, <>)
+    hold
+      places/push(resolve-path(term-root(), given))
+  back places
+
+# whether the package sits in a node_modules of the place or a folder above it
+task installed-in
+  take place, like text
+  take name, like text
+  like boolean
+  mark async
+
+  fork test, file-exists(<{place}/node_modules/{name}/package.json>)
+    hold
+      back true
+  save up, directory(place)
+  fork test, is-equal(up, place)
+    hold
+      back false
+  back installed-in(up, name)
+
+# the package's entry file, <> when it is not installed where it is looked for
+task borrowed-file
+  take name, like text
+  like text
+  mark async
+
+  walk borrow-places()
+    take place, like text
+    fork test, installed-in(place, name)
+      hold
+        save file, <>
+        fork
+          mark unsafe
+          save file, package-entry(place, name)
+        halt take
+          take problem
+          save ignored, 0
+        fork test, is-unequal(file, <>)
+          hold
+            back file
+  back <>
+
+# ---- the server ----
+
+# the scaffold, made once: a deck whose boot logs one line
+task the-project
+  like text
+
+  fork test, is-unequal(feed-now/project, <>)
+    hold
+      back feed-now/project
+  save dir, temp-folder(<term-feed->)
+  make-folder(<{dir}/code>)
+  write-file(<{dir}/deck.tree>, <deck hello\n  mark \<0.0.1\>\n  boot ./code/boot\n>)
+  write-file(<{dir}/code/boot.tree>, <load @term/base/console\n  find log\n\ntask boot\n  mark async\n  log \<hello from term\>\n>)
+  save feed-now/project, dir
+  back dir
+
+task colorless
+  like hash, like text, like text
+
+  save environment
+    make hash
+      save <NO_COLOR>, <1>
+  back environment
+
+# the server's command line with `arguments`, as a child in the project whose first line is its pid, both streams on
+# one, read up to the line holding `until` (or a minute)
+task feed
+  mark async
+  take arguments, like list, like text
+  take until, like text, fall <✓ start>
+  take limit, like number, fall 60000
+  like server-run
+
+  save argument-list, make(list, <sh>, <-c>, <echo $$; exec "$@" 2\>&1>, <sh>)
+  walk self-command()
+    take part, like text
+    argument-list/push(part)
+  argument-list/push(<boot>)
+  argument-list/push(<--env>)
+  argument-list/push(<browser>)
+  walk arguments
+    take part, like text
+    argument-list/push(part)
+  save held, start-child(argument-list, bind(directory, the-project()), bind(environment, colorless()))
+  save pid, next-line(held, 10000)
+  save line, wait-for-line(held, until, limit)
+  back make(server-run, bind(held, held), bind(pid, pid), bind(log, held/heard/join(<\n>)))
+
+# the body at `url`, <> when nothing answers
+task body-at
+  mark async
+  take url, like text
+  like text
+
+  save body, <>
+  fork
+    mark unsafe
+    save body, fetch(url)/body
+  halt take
+    take problem
+    save body, <>
+  back body
+
+# ---- the page calls `boot` ----
+
+# in a browser: every console line the page wrote, and every page error as `error: ...`. `browser` says why there was
+# no browser: <> when it ran
+task visit
+  mark async
+  like void
+
+  save file, borrowed-file(<@playwright/test>)
+  fork test, is-equal(file, <>)
+    hold
+      save feed-now/browser, <@playwright/test is not installed>
+      back
+  save chromium, required(file)/chromium
+  save launched, nothing()
+  save feed-now/browser, <Chromium did not launch>
+  fork
+    mark unsafe
+    save launched
+      call chromium/launch
+        call headless
+        wait true
+    save feed-now/browser, <>
+  halt take
+    take problem
+    save ignored, 0
+  fork test, is-unequal(feed-now/browser, <>)
+    hold
+      back
+  save said, feed-now/said
+  save heard
+    task
+      take message, like dynamic
+      like void
+      said/push(<{message/text()}>)
+  save failed
+    task
+      take error, like dynamic
+      like void
+      said/push(<error: {error}>)
+  fork
+    mark unsafe
+    save tab
+      call launched/new-page
+        wait true
+    tab/on(<console>, heard)
+    tab/on(<pageerror>, failed)
+    call tab/goto
+      text <http://127.0.0.1:5391/>
+      wait true
+    call tab/wait-for-timeout
+      code 1500
+      wait true
+  halt take
+    take problem
+    save ignored, 0
+  call launched/close
+    wait true
+
+task served
+  mark async
+  like feed-state
+
+  fork test, feed-now/made
+    hold
+      back feed-now
+  save feed-now/made, true
+  save server, feed(make(list, <-p>, <5391>))
+  save feed-now/shell, body-at(<http://127.0.0.1:5391/>)
+  fork test, is-equal(feed-now/shell, <>)
+    hold
+      save feed-now/shell, server/log
+  visit()
+  stop-children()
+  back feed-now
+
+test <the shell calls the entry's `boot`>
+  want hold, matches(make(pattern, <<import \{ boot \} from "/@mod/[a-z0-9]+\.mjs"; boot\(\)>>), served()/shell)
+
+test <in a browser, the scaffold's `log` reaches the console>
+  save state, served()
+  fork test, is-unequal(state/browser, <>)
+    hold
+      skip <the browser case ({state/browser})>
+  save erred, false
+  save greeted, false
+  walk state/said
+    take one, like text
+    fork test, starts-with(one, <error:>)
+      hold
+        save erred, true
+    fork test, is-equal(one, <hello from term>)
+      hold
+        save greeted, true
+  want hold, and(greeted, not(erred))
+
+# ---- the port ----
+
+# `port` held on every address, as node's listen with no host holds it
+task hold-port
+  mark async
+  take port, like number
+  like listener
+
+  back listen(port, bind(host, <::>))
+
+task release-port
+  mark async
+  take holder, like listener
+  like void
+
+  call holder/close
+    wait true
+
+test <a `-p` that is taken is refused, naming `term halt -p`, exit 3>
+  save holder, hold-port(5392)
+  # spawnSync's timeout answers no status, where run raises: the code is then -1
+  save taken, no-run()
+  save taken/code, -1
+  fork
+    mark unsafe
+    save taken, run-self(make(list, <boot>, <--env>, <browser>, <-p>, <5392>), bind(directory, the-project()), bind(limit, 60000), bind(environment, colorless()))
+  halt take
+    take problem
+    save ignored, 0
+  release-port(holder)
+  save said, <{taken/output}{taken/error}>
+  want hold, and(is-equal(taken/code, 3), and(text-contains(said, <Port 5392 is in use>), text-contains(said, <term halt -p 5392>)))
+
+task moved
+  mark async
+  like feed-state
+
+  fork test, feed-now/default-made
+    hold
+      back feed-now
+  save feed-now/default-made, true
+  save holder, nothing()
+  fork
+    mark unsafe
+    save holder, hold-port(5173)
+    save feed-now/default-free, true
+  halt take
+    take problem
+    save feed-now/default-free, false
+  fork test, not(feed-now/default-free)
+    hold
+      back feed-now
+  save server, feed(make list)
+  save feed-now/default-log, server/log
+  stop-children()
+  release-port(holder)
+  back feed-now
+
+test <without `-p`, a taken 5173 moves it to the next free port>
+  save state, moved()
+  fork test, not(state/default-free)
+    hold
+      skip <the default-port case (5173 is held by something else here)>
+  want hold, matches(make(pattern, <<✓ start\s+http://localhost:51(7[4-9]|[89]\d)>>), state/default-log)
+
+# ---- ctrl-c before `start` still closes the run ----
+# the handler was added after `start`, so an interrupt during the first build met node's default: exit 130 and no
+# closing item (guides: commands/feed, 2026-10-05)
+
+task interrupted
+  mark async
+  like feed-state
+
+  fork test, feed-now/stopped-made
+    hold
+      back feed-now
+  save feed-now/stopped-made, true
+  # the opening item, `term 2.7.4 · development · browser`
+  save server, feed(make(list, <-p>, <5394>), <· browser>, 30000)
+  save sent, run(<kill>, make(list, <-INT>, server/pid))
+  save ended, wait-child(server/held)
+  # node's exit code is null for a child a signal ended, and only an exit of its own says 130
+  save feed-now/stopped-code, ended/code
+  fork test, is-unequal(ended/signal, 0)
+    hold
+      save feed-now/stopped-code, -1
+  save feed-now/stopped-log, <{server/log}\n{ended/output}>
+  back feed-now
+
+test <ctrl-c during the first build closes the run with its own item, exit 130>
+  save state, interrupted()
+  want hold, and(is-equal(state/stopped-code, 130), or(text-contains(state/stopped-log, <Not started>), text-contains(state/stopped-log, <Stopped>)))

@@ -1,0 +1,333 @@
+note <term hold --lean: the second checker from the CLI>
+
+# Ported from hold-lean.ts by statement (item 0648). call/code/hold-lean.ts through the `term` under test (run-self,
+# decision 111), on the notes demo (test/assurance/notes). make/check/lean-export and lean-run are docked as the
+# original imported them (decision 106), to count the demo's claims and plant a wrong proof.
+#   - with Lean: every claim of the demo (29 on 2026-10-21) prints `lean <claim> checked`, none rests on an axiom, the
+#     total says 29 of 29, the Lean file is under the project's home, `--json` carries the same verdicts, it exits 0
+#   - with a planted wrong proof (law 1 by the empty shelf's evidence, planted into the exported Lean file and handed to
+#     Lean by a wrapper at TERM_LEAN): `ownership` is reported refused with Lean's error line, and it exits 1
+#   - with TERM_LEAN naming nothing and no Lean on the PATH: it exits non-zero with the one line that installs Lean
+# With no Lean on this machine the first ten skip, never pass, where the original printed one skip. The last three run
+# everywhere. The original's scratch folder was tmp/hold-lean under the Term root: here it is a temporary folder.
+
+load @term/test/self
+  find run-self
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find starts-with
+  find ends-with
+  find substring
+
+load @term/base/set
+  find make-set
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/json
+  find parse, name json-parse
+
+load ../support/judging
+  find make-record
+
+dock load
+  load <@term/make/code/check/lean-export>, name lean-export
+  load <@term/make/code/check/lean-run>, name lean-run
+  load <@term/call/code/home>, name lean-home
+  load <node:fs>, name lean-fs
+  load <node:path>, name lean-path
+
+host notes, lean-path/resolve(<test/assurance/notes>)
+
+# host value: a text the host may answer undefined for, the empty text then
+bind text-or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <String($value ?? "")>
+
+# host value: whether --json carried every claim checked, `count` of them
+bind json-all-checked
+  take data, like dynamic
+  take count, like number
+  like boolean
+  case node
+    text <($data?.lean?.ok === true && $data.lean.claims.length === $count && $data.lean.claims.every(c =\> c.verdict === "checked"))>
+
+task claim-source
+  take file, like text
+  like dynamic
+
+  back make-record(make(list, <file>, <notes/{file}>, <text>, read-file(lean-path/join(notes, <code>, file))))
+
+# the demo's claims, as the exporter reads them from the two files that state them (29 on 2026-10-21)
+task claim-count
+  like number
+
+  save files, make list
+  files/push(claim-source(<model.tree>))
+  files/push(claim-source(<law.tree>))
+  back lean-export/exportLean(lean-export/joinSources(files))/claims/length
+
+form hold-run
+  link code, like number
+  link out, like text
+  link stdout, like text
+
+form hold-state
+  mark shared
+  link lean, like text
+  link claims, like number
+  link folder, like text
+  link good, like hold-run
+  link written, like text
+  link as-json, like hold-run
+  link bad, like hold-run
+  link none, like hold-run
+
+task no-run
+  like hold-run
+
+  back make(hold-run, bind(code, -1), bind(out, <>), bind(stdout, <>))
+
+host now, make(hold-state, bind(lean, <unread>), bind(claims, 0), bind(folder, <>), bind(good, no-run()), bind(written, <>), bind(as-json, no-run()), bind(bad, no-run()), bind(none, no-run()))
+
+task lean
+  like text
+
+  fork test, is-equal(now/lean, <unread>)
+    hold
+      save now/lean, text-or-empty(lean-run/findLean())
+  back now/lean
+
+task claims
+  like number
+
+  fork test, is-equal(now/claims, 0)
+    hold
+      save now/claims, claim-count()
+  back now/claims
+
+task folder
+  like text
+
+  fork test, is-equal(now/folder, <>)
+    hold
+      save now/folder, temp-folder(<term-hold-lean->)
+  back now/folder
+
+# `term hold --lean` and the arguments (named for the original's `hold`, a keyword here)
+task run-hold
+  take arguments, like list, like text
+  take environment, like hash, like text, like text
+  like hold-run
+  mark async
+
+  save argument-list, make(list, <hold>, <--lean>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  save ran, run-self(argument-list, bind(directory, notes), bind(limit, 900000), bind(environment, environment))
+  back make(hold-run, bind(code, ran/code), bind(out, <{ran/output}{ran/error}>), bind(stdout, ran/output))
+
+# THE DEMO: every claim checked, none on an axiom
+task good
+  like hold-run
+  mark async
+
+  fork test, is-equal(now/good/code, -1)
+    hold
+      save environment
+        make hash
+          save <TERM_LEAN>, lean()
+          save <NO_COLOR>, <1>
+      save now/good, run-hold(make(list), environment)
+  back now/good
+
+task written
+  like text
+  mark async
+
+  fork test, is-equal(now/written, <>)
+    hold
+      good()
+      save now/written, read-file(lean-home/projectHome(notes, <lean>, <hold.lean>))
+  back now/written
+
+# the same verdicts as data
+task as-json
+  like hold-run
+  mark async
+
+  fork test, is-equal(now/as-json/code, -1)
+    hold
+      save environment
+        make hash
+          save <TERM_LEAN>, lean()
+          save <NO_COLOR>, <1>
+      save now/as-json, run-hold(make(list, <--json>), environment)
+  back now/as-json
+
+# THE PLANT: law 1 by `fair-shelf.clean`, which proves `fair-shelf bare`, not `fair-shelf s`. Term's kernel would
+# refuse it in the source, so it is planted into the exported file, and a wrapper at TERM_LEAN hands Lean that
+task bad
+  like hold-run
+  mark async
+
+  fork test, is-equal(now/bad/code, -1)
+    hold
+      save planted, lean-path/join(folder(), <planted.lean>)
+      write-file(planted, lean-export/plantLean(written(), <ownership>, <@TermExport.«fair-shelf».«clean»>))
+      save wrapper, lean-path/join(folder(), <lean-planted>)
+      write-file(wrapper, <#!/bin/sh\ncase "$1" in --version) exec "{lean()}" --version ;; esac\nexec "{lean()}" "{planted}"\n>)
+      lean-fs/chmod-sync(wrapper, 493)
+      save environment
+        make hash
+          save <TERM_LEAN>, wrapper
+          save <NO_COLOR>, <1>
+      save now/bad, run-hold(make(list), environment)
+  back now/bad
+
+# NO LEAN: TERM_LEAN names nothing and the PATH holds no lean. Never a silent pass
+task none
+  like hold-run
+  mark async
+
+  fork test, is-equal(now/none/code, -1)
+    hold
+      save environment
+        make hash
+          save <TERM_LEAN>, lean-path/join(folder(), <no-such-lean>)
+          save <PATH>, </usr/bin:/bin>
+          save <NO_COLOR>, <1>
+      save now/none, run-hold(make(list), environment)
+  back now/none
+
+# the claims `lean <claim> checked` lines name, in order
+task checked-names
+  take said, like text
+  like list, like text
+
+  save out, make list
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, and(starts-with(line, <lean >), ends-with(line, < checked>))
+      hold
+        save claim, substring(line, 5, subtract(line/length, 8))
+        fork test, and(is-above(claim/length, 0), not(text-contains(claim, < >)))
+          hold
+            out/push(claim)
+  back out
+
+task count-lines-starting
+  take said, like text
+  take head, like text
+  like number
+
+  save count, 0
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, starts-with(line, head)
+      hold
+        save count, add(count, 1)
+  back count
+
+# a value, never a zero-argument boolean task, which term test would run as a test (T-0978)
+host no-lean, is-equal(text-or-empty(lean-run/findLean()), <>)
+
+host skip-why, <no Lean at TERM_LEAN or on the PATH: the demo and the plant did not run. Set TERM_LEAN=/opt/homebrew/bin/lean>
+
+test <all of the demo's claims print checked>
+  fork test, no-lean
+    hold
+      skip skip-why
+  save checked, checked-names(good()/out)
+  save distinct, make-set(checked)
+  want hold, and(is-equal(checked/length, claims()), is-equal(distinct/length(), claims()))
+
+test <no claim rests on an axiom, is refused or declined>
+  fork test, no-lean
+    hold
+      skip skip-why
+  save said, good()/out
+  want hold, not(or(text-contains(said, <rests on>), or(text-contains(said, <refused:>), text-contains(said, <declined:>))))
+
+test <the total says every claim of the demo>
+  fork test, no-lean
+    hold
+      skip skip-why
+  save said, good()/out
+  want hold, and(text-contains(said, <{claims()} of {claims()} claims checked by Lean>), text-contains(said, <0 refused · 0 on an axiom · 0 declined>))
+
+test <it holds and exits 0>
+  fork test, no-lean
+    hold
+      skip skip-why
+  save ran, good()
+  want hold, and(is-equal(ran/code, 0), text-contains(ran/out, <hold Holds>))
+
+test <the Lean file is under the project home, one #print axioms line per claim>
+  fork test, no-lean
+    hold
+      skip skip-why
+  want hold, is-equal(count-lines-starting(written(), <#print axioms >), claims())
+
+test <--json carries every claim checked>
+  fork test, no-lean
+    hold
+      skip skip-why
+  want hold, json-all-checked(json-parse(as-json()/stdout), claims())
+
+test <the planted claim is refused with Lean's error line>
+  fork test, no-lean
+    hold
+      skip skip-why
+  host refusal, make pattern, <<lean ownership refused: \d+:\d+: error: Type mismatch>>
+  want hold, matches(refusal, bad()/out)
+
+test <law 1 of replay is refused for resting on it>
+  fork test, no-lean
+    hold
+      skip skip-why
+  want hold, text-contains(bad()/out, <lean ownership-of-replay refused: it rests on ownership>)
+
+test <the total says all but 2 of the demo's claims, 2 refused>
+  fork test, no-lean
+    hold
+      skip skip-why
+  save said, bad()/out
+  want hold, and(text-contains(said, <{subtract(claims(), 2)} of {claims()} claims checked by Lean>), text-contains(said, <2 refused>))
+
+test <it does not hold and exits 1>
+  fork test, no-lean
+    hold
+      skip skip-why
+  save ran, bad()
+  want hold, and(is-equal(ran/code, 1), text-contains(ran/out, <Does not hold>))
+
+test <with no Lean it exits non-zero>
+  want hold, is-unequal(none()/code, 0)
+
+test <with no Lean it says how to install it>
+  want hold, text-contains(none()/out, <brew install elan-init, then elan default leanprover/lean4:stable>)
+
+test <with no Lean it re-checks nothing>
+  save said, none()/out
+  save any-checked, false
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, ends-with(line, < checked>)
+      hold
+        save any-checked, true
+  want hold, and(text-contains(said, <No claim was re-checked in Lean>), not(any-checked))

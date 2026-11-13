@@ -1,0 +1,119 @@
+note <the Windows launcher, built for this platform and run against a fake payload>
+
+# Ported from launcher.ts by statement (item 0648). The launcher (task/launcher/term.go), reached through a link as
+# winget puts it on PATH, must find the payload behind the link, hand Node host/need.mjs and every argument unchanged,
+# and exit with Node's code. The source is the same one release.ts cross-compiles to term.exe. Built once, by the first
+# test that asks, with go as the original was.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/text
+  find contains
+
+load @term/base/json
+  find parse, name json-parse
+
+load ../support/cli
+  find term-root
+
+dock load
+  load <node:fs>, name launcher-fs
+  load <node:path>, name launcher-path
+  load <global:process>, name launcher-process
+
+form launcher-state
+  mark shared
+  link links, like text
+  link run, like run-result
+  link said, like dynamic
+
+task no-run
+  like run-result
+
+  back make(run-result, bind(code, 0), bind(output, <>), bind(error, <>), bind(signal, 0))
+
+host launcher-now, make(launcher-state, bind(links, <>), bind(run, no-run()), bind(said, 0))
+
+# the fake first module: says what it was given and where it is, and exits with a code the arguments choose
+host fake-need, <process.stdout.write(JSON.stringify(\{ args: process.argv.slice(2), at: import.meta.url \})); process.exit(Number(process.argv.at(-1)) || 0)\n>
+
+# host value: the parsed answer's field, as JSON writes it
+bind launcher-args-json
+  take said, like dynamic
+  like text
+  case node
+    text <JSON.stringify($said?.args)>
+
+bind launcher-at
+  take said, like dynamic
+  like text
+  case node
+    text <String($said?.at ?? "")>
+
+# the launcher built into a fake payload, a folder of links on PATH pointing at it (winget's shape), and its run with
+# `make --trees 'a b' 7`
+task launcher-links
+  like text
+  mark async
+
+  fork test, is-unequal(launcher-now/links, <>)
+    hold
+      back launcher-now/links
+  save root, temp-folder(<term-launcher->)
+  save payload, launcher-path/join(root, <payload>, <term>)
+  save exe-name, <term-launcher>
+  fork test, is-equal(launcher-process/platform, <win32>)
+    hold
+      save exe-name, <term.exe>
+  save exe, launcher-path/join(payload, <bin>, exe-name)
+  make-folder(launcher-path/join(payload, <bin>))
+  make-folder(launcher-path/join(payload, <host>))
+  write-file(launcher-path/join(payload, <host>, <need.mjs>), fake-need)
+  save environment
+    make hash
+      save <CGO_ENABLED>, <0>
+  save built, run(<go>, make(list, <build>, <-o>, exe, launcher-path/join(term-root(), <task>, <launcher>, <term.go>)), bind(environment, environment))
+  fork test, is-unequal(built/code, 0)
+    hold
+      halt <go build exited {built/code}: {built/error}>
+  save links, launcher-path/join(root, <links>)
+  make-folder(links)
+  launcher-fs/symlink-sync(exe, launcher-path/join(links, <term>))
+  save ran, run(launcher-path/join(links, <term>), make(list, <make>, <--trees>, <a b>, <7>))
+  save launcher-now/run, ran
+  save said, json-parse(<\{\}>)
+  fork test, is-unequal(ran/output, <>)
+    hold
+      save said, json-parse(ran/output)
+  save launcher-now/said, said
+  save launcher-now/links, links
+  back links
+
+test <reached through a link, it runs the payload behind the link>
+  launcher-links()
+  want hold, contains(launcher-at(launcher-now/said), launcher-path/join(<payload>, <term>, <host>, <need.mjs>))
+
+test <every argument arrives unchanged, a space inside one included>
+  launcher-links()
+  want hold, is-equal(launcher-args-json(launcher-now/said), <["make","--trees","a b","7"]>)
+
+test <it exits with Node's code>
+  launcher-links()
+  want hold, is-equal(launcher-now/run/code, 7)
+
+test <with no Node on PATH it says so, and exits 69>
+  save links, launcher-links()
+  # env -i: nothing of this process's environment, PATH alone (decision 111, point 3)
+  save none, run(<env>, make(list, <-i>, <PATH=/nonexistent>, launcher-path/join(links, <term>), <--version>))
+  want hold, and(is-equal(none/code, 69), contains(none/error, <needs Node.js 22.3.0 or newer>))

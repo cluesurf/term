@@ -1,0 +1,135 @@
+note <The race log: records written under the project's .base, read back whole, keyed past noise, looked up only under the same everything>
+
+# Ported from the TypeScript original by statement (item term-self-host-001-0606), one test per `ok` in its order. The
+# race log (deck/call/code/race-log.ts, optimize-0013) is the subject, docked (decision 106): records are written under
+# the project's .base, read back whole, keyed so that noise does not split one measurement into many, and a lookup
+# answers only under the same region, facts, target, compiler and rules (level one of
+# note/project/term/optimize/learning.md). The records are made from their parts by test/support/judging, and the
+# original's spread of the ask with one field changed is `ask-of` over the four fields its tests change. Every write
+# goes to one temporary folder, as the original's did, and the tests run in order on it.
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+  find empty-record
+
+load ../support/walking
+  find kind-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/call/code/race-log>, name race-log
+  load <node:fs>, name race-file
+  load <node:path>, name race-path
+
+host root, temp-folder(<race-log->)
+host region, race-log/tone-digest(make-record(make(list, <task>, <count-each>, <at>, <code/stats.tree>, <ordinal>, 0)))
+host rules, race-log/tone-digest(make(list,<count-each/tally>, <count-each/dense>))
+host facts, make-record(make(list, <element>, <number>, <size>, make-record(make(list, <values>, race-log/size-bucket(1100), <queries>, race-log/size-bucket(1030))), <distinct_ratio>, race-log/ratio-bucket(0.31), <sorted>, <no>, <pure>, <yes>))
+
+task target-on
+  take machine, like text
+  like dynamic
+
+  back make-record(make(list, <backend>, <rust>, <toolchain>, <rustc 1.83.0>, <machine>, machine, <cores>, 8))
+
+host target, target-on(<apple-m3/aarch64/macos-26>)
+
+task candidate-of
+  take twin, like text
+  like dynamic
+
+  back make-record(make(list, <task>, <count-each>, <twin>, twin, <knob>, empty-record(),<step>, make(list,<twin count-each tally>)))
+
+host record, make-record(make(list, <region>, region, <facts>, facts, <target>, target, <compiler>, <0.9.12>, <rules>, rules, <candidate>, candidate-of(<tally>), <admission>, <tested>, <result>, <measured>, <time_ns>, make-record(make(list, <median>, 38200, <mad>, 410, <low>, 37600, <high>, 39000, <samples>, 40)), <taken>, <2026-10-02T14:03:11Z>))
+
+host stored, race-log/write-race(root, record)
+
+host tone-id, make pattern, <<^[mndbtkhsfvzxcwlr]{8}(-[mndbtkhsfvzxcwlr]{8}){7}$>>
+host tone-digest, make pattern, <<^([a-z]{8}-){7}[a-z]{8}$>>
+
+# the original's ask, with its compiler, rules, target and twin given
+task ask-of
+  take compiler, like text
+  take digest, like text
+  take on, like dynamic
+  take twin, like text
+  like dynamic
+
+  back make-record(make(list, <region>, region, <facts>, facts, <target>, on, <compiler>, compiler, <rules>, digest, <task>, <count-each>, <twin>, twin))
+
+task missed
+  take found, like dynamic
+  like boolean
+
+  back is-equal(kind-of(found), <undefined>)
+
+test <an id is a sha256 in the 8x8 tone shape>
+  want hold, matches(tone-id, stored/id)
+
+test <a region and a rule digest are too>
+  want hold, and(matches(tone-digest, region), matches(tone-digest, rules))
+
+test <the record lives under .base/@term/code/race/v1, in a shard>
+  want hold, is-equal(race-file/readdir-sync(race-path/join(root, <.base/@term/code/race/v1>))/length, 1)
+
+test <it reads back whole>
+  host read, race-log/read-races(root)
+  want hold, is-equal(read/0, stored)
+
+test <the same record is the same id>
+  want hold, is-equal(race-log/write-race(root, record)/id, stored/id)
+
+test <sizes that differ by noise share a bucket>
+  want hold, and(is-equal(race-log/size-bucket(1100), race-log/size-bucket(1030)), is-equal(race-log/size-bucket(1100), 1024))
+
+test <sizes a power of four apart do not>
+  want hold, is-unequal(race-log/size-bucket(1100), race-log/size-bucket(4500))
+
+test <ratios are bucketed to the tenth>
+  want hold, and(is-equal(race-log/ratio-bucket(0.31), race-log/ratio-bucket(0.28)), is-unequal(race-log/ratio-bucket(0.31), race-log/ratio-bucket(0.41)))
+
+test <a lookup under the same everything answers>
+  host found, race-log/lookup-race(root, ask-of(<0.9.12>, rules, target, <tally>))
+  want hold, not(missed(found))
+  want hold, is-equal(found/id, stored/id)
+
+test <a different compiler is a miss>
+  want hold, missed(race-log/lookup-race(root, ask-of(<0.9.14>, rules, target, <tally>)))
+
+test <a different rule digest is a miss>
+  want hold, missed(race-log/lookup-race(root, ask-of(<0.9.12>, race-log/tone-digest(make(list,<count-each/tally>)), target, <tally>)))
+
+test <a different machine is a miss>
+  want hold, missed(race-log/lookup-race(root, ask-of(<0.9.12>, rules, target-on(<intel/x86_64/linux>), <tally>)))
+
+test <a different twin is a miss>
+  want hold, missed(race-log/lookup-race(root, ask-of(<0.9.12>, rules, target, <dense>)))
+
+# a disagreement is kept, and never answers a lookup: the record with another twin, no time and another taken
+task write-disagreement
+  like dynamic
+
+  back race-log/write-race(root, make-record(make(list, <region>, region, <facts>, facts, <target>, target, <compiler>, <0.9.12>, <rules>, rules, <candidate>, candidate-of(<skips-first>), <admission>, <tested>, <result>, <disagreed>, <taken>, <2026-10-02T15:00:00Z>)))
+
+# written by each test that reads it, never at load, so the tests above read the log before it: one record is one id,
+# so the second write changes nothing
+test <a disagreement is kept in the log>
+  write-disagreement()
+  host kept
+    race-log/read-races
+      read root
+      task
+        take one, like dynamic
+        like boolean
+        back is-equal(one/result, <disagreed>)
+  want hold, is-equal(kept/length, 1)
+
+test <and never answers a lookup>
+  write-disagreement()
+  want hold, missed(race-log/lookup-race(root, ask-of(<0.9.12>, rules, target, <skips-first>)))

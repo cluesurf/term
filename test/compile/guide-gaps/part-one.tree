@@ -1,0 +1,545 @@
+note <the term.surf guides' programs that built clean and behaved wrongly, part one: names, loops, marks, refusals, matches>
+
+# Ported from test/compile/guide-gaps.ts by statement (item term-self-host-001-0614), its blocks from the binding dialect's
+# words through a counted walk's step, one test per `ok` in the original's order. Phase 1 of
+# note/project/term/guides/research/gaps/plan.md: each block is the guide's own sample, held two ways where it can be,
+# the wrong behavior gone and the right one (or a refusal naming the problem) there. Where behavior is the point, the
+# emitted TypeScript is run (`answer` in ./shared). The original's loops over a literal list are a test per element. Its
+# regular expressions that spell a plain text are a contains here, the rest a pattern. The parser and the mill are the
+# subject of the first block, docked (decision 106).
+
+load ./shared
+  find build
+  find build-on
+  find linked
+  find said
+  find warned
+  find answer
+  find gap-file
+  find parsed-of
+  find any-holding-both
+  find word-at
+
+load ../../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+
+load ../../support/reading
+  find any-holding
+  find any-starting
+
+load ../../support/judging
+  find truth
+
+load ../../support/walking
+  find field-of
+
+load @term/base/list
+  find push
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join, name text-join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/mill>, name gaps-mill
+
+# what one step of a milled body is: a call's callee by name, any other step by its form
+task step-word
+  take step, like dynamic
+  like text
+
+  host kind, field-of(step, <form>)
+  fork test, is-unequal(kind, <expression>)
+    hold
+      back kind
+  host expr, field-of(step, <expr>)
+  fork test, is-unequal(field-of(expr, <form>), <call>)
+    hold
+      back kind
+  host callee, field-of(expr, <callee>)
+  fork test, is-unequal(field-of(callee, <form>), <variable>)
+    hold
+      back kind
+  back field-of(callee, <name>)
+
+# the steps of task `order` as the mill left them, before the inliner folds the one-line tasks into their values
+task order-steps
+  take source, like text
+  like text
+
+  host parsed, parsed-of(source, gap-file())
+  fork test, not(truth(parsed/ok))
+    hold
+      back <>
+  host milled, gaps-mill/mill(parsed/tree, gap-file())
+  fork test, not(truth(milled/ok))
+    hold
+      back <>
+  host steps, make list
+  walk milled/program
+    take node, like dynamic
+    fork test, and(is-equal(field-of(node, <form>), <function>), is-equal(field-of(node, <name>), <order>))
+      hold
+        walk field-of(node, <body>)
+          take step, like dynamic
+          steps/push(step-word(step))
+  back text-join(steps, < >)
+
+# every diagnostic's hint, <> where it has none, joined
+task hints-of
+  take out, like compile-outcome
+  like text
+
+  host found, make list
+  walk out/notes
+    take one, like dynamic
+    found/push(one/hint)
+  back text-join(found, < | >)
+
+# ---- applications/web, commands/cast: a call to a component or task named like a word of the binding dialect ----
+# `home`, `rank`, `time` and fourteen more are words @term/bind writes on a signature (code/drop/mine.tree), and the grammar
+# matched them in any task body and dropped the line. `home host` placed nothing and the page served an empty
+# `<div></div>`. A head the file defines or imports is a call, in written order
+
+host home-rank, <task home\n  take n, like number\n  like number\n  send back, read n\n\ntask rank\n  take n, like number\n  like number\n  send back, read n\n\ntask order\n  like text\n  save seen, \<a\>\n  home 1\n  rank 2\n  save seen, \<b\>\n  send back, read seen\n>
+
+test <a task named `home` or `rank` is called from a body, in the order written>
+  want hold, is-equal(order-steps(home-rank), <let home rank assign return>)
+
+test <and the build keeps both>
+  host out, build(home-rank)
+  want hold, out/ok
+
+host route-places-home, make pattern, <<function route\([^)]*\)[^{]*\{\s*home\(host\)>>
+
+test <`home host` alone in `route` places the component>
+  host out, linked(<load @term/site/dom/dom\n  find view\n\nview home\n  take host, like view\n  view h1, \<Home\>\n\ntask route\n  take host, like view\n  take path, like text\n  home host\n>)
+  want hold, out/ok
+  want hold, matches(route-places-home, out/emitted)
+
+# ---- library/processes: `console`'s `log` beside `log`'s `warn` ----
+# native/<platform>/log.tree docks its module as `log` and calls `log/write-warn`. With `console`'s task `log` in the
+# program, that call read as a field of the task and Rust, Swift and Kotlin refused the file. A name a file docks is the
+# module inside that file
+
+host log-warn, <load @term/base/console\n  find log\n\nload @term/base/log\n  find warn\n\ntask boot\n  log \<out\>\n  warn \<err\>\n>
+
+test <`console`'s `log` beside `log`'s `warn` builds for rust>
+  host out, linked(log-warn, <rust>)
+  want hold, out/ok
+
+test <`console`'s `log` beside `log`'s `warn` builds for swift>
+  host out, linked(log-warn, <swift>)
+  want hold, out/ok
+
+test <`console`'s `log` beside `log`'s `warn` builds for kotlin>
+  host out, linked(log-warn, <kotlin>)
+  want hold, out/ok
+
+# ---- library/exceptions: a `sift` over a caught value that leaves a raise out names neither spelling ----
+# the message said `this fork case` under a `sift`, which is the same node
+
+test <a `sift` that leaves a raise uncovered says no case covers it, and never `fork case`>
+  host out, linked(<load @term/base/exception\n  find absence\n  find mismatch\n\ntask risky\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook hold\n      halt absence\n        bind thing, \<n\>\n  halt mismatch\n    bind thing, \<n\>\n    bind expected, \<a\>\n    bind actual, \<b\>\n\ntask guarded\n  take n, like number\n  like number\n  fork\n    mark unsafe\n    send back, risky(n)\n  halt take\n    take problem\n    sift problem\n      case absence\n        send back, code 0\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <can also raise mismatch, and no case here covers it>)
+  want hold, not(text-contains(said(out), <fork case>))
+
+# ---- language/matching: `back sift <value>`, each arm a value ----
+# read as `back <value>`, `sift` was a call to a task named `sift` and the line was refused
+
+host back-sift, build(<form shape\n  case circle\n    link radius, like number\n  case square\n    link side, like number\n\ntask area\n  take s, like shape\n  like number\n  back sift s\n    case circle\n      multiply(radius, radius)\n    case square\n      multiply(side, side)\n\ntask circle-area\n  like number\n  back area(make circle, bind radius, 2)\n\ntask square-area\n  like number\n  back area(make square, bind side, 3)\n>)
+host back-sift-calls, <() =\> mod['circleArea']?.(),\n() =\> mod['squareArea']?.(),>
+
+test <`back sift` builds, each arm giving its value>
+  want hold, back-sift/ok
+
+test <and returns the matched arm's value>
+  want hold, is-equal(answer(back-sift, back-sift-calls, <back-sift>, 0), <4>)
+  want hold, is-equal(answer(back-sift, back-sift-calls, <back-sift>, 1), <9>)
+
+# ---- proofs: a binding read only as a computed index is used ----
+# `xs/{at}` was not seen as a read of `at`, which was warned as never used
+
+test <a binding read only as a computed index is not warned as unused>
+  host out, build(<task last\n  take xs, like list, like number\n  like number\n  save at, subtract(xs/length, 1)\n  back xs/\{at\}\n>)
+  want hold, out/ok
+  want hold, not(any-holding(warned(out), <"at" is never used>))
+
+# ---- library/exceptions: a raise on TypeScript carries its stack in `flow` ----
+# every raise built `flow: []`; the class fills it from the Error's own stack where the raise gave none
+
+host raise-flow, linked(<load @term/base/exception\n  find absence\n\nload @term/base/list\n  find size\n\ntask find-it\n  take name, like text\n  like text\n  halt absence\n    bind thing, read name\n\ntask frames\n  like number\n  fork\n    mark unsafe\n    save got, find-it(\<x\>)\n    send back, code 0\n  halt take\n    take problem\n    send back, size(problem/flow)\n>)
+host raise-flow-calls, <() =\> typeof mod.frames?.(),\n() =\> mod.frames?.(),>
+host counted, make pattern, <<^[1-9][0-9]*$>>
+
+test <a raise builds>
+  want hold, raise-flow/ok
+
+test <and the caught exception carries the frames of the raise in `flow`>
+  want hold, is-equal(answer(raise-flow, raise-flow-calls, <raise-flow>, 0), <number>)
+  want hold, matches(counted, answer(raise-flow, raise-flow-calls, <raise-flow>, 1))
+
+# ---- language/naming: a task named like a compiler word is the one its file's calls reach ----
+# `add` folded to `+` before names were bound, so a file's own `task add` was passed over (warned as `builtin-shadow` from
+# 2026-10-04) and `add(2, 3)` was 5. A file's own task wins (term-module-scope-0001): it is 6. Another file is read alone
+# and still folds its `add(...)`, so a task another file could import is warned about
+
+host add-task, build(<task add\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call multiply\n      read a\n      read b\n\ntask five\n  like number\n  send back\n    call add\n      code 2\n      code 3\n>)
+host five-calls, <() =\> mod.five?.(),>
+
+test <a task named like a compiler word builds, warned that only its own file reaches it by name>
+  want hold, add-task/ok
+  want hold, any-starting(warned(add-task), <builtin-shadow: a task named "add" is reached by that name only in this file>)
+
+test <and a call of it in its own file is that task: add(2, 3) is 6>
+  want hold, is-equal(answer(add-task, five-calls, <add-task>, 0), <6>)
+
+# the same task `mark private`: only its own file can call it, where its calls reach it, so nothing is warned
+
+host add-private, build(<task add\n  take a, like number\n  take b, like number\n  like number\n  mark private\n  send back\n    call multiply\n      read a\n      read b\n\ntask five\n  like number\n  send back\n    call add\n      code 2\n      code 3\n>)
+
+test <a private task named like a compiler word builds with no `builtin-shadow` warning>
+  want hold, add-private/ok
+  want hold, not(any-starting(warned(add-private), <builtin-shadow>))
+
+test <and add(2, 3) is 6>
+  want hold, is-equal(answer(add-private, five-calls, <add-private>, 0), <6>)
+
+# ---- applications/web/routes: braces in a component's text ----
+# `view p, <Nothing at {path}>` built its literal chunks alone and served `<p>Nothing at </p>`, with no message
+
+test <a component text with braces is a dynamic text holding the value>
+  host out, linked(<load @term/site/dom/dom\n  find view\n\nview missing\n  take host, like view\n  take path, like text\n  view p, \<Nothing at \{path\}\>\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <makeDynamicText(() =\> (`Nothing at $\{path\}`))>)
+
+# ---- language/loops: nested `walk size` loops each keep their own counter ----
+
+host grid, build(<task grid\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      walk size\n        bind base, code 0\n        bind head, read n\n        hook next\n          save total\n            call add\n              read total\n              code 1\n  send back, read total\n>)
+host grid-calls, <() =\> mod.grid(4),>
+
+test <two nested walk size loops build>
+  want hold, grid/ok
+
+test <and the outer loop ends, having run the inner one n times each turn>
+  want hold, is-equal(answer(grid, grid-calls, <grid>, 0), <16>)
+
+# ---- language/loops: a `take` beside the `bind` lines names the counter ----
+
+host sum-to, build(<task sum-to\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take j\n    bind base, code 0\n    bind head, read n\n    hook next\n      save total\n        call add\n          read total\n          read j\n  send back, read total\n>)
+
+test <a take beside the bind lines names the counter>
+  want hold, sum-to/ok
+
+test <and the body reads it>
+  want hold, is-equal(answer(sum-to, <() =\> mod.sumTo(5),>, <sum-to>, 0), <10>)
+
+# ---- language/branching: a path that can end without `back` ----
+
+test <a task promising text with no miss arm is refused>
+  host out, build(<task no-miss\n  take n, like number\n  like text\n  fork test\n    hook test\n      call is-below\n        read n\n        code 0\n    hook hold\n      send back, text \<negative\>\n>)
+  want hold, contains(out/names, <missing-back>)
+
+test <and one that returns on every path builds>
+  host out, build(<task all-paths\n  take n, like number\n  like text\n  fork test\n    hook test\n      call is-below\n        read n\n        code 0\n    hook hold\n      send back, text \<negative\>\n    hook miss\n      send back, text \<not negative\>\n>)
+  want hold, out/ok
+
+# ---- language/branching: an arm with a word the fork does not know ----
+
+test <`hook true` under `fork test` is refused, not dropped>
+  host out, build(<task sign-word\n  take n, like number\n  like text\n  fork test\n    hook test\n      call is-below\n        read n\n        code 0\n    hook true\n      send back, text \<negative\>\n  send back, text \<not negative\>\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <true>)
+
+# ---- language/errors: `halt <text>` raises `failure`, a TermException a handler can read ----
+
+host boom, build(<task boom\n  like number\n  halt \<nope\>\n>)
+
+test <halt with text builds>
+  want hold, boom/ok
+
+# what the main's `caught` gives: the raise's name, form and link/actual, joined by a space
+test <and throws the TermException carrier with form failure>
+  host raised, answer(boom, <() =\> caught(() =\> mod.boom()),>, <boom>, 0)
+  want hold, is-equal(word-at(raised, 0), <TermException>)
+  want hold, is-equal(word-at(raised, 1), <failure>)
+
+# ---- language/notes: `mark <uuid>` under a form is its identity ----
+
+test <a form carrying `mark \<uuid\>` builds>
+  host out, build(<form person\n  mark \<3f2a9c4e-1b7d-4e8a-9f60-2c5d8b7e1a03\>\n  link name, like text\n\ntask make-ada\n  like person\n  send back\n    make person\n      bind name, text \<ada\>\n>)
+  want hold, out/ok
+
+# ---- language/notes: an unknown mark word is refused ----
+
+test <`mark deprecatd` is refused>
+  host out, build(<task old-way\n  mark deprecatd\n  like number\n  send back, code 1\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <deprecatd>)
+
+# a file's marks under a task were accepted and read by nothing
+
+test <`mark draft` under a task is refused as a file's mark>
+  host out, build(<task old-way\n  mark draft\n  like number\n  send back, code 1\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <marks a file>)
+
+test <`mark stable` under a task is refused as a file's mark>
+  host out, build(<task old-way\n  mark stable\n  like number\n  send back, code 1\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <marks a file>)
+
+test <`mark unstable` under a task is refused as a file's mark>
+  host out, build(<task old-way\n  mark unstable\n  like number\n  send back, code 1\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <marks a file>)
+
+test <`mark exact`, which nothing reads yet, is refused>
+  host out, build(<task old-way\n  mark exact\n  like number\n  send back, code 1\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <exact>)
+
+# ---- language/notes: `mark native` under a `dock load` repeats what `dock` says ----
+
+host native-then-dock, make pattern, <<mark native.*dock load>>
+
+test <`mark native` under `dock load` is refused, naming the dock>
+  host out, build(<dock load\n  load \<node:path\>, name path\n  mark native\n\ntask base-name\n  take file, like text\n  like text\n  send back\n    call path/basename\n      read file\n>)
+  want hold, not(out/ok)
+  want hold, matches(native-then-dock, said(out))
+
+test <and the same dock without it builds>
+  host out, build(<dock load\n  load \<node:path\>, name path\n\ntask base-name\n  take file, like text\n  like text\n  send back\n    call path/basename\n      read file\n>)
+  want hold, out/ok
+
+# ---- language/forms and language/tasks: what is left out is refused, not filled ----
+
+test <a required field left out is refused>
+  host out, build(<form person\n  link name, like text\n  link age, like number\n\ntask nameless-age\n  like person\n  send back\n    make person\n      bind name, text \<ada\>\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <age>)
+
+test <a text argument left out is refused>
+  host out, build(<task greet\n  take name, like text\n  take punct, like text\n  like text\n  send back, text \<\{name\}\{punct\}\>\n\ntask use-greet\n  like text\n  send back\n    call greet\n      text \<ada\>\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <punct>)
+
+# ---- language/variables: a misspelled save is refused (a warning until 2026-10-22, term/compiler decision 003) ----
+
+test <the misspelled binding is refused, naming it>
+  host out, build(<task typo\n  take count, like number\n  like number\n  save total, code 0\n  save totl\n    call add\n      read total\n      read count\n  send back, read total\n>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <stray-save>)
+  want hold, text-contains(said(out), <totl>)
+
+# ---- types: a type name that names nothing ----
+
+test <`like widgett` is refused>
+  host out, build(<task first-of\n  take x, like widgett\n  like number\n  send back, code 1\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <widgett>)
+
+# ---- language/values: number literals and `host` ----
+
+test <a literal past 64 bits is refused>
+  host out, build(<task huge\n  like number\n  send back, code 99999999999999999999\n>)
+  want hold, not(out/ok)
+
+# refused on a JavaScript build, where it is not the number written, and warned of on a native one (2026-10-05)
+
+test <a literal past 2^53 is refused on TypeScript, naming what it would read>
+  host out, build(<task big\n  like number\n  send back, code 9007199254740993\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <9007199254740992>)
+
+test <and builds natively with the warning>
+  host out, build-on(<task big\n  like number\n  send back, code 9007199254740993\n>, <rust>)
+  want hold, out/ok
+  want hold, any-holding(out/warning-messages, <9007199254740992>)
+
+test <a save after a host of one name is refused>
+  host out, build(<task limit-twice\n  like number\n  host limit, code 10\n  save limit, code 20\n  send back, read limit\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <limit>)
+
+# ---- types/annotations: a width alias holds its range at a literal ----
+
+test <300 for a u8 parameter is refused>
+  host out, build(<task shade\n  take level, like u8\n  like number\n  send back, read level\n\ntask use-shade\n  like number\n  send back\n    call shade\n      code 300\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <u8>)
+
+test <and so is -1 passed by name>
+  host out, build(<task shade\n  take level, like u8\n  like number\n  send back, read level\n\ntask use-shade\n  like number\n  send back\n    call shade\n      bind level, code -1\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <u8>)
+
+test <255 builds>
+  host out, build(<task shade\n  take level, like u8\n  like number\n  send back, read level\n\ntask use-shade\n  like number\n  send back\n    call shade\n      code 255\n>)
+  want hold, out/ok
+
+# ---- language/native: a call that can only reach a stub ----
+# a module that declares a task and never fills it, and a file that calls it. The original's resolver answered ./later and
+# nothing else: `files` answers it under /gate/code/later.tree, and `closed` finds nothing more
+
+test <a call into another module's task with no body anywhere is refused>
+  host later, make(compiling-source, bind(file, <./later>), bind(text, <task later\n  take n, like number\n  like number\n>), bind(answer, </gate/code/later.tree>))
+  host out, compile-text(<load ./later\n  find later\n\ntask use-later\n  like number\n  send back\n    call later\n      code 2\n>, make(compile-choice, bind(file, gap-file()), bind(files, make list(later)), bind(closed, true)))
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <later.tree>)
+
+# refused since 2026-10-05: every backend wrote the call to a stub that fails when it runs. A postulate, a body-less task
+# answering an indexed family, still builds (test/check/circle.ts), and so does a proof file's
+
+test <a file calling a body-less task it declares itself is refused too, since the call could only reach a stub>
+  host out, build(<task later\n  take n, like number\n  like number\n\ntask use-later\n  like number\n  send back\n    call later\n      code 2\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <"later" is declared with no body>)
+
+# ---- language/tasks: labels and duplicates ----
+
+test <method arguments out of the method order are refused, naming the order>
+  host out, build(<form counter\n  link count, like number\n\n  task bump\n    take self\n    take by, like number\n    like number\n    send back\n      call add\n        read self/count\n        read by\n\ntask use-bump\n  take c, like counter\n  like number\n  send back\n    call bump\n      bind by, code 2\n      bind counter, read c\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <self, by>)
+
+test <two tasks of one name and one signature in one file are refused>
+  host out, build(<task area\n  take w, like number\n  like number\n  send back, read w\n\ntask area\n  take w, like number\n  like number\n  send back\n    call multiply\n      read w\n      read w\n>)
+  want hold, contains(out/names, <duplicate-definition>)
+
+# ---- applications/web/fetching: a `find` of a name the module does not define ----
+
+test <a stale find is refused>
+  host out, linked(<load @term/base/list\n  find no-such-task\n\ntask use\n  like number\n  send back, code 1\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <no-such-task>)
+
+# ---- parsers/cursor: a write through a value parameter that reaches nobody ----
+
+test <a write to a value record nobody gets back is refused>
+  host out, build(<form counter\n  link count, like number\n\ntask bump\n  take box, like counter\n  save box/count, add(box/count, 1)\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <box>)
+
+test <a write through an opaque handle reaches the shared object, and builds>
+  host out, build(<form element-box\n  link handle\n\ntask set-it\n  take node, like element-box\n  save node/handle/text, \<x\>\n>)
+  want hold, out/ok
+
+# ---- applications/web/routes: what a page route keeps and refuses ----
+
+test <seed title and seed description reach the page>
+  host out, linked(<load @term/site/dom/dom\n  find view\n\nview page\n  take host, like view\n  view span\n    \<hi\>\n\nhook /about\n  seed title, \<About\>\n  seed description, \<Who we are\>\n  view page\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <setTitle("About")>)
+  want hold, text-contains(out/emitted, <setMeta("description", "Who we are")>)
+
+test <a page route with `task get` is refused, not emitted as nothing>
+  host out, linked(<load @term/site/dom/dom\n  find view\n\nview page\n  take host, like view\n  view span\n    \<hi\>\n\nhook /data\n  task get\n    send back, \<ok\>\n>)
+  want hold, contains(out/names, <not-implemented>)
+
+# ---- applications/web/components: the lowered component is typed and checked ----
+
+host typed, linked(<load @term/site/dom/dom\n  find view\n\nload @term/site/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/base/text/string\n  find to-text\n\nform item\n  link name, like text\n  link done, like boolean\n\nview counter\n  take host, like view\n  save count, make-signal(0)\n  view p\n    read to-text(read-signal(count))\n\nview panel\n  take host, like view\n  take title, like text\n  view section\n    view h2\n      read title\n    site\n\nview checklist\n  take host, like view\n  take items, like list, like item\n  view panel\n    bind title, \<To do\>\n    view ul\n      walk list, read items\n        hook next\n          take site, name row\n          view li\n            read row/name\n>)
+host children-closure, make pattern, <<\(view\d+: View\) =[>]>>
+host names-a-text, make pattern, <<[Ss][Tt][Rr][Ii][Nn][Gg]|[Tt][Ee][Xx][Tt]>>
+
+test <the components sample builds>
+  want hold, typed/ok
+
+test <a component returns void>
+  want hold, text-contains(typed/emitted, <export function counter(host: View): void>)
+
+test <the children closure takes a View>
+  want hold, matches(children-closure, typed/emitted)
+
+test <a walk over `like list, like item` types its row>
+  want hold, text-contains(typed/emitted, <(row: Item) =\>>)
+
+test <a number read into a text node is refused>
+  host out, linked(<load @term/site/dom/dom\n  find view\n\nload @term/site/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/base/text/string\n  find to-text\n\nform item\n  link name, like text\n  link done, like boolean\n\nview counter\n  take host, like view\n  save count, make-signal(0)\n  view p\n    read read-signal(count)\n>)
+  want hold, not(out/ok)
+  want hold, matches(names-a-text, said(out))
+
+# ---- language/matching: `hook miss` is the arm for every case a match does not list ----
+
+host caught, build(<form shape\n  case circle\n    link r, like number\n  case square\n    link side, like number\n  case dot\n\ntask corners\n  take s, like shape\n  like number\n  sift s\n    case square\n      send back, code 4\n    hook miss\n      send back, code 0\n>)
+host hold-then-miss, make pattern, <<hook hold.*hook miss>>
+
+test <a `sift` with a `hook miss` arm builds>
+  want hold, caught/ok
+
+test <and answers the listed case, and every other through the miss arm>
+  host calls, <() =\> mod.corners(\{ form: "square", side: 2 \}),\n() =\> mod.corners(\{ form: "circle", r: 1 \}),\n() =\> mod.corners(\{ form: "dot" \}),>
+  want hold, is-equal(answer(caught, calls, <corners>, 0), <4>)
+  want hold, is-equal(answer(caught, calls, <corners>, 1), <0>)
+  want hold, is-equal(answer(caught, calls, <corners>, 2), <0>)
+
+test <`hook hold` under a `sift` is refused, naming the arms a match takes>
+  host out, build(<form shape\n  case circle\n    link r, like number\n  case square\n    link side, like number\n  case dot\n\ntask corners\n  take s, like shape\n  like number\n  sift s\n    case square\n      send back, code 4\n    hook hold\n      send back, code 0\n>)
+  want hold, not(out/ok)
+  want hold, matches(hold-then-miss, said(out))
+
+test <two `hook miss` arms are refused>
+  host out, build(<form shape\n  case circle\n    link r, like number\n  case square\n    link side, like number\n  case dot\n\ntask corners\n  take s, like shape\n  like number\n  sift s\n    case square\n      send back, code 4\n    hook miss\n      send back, code 0\n    hook miss\n      send back, code 1\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <two `hook miss`>)
+
+test <a match that leaves cases out names `hook miss`, not an `else` the grammar refuses>
+  host hint, hints-of(build(<form shape\n  case circle\n    link r, like number\n  case square\n    link side, like number\n  case dot\n\ntask corners\n  take s, like shape\n  like number\n  sift s\n    case square\n      send back, code 4\n>))
+  want hold, text-contains(hint, <hook miss>)
+  want hold, not(text-contains(hint, <else>))
+
+# a miss arm that answers one case or none builds, with a warning naming the case to list
+
+test <a `hook miss` that answers only `dot` builds, warning to write `case dot`>
+  host out, build(<form shape\n  case circle\n    link r, like number\n  case square\n    link side, like number\n  case dot\n\ntask corners\n  take s, like shape\n  like number\n  sift s\n    case square\n      send back, code 4\n    case circle\n      send back, code 0\n    hook miss\n      send back, code 0\n>)
+  want hold, out/ok
+  want hold, any-holding-both(warned(out), <thin-catch-all>, <`dot`>)
+
+test <and one that answers no case warns that every case is listed>
+  host out, build(<form shape\n  case circle\n    link r, like number\n  case square\n    link side, like number\n  case dot\n\ntask corners\n  take s, like shape\n  like number\n  sift s\n    case square\n      send back, code 4\n    case circle\n      send back, code 0\n    case dot\n      send back, code 0\n    hook miss\n      send back, code 0\n>)
+  want hold, out/ok
+  want hold, any-holding(warned(out), <answers no case>)
+
+test <a `hook miss` over two cases does not warn>
+  want hold, caught/ok
+  want hold, not(any-holding(warned(caught), <thin-catch-all>))
+
+# ---- language/loops: a step, a count down, and `turn next` in a counted walk ----
+
+host stepped, build(<task evens\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take i\n    bind base, code 0\n    bind head, read n\n    bind step, code 2\n    hook next\n      save total\n        call add\n          read total\n          read i\n  send back, read total\n\ntask down\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take i\n    bind base, read n\n    bind head, code 0\n    bind step, code -1\n    hook next\n      save total\n        call add\n          call multiply\n            read total\n            code 10\n          read i\n  send back, read total\n\ntask by\n  take n, like number\n  take s, like number\n  like number\n  save count, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    bind step, read s\n    hook next\n      save count\n        call add\n          read count\n          code 1\n  send back, read count\n\ntask skip-odd\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take i\n    bind base, code 0\n    bind head, read n\n    hook next\n      fork test\n        hook test\n          call is-equal\n            call modulo\n              read i\n              code 2\n            code 1\n        hook hold\n          turn next\n      save total\n        call add\n          read total\n          read i\n  send back, read total\n>)
+host steps-calls, <() =\> mod.evens(7),\n() =\> mod.down(3),\n() =\> mod.by(10, 3),\n() =\> mod.by(-10, -3),\n() =\> mod.skipOdd(6),>
+
+test <`walk size` takes a `step`>
+  want hold, stepped/ok
+
+test <by 2: 0 + 2 + 4 + 6>
+  want hold, is-equal(answer(stepped, steps-calls, <steps>, 0), <12>)
+
+test <a negative step counts down to above the head: 3, 2, 1>
+  want hold, is-equal(answer(stepped, steps-calls, <steps>, 1), <321>)
+
+test <a step read from a variable: 0, 3, 6, 9 is four turns>
+  want hold, is-equal(answer(stepped, steps-calls, <steps>, 2), <4>)
+
+test <and a negative one from a variable counts down: 0, -3, -6, -9 is four turns>
+  want hold, is-equal(answer(stepped, steps-calls, <steps>, 3), <4>)
+
+test <`turn next` steps the counter before the next turn, and the walk ends>
+  want hold, is-equal(answer(stepped, steps-calls, <steps>, 4), <6>)
+
+test <a step of 0 is refused: it never ends>
+  host out, build(<task spin\n  like number\n  walk size\n    bind base, code 0\n    bind head, code 3\n    bind step, code 0\n    hook next\n      turn next\n  send back, code 0\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <step 0>)

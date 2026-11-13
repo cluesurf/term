@@ -17,15 +17,18 @@ load @term/base/network/server/request
 load @term/base/network/server/response
   find response
 
-# a running server: the platform server object lives in the opaque `dock` handle, plus the bound host and port
+# a running server: the platform server object lives in the opaque `dock` handle, plus the bound host and port. `port`
+# is the port the server is bound to, which for a `start` on port 0 is the free one the OS chose (item
+# term-self-host-001-1326)
 form server
   link dock
     like server-dock
   link host, like text
   link port, like number
 
-# start a server on `port` that answers every request with `handler` (a request in, a response out). With `secure`, it
-# serves HTTPS using the PEM `certificate` and `key`. Returns the running server, which `stop` shuts down.
+# start a server on `port` that answers every request with `handler` (a request in, a response out). Port 0 asks the
+# OS for a free one, and the running server's `port` says which. With `secure`, it serves HTTPS using the PEM
+# `certificate` and `key`. Returns the running server, which `stop` shuts down.
 task start
   mark async
   take port, like size

@@ -1,0 +1,43 @@
+{
+  "shim": "compare",
+  "candidate": "task/term/shim-bench/kotlin/compare.candidate.tree",
+  "rounds": 50,
+  "dynamic": true,
+  "ops": [
+    {
+      "op": "above-float",
+      "shim_op": "above",
+      "term_op": "above",
+      "arity": 2,
+      "kind": "boolean",
+      "cases": "float-pairs",
+      "args": [
+        "float",
+        "float"
+      ]
+    },
+    {
+      "op": "above-integer",
+      "shim_op": "above",
+      "term_op": "above",
+      "arity": 2,
+      "kind": "boolean",
+      "cases": "int-pairs",
+      "args": [
+        "number",
+        "number"
+      ]
+    },
+    {
+      "op": "as-text",
+      "shim_op": "as-text",
+      "term_op": "as-text",
+      "arity": 1,
+      "kind": "text",
+      "cases": "text-singles",
+      "args": [
+        "text"
+      ]
+    }
+  ]
+}

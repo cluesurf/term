@@ -1,0 +1,383 @@
+note <a face registered with each toolkit host is checked, watched and drawn as the platform reports it>
+
+# Ported from toolkit-font.ts by statement (item term-self-host-001-0695). Fonts on the toolkit hosts
+# (native-text-0002): a face registered with the platform and drawn, on AppKit (macOS), UIKit (the iPhone simulator),
+# Android views (the emulator), Compose on the desktop JVM and Jetpack Compose (the emulator). The program registers
+# CrowMark, the house face, asks `check-font` and `watch-font` about it and about a family nobody registered, sets one
+# text in each with `font-family`, and says what the PLATFORM reports for each text's face. The face is the fixture
+# test/fixture/CrowMark.otf: macOS and the simulator read it by path, the emulator from the APK as `asset:CrowMark.otf`.
+# Built and run on each leg by test/support/device/toolkit-run, which skips a leg whose toolchain or device is not
+# here. SNAPSHOT_FONT (and _IOS, _ANDROID, _COMPOSE, _COMPOSE_ANDROID) name where each PNG goes. FONT_ONLY=macos (or
+# ios, android, compose, compose-android) runs one leg.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way are one walked test, a
+# case each. Each of the original judge's `ok`s is one walked test over the legs, a leg a case of it, skipped where the
+# leg was or where it stopped before the original would have judged it. The original's one `the face is on disk` ok,
+# made only when the face is missing, is a test of its own here, and the legs run only when it holds.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find exists, name file-exists
+
+load @term/base/pattern
+  find pattern
+  find find-matches
+  find pattern-match
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find starts-with
+  find index-of
+  find substring
+  find trim
+  find char-count
+
+load @term/base/text/number
+  find parse-float
+
+host missing-family, <No Such Face>
+
+form font-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host font-now, make(font-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# the face's file, a fixture this repository carries
+task face-file
+  like text
+
+  back <{term-root()}/test/fixture/CrowMark.otf>
+
+# where each platform finds the file
+task face-source
+  take leg, like text
+  like text
+
+  fork test, or(is-equal(leg, <android>), is-equal(leg, <compose-android>))
+    hold
+      back <asset:CrowMark.otf>
+  back face-file()
+
+# where a leg's PNG goes, by leg, when the run names one
+task shots
+  like hash, like text, like text
+
+  save named, make hash
+  save value, variable(<SNAPSHOT_FONT>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/macos, value
+  save value, variable(<SNAPSHOT_FONT_IOS>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/ios, value
+  save value, variable(<SNAPSHOT_FONT_ANDROID>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/android, value
+  save value, variable(<SNAPSHOT_FONT_COMPOSE>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/compose, value
+  save value, variable(<SNAPSHOT_FONT_COMPOSE_ANDROID>)
+  fork test, is-unequal(value, <>)
+    hold
+      save key, <compose-android>
+      save named/{key}, value
+  back named
+
+# the app and the legs FONT_ONLY allows, made once, none when the face is not on disk
+task the-app
+  like font-state
+
+  fork test, font-now/made
+    hold
+      back font-now
+  save font-now/made, true
+  save assets, make hash
+  save key, <CrowMark.otf>
+  save assets/{key}, face-file()
+  save font-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-toolkit-font->)), bind(name, <Fonts>), bind(who, <toolkit-font>), bind(ios-identifier, <surf.term.toolkit-font-test>), bind(android-identifier, <surf.term.toolkitfont>), bind(assets, assets), bind(shots, shots()), bind(compose, true), bind(compose-android, true))
+  fork test, file-exists(face-file())
+    hold
+      save font-now/legs, legs-of(font-now/app, variable(<FONT_ONLY>))
+  back font-now
+
+# the original's program, the face's source and the PNG path filled in
+task font-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  save source, face-source(leg)
+  back <load @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find show-window\n  find run-app\n  find exit-app\n  find child-at\n  find frame-of\n  find style-of\n  find register-font\n  find check-font\n  find watch-font\n  find snapshot\n  find say\n\n# one text in the registered face, one in a family nobody registered\nview faces\n  take host, like view\n  view span\n    bind style, text \<font-family: CrowMark; font-size: 24px\>\n    text \<Meditations\>\n  view span\n    bind style, text \<font-family: "No Such Face", serif; font-size: 24px\>\n    text \<Meditations\>\n\ntask main\n  save before\n    call check-font\n      text \<CrowMark\>\n  save registered\n    call register-font\n      text \<CrowMark\>\n      text \<{source}\>\n  save again\n    call register-font\n      text \<CrowMark\>\n      text \<{source}\>\n  save unread\n    call register-font\n      text \<Nothing Here\>\n      text \</no/such/file.otf\>\n  save after\n    call check-font\n      text \<CrowMark\>\n  save missing\n    call check-font\n      text \<No Such Face\>\n  call say\n    text \<fonts before=\{\{before\}\} registered=\{\{registered\}\} again=\{\{again\}\} unread=\{\{unread\}\} after=\{\{after\}\} missing=\{\{missing\}\}\>\n  call watch-font\n    text \<CrowMark\>\n    task on-ready\n      take status, like text\n      call say\n        text \<watch CrowMark \{\{status\}\}\>\n  call watch-font\n    text \<No Such Face\>\n    task on-missing\n      take status, like text\n      call say\n        text \<watch missing \{\{status\}\}\>\n  save root\n    call open-root\n      text \<Term fonts\>\n      code 420\n      code 300\n  call faces\n    read root\n  call after-launch\n    task check\n      call show-window\n      save drawn\n        call style-of\n          call child-at\n            call child-at\n              read root\n              code 0\n            code 0\n          text \<font-family\>\n      save fallen\n        call style-of\n          call child-at\n            call child-at\n              read root\n              code 1\n            code 0\n          text \<font-family\>\n      call say\n        text \<drawn registered=[\{\{drawn\}\}] missing=[\{\{fallen\}\}]\>\n      save first-frame\n        call frame-of\n          call child-at\n            read root\n            code 0\n      save second-frame\n        call frame-of\n          call child-at\n            read root\n            code 1\n      call say\n        text \<frames \{\{first-frame\}\} \{\{second-frame\}\}\>\n      call snapshot\n        text \<{shot}\>\n      call exit-app\n        code 0\n  call run-app\n>
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, font-program, prepare-no-device)
+  save font-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+test <the face is on disk>
+  want hold, file-exists(face-file())
+
+# the text after `<marker> ` on the first line holding it
+task said-after
+  take output, like text
+  take marker, like text
+  like text
+
+  save mark, <{marker} >
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        save from, add(index-of(line, mark), char-count(mark))
+        back trim(substring(line, from, char-count(line)))
+  back <>
+
+# the leg's run, or why its case skips
+task judged
+  take leg, like text
+  like toolkit-leg
+
+  back leg-run(leg)
+
+# what the `fonts` line said
+task fonts-said
+  take leg, like text
+  like text
+
+  back said-after(leg-run(leg)/output, <fonts>)
+
+# a family between `<key>=[` and `]` on the `drawn` line, <> when there is none
+task drawn-family
+  take leg, like text
+  take key, like text
+  like text
+
+  save shape, make pattern, <{key}=\\[([^\\]]*)\\]>
+  walk find-matches(shape, said-after(leg-run(leg)/output, <drawn>))
+    take found, like pattern-match
+    back found/groups/0
+  back <>
+
+# a frame `x,y,w,h` as four numbers, empty when it is not four numbers
+task frame-numbers
+  take said, like text
+  like list, like float
+
+  save out, make list
+  fork
+    mark unsafe
+    walk text-split(said, <,>)
+      take one, like text
+      out/push(parse-float(one))
+  halt take
+    take cause
+    back make list
+  fork test, is-unequal(out/length, 4)
+    hold
+      back make list
+  back out
+
+test <registering CrowMark from its file, or the APK, succeeds>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(fonts-said(leg), <registered=true>)
+
+test <registering it again is not a failure>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(fonts-said(leg), <again=true>)
+
+test <a file that does not exist is refused>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(fonts-said(leg), <unread=false>)
+
+test <check-font says CrowMark is drawable once registered>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(fonts-said(leg), <after=true>)
+
+test <check-font says a family nobody registered is not>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(fonts-said(leg), <missing=false>)
+
+test <watch-font calls back ready for the registered family>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(leg-run(leg)/output, <watch CrowMark>), <ready>)
+
+test <watch-font calls back error for the missing one>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(said-after(leg-run(leg)/output, <watch missing>), <error>)
+
+test <the text in font-family CrowMark is drawn in CrowMark, as the platform reports it>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(drawn-family(leg, <registered>), <CrowMark>)
+
+test <the text in a missing family is drawn in the system face, not in it>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save fallen, drawn-family(leg, <missing>)
+  want hold, and(is-unequal(fallen, missing-family), is-unequal(fallen, <CrowMark>))
+
+# the registered face's line is sized by its ascent and descent, as on the web: CrowMark's are 650 and 200 on an 800
+# unit em, so a 24px line is about 26 tall, never its 17 em bounding box (Android's font padding drew it 418 tall)
+test <the CrowMark line is a line tall, not its bounding box, and the next line sits directly under it>
+  take leg, like text
+    walk leg-names()
+  save why, skip-reason(judged(leg))
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save parts, text-split(said-after(leg-run(leg)/output, <frames>), < >)
+  want hold, is-minimum(parts/length, 2)
+  save first, frame-numbers(parts/0)
+  save second, frame-numbers(parts/1)
+  want hold, and(is-equal(first/length, 4), is-equal(second/length, 4))
+  want hold, and(is-above(first/3, 20.0), is-below(first/3, 48.0))
+  save gap, subtract(second/1, add(first/1, first/3))
+  want hold, and(is-maximum(gap, 1.0), is-minimum(gap, -1.0))

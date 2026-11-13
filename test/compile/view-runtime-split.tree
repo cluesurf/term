@@ -1,0 +1,846 @@
+note <the view lowering's runtime calls bind as render.tree binds them, read in the Swift of a merged native build>
+
+# Ported from view-runtime-split.ts by statement (item term-self-host-001-0694). The view lowering's runtime calls bind
+# as render.tree binds them (beat-term-0043, decision D020). A merged native build splits a task two files define by
+# file (`append`, defined by @term/base/file and by the toolkit dom, becomes `append__in0_<k>`), and the lowering ran
+# after that and still wrote the plain `append`: swiftc said `cannot find 'append' in scope`. No case RUNS an app or
+# touches a simulator: the Swift is only typechecked, for the iPhone simulator SDK and for macOS.
+#
+#   a   the defect: a view and @term/base/file in one program
+#   b   the entry file defines a task `append` of its own: it keeps its name, the lowering calls the dom's
+#   b2  the entry's `append` takes views, so a wrong binding still compiles: only the text witness can see it
+#   c   nothing is split: no @term/base/file, the lowering calls the dom's plain `append`
+#   d   the map: the overload pass leaves its runtime map naming append, remove and replace by the dom's renamed names
+#       and make-element by itself
+#   e   the entry defines `make-text` and `write-attribute`, render.tree's own one-line forwarders (beat-term-0055): every
+#       lowered call in `screen` names the bound name, and the Swift defines it
+#   f   the app owns a `view/render.tree` the entry loads before the toolkit (beat-term-0058): the runtime is found by
+#       resolving `@term/site/view/render`, not by the first path ending `/view/render.tree`
+#   f2  the same app loading only its own `./view/render` (beat-term-0064): the walk still gives the runtime
+#
+# Every case is compiled once, the first time a test asks, in the original's order (each leg's a, b, b2, c, e, then f and
+# f2 on each leg, then d), since the overload pass keeps its map in the compiler's module between compiles: the map is
+# read right after each compile and kept with it. A case's checks are walked over the two legs, and skip on a leg where
+# the case did not compile (the original made no check there past its `compiles`).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find prelude-text
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/running
+  find run-tool
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/process/run
+  find run
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+  find pattern-match
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+  find starts-with
+  find split, name text-split
+  find to-upper-case
+  find char-count
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/make/code/check/overload>, name split-overload
+  load <node:path>, name split-path
+  load <node:fs>, name split-file
+
+bind split-recursive
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+# host value: the overload pass's runtime map is a Map the compiler's module keeps, read by name
+bind runtime-bound
+  take module, like dynamic
+  take name, like text
+  like text
+  case node
+    text <($module.overloadBound.runtime.get($name) ?? "")>
+
+# the Swift module every cask builds, cask.ts SWIFT_MODULE
+host swift-module, <TermApp>
+
+host split-legs, make list(<ios>, <macos>)
+
+host split-head, <load @term/site/dom/dom\n  find view\n\nload @term/site/dom/native/toolkit/dom\n  find run-app\n\nload @term/site/view/native/toolkit/host\n  find mount-app\n\nload @term/site/http/http\n  find request\n  find response\n\nload @term/site/view/route-answer\n  find answer-nothing\n\nload @term/base/maybe\n  find maybe\n>
+host split-file-load, <\nload @term/base/file\n  find copy, name copy-file\n>
+host split-view, <\nview screen\n  take host, like view\n  view span\n    text \<hello\>\n>
+host split-copy, <\ntask copy-it\n  mark async\n  call copy-file\n    text \</a\>\n    text \</b\>\n>
+host split-own, <\ntask append\n  take first, like text\n  take second, like text\n  like text\n  send back, read first\n\ntask use-append\n  like text\n  send back\n    call append\n      text \<Repro\>\n      text \<b\>\n>
+host split-own-views, <\ntask append\n  take parent, like view\n  take child, like view\n  save nothing, 0\n>
+host split-b2-main, <\ntask main\n  call mount-app\n    task route\n      take host, like view\n      take request, like request\n      like maybe, like response\n      call append\n        read host\n        read host\n      call screen\n        read host\n      send back\n        call answer-nothing\n    text \<Repro\>\n  call run-app\n>
+host split-view-attribute, <\nview screen\n  take host, like view\n  view span\n    bind title, text \<t\>\n    text \<hello\>\n>
+host split-own-forwarders, <\ntask make-text\n  take first, like text\n  take second, like text\n  like text\n  send back, text \<\{first\}\{second\}\>\n\ntask write-attribute\n  take first, like text\n  take second, like text\n  take third, like text\n  like text\n  send back, read first\n\ntask use-forwarders\n  like text\n  send back\n    call make-text\n      text \<a\>\n      call write-attribute\n        text \<a\>\n        text \<b\>\n        text \<c\>\n>
+host split-app-render, <\ntask shout\n  take first, like text\n  like text\n  send back, text \<\{first\}!\>\n>
+host split-app-load, <load ./view/render\n  find shout\n\nload @term/site/view/render\n  find show\n>
+host split-use-shout, <\ntask use-shout\n  like text\n  send back\n    call shout\n      text \<hi\>\n>
+host split-app-load-only, <load ./view/render\n  find shout\n>
+
+# the lines main runs first: the tasks under test must be reachable and their result used, or the build drops them
+task boot-text
+  take use, like text
+  take title, like text
+  like text
+
+  back <\ntask main\n{use}  call mount-app\n    task route\n      take host, like view\n      take request, like request\n      like maybe, like response\n      call screen\n        read host\n      send back\n        call answer-nothing\n{title}  call run-app\n>
+
+# the program of a case, as the original puts it together
+task case-text
+  take name, like text
+  like text
+
+  save repro, <    text \<Repro\>\n>
+  save copy-it, <  call copy-it\n>
+  fork test, is-equal(name, <a>)
+    hold
+      back <{split-head}{split-file-load}{split-view}{split-copy}{boot-text(copy-it, repro)}>
+  fork test, is-equal(name, <b>)
+    hold
+      back <{split-head}{split-file-load}{split-view}{split-copy}{split-own}{boot-text(copy-it, <    call use-append\n>)}>
+  fork test, is-equal(name, <b2>)
+    hold
+      back <{split-head}{split-view}{split-own-views}{split-b2-main}>
+  fork test, is-equal(name, <c>)
+    hold
+      back <{split-head}{split-view}{boot-text(<>, repro)}>
+  fork test, is-equal(name, <e>)
+    hold
+      back <{split-head}{split-view-attribute}{split-own-forwarders}{boot-text(<>, <    call use-forwarders\n>)}>
+  fork test, is-equal(name, <f>)
+    hold
+      back <{split-app-load}{split-head}{split-file-load}{split-view}{split-copy}{split-use-shout}{boot-text(copy-it, <    call use-shout\n>)}>
+  fork test, is-equal(name, <f2>)
+    hold
+      back <{split-app-load-only}{split-head}{split-file-load}{split-view}{split-copy}{split-use-shout}{boot-text(copy-it, <    call use-shout\n>)}>
+  # d is case a again, read for its map
+  back case-text(<a>)
+
+# one compiled case: whether it compiled (its first four messages when not), its Swift, the main.swift written, and the
+# overload map's runtime names read right after its compile
+form split-built
+  link ok, like boolean
+  link messages, like text, fall <>
+  link swift, like text, fall <>
+  link file, like text, fall <>
+  link bound
+    like hash, like text, like text
+    fall make hash
+
+form split-state
+  mark shared
+  link made, like boolean
+  link here, like text
+  link app, like text
+  link typechecks, like boolean
+  link built, like hash, like text, like split-built
+
+host split-now, make(split-state, bind(made, false), bind(here, <>), bind(app, <>), bind(typechecks, false), bind(built, make hash))
+
+# whether a tool is here and answers `--version` with 0
+task tool-answers
+  take name, like text
+  like boolean
+
+  fork test, is-equal(find-tool(name), <>)
+    hold
+      back false
+  save ran, run(name, make list(<--version>))
+  back is-equal(ran/code, 0)
+
+# the first four messages of a refused program, joined
+task first-four
+  take messages, like list, like text
+  like text
+
+  save some, make list
+  walk messages
+    take message, like text
+    fork test, is-below(some/length, 4)
+      hold
+        some/push(message)
+  back some/join(< | >)
+
+# compile a case for one Apple platform as test/support/device/toolkit-run does, write its Swift file, never run it
+task build-case
+  take state, like split-state
+  take name, like text
+  take leg, like text
+  take where, like text
+  like split-built
+
+  save source, case-text(name)
+  save entry, split-path/join(where, <{name}-{leg}.tree>)
+  write-file(entry, source)
+  save out, compile-text(source, make(compile-choice, bind(file, entry), bind(project, term-root()), bind(project-env, leg), bind(env, leg)))
+  fork test, not(out/ok)
+    hold
+      back make(split-built, bind(ok, false), bind(messages, first-four(out/messages)))
+  save swift, emit-text(out, <swift>)
+  save prelude, prelude-text(out, leg, swift)
+  save made, make(split-built, bind(ok, true), bind(swift, swift))
+  walk make list(<append>, <remove>, <replace>, <make-text>, <write-attribute>, <make-element>)
+    take one, like text
+    save made/bound/{one}, runtime-bound(split-overload, one)
+  # top-level code is allowed only in a file named main.swift, and an async `main` is awaited there
+  save folder, split-path/join(state/here, <{name}-{leg}>)
+  split-file/mkdir-sync(folder, split-recursive(0))
+  save start, <main()>
+  fork test, matches(make(pattern, <<func main\(\)[^{]*async>>), swift)
+    hold
+      save start, <await {start}>
+  fork test, matches(make(pattern, <<func main\(\)[^{]*throws>>), swift)
+    hold
+      save start, <try {start}>
+  save made/file, split-path/join(folder, <main.swift>)
+  write-file(made/file, <import Foundation\n{prelude}\n{swift}\n{start}\n>)
+  back made
+
+# every case, compiled once in the original's order
+task the-split
+  like split-state
+
+  fork test, split-now/made
+    hold
+      back split-now
+  save split-now/made, true
+  save split-now/here, temp-folder(<term-view-runtime-split->)
+  # f's app lives under the project root, since a relative load must stay inside it (rewritten each run)
+  save split-now/app, split-path/join(term-root(), <tmp>, <view-runtime-split-f>)
+  split-file/mkdir-sync(split-path/join(split-now/app, <view>), split-recursive(0))
+  write-file(split-path/join(split-now/app, <view>, <render.tree>), split-app-render)
+  save split-now/typechecks, tool-answers(<xcrun>)
+  walk split-legs
+    take leg, like text
+    walk make list(<a>, <b>, <b2>, <c>, <e>)
+      take name, like text
+      save key, <{name} {leg}>
+      save split-now/built/{key}, build-case(split-now, name, leg, split-now/here)
+  walk split-legs
+    take leg, like text
+    walk make list(<f>, <f2>)
+      take name, like text
+      save key, <{name} {leg}>
+      save split-now/built/{key}, build-case(split-now, name, leg, split-now/app)
+  save key, <d ios>
+  save split-now/built/{key}, build-case(split-now, <d>, <ios>, split-now/here)
+  back split-now
+
+task built-case
+  take name, like text
+  take leg, like text
+  like split-built
+
+  save key, <{name} {leg}>
+  save state, the-split()
+  back state/built/{key}
+
+task compiled
+  take name, like text
+  take leg, like text
+  like boolean
+
+  save made, built-case(name, leg)
+  back made/ok
+
+# swiftc's errors typechecking a case's main.swift for its leg, <> when it typechecks
+task typecheck-errors
+  take made, like split-built
+  take leg, like text
+  like text
+
+  fork test, is-equal(leg, <ios>)
+    hold
+      back run-tool(make list(<xcrun>, <-sdk>, <iphonesimulator>, <swiftc>, <-typecheck>, <-target>, <arm64-apple-ios17.0-simulator>, <-module-name>, swift-module, made/file))
+  back run-tool(make list(<xcrun>, <swiftc>, <-typecheck>, <-module-name>, swift-module, made/file))
+
+# the name the overload map bound `name` to right after the case's compile, <> for none
+task bound-of
+  take made, like split-built
+  take name, like text
+  like text
+
+  fork test, made/bound/has(name)
+    hold
+      back made/bound/{name}
+  back <>
+
+# why a case's checks skip on a leg, <> when they run
+task case-skip
+  take made, like split-built
+  like text
+
+  fork test, made/ok
+    hold
+      back <>
+  back <it did not compile: {made/messages}>
+
+# one call `<name>…(` in a text: `before` the one character it is written after when it is a method or part of a
+# longer word (a free call reads it empty), the name called, and where the match starts
+form call-match
+  link before, like text
+  link called, like text
+  link start, like number
+
+task call-matches
+  take swift, like text
+  take name, like text
+  like list, like call-match
+
+  save found, make list
+  walk find-matches(make(pattern, <([.A-Za-z0-9_]?)({name}[A-Za-z0-9_]*)\\(>), swift)
+    take one, like pattern-match
+    found/push(make(call-match, bind(before, one/groups/0), bind(called, one/groups/1), bind(start, one/start)))
+  back found
+
+# every call of a free function `name(`, not a method (`x.name(`) and not its definition
+task calls
+  take swift, like text
+  take name, like text
+  like number
+
+  save count, 0
+  walk call-matches(swift, name)
+    take one, like call-match
+    fork test, and(is-equal(one/before, <>), is-equal(one/called, name))
+      hold
+        fork test, is-unequal(substring(swift, subtract(one/start, 5), one/start), <func >)
+          hold
+            save count, add(count, 1)
+  back count
+
+task defines
+  take swift, like text
+  take name, like text
+  like boolean
+
+  back text-contains(swift, <func {name}(>)
+
+# the free calls of `<name>…(` in a body: not a method call
+task free-calls
+  take body, like text
+  take name, like text
+  like list, like text
+
+  save found, make list
+  walk call-matches(body, name)
+    take one, like call-match
+    fork test, is-equal(one/before, <>)
+      hold
+        found/push(one/called)
+  back found
+
+# the Swift spelling of a kebab name: `make-text__in0_0` is `makeText__in0_0`
+task swift-name
+  take name, like text
+  like text
+
+  save out, <>
+  save first, true
+  walk text-split(name, <->)
+    take part, like text
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{to-upper-case(substring(part, 0, 1))}{substring(part, 1)}>
+  back out
+
+# the body of the lowered `func <name>(` up to the next top-level func
+task body-of
+  take swift, like text
+  take name, like text
+  like text
+
+  save at, -1
+  fork test, starts-with(swift, <func {name}(>)
+    hold
+      save at, 0
+    miss
+      save at, index-of(swift, <\nfunc {name}(>)
+  fork test, is-below(at, 0)
+    hold
+      back <>
+  save next, index-of(swift, <\nfunc >, add(at, 2))
+  fork test, is-below(next, 0)
+    hold
+      back substring(swift, at)
+  back substring(swift, at, next)
+
+# whether every call is the one name, and there is at least one
+task all-are
+  take found, like list, like text
+  take name, like text
+  like boolean
+
+  fork test, is-equal(found/length, 0)
+    hold
+      back false
+  walk found
+    take one, like text
+    fork test, is-unequal(one, name)
+      hold
+        back false
+  back true
+
+# whether one of the calls is `name`
+task has-one
+  take found, like list, like text
+  take name, like text
+  like boolean
+
+  walk found
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# whether a bound name is `<name>__in0_<k>`
+task is-split-name
+  take bound, like text
+  take name, like text
+  like boolean
+
+  back matches(make(pattern, <^{name}__in0_[0-9]+$>), bound)
+
+# the number of `func <name>__in0_<k>(` a Swift text defines
+task renamed-count
+  take swift, like text
+  take name, like text
+  like number
+
+  back find-matches(make(pattern, <func ({name}__in0_[0-9]+)\\(>), swift)/length
+
+# why a case's typecheck skips on a leg, <> when it runs: no xcrun, or the case did not compile
+task typecheck-skip
+  take made, like split-built
+  like text
+
+  save state, the-split()
+  fork test, not(state/typechecks)
+    hold
+      back <xcrun is absent>
+  back case-skip(made)
+
+test <a: compiles>
+  take leg, like text
+    walk split-legs
+  want hold, compiled(<a>, leg)
+
+test <a: swiftc typechecks>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<a>, leg)
+  save why, typecheck-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(typecheck-errors(made, leg), <>)
+
+test <a: the build split append by file>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<a>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-above(renamed-count(made/swift, <append>), 0)
+
+test <a: no call of a plain append whose definition is absent>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<a>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, or(is-equal(calls(made/swift, <append>), 0), defines(made/swift, <append>))
+
+# the body of the lowered `screen` alone: render.tree's own `mount` calls a renamed append too
+test <a: the lowered screen calls append, and only as the bound name>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<a>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save bound, bound-of(made, <append>)
+  want hold, and(is-split-name(bound, <append>), all-are(free-calls(body-of(made/swift, <screen>), <append>), bound))
+
+test <a: the bound append has the dom's labels>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<a>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(made/swift, <func {bound-of(made, <append>)}(parent:>)
+
+test <b: compiles>
+  take leg, like text
+    walk split-legs
+  want hold, compiled(<b>, leg)
+
+test <b: swiftc typechecks>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<b>, leg)
+  save why, typecheck-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(typecheck-errors(made, leg), <>)
+
+test <b: the entry keeps its own append>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<b>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, defines(made/swift, <append>)
+
+# the body of the lowered `screen` alone: the entry's own call is folded by the inliner and render.tree's own calls are
+# not the lowering's
+test <b: the lowered screen calls append, and only as the bound name>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<b>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save bound, bound-of(made, <append>)
+  want hold, and(is-split-name(bound, <append>), all-are(free-calls(body-of(made/swift, <screen>), <append>), bound))
+
+test <b: the lowered screen never calls the entry's append>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<b>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, and(defines(made/swift, <append>), not(has-one(free-calls(body-of(made/swift, <screen>), <append>), <append>)))
+
+test <b2: compiles>
+  take leg, like text
+    walk split-legs
+  want hold, compiled(<b2>, leg)
+
+test <b2: swiftc typechecks>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<b2>, leg)
+  save why, typecheck-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(typecheck-errors(made, leg), <>)
+
+test <b2: the entry keeps its own append>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<b2>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, defines(made/swift, <append>)
+
+test <b2: the lowered screen calls append, and only as the bound name>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<b2>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save bound, bound-of(made, <append>)
+  want hold, and(is-split-name(bound, <append>), all-are(free-calls(body-of(made/swift, <screen>), <append>), bound))
+
+test <b2: the lowered screen never calls the entry's append>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<b2>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, not(has-one(free-calls(body-of(made/swift, <screen>), <append>), <append>))
+
+test <c: compiles>
+  take leg, like text
+    walk split-legs
+  want hold, compiled(<c>, leg)
+
+test <c: swiftc typechecks>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<c>, leg)
+  save why, typecheck-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(typecheck-errors(made, leg), <>)
+
+test <c: nothing was renamed>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<c>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, not(text-contains(made/swift, <append__in0_>))
+
+test <c: the lowered screen calls the dom's plain append>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<c>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, and(defines(made/swift, <append>), all-are(free-calls(body-of(made/swift, <screen>), <append>), <append>))
+
+test <e: compiles>
+  take leg, like text
+    walk split-legs
+  want hold, compiled(<e>, leg)
+
+test <e: swiftc typechecks>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, typecheck-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(typecheck-errors(made, leg), <>)
+
+# the body of the lowered `screen` alone: render.tree's own calls and the entry's are not the lowering's
+test <e: the lowered screen is found>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save screen, body-of(made/swift, <screen>)
+  want hold, and(is-above(char-count(screen), 0), matches(make(pattern, <<[A-Za-z0-9_]\(>>), screen))
+
+test <e: make-text is split, render's is renamed>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-split-name(bound-of(made, <make-text>), <make-text>)
+
+test <e: the lowered screen calls make-text and only as its bound Swift name>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, all-are(free-calls(body-of(made/swift, <screen>), <makeText>), swift-name(bound-of(made, <make-text>)))
+
+test <e: the bound make-text has a func in the Swift>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, defines(made/swift, swift-name(bound-of(made, <make-text>)))
+
+test <e: the entry keeps its own makeText>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, defines(made/swift, <makeText>)
+
+test <e: write-attribute is split, render's is renamed>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-split-name(bound-of(made, <write-attribute>), <write-attribute>)
+
+test <e: the lowered screen calls write-attribute and only as its bound Swift name>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, all-are(free-calls(body-of(made/swift, <screen>), <writeAttribute>), swift-name(bound-of(made, <write-attribute>)))
+
+test <e: the bound write-attribute has a func in the Swift>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, defines(made/swift, swift-name(bound-of(made, <write-attribute>)))
+
+test <e: the entry keeps its own writeAttribute>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<e>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, defines(made/swift, <writeAttribute>)
+
+test <f: compiles>
+  take leg, like text
+    walk split-legs
+  want hold, compiled(<f>, leg)
+
+test <f: swiftc typechecks>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<f>, leg)
+  save why, typecheck-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(typecheck-errors(made, leg), <>)
+
+test <f: append is bound to the dom's renamed append, not left plain>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<f>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-split-name(bound-of(made, <append>), <append>)
+
+test <f: the lowered screen calls append, and only as the bound name>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<f>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, all-are(free-calls(body-of(made/swift, <screen>), <append>), bound-of(made, <append>))
+
+test <f: the bound append has the dom's labels>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<f>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(made/swift, <func {bound-of(made, <append>)}(parent:>)
+
+test <f2: compiles>
+  take leg, like text
+    walk split-legs
+  want hold, compiled(<f2>, leg)
+
+test <f2: swiftc typechecks>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<f2>, leg)
+  save why, typecheck-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(typecheck-errors(made, leg), <>)
+
+test <f2: append is bound to the dom's renamed append, not left plain>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<f2>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-split-name(bound-of(made, <append>), <append>)
+
+test <f2: the lowered screen calls append, and only as the bound name>
+  take leg, like text
+    walk split-legs
+  save made, built-case(<f2>, leg)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, all-are(free-calls(body-of(made/swift, <screen>), <append>), bound-of(made, <append>))
+
+test <d: compiles>
+  want hold, compiled(<d>, <ios>)
+
+# `remove` and `replace` are split only when @term/base/file defines them too, which it does
+test <d: each is bound to the dom's renamed name>
+  take name, like text
+    walk make list(<append>, <remove>, <replace>)
+  save made, built-case(<d>, <ios>)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-split-name(bound-of(made, name), name)
+
+test <d: make-element is bound to itself>
+  save made, built-case(<d>, <ios>)
+  save why, case-skip(made)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(bound-of(made, <make-element>), <make-element>)

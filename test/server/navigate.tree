@@ -1,0 +1,441 @@
+note <Cmd+click against real files of the repository: definition on a name, a type, a find and a load path, and every path a link>
+
+# Ported from navigate.ts by statement (item term-self-host-001-0595), one test per `ok` in its order. Every path goes
+# through the server's one `resolveModule`, which asks the resolver the compiler uses. @term/flow's language-server and
+# request-loop are the subject (decision 106), one server for the whole file as the original kept, each test opening
+# the documents it asks about as the original's block did. Paths are under the Term root, where the suite runs.
+
+load ../support/judging
+  find make-record
+  find empty-record
+  find set-field
+  find read-field
+  find read-at
+  find truth
+
+load ../support/compiling
+  find file-text
+
+load ../support/cli
+  find term-root
+
+load @term/base/text
+  find index-of
+  find split, name text-split
+  find starts-with
+  find ends-with
+  find contains, name text-contains
+
+dock load
+  load <@term/flow/code/language-server>, name flow-server
+  load <@term/flow/code/request-loop>, name flow-loop
+  load <node:path>, name dock-path
+  load <node:url>, name dock-url
+
+bind file-uri
+  take url, like dynamic
+  like text
+  case node
+    text <$url.href>
+
+bind is-null
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === null)>
+
+host root, term-root()
+
+host server, flow-server/make-language-server(empty-record())
+
+form counter
+  mark shared
+  link next, like number
+
+host ids, make(counter, bind(next, 1))
+
+task next-id
+  like number
+
+  save id, ids/next
+  save ids/next, add(id, 1)
+  back id
+
+task uri-at
+  take rel, like text
+  like text
+
+  back file-uri(dock-url/pathToFileURL(dock-path/join(root, rel)))
+
+task deliver
+  take message, like dynamic
+  like list, like dynamic
+  mark async
+
+  set-field(message, <jsonrpc>, <2.0>)
+  back wait flow-loop/dispatch(server, message)
+
+form opened
+  link uri, like text
+  link text, like text
+
+# a file of the repository opened with the given text as the editor's buffer
+task open-file
+  take rel, like text
+  take body, like text
+  like opened
+  mark async
+
+  save uri, uri-at(rel)
+  deliver(make-record(make(list, <method>, <textDocument/didOpen>, <params>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri, <text>, body, <version>, 1)))))))
+  back make(opened, bind(uri, uri), bind(text, body))
+
+# a file of the repository opened with its own text
+task open-file
+  take rel, like text
+  like opened
+  mark async
+
+  back open-file(rel, file-text(dock-path/join(root, rel)))
+
+# work/halt.tree as it stood when this suite was written, opened at its own path with the fixture as the editor's
+# buffer: the file on disk is rewritten by the CLI's port lanes, and a suite that reads it from disk measured that churn
+host halt-text, file-text(dock-path/join(root, <test/server/fixture/navigate/halt.tree>))
+
+task open-halt
+  like opened
+  mark async
+
+  back open-file(<deck/call/code/work/halt.tree>, halt-text)
+
+task lines
+  take text, like text
+  like list, like text
+
+  back text-split(text, <\n>)
+
+# the index of the first line holding the needle, -1 for none
+task line-holding
+  take text, like text
+  take needle, like text
+  like number
+
+  save index, 0
+  walk lines(text)
+    take one, like text
+    fork test, text-contains(one, needle)
+      hold
+        back index
+    save index, add(index, 1)
+  back -1
+
+# the line at an index, the empty text past the end
+task line-number
+  take text, like text
+  take index, like number
+  like text
+
+  save all, lines(text)
+  fork test, and(is-above(index, -1), is-below(index, all/length))
+    hold
+      back all/{index}
+  back <>
+
+# the position of `needle` on the first line holding `line`, `offset` characters into the needle
+task place-of
+  take text, like text
+  take line, like text
+  take needle, like text
+  take offset, like number, fall 1
+  like dynamic
+
+  save n, line-holding(text, line)
+  back make-record(make(list, <line>, n, <character>, add(index-of(line-number(text, n), needle), offset)))
+
+task definition
+  take uri, like text
+  take position, like dynamic
+  like dynamic
+  mark async
+
+  save id, next-id()
+  save params, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <position>, position))
+  save out, deliver(make-record(make(list, <id>, id, <method>, <textDocument/definition>, <params>, params)))
+  walk out
+    take answer, like dynamic
+    fork test, is-equal(read-field(answer, <id>), id)
+      hold
+        save refusal, read-field(answer, <error>)
+        fork test, truth(refusal)
+          hold
+            save start, make-record(make(list, <line>, -1, <character>, 0))
+            save span, make-record(make(list, <start>, start, <end>, start))
+            back make-record(make(list, <uri>, <error {read-field(refusal, <message>)}>, <range>, span))
+        back read-field(answer, <result>)
+  back read-field(empty-record(), <result>)
+
+# the first answer's result to a documentLink request
+task links-of
+  take uri, like text
+  like dynamic
+  mark async
+
+  save params, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri))))
+  save out, deliver(make-record(make(list, <id>, next-id(), <method>, <textDocument/documentLink>, <params>, params)))
+  back read-field(read-at(out, 0), <result>)
+
+task start-line
+  take location, like dynamic
+  like number
+
+  back read-field(read-field(read-field(location, <range>), <start>), <line>)
+
+task uri-of
+  take location, like dynamic
+  like text
+
+  back read-field(location, <uri>)
+
+# the text of the line a location points at
+task line-at
+  take location, like dynamic
+  like text
+
+  fork test, not(truth(location))
+    hold
+      back <>
+  fork test, not(starts-with(uri-of(location), <file:>))
+    hold
+      back <>
+  back line-number(file-text(dock-url/fileURLToPath(uri-of(location))), start-line(location))
+
+task ends
+  take location, like dynamic
+  take suffix, like text
+  like boolean
+
+  fork test, not(truth(location))
+    hold
+      back false
+  back ends-with(uri-of(location), suffix)
+
+# the first two words of a line, joined by a space
+task first-two
+  take line, like text
+  like text
+
+  save words, text-split(line, < >)
+  fork test, is-below(words/length, 2)
+    hold
+      back line
+  back <{words/0} {words/1}>
+
+# whether some link's target ends with the suffix
+task some-target-ending
+  take links, like dynamic
+  take suffix, like text
+  like boolean
+
+  walk links
+    take each, like dynamic
+    fork test, ends-with(read-field(each, <target>), suffix)
+      hold
+        back true
+  back false
+
+task some-target-starting
+  take links, like dynamic
+  take prefix, like text
+  like boolean
+
+  walk links
+    take each, like dynamic
+    fork test, starts-with(read-field(each, <target>), prefix)
+      hold
+        back true
+  back false
+
+task link-count
+  take links, like dynamic
+  like number
+
+  save count, 0
+  walk links
+    take each, like dynamic
+    save count, add(count, 1)
+  back count
+
+# ---- 1. names, across files, through load / find ----
+
+test <name: a bare lean call goes to its task in the module that exports it>
+  save halt, open-halt()
+  save lean, definition(halt/uri, place-of(halt/text, <log-good \<Nothing to stop\>>, <log-good>))
+  want hold, and(ends(lean, <work/tint.tree>), text-contains(line-at(lean), <log-good>))
+
+test <name: a `make` form goes to its `form` in this file>
+  save halt, open-halt()
+  save made, definition(halt/uri, place-of(halt/text, <make run-ask>, <run-ask>))
+  want hold, and(truth(made), and(is-equal(uri-of(made), halt/uri), starts-with(line-number(halt/text, start-line(made)), <form run-ask>)))
+
+test <name: a call of a task in this file goes to it>
+  save halt, open-halt()
+  save own, definition(halt/uri, place-of(halt/text, <call first-number>, <first-number>))
+  want hold, and(truth(own), and(is-equal(uri-of(own), halt/uri), starts-with(line-number(halt/text, start-line(own)), <task first-number>)))
+
+test <name: a type after `like` goes to its `form` in the loaded module>
+  # found by its text, not a line number: list.tree is edited often, and a number drifts in silence
+  save lists, open-file(<deck/base/code/list.tree>)
+  save ordering, definition(lists/uri, place-of(lists/text, <      like ordering>, <ordering>))
+  want hold, and(ends(ordering, <base/code/ordering.tree>), text-contains(line-at(ordering), <ordering>))
+
+test <name: `call` itself is no definition of its own (the call it heads is)>
+  save halt, open-halt()
+  save keyword, definition(halt/uri, place-of(halt/text, <call first-number>, <call>))
+  save fine, true
+  fork test, not(is-null(keyword))
+    hold
+      save line, line-number(halt/text, start-line(keyword))
+      fork test, is-equal(line, <>)
+        hold
+          save line, line-at(keyword)
+      save fine, text-contains(line, <first-number>)
+  want hold, fine
+
+# ---- 2. the path of a load ----
+
+test <path: a package path opens the module, line 1>
+  save halt, open-halt()
+  # the short form: `@term/call/work/tint` resolves in @term/call's code root first
+  save tint, definition(halt/uri, place-of(halt/text, <load @term/call/work/tint>, <work/tint>))
+  want hold, and(ends(tint, <deck/call/code/work/tint.tree>), is-equal(start-line(tint), 0))
+
+test <path: a stdlib path opens the stdlib module>
+  save halt, open-halt()
+  save texts, definition(halt/uri, place-of(halt/text, <load @term/base/text>, <@term>))
+  want hold, ends(texts, <deck/base/code/text.tree>)
+
+test <path: a `\{platform\}` path opens the node implementation>
+  save clock, open-file(<deck/base/code/time.tree>)
+  save implementation, definition(clock/uri, place-of(clock/text, <\{platform\}/time>, <\{platform\}>, 2))
+  want hold, ends(implementation, <deck/base/code/native/node/time.tree>)
+
+test <path: a relative path opens the file beside it>
+  save risk, open-file(<deck/mill/code/tree/code/task/mine.tree>)
+  save relative, definition(risk/uri, place-of(risk/text, <load ./risk/mine>, <./risk>))
+  want hold, and(ends(relative, <deck/mill/code/tree/code/task/risk/mine.tree>), is-equal(start-line(relative), 0))
+
+# ---- 3. a `find` under a load ----
+
+test <find: goes to the name in the module the load opens>
+  save halt, open-halt()
+  save found, definition(halt/uri, place-of(halt/text, <  find log-step>, <log-step>))
+  want hold, and(ends(found, <work/tint.tree>), text-contains(line-at(found), <log-step>))
+
+test <find: in a stdlib module>
+  save halt, open-halt()
+  save split, definition(halt/uri, place-of(halt/text, <  find split>, <split>))
+  want hold, and(ends(split, <deck/base/code/text.tree>), text-contains(line-at(split), <split>))
+
+# ---- 4. a path that does not resolve ----
+
+host broken, <load @term/base/code/no-such-module\n  find nothing-at-all\n\nload ./not-here\n\ntask f\n  like number\n  send back, code 1\n>
+
+task open-broken
+  like opened
+  mark async
+
+  back open-file(<deck/base/code/zz-navigate-probe.tree>, broken)
+
+test <unresolved: a package path that names nothing answers null>
+  save doc, open-broken()
+  want hold, is-null(definition(doc/uri, place-of(broken, <no-such-module>, <no-such>)))
+
+test <unresolved: a relative path that names nothing answers null>
+  save doc, open-broken()
+  want hold, is-null(definition(doc/uri, place-of(broken, <load ./not-here>, <./not>)))
+
+test <unresolved: a `find` under it answers null, never a same-named word elsewhere>
+  save doc, open-broken()
+  want hold, is-null(definition(doc/uri, place-of(broken, <find nothing-at-all>, <nothing>)))
+
+test <unresolved: no link for a path that names nothing>
+  save doc, open-broken()
+  save links, links-of(doc/uri)
+  want hold, and(truth(links), is-equal(link-count(links), 0))
+
+# ---- 5. mill definitions and manifests ----
+
+task open-mine
+  like opened
+  mark async
+
+  back open-file(<deck/mill/code/tree/code/fork/mine.tree>)
+
+test <mill: a grammar `load` path opens the grammar file>
+  save mine, open-mine()
+  # the short form: `@term/mill/<path>` resolves in the mill's code root, deck/mill/code, first
+  save path, definition(mine/uri, place-of(mine/text, <load @term/mill/tree/code/form/link/mine>, <form/link>))
+  want hold, and(ends(path, <deck/mill/code/tree/code/form/link/mine.tree>), is-equal(start-line(path), 0))
+
+test <mill: a `find` goes to the rule in that grammar file>
+  save mine, open-mine()
+  save found, definition(mine/uri, place-of(mine/text, <  find link>, <link>))
+  want hold, and(ends(found, <form/link/mine.tree>), is-equal(first-two(line-at(found)), <mine link>))
+
+test <mill: a rule named after `like` goes to its `mine` rule in this file>
+  save mine, open-mine()
+  save named, definition(mine/uri, place-of(mine/text, <mine form, like fork-test>, <fork-test>))
+  want hold, and(truth(named), and(is-equal(uri-of(named), mine/uri), starts-with(line-number(mine/text, start-line(named)), <mine fork-test>)))
+
+test <mill: a rule a loaded grammar file declares goes there>
+  save mine, open-mine()
+  save declared, definition(mine/uri, place-of(mine/text, <mine form, like seed>, <seed>))
+  want hold, and(ends(declared, <code/seed/mine.tree>), is-equal(first-two(line-at(declared)), <mine seed>))
+
+test <mill: the nested `load ./mine` of a dialect's base.tree opens its mine.tree>
+  save dialect, open-file(<deck/mill/code/tree/code/fork/base.tree>)
+  save nested, definition(dialect/uri, place-of(dialect/text, <bind mine, load ./mine>, <./mine>))
+  want hold, ends(nested, <code/fork/mine.tree>)
+
+test <mill: base.tree links both its grammar files>
+  save dialect, open-file(<deck/mill/code/tree/code/fork/base.tree>)
+  save links, links-of(dialect/uri)
+  want hold, and(is-equal(link-count(links), 2), and(some-target-ending(links, <fork/mine.tree>), some-target-ending(links, <fork/mint.tree>)))
+
+# `code ./code` is the default and no manifest in the tree writes it, so the buffer says it
+host manifest-text, <deck @term/base\n  mark \<0.0.16\>\n  code ./code\n  lock mit\n>
+
+task open-manifest
+  like opened
+  mark async
+
+  back open-file(<deck/base/deck.tree>, manifest-text)
+
+test <manifest: `code ./code` opens the code root's entry file>
+  save manifest, open-manifest()
+  save entry, definition(manifest/uri, place-of(manifest/text, <code ./code>, <./code>))
+  want hold, and(truth(entry), and(starts-with(uri-of(entry), uri-at(<deck/base/code>)), is-equal(start-line(entry), 0)))
+
+test <manifest: the version `mark \<0.0.16\>` names no file>
+  save manifest, open-manifest()
+  want hold, is-null(definition(manifest/uri, place-of(manifest/text, <mark \<0.0.16\>>, <0.0.16>)))
+
+test <manifest: `link @term/base` opens the package's entry file>
+  save site, open-file(<deck/site/deck.tree>)
+  save linked, definition(site/uri, place-of(site/text, <link @term/base>, <@term/base>))
+  want hold, and(truth(linked), starts-with(uri-of(linked), uri-at(<deck/base>)))
+
+test <manifest: its links resolve where the compiler resolves them>
+  save site, open-file(<deck/site/deck.tree>)
+  want hold, some-target-starting(links-of(site/uri), uri-at(<deck/base>))
+
+# ---- links in a code file ----
+
+test <links: every resolvable `load` path is a link, ranged on the path alone>
+  save halt, open-halt()
+  save links, links-of(halt/uri)
+  save first, line-number(halt/text, 0)
+  save one, read-at(links, 0)
+  save range, read-field(one, <range>)
+  save fits, and(is-equal(read-field(read-field(range, <start>), <line>), 0), is-equal(read-field(read-field(range, <start>), <character>), index-of(first, <@>)))
+  want hold, and(is-equal(link-count(links), 2), and(fits, and(is-equal(read-field(read-field(range, <end>), <character>), first/length), ends-with(read-field(one, <target>), <work/tint.tree>))))

@@ -1,0 +1,123 @@
+note <the kinds a parallel walk's turn may carry, each a program that melts, codes, decodes and fills one back>
+
+# Part of the port of parallel-walk.ts (item 0652), holding no test: decision 076 section 3's arbiter, one value of every
+# kind the predicate accepts, put through melt, to-code, from-code and fill and shown. parallel-walk.tree runs each kind on
+# TypeScript and parallel-walk-rust.tree on Rust: the two together passed term test's 300 s a file. The project the
+# programs resolve in is made here, link/@term/base and link/@term/host at the real decks, as test/compile/fill.tree
+# makes its own.
+
+load ../support/compiling
+  find compile-choice
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/judging
+  find make-record
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find replace-matches
+
+dock load
+  load <node:fs>, name walk-file
+  load <node:path>, name walk-path
+
+# ---- decision 076 section 3: every kind the predicate accepts round-trips on TypeScript and Rust ----
+
+host host-loads, <load @term/host/code/base\n  find data\n  find read\n  find write\n  find to-code\n  find from-code\n\nload @term/base/maybe\n  find maybe\n\nload @term/base/list\n  find list\n  find get\n\nform inner\n  link tag, like text\n  link weight, like float\n>
+
+host region-of, <\ntask region-of\n  take one, like sample\n  like text\n  fork case, read one/value\n    case some\n      link written\n      send back, text \<some:\{read written\}\>\n    case none\n      send back, text \<none\>\n>
+
+# one kind: the field's type, the value made, the text `run` sends back, what it must read, and any task it needs
+form crossing
+  link field, like text
+  link value, like text
+  link shown, like text
+  link want, like text
+  link extra, like text, fall <>
+
+host plain-shown, <\{got/value\}>
+
+host maybe-field, <like maybe, like text\n      need false>
+
+task crossing-of
+  take kind, like text
+  like crossing
+
+  fork test, is-equal(kind, <text>)
+    hold
+      back make(crossing, bind(field, <like text>), bind(value, <text \<ada é\>>), bind(shown, plain-shown), bind(want, <ada é>))
+  fork test, is-equal(kind, <number>)
+    hold
+      back make(crossing, bind(field, <like number>), bind(value, <code -41>), bind(shown, plain-shown), bind(want, <-41>))
+  fork test, is-equal(kind, <decimal>)
+    hold
+      back make(crossing, bind(field, <like float>), bind(value, <code 2.5>), bind(shown, plain-shown), bind(want, <2.5>))
+  fork test, is-equal(kind, <flag>)
+    hold
+      back make(crossing, bind(field, <like boolean>), bind(value, <false>), bind(shown, plain-shown), bind(want, <false>))
+  fork test, is-equal(kind, <data>)
+    hold
+      back make(crossing, bind(field, <like data>), bind(value, <call read(text \<host a, 1\\nhost b, \<x\>\\n\>)>), bind(shown, <\{write(got/value)\}>), bind(want, <host a, 1\nhost b, \<x\>\n>))
+  fork test, is-equal(kind, <list>)
+    hold
+      back make(crossing, bind(field, <like list, like number>), bind(value, <make list\n          code 3\n          code 5>), bind(shown, <\{got/value/length\}:\{get(got/value, 1)\}>), bind(want, <2:5>))
+  fork test, is-equal(kind, <form>)
+    hold
+      back make(crossing, bind(field, <like inner>), bind(value, <make inner\n          bind tag, text \<t\>\n          bind weight, code 1.5>), bind(shown, <\{got/value/tag\}:\{got/value/weight\}>), bind(want, <t:1.5>))
+  fork test, is-equal(kind, <list of forms>)
+    hold
+      back make(crossing, bind(field, <like list, like inner>), bind(value, <make list\n          make inner\n            bind tag, text \<u\>\n            bind weight, code 0.5>), bind(shown, <\{got/value/length\}:\{got/value/0/tag\}>), bind(want, <1:u>))
+  fork test, is-equal(kind, <need false maybe field, some>)
+    hold
+      back make(crossing, bind(field, maybe-field), bind(value, <make some, text \<eu\>>), bind(shown, <\{region-of(got)\}>), bind(want, <some:eu>), bind(extra, region-of))
+  back make(crossing, bind(field, maybe-field), bind(value, <make none>), bind(shown, <\{region-of(got)\}>), bind(want, <none>), bind(extra, region-of))
+
+# a program that melts a sample holding the kind, codes it, decodes it, fills it back and shows what it holds
+task program-of
+  take one, like crossing
+  like text
+
+  back <{host-loads}\nform sample\n  link value\n    {one/field}\n{one/extra}\ntask run\n  like text\n  save given\n    make sample\n      bind value\n        {one/value}\n  save melted\n    call melt\n      read given\n      like sample\n  save coded, call to-code(read melted)\n  save decoded, call from-code(read coded)\n  save first\n    call get\n      read decoded\n      code 0\n  save got\n    call fill\n      read first\n      like sample\n  send back, text \<{one/shown}\>\n>
+
+host root, temp-folder(<term-parallel-cross->)
+
+task folder-at
+  take path, like text
+  like text
+
+  walk-file/mkdir-sync(path, make-record(make(list, <recursive>, true)))
+  back path
+
+# the project: link/@term/base and link/@term/host at the real decks, a deck.tree, code/, and out/ for the programs
+task set-up
+  take seed, like number
+  like text
+
+  host links, folder-at(walk-path/join(root, <link>, <@term>))
+  host code, folder-at(walk-path/join(root, <code>))
+  walk-file/symlink-sync(walk-path/join(term-root(), <deck>, <base>), walk-path/join(links, <base>))
+  walk-file/symlink-sync(walk-path/join(term-root(), <deck>, <host>), walk-path/join(links, <host>))
+  walk-file/write-file-sync(walk-path/join(root, <deck.tree>), <deck @probe/parallel-cross\n  code \<0.0.0\>\n>)
+  back folder-at(walk-path/join(root, <out>))
+
+host out-folder, set-up(0)
+
+host not-letters, make pattern, <<[^a-z]+>>
+
+# the kind melted and back on a backend, as ran-program
+task crossed
+  take kind, like text
+  take backend, like text
+  like ran-program
+
+  host slug, replace-matches(not-letters, kind, <->)
+  back run-text(program-of(crossing-of(kind)), backend, out-folder, <cross-{slug}>, make(compile-choice, bind(project, root)))

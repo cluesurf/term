@@ -1,0 +1,617 @@
+note <the term.surf guides' programs that built clean and behaved wrongly, part two: types, async, styles, templates, waits>
+
+# Ported from test/compile/guide-gaps.ts by statement (item term-self-host-001-0615), its blocks from a match arm's
+# hiding field through a mask written as a type's bound, one test per `ok` in the original's order. Phase 1 of
+# note/project/term/guides/research/gaps/plan.md: each block is the guide's own sample, held two ways where it can be,
+# the wrong behavior gone and the right one (or a refusal naming the problem) there. Where behavior is the point, the
+# emitted TypeScript is run (`answer` in ./shared). The original's loop over a literal list of tints is a test per tint.
+# Its regular expressions that spell a plain text are a contains here, the rest a pattern. The parser and the unknown
+# seam's switch are the subject of their blocks, docked (decision 106).
+
+load ./shared
+  find build
+  find linked
+  find linked-file
+  find said
+  find warned
+  find answer
+  find logged
+  find gap-file
+  find parsed-of
+  find printed-of
+  find any-holding-both
+  find word-at
+
+load ../../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../../support/reading
+  find any-holding
+  find any-starting
+
+load ../../support/judging
+  find truth
+
+load ../../support/cli
+  find term-root
+
+load @term/base/list
+  find push
+  find contains
+
+load @term/base/path
+  find join, name path-join
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with, name text-starts-with
+
+load @term/base/text/util
+  find join, name text-join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/check/strict>, name strict-switches
+
+# a style sheet compiled under the name the original gave it
+task sheet
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, </gate/site/style/look.tree>)))
+
+# the css a sheet compiled to, as a text
+task css-of
+  take out, like compile-outcome
+  like text
+
+  back <{out/css}>
+
+# each diagnostic as `<name>@<line from 1>: <message>`, joined, as the tint cases read them
+task placed
+  take out, like compile-outcome
+  like text
+
+  host found, make list
+  walk out/notes
+    take one, like dynamic
+    found/push(<{one/name}@{add(one/line, 1)}: {one/message}>)
+  back text-join(found, < | >)
+
+# each diagnostic as `<name>: <message>`, joined, as the shaken case's verdict read them
+task verdict
+  take out, like compile-outcome
+  like text
+
+  fork test, out/ok
+    hold
+      back <built>
+  host found, make list
+  walk out/notes
+    take one, like dynamic
+    found/push(<{one/name}: {one/message}>)
+  back text-join(found, < | >)
+
+# the hint of the first diagnostic whose message starts with `start`, <> with none
+task hint-starting
+  take out, like compile-outcome
+  take start, like text
+  like text
+
+  walk out/notes
+    take one, like dynamic
+    fork test, text-starts-with(one/message, start)
+      hold
+        back one/hint
+  back <>
+
+# true when a text of the list matches the pattern
+task any-matching
+  take texts, like list, like text
+  take shape, like pattern
+  like boolean
+
+  walk texts
+    take one, like text
+    fork test, matches(shape, one)
+      hold
+        back true
+  back false
+
+# a fixture compiled with the unknown seam off, as TERM_UNKNOWN_SEAM=0 sets it, and the seam put back as it was
+task without-seam
+  take source, like text
+  like compile-outcome
+
+  save was, strict-switches/unknown-seam-on()
+  strict-switches/set-unknown-seam(false)
+  host out, build(source)
+  strict-switches/set-unknown-seam(was)
+  back out
+
+# the Term root's own deck.tree, which the original spelled as join(TERM, 'deck.tree')
+task deck-file
+  like text
+
+  back path-join(term-root(), <deck.tree>)
+
+# ---- language/matching: an arm field that hides a variable in scope warns ----
+
+test <a field named like a parameter warns that it hides it>
+  host out, build(<form shape\n  case circle\n    link radius, like number\n  case dot\n\ntask grow\n  take s, like shape\n  take radius, like number\n  like number\n  sift s\n    case circle\n      send back, read radius\n    case dot\n      send back, read radius\n>)
+  want hold, out/ok
+  want hold, any-holding-both(warned(out), <arm-shadow>, <"radius">)
+
+test <renamed with `link`, it does not>
+  host out, build(<form shape\n  case circle\n    link radius, like number\n  case dot\n\ntask grow\n  take s, like shape\n  take radius, like number\n  like number\n  sift s\n    case circle\n      link r\n      send back, read radius\n    case dot\n      send back, read radius\n>)
+  want hold, out/ok
+  want hold, not(any-holding(warned(out), <arm-shadow>))
+
+# ---- types/annotations: a generic form that names itself passes its parameter on ----
+
+test <a generic form naming itself without its parameter is refused>
+  host out, build(<form loose\n  head t\n  case loose-end\n  case loose-node\n    link item, like t\n    link rest, like loose\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <names itself without its parameter: write `like loose t`>)
+
+test <and with it, it builds>
+  host out, build(<form chain\n  head t\n  case chain-end\n  case chain-node\n    link item, like t\n    link rest, like chain t\n>)
+  want hold, out/ok
+
+# ---- language/async: a parameter typed as an async task ----
+
+host twice, build(<task run-twice\n  take work\n    like task\n      mark async\n      like text\n  like text\n\n  save a, work()\n  save b, work()\n  send back, \<\{a\}\{b\}\>\n\ntask fetch-word\n  mark async\n  like text\n  send back, \<ab\>\n\ntask both\n  like text\n  send back, run-twice(fetch-word)\n>)
+host both-calls, <() =\> mod.both?.(),>
+
+test <a `like task` with `mark async` builds>
+  want hold, twice/ok
+
+test <its type is a promise>
+  want hold, text-contains(twice/emitted, <work: () =\> Promise\<string\>>)
+
+test <the task taking it is async, and awaits each call>
+  want hold, text-contains(twice/emitted, <async function runTwice>)
+  want hold, text-contains(twice/emitted, <await work()>)
+
+test <and the caller reads the text, not `[object Promise]`>
+  want hold, is-equal(answer(twice, both-calls, <both>, 0), <abab>)
+
+test <an async task passed where the parameter is not async is refused>
+  host out, build(<task run-twice\n  take work\n    like task\n      like text\n  like text\n\n  save a, work()\n  send back, read a\n\ntask fetch-word\n  mark async\n  like text\n  send back, \<ab\>\n\ntask both\n  like text\n  send back, run-twice(fetch-word)\n>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <async-argument>)
+
+test <but not where the parameter gives back nothing to read>
+  host out, build(<task later\n  take done\n    like task\n      like void\n  like void\n  done()\n\ntask finish\n  mark async\n  like void\n  send back\n\ntask start\n  like void\n  later(finish)\n>)
+  want hold, out/ok
+
+# ---- language/forms: a bare value given to a one-value case is its value ----
+
+test <`make full, \<apples\>` on a one-value case builds>
+  host out, build(<form box\n  case empty\n  case full, like text\n\ntask fill-box\n  like box\n  send back, make full, \<apples\>\n>)
+  want hold, out/ok
+
+test <a bare value given to a case of two fields is refused, naming its fields>
+  host out, build(<form shape\n  case dot\n  case rect\n    link width, like number\n    link height, like number\n\ntask one\n  like shape\n  send back, make rect, 3\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <takes its fields by name (`bind width`, `bind height`)>)
+
+# ---- language/operators: `not` needs no import, as `and` and `or` do not ----
+
+host negated, build(<task differs\n  take a, like number\n  take b, like number\n  like boolean\n  save same, is-equal(a, b)\n  send back, not(same)\n>)
+
+test <`not` builds with no import>
+  want hold, negated/ok
+
+test <and answers the negation>
+  host calls, <() =\> mod.differs?.(1, 2),\n() =\> mod.differs?.(3, 3),>
+  want hold, is-equal(answer(negated, calls, <differs>, 0), <true>)
+  want hold, is-equal(answer(negated, calls, <differs>, 1), <false>)
+
+test <and still builds beside the standard library's boolean>
+  host out, linked(<load @term/base/boolean\n  find boolean\n\ntask differs\n  take a, like number\n  take b, like number\n  like boolean\n  send back, not(is-equal(a, b))\n>)
+  want hold, out/ok
+
+# ---- language/data: a fill that fails with no handler raises data-mismatch ----
+
+host filled, linked(<form site\n  link name, like text\n  link port, like number\n\ntask read-site\n  like site\n  send back\n    call fill\n      text \<\{"name": 7\}\>\n      like site\n>)
+
+test <a fill with no handler builds>
+  want hold, filled/ok
+
+# what the main's `caught` gives: the raise's name, form and link/actual, joined by a space
+test <and a value that does not fit raises data-mismatch, not a ReferenceError>
+  host raised, answer(filled, <() =\> caught(() =\> mod.readSite()),>, <read-site>, 0)
+  want hold, is-equal(word-at(raised, 0), <TermException>)
+  want hold, is-equal(word-at(raised, 1), <data-mismatch>)
+
+# ---- language/syntax, values, collections: a number inside a call inside text braces is a number ----
+
+host braced, build(<task add-two\n  take a, like number\n  take b, like number\n  like number\n  send back, add(a, b)\n\ntask show\n  take x, like number\n  like text\n  send back, \<sum \{add-two(x, 3)\}\>\n>)
+
+test <a number inside a call in text braces is a number, not a name>
+  want hold, braced/ok
+
+test <and the text holds the call's value>
+  want hold, is-equal(answer(braced, <() =\> mod.show?.(2),>, <show>, 0), <sum 5>)
+
+test <a brace written as \\\{ is still a brace>
+  host out, build(<task show\n  like text\n  send back, \<a \\\{31\\\} b\>\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <a \{31\} b>)
+
+# ---- types/annotations: an unknown type is reported at the line that names it ----
+# the original's lines count from 1, a note's from 0
+
+test <a misspelled parameter type is refused at its `take` line>
+  host out, build(<task greet\n  take who, like person\n  like text\n  send back, \<hi\>\n>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <unknown-name>)
+  want hold, is-equal(out/notes/0/line, 1)
+
+test <a misspelled field type is refused at its `link` line>
+  host out, build(<form pair\n  link left, like number\n  link right, like nmber\n>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <unknown-name>)
+  want hold, is-equal(out/notes/0/line, 2)
+
+# ---- types/inference: a fraction is not a whole number ----
+
+test <`whole(1.5)` against `like integer` is refused>
+  host out, build(<task whole\n  take x, like integer\n  like integer\n  send back, read x\n\ntask use\n  like integer\n  send back\n    call whole\n      code 1.5\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <expected number, a whole number, found float>)
+
+test <and so is returning 1.5 from a task typed to return a whole number>
+  host out, build(<task half\n  like integer\n  send back, code 1.5\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <found float>)
+
+test <a whole number where a fraction is wanted widens, and builds>
+  host out, build(<task scale\n  take x, like float\n  like float\n  send back, read x\n\ntask use\n  like float\n  send back\n    call scale\n      code 2\n>)
+  want hold, out/ok
+
+# ---- a parameter named like a task is the parameter: the inliner put the task's body in its place ----
+
+host applied, build(<form entry\n  link key, like number\n\ntask key-of\n  take item, like entry\n  like number\n  send back, read item/key\n\ntask apply-to\n  head t\n  take value, like t\n  take key-of\n    like task\n      take item, like t\n      like number\n  like number\n  send back\n    call key-of\n      read value\n\ntask double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n\ntask use\n  like number\n  send back\n    call apply-to\n      code 3\n      read double\n>)
+
+test <a task-typed parameter named like a task builds>
+  want hold, applied/ok
+
+test <and is called, not replaced by the task of its name>
+  want hold, applied/ok
+  want hold, not(text-contains(applied/emitted, <value.key>))
+
+test <and the call gives the parameter's answer>
+  want hold, is-equal(answer(applied, <() =\> mod.use(),>, <use>, 0), <6>)
+
+# ---- applications/web/styles: a `tint` that is not a CSS color is refused, at its line ----
+
+test <rgb, a percent rgb with alpha, hex and oklch tints build>
+  host out, sheet(<tone base\n  have ink, tint rgb, 24, 24, 27\n  have line, tint rgb, \<10%\>, \<20%\>, \<30%\>, 0.5\n  have paper, tint hex, \<fafafa\>\n  have sea, tint oklch, 0.7, 0.1, 200\n>)
+  want hold, out/ok
+  want hold, text-contains(css-of(out), <--ink: rgb(24, 24, 27)>)
+  want hold, text-contains(css-of(out), <--sea: oklch(0.7 0.1 200)>)
+
+test <`tint rgb, 24, 24` is refused at its line>
+  host out, sheet(<tone base\n  have paper, tint hex, \<fff\>\n  have ink, tint rgb, 24, 24\n>)
+  want hold, not(out/ok)
+  want hold, text-starts-with(placed(out), <look-tint@3: >)
+  want hold, text-contains(placed(out), <takes 3 or 4 values, and this gives 2>)
+
+test <`tint rgb, 300, 24, 27` is refused at its line>
+  host out, sheet(<tone base\n  have paper, tint hex, \<fff\>\n  have ink, tint rgb, 300, 24, 27\n>)
+  want hold, not(out/ok)
+  want hold, text-starts-with(placed(out), <look-tint@3: >)
+  want hold, text-contains(placed(out), <channel is 0 to 255, or a percent, and this gives 300>)
+
+test <`tint hex, \<fafazz\>` is refused at its line>
+  host out, sheet(<tone base\n  have paper, tint hex, \<fff\>\n  have ink, tint hex, \<fafazz\>\n>)
+  want hold, not(out/ok)
+  want hold, text-starts-with(placed(out), <look-tint@3: >)
+  want hold, text-contains(placed(out), <3, 4, 6 or 8 hex digits, and this gives `fafazz`>)
+
+test <`tint rbg, 1, 2, 3` is refused at its line>
+  host out, sheet(<tone base\n  have paper, tint hex, \<fff\>\n  have ink, tint rbg, 1, 2, 3\n>)
+  want hold, not(out/ok)
+  want hold, text-starts-with(placed(out), <look-tint@3: >)
+  want hold, text-contains(placed(out), <`rbg` is not a color space>)
+
+# a sheet that does not parse compiled to an empty stylesheet and said nothing
+
+test <a sheet that does not parse is refused, not written empty>
+  host out, sheet(<tone base\n  have line, tint rgb, 10%, 20%, 30%\n>)
+  want hold, not(out/ok)
+
+# ---- a local named like a docked module hides it: the browser `set-title`'s `title.set is not a function` ----
+# a text parameter is refused outright now (the method check below); one of any other type builds, and warns
+
+test <a parameter named like the module its file docks warns, at the parameter>
+  host out, build(<dock load\n  load \<global:title\>, name title\n\ntask set-title\n  take title, like unknown\n  call title/set\n    read title\n>)
+  want hold, any-starting(warned(out), <dock-shadow: "title" in "set-title" hides the module this file docks as "title">)
+
+test <renamed, it does not>
+  host out, build(<dock load\n  load \<global:title\>, name title\n\ntask set-title\n  take text, like text\n  call title/set\n    read text\n>)
+  want hold, not(any-starting(warned(out), <dock-shadow>))
+
+# ---- a method call on a text names a string operation, or is refused ----
+
+test <`s/frobnicate` on a text is refused, naming the text and the method>
+  host out, build(<task shout\n  take s, like text\n  like text\n  send back\n    call s/frobnicate\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <"s" is a text, which has no method "frobnicate">)
+
+test <`s/trim` builds>
+  host out, build(<task tidy\n  take s, like text\n  like text\n  send back\n    call s/trim\n>)
+  want hold, out/ok
+
+# ---- library/collections: the method form of a hash task runs on a native `Map` ----
+
+host hash-method, linked(<load @term/base/hash\n  find get-or-default\n\ntask count-a\n  take counts, like hash, like text, like number\n  like number\n  send back, counts/get-or-default(\<a\>, 0)\n>)
+
+test <`counts/get-or-default(\<a\>, 0)` builds>
+  want hold, hash-method/ok
+
+test <and calls no `getOrDefault` method>
+  want hold, hash-method/ok
+  want hold, not(text-contains(hash-method/emitted, <.getOrDefault(>))
+
+test <and reads the entry, or falls back, at run time>
+  host calls, <() =\> mod.countA(new Map([["a", 3]])),\n() =\> mod.countA(new Map([["b", 3]])),>
+  want hold, is-equal(answer(hash-method, calls, <count-a>, 0), <3>)
+  want hold, is-equal(answer(hash-method, calls, <count-a>, 1), <0>)
+
+# ---- language/syntax/lean: a path after a call reads a field of what the call returns ----
+
+host call-path, build(<form greeting-text\n  link text, like text\n  link count, like number\n\ntask greet\n  take who, like text\n  like greeting-text\n  send back\n    make greeting-text\n      bind text, \<hi \{who\}\>\n      bind count, 3\n\ntask text-of\n  take who, like text\n  like text\n  send back, greet(read who)/text\n\ntask line-of\n  take who, like text\n  like text\n  send back, \<\{greet(read who)/text\} and \{greet(\<cy\>)/count\}\>\n>)
+host pops-a-level, make pattern, <<g\(\)/text\n\s+x>>
+
+test <`greet(who)/text` builds, bare and inside a text>
+  want hold, call-path/ok
+
+test <and reads the field of the returned record>
+  host calls, <() =\> mod.textOf("ada"),\n() =\> mod.lineOf("ada"),>
+  want hold, is-equal(answer(call-path, calls, <greet>, 0), <hi ada>)
+  want hold, is-equal(answer(call-path, calls, <greet>, 1), <hi ada and 3>)
+
+test <a comma after one still pops to its level, and it prints back as written>
+  host parsed, parsed-of(<task t\n  log g()/text, x\n>, <p.tree>)
+  want hold, truth(parsed/ok)
+  want hold, matches(pops-a-level, printed-of(parsed))
+
+# ---- language/templates: a bare `{tag}` hole where a value goes ----
+
+host tag-hole, build(<tree is-tag\n  take name\n  take tag\n  hook fuse\n    task is-\{name\}\n      take value, like number\n      like boolean\n      send back, is-equal(value, \{tag\})\n\nfuse is-tag\n  bind name, green\n  bind tag, 1\n>)
+
+test <`is-equal(value, \{tag\})` builds>
+  want hold, tag-hole/ok
+
+test <and the hole is the number, not a variable>
+  want hold, tag-hole/ok
+  want hold, text-contains(tag-hole/emitted, <value === 1>)
+
+test <a bare brace with a path after it parses, and the next task is untouched>
+  host parsed, parsed-of(<task t\n  f(a, \{k\}/x, 2)\n\ntask u\n  g\n>, <p.tree>)
+  want hold, truth(parsed/ok)
+  want hold, is-equal(parsed/tree/nodes/length, 2)
+
+# ---- language/modules: a private task is not exported from the TypeScript ----
+
+host private-double, build(<task double\n  mark private\n  take n, like number\n  like number\n  send back, multiply(n, 2)\n\ntask perimeter\n  take side, like number\n  like number\n  send back, add(double(side), double(side))\n>)
+host unexported, make pattern, <<(^|\n)function double\(>>
+
+test <a private task builds>
+  want hold, private-double/ok
+
+test <and is emitted without `export`, while the public one keeps it>
+  want hold, private-double/ok
+  want hold, matches(unexported, private-double/emitted)
+  want hold, text-contains(private-double/emitted, <export function perimeter(>)
+
+test <and the module answers through the public task alone>
+  host calls, <() =\> mod.double === undefined,\n() =\> mod.perimeter(3),>
+  want hold, is-equal(answer(private-double, calls, <perimeter>, 0), <true>)
+  want hold, is-equal(answer(private-double, calls, <perimeter>, 1), <12>)
+
+# ---- applications/targets: `find read` with `read(path)` is warned, since the word is Term's own ----
+
+test <`find read` used as `read(path)` builds, and warns>
+  host out, linked(<load @term/base/file\n  find read\n\ntask size-of\n  take path, like text\n  like text\n  mark async\n  send back, read(path)\n>)
+  want hold, out/ok
+  want hold, any-starting(warned(out), <keyword-import>)
+
+test <`call read` reaches the import, and is not warned>
+  host out, linked(<load @term/base/file\n  find read\n\ntask size-of\n  take path, like text\n  like text\n  mark async\n  send back\n    call read\n      read path\n>)
+  want hold, out/ok
+  want hold, not(any-starting(warned(out), <keyword-import>))
+
+# ---- applications/web/components: a call as a placement's one value is a text node of what it answers ----
+
+host placement, linked(<load @term/site/dom/dom\n  find view\n\nload @term/site/view/reactive\n  find make-signal\n  find read-signal\n\nhost problem, make-signal(\<none\>)\n\nview home\n  take host, like view\n  view p, read-signal(problem)\n>)
+
+test <`view p, read-signal(problem)` builds>
+  want hold, placement/ok
+
+test <and is a dynamic text node over the call>
+  want hold, placement/ok
+  want hold, text-contains(placement/emitted, <makeDynamicText(() =\> (readSignal(problem)))>)
+
+# ---- applications/web/state: one batch runs each effect once, a memo's reader included ----
+
+host batched, linked(<load @term/site/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n  find make-effect\n  find make-memo\n  find batch\n\nload @term/base/list\n  find list\n  find push\n  find join\n\nhost read-count, make-signal(0)\nhost seen, make list\n  like list, like text\n\nhost left\n  make-memo\n    task count-left\n      like number\n      send back, subtract(3, read-signal(read-count))\n    bind fallback, 0\n\ntask read-two\n  batch\n    task both\n      write-signal read-count, add(read-signal(read-count), 1)\n      write-signal read-count, add(read-signal(read-count), 1)\n\ntask nested\n  batch\n    task outer\n      read-two()\n      write-signal read-count, add(read-signal(read-count), 1)\n\ntask runs\n  like text\n  make-effect\n    task report\n      push seen, \<\{read-signal(read-count)\}/\{read-signal(left)\}\>\n  read-two()\n  nested()\n  send back, join(seen, \<, \>)\n>)
+
+test <an effect reading a signal and its memo builds>
+  want hold, batched/ok
+
+test <and runs once per batch, a nested batch inside the outer one>
+  want hold, is-equal(answer(batched, <() =\> mod.runs(),>, <runs>, 0), <0/3, 2/1, 5/-2>)
+
+# `add` on two texts (decisions-2026-10.md, D3): the checker refuses it and names the template, where the kernel refused it
+# as `type mismatch, expected Number` naming neither (guides: language/operators)
+
+host add-texts, build(<task join-two\n  take a, like text\n  take b, like text\n\n  like text\n\n  back add(a, b)\n>)
+
+test <add on two texts is refused by the checker>
+  want hold, not(add-texts/ok)
+  want hold, any-starting(add-texts/messages, <`add` adds two numbers>)
+
+test <naming the template that joins them>
+  want hold, is-equal(hint-starting(add-texts, <`add` adds two numbers>), <join texts with a template: \<\{a\}\{b\}\>>)
+
+test <add on two numbers still builds>
+  host out, build(<task sum\n  take a, like number\n  take b, like number\n\n  like number\n\n  back add(a, b)\n>)
+  want hold, out/ok
+
+# a whole-number sum inlined where an `unknown` is its operand keeps its range check, decided by the sum's own type
+# (compile/typescript.ts `integerDivision`): it was dropped, and the one program printed `seven1` built whole and stopped
+# built in units (guides: types/gradual, 2026-10-05). Run, the text reaching it raises `mismatch`. Since seam-0008 the seam
+# refuses this program by default, so it is built with the seam off (TERM_UNKNOWN_SEAM=0), the setting under which it
+# still builds and the range check still matters
+
+host seam, without-seam(<task bump\n  take n, like number\n\n  like number\n\n  back add(n, 1)\n\ntask pass-through\n  take value, like unknown\n\n  like number\n\n  back bump(value)\n>)
+host range-checked, make pattern, <<passThrough[\s\S]*__termIntStop>>
+
+test <the inlined sum keeps its range check>
+  want hold, seam/ok
+  want hold, matches(range-checked, seam/emitted)
+
+# what the main's `caught` gives: the raise's name, form and link/actual, joined by a space
+test <and text reaching it raises mismatch, naming text>
+  host raised, answer(seam, <() =\> caught(() =\> mod.passThrough("seven")),>, <pass-through>, 0)
+  want hold, is-equal(word-at(raised, 1), <mismatch>)
+  want hold, is-equal(word-at(raised, 2), <text>)
+
+# ---- language/templates: a site with no beam, a template that fuses itself, a dynamic fuse of no template ----
+# each expanded to nothing, or recursed until the stack overflowed, without a word (term-compiler-0001, gaps 81, 82, 84,
+# 191)
+
+host empty-site, make pattern, <<^empty-site: .*`site fields` no `beam fields`>>
+
+test <a site its fuse gives no beam builds and warns, naming the site>
+  host out, build(<tree wrapper\n  take name\n  hook fuse\n    form \{name\}\n      link id, like number\n      site fields\n\nfuse wrapper\n  bind name, point\n>)
+  want hold, out/ok
+  want hold, any-matching(warned(out), empty-site)
+
+test <a site its fuse fills does not warn>
+  host out, build(<tree wrapper\n  take name\n  hook fuse\n    form \{name\}\n      site fields\n\nfuse wrapper\n  bind name, point\n  beam fields\n    link x, like number\n>)
+  want hold, out/ok
+  want hold, not(any-holding(warned(out), <empty-site>))
+
+test <a template that fuses itself through another is refused, naming the cycle>
+  host out, build(<tree ping\n  take name\n  hook fuse\n    fuse pong\n      bind name, \{name\}\n\ntree pong\n  take name\n  hook fuse\n    fuse ping\n      bind name, \{name\}\n\nfuse ping\n  bind name, loop\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <ping -\> pong -\> ping>)
+
+# a template fused twice side by side, or by another template, is not a cycle
+
+test <one template fused twice in a program is not a cycle>
+  host out, build(<tree box\n  take name\n  hook fuse\n    form \{name\}\n      link id, like number\n\ntree two-boxes\n  take first\n  take second\n  hook fuse\n    fuse box\n      bind name, \{first\}\n    fuse box\n      bind name, \{second\}\n\nfuse box\n  bind name, outer\nfuse two-boxes\n  bind first, left\n  bind second, right\n>)
+  want hold, out/ok
+
+test <a dynamic fuse of a name no template has is refused at expansion, naming it>
+  host out, build(<host suit\n  term hearts\n  term spades\n\ntree make-flag\n  take name\n  hook bind\n    task is-\{name\}\n      like boolean\n\ntree each\n  take items\n  take maker\n  hook fuse\n    walk list, read items\n      hook step\n        take item\n        fuse read maker\n          read item\n\nfuse each, read suit\n  read make-flagg\n>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <unknown-name>)
+  want hold, text-contains(said(out), <`make-flagg`>)
+
+# ---- architecture/language/errors: a native call raises `failure` whatever the shake keeps (gap 67, term-compiler-0007,
+# term/compiler decision 001). A guard around a native read that answers `absence` alone left out `failure`, and was
+# refused or accepted by whether tree shaking kept the form. Nothing here names `failure`, so the shake dropped it, and the
+# shaken build accepted this guard until 2026-10-22 ----
+
+test <a guard over a native call that leaves out failure is refused, shaken or not>
+  host source, <load @term/base/exception\n  find absence\n\ndock load\n  load \<node:fs\>, name fs\n\ntask must-exist\n  take path, like text\n  like text\n  fork test, is-equal(path, \<\>)\n    hold\n      halt absence\n        bind thing, read path\n  send back, read path\n\ntask read-text\n  take path, like text\n  like text\n  send back\n    call fs/read-file-sync\n      read path\n      text \<utf8\>\n\ntask read-or-why\n  take path, like text\n  like text\n  fork\n    mark unsafe\n    save checked\n      call must-exist\n        read path\n    save got\n      call read-text\n        read checked\n    send back, read got\n  halt take\n    take problem\n    fork case, read problem\n      case absence\n        send back, text \<absent\>\n>
+  host plain, linked(source)
+  host shaken, compile-text(source, make(compile-choice, bind(file, linked-file()), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(tree-shake, <true>)))
+  want hold, not(plain/ok)
+  want hold, not(shaken/ok)
+  want hold, text-contains(verdict(plain), <failure>)
+  want hold, text-contains(verdict(shaken), <failure>)
+
+# ---- language/variables: `loan` borrowed nothing, and is refused (gap 195, term/affine-kinds decision 002) ----
+
+test <`loan n` is refused, naming `read n`>
+  host out, build(<task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      loan n\n      code 2\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <`loan n` borrows nothing: it was read as `read n`. Write `read n`>)
+
+# ---- language/variables: a misspelled save is refused (gaps 193, 194, term/compiler decision 003) ----
+
+test <a never-read save one letter from a read variable is refused as stray-save, naming both>
+  host out, build(<task typo\n  take count, like number\n  like number\n  save total, 0\n  save totl, add(total, count)\n  back total\n>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <stray-save>)
+  want hold, text-contains(said(out), <"totl" is saved and never read, and is one letter from "total">)
+
+test <a never-read save named like nothing the task reads builds, with a warning>
+  host out, build(<task spare\n  take count, like number\n  like number\n  save unrelated, add(count, 1)\n  back count\n>)
+  want hold, out/ok
+
+# ---- language/async, language/native: a missing `wait` on a host call that answers a promise (gaps 56, 151, 177,
+# term/compiler decision 004) ----
+
+test <a call into \<node:fs/promises\> with no wait is refused as missing-wait, naming the call>
+  host out, linked(<load @term/base/console\n  find log\n\ndock load\n  load \<node:fs/promises\>, name fs-promise\n\ntask read-length\n  mark async\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, \<utf8\>)\n  back body/length\n>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <missing-wait>)
+  want hold, text-contains(said(out), <"fs-promise/read-file" answers a promise>)
+
+test <the same call under `wait` builds>
+  host out, linked(<load @term/base/console\n  find log\n\ndock load\n  load \<node:fs/promises\>, name fs-promise\n\ntask read-length\n  mark async\n  take path, like text\n  like number\n  save body, wait fs-promise/read-file(path, \<utf8\>)\n  back body/length\n>)
+  want hold, out/ok
+
+test <the call given `back` whole from a `mark async` task builds (its promise is the task's own)>
+  host out, linked(<load @term/base/console\n  find log\n\ndock load\n  load \<node:fs/promises\>, name fs-promise\n\ntask read-text\n  mark async\n  take path, like text\n  like text\n  back fs-promise/read-file(path, \<utf8\>)\n>)
+  want hold, out/ok
+
+test <the call given `back` from a task that is not async is refused>
+  host out, linked(<load @term/base/console\n  find log\n\ndock load\n  load \<node:fs/promises\>, name fs-promise\n\ntask read-text\n  take path, like text\n  like text\n  back fs-promise/read-file(path, \<utf8\>)\n>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <missing-wait>)
+
+test <the call started with `tick` builds>
+  host out, linked(<load @term/base/console\n  find log\n\ndock load\n  load \<node:fs/promises\>, name fs-promise\n\ntask start\n  take path, like text\n  tick fs-promise/read-file(path, \<utf8\>)\n>)
+  want hold, out/ok
+
+test <the module marked `mark async` builds with no wait>
+  host out, linked(<load @term/base/console\n  find log\n\ndock load\n  load \<node:fs/promises\>, name fs-promise\n    mark async\n\ntask read-length\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, \<utf8\>)\n  back body/length\n>)
+  want hold, out/ok
+
+# gap 177: one function of a module marked on its own, so a mixed module needs no `wait` per call
+
+host one-head, <load @term/base/console\n  find log\n\ndock load\n  load \<node:fs/promises\>, name fs-promise\n    find read-file\n      mark async\n\ntask read-length\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, \<utf8\>)\n  back body/length\n\ntask boot\n  save size, read-length(\<>
+host one-tail, <\>)\n  log \<\{size\}\>\n>
+
+test <`find read-file` / `mark async` under the load line awaits that function and makes its caller async>
+  host out, linked(<{one-head}{deck-file()}{one-tail}>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <await fsPromise.readFile(>)
+  want hold, text-contains(out/emitted, <async function readLength>)
+
+test <a function of the same module not marked on its own still needs wait>
+  host out, linked(<load @term/base/console\n  find log\n\ndock load\n  load \<node:fs/promises\>, name fs-promise\n    find read-file\n      mark async\n\ntask size-of\n  mark async\n  take path, like text\n  like number\n  save info, fs-promise/stat(path)\n  back info/size\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <"fs-promise/stat" answers a promise>)
+
+test <`find` under a load line with no `mark async` is refused>
+  host out, build(<dock load\n  load \<node:path\>, name path\n    find join\n\ntask joined\n  like text\n  back path/join(\<a\>, \<b\>)\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <takes one `mark async` under it>)
+
+# ---- types/masks: a mask written as a type parameter's `like` bound nothing, built, and threw `x.size is not a function`
+# on node (term-compiler-0018, the chunk 0 repro g110/same) ----
+
+test <`head t, like sizer` is refused, naming `need sizer`>
+  host out, linked(<load @term/base/console\n  find log\n\nform shape\n  link sides, like number\n\nmask sizer\n  task size\n    take self\n    like number\n\nsuit shape\n  wear sizer\n    task size\n      take self\n      like number\n      send back, read self/sides\n\ntask describe\n  head t\n    like sizer\n  take x, like t\n  like number\n  send back, call x/size\n\ntask main\n  save s\n    make shape\n      bind sides, 3\n  log \<\{describe(s)\}\>\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <"sizer" is a mask, not a type: `head t, like sizer` bounds nothing. Write `head t, need sizer`>)
+
+test <`head t, need sizer` builds and the call through the mask answers 3>
+  host out, linked(<load @term/base/console\n  find log\n\nform shape\n  link sides, like number\n\nmask sizer\n  task size\n    take self\n    like number\n\nsuit shape\n  wear sizer\n    task size\n      take self\n      like number\n      send back, read self/sides\n\ntask describe\n  head t\n    need sizer\n  take x, like t\n  like number\n  send back, call x/size\n\ntask main\n  save s\n    make shape\n      bind sides, 3\n  log \<\{describe(s)\}\>\n>)
+  want hold, out/ok
+  want hold, is-equal(logged(out, <() =\> mod.main(),>, <sizer>), <3>)

@@ -28,14 +28,6 @@
       "cases": "float-singles"
     },
     {
-      "op": "round",
-      "shim_op": "round",
-      "term_op": "float-round",
-      "arity": 1,
-      "kind": "float",
-      "cases": "float-singles"
-    },
-    {
       "op": "pow",
       "shim_op": "pow",
       "term_op": "float-power",

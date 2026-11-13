@@ -1,0 +1,95 @@
+note <The stdlib's text-to-number read, run as compiled TypeScript>
+
+# Ported from read-number.ts by statement (item term-self-host-001-0618), one test per `ok` in its order: the cases are
+# one walked test, each text a case. native-dom-0040: `read-number` from @term/base/code/text/number, compiled over the
+# project on node and run (run-text, decision 111), its answers judged against the grammar it states. A number, or none
+# for text that is not one. The original printed one answer per line from one run, and so does this.
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/text
+  find split
+
+form read-case
+  link text, like text
+  link want, like text
+
+# text, and what read-number must answer: a number, or none
+host cases, make list(make(read-case, bind(text, <42>), bind(want, <42>)), make(read-case, bind(text, <0>), bind(want, <0>)), make(read-case, bind(text, <-7>), bind(want, <-7>)), make(read-case, bind(text, <3.25>), bind(want, <3.25>)), make(read-case, bind(text, <-0.5>), bind(want, <-0.5>)), make(read-case, bind(text, <.5>), bind(want, <0.5>)), make(read-case, bind(text, <5.>), bind(want, <5>)), make(read-case, bind(text, <1000000>), bind(want, <1000000>)), make(read-case, bind(text, <>), bind(want, <none>)), make(read-case, bind(text, <->), bind(want, <none>)), make(read-case, bind(text, <.>), bind(want, <none>)), make(read-case, bind(text, <abc>), bind(want, <none>)), make(read-case, bind(text, <4a>), bind(want, <none>)), make(read-case, bind(text, < 4>), bind(want, <none>)), make(read-case, bind(text, <1.2.3>), bind(want, <none>)), make(read-case, bind(text, <4->), bind(want, <none>)), make(read-case, bind(text, <--4>), bind(want, <none>)))
+
+host shown, <load @term/base/code/text/number\n  find read-number\n\nload @term/base/code/maybe\n  find maybe\n\ntask shown\n  take value, like text\n  like text\n  save read, call read-number(read value)\n  fork case, read read\n    case some\n      link number\n      send back, text \<\{\{number\}\}\>\n    case none\n      send back, text \<none\>\n>
+
+# the `run` that answers every case's shown text, a line each
+task cases-program
+  like text
+
+  save lines, make list
+  walk cases
+    take one, like read-case
+    lines/push(<  save at{lines/length}, call shown(text \<{one/text}\>)>)
+  save holes, make list
+  save at, 0
+  walk cases
+    take one, like read-case
+    holes/push(<\{at{at}\}>)
+    save at, add(at, 1)
+  back <{shown}\ntask run\n  like text\n{lines/join(<\n>)}\n  send back, text \<{holes/join(<\\n>)}\>\n>
+
+host folder, temp-folder(<term-read-number->)
+host built, compile-text(shown, make(compile-choice, bind(file, <{folder}/read.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+form read-told
+  mark shared
+  link held, like list, like dynamic
+
+host told, make(read-told, bind(held, make list))
+
+# the one run, made once
+task ran
+  like dynamic
+  mark async
+
+  fork test, is-above(told/held/length, 0)
+    hold
+      back told/held/0
+  host made, run-text(cases-program(),<typescript>, folder, <read>)
+  told/held/push(made)
+  back made
+
+test <read-number compiles>
+  want hold, built/ok
+
+test <it runs>
+  host seen, ran()
+  want hold, is-equal(seen/state, <ran>)
+
+task answer-of
+  take text, like text
+  like text
+  mark async
+
+  host seen, ran()
+  host lines, split(seen/output, <\n>)
+  save at, 0
+  walk cases
+    take one, like read-case
+    fork test, is-equal(one/text, text)
+      hold
+        fork test, is-below(at, lines/length)
+          hold
+            back get(lines, at)
+        back <no line>
+    save at, add(at, 1)
+  back <no case>
+
+test <the text reads its number, or none>
+  take one, like read-case
+    walk cases
+  want hold, is-equal(answer-of(one/text), one/want)

@@ -384,26 +384,45 @@ form best-code
   link found, like boolean
   link code, like code
 
+# where in `versions` the best code stands, -1 when the hold allows none. A caller handed a list answers with that
+# very member, so the place is the answer and the code is read from it
+task pick-best-at
+  take versions, like list, like code
+  take hold, like code-hold
+  like number
+
+  save at, -1
+  save best, code-of(0, 0, 0)
+  save place, 0
+  walk versions
+    take each
+    fork test, code-match(each, hold)
+      hold
+        fork test, or(is-below(at, 0), is-above(compare-code(each, best), 0))
+          hold
+            save best, each
+            save at, place
+    save place, add(place, 1)
+
+  back at
+
 task pick-best-code
   take versions, like list, like code
   take hold, like code-hold
   like best-code
 
-  save found, false
-  save best, code-of(0, 0, 0)
-  walk versions
-    take each
-    fork test, code-match(each, hold)
-      hold
-        fork test, or(not(found), is-above(compare-code(each, best), 0))
-          hold
-            save best, each
-            save found, true
+  host at, pick-best-at(versions, hold)
+  fork test, is-below(at, 0)
+    hold
+      back
+        make best-code
+          bind found, false
+          bind code, code-of(0, 0, 0)
 
   back
     make best-code
-      bind found, found
-      bind code, best
+      bind found, true
+      bind code, get(versions, at)
 
 # 1 the major, 2 the minor, 3 the patch. A prerelease moves to its own release, npm's rule: `1.4.3-rc.2` to `1.4.3`
 task bump-code

@@ -1,0 +1,175 @@
+note <the scanner end to end over a real temporary project: a manifest, a lockfile, a local advisory database and a vulnerable code file, then the manifest fixer>
+
+# Ported from audit.ts by statement (item term-self-host-001-0637), one test per `ok` in its order. @term/scan's
+# scan-running, advisory-sources and upgrade-fixing are the subject (decision 106), docked as the original imported
+# them, with positional parameters and a left-out flag passed as undefined. The original's one async sequence is run
+# once in a shared form, and each test reads its part. Only the local advisory source is consulted: nothing leaves the
+# machine.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find replace, name text-replace
+
+load ../support/judging
+  find make-record
+  find read-field
+  find read-at
+
+dock load
+  load <@term/scan/code/scan-running>, name scan-running
+  load <@term/scan/code/advisory-sources>, name advisory-sources
+  load <@term/scan/code/upgrade-fixing>, name upgrade-fixing
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+
+bind no-value
+  like dynamic
+  case node
+    text <undefined>
+
+host manifest-text, <deck @term/app\n  code \<1.0.0\>\n\n  link @term/left-pad, code \<^1.1.0\>\n>
+
+# left-pad@1.1.0 is pinned, and it depends on inner@1.0.0 (transitive)
+host lock-text, <lock \<1\>\n\ndeck @term/left-pad\n  code \<1.1.0\>\n  hash \<aaaa\>\n  site \<https://deck.term.surf/@term/left-pad\>\n  link @term/inner, code \<1.0.0\>\n\ndeck @term/inner\n  code \<1.0.0\>\n  hash \<bbbb\>\n  site \<https://deck.term.surf/@term/inner\>\n>
+
+# an OSV advisory affecting left-pad below 1.3.0, in the term ecosystem, as the JSON the database holds
+host advisory-text, <[\{"id":"GHSA-app-0001","summary":"left-pad denial of service on long input","affected":[\{"package":\{"ecosystem":"term","name":"@term/left-pad"\},"ranges":[\{"type":"SEMVER","events":[\{"introduced":"0"\},\{"fixed":"1.3.0"\}]\}]\}],"references":[\{"type":"ADVISORY","url":"https://term.surf/advisory/GHSA-app-0001"\}],"database_specific":\{"severity":"MODERATE"\}\}]>
+
+# a vulnerable code file: a task parameter flows into cp/exec unsanitized
+host danger-text, <dock load\n  load \<node:child_process\>, name cp\n\ntask run-shell\n  take user-input, like text\n  like text\n  send back\n    call cp/exec\n      read user-input\n>
+
+task count-of
+  take items, like dynamic
+  like number
+
+  save count, 0
+  walk items
+    take one, like dynamic
+    save count, add(count, 1)
+  back count
+
+task of-kind
+  take findings, like dynamic
+  take kind, like text
+  like list, like dynamic
+
+  save out, make list
+  walk findings
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <kind>), kind)
+      hold
+        out/push(one)
+  back out
+
+task some-rule
+  take findings, like dynamic
+  take rule, like text
+  like boolean
+
+  walk findings
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <ruleId>), rule)
+      hold
+        back true
+  back false
+
+form audit-run
+  mark shared
+  link done, like boolean
+  link result, like dynamic
+  link dependencies, like list, like dynamic
+  link codes, like list, like dynamic
+  link applied, like number
+  link rewritten, like text
+  link after, like list, like dynamic
+
+host run-now, make(audit-run, bind(done, false), bind(result, no-value()), bind(dependencies, make list), bind(codes, make list), bind(applied, -1), bind(rewritten, <>), bind(after, make list))
+
+task scan
+  take root, like text
+  take code, like boolean
+  like dynamic
+  mark async
+
+  save sources, make list
+  sources/push(advisory-sources/local-database-source(dock-path/join(root, <advisory>), <term>))
+  back wait scan-running/run-scan(root, true, code, sources, no-value(), no-value())
+
+task the-run
+  like audit-run
+  mark async
+
+  fork test, run-now/done
+    hold
+      back run-now
+  save run-now/done, true
+  save root, temp-folder(<scan-audit->)
+  dock-file/write-file-sync(dock-path/join(root, <deck.tree>), manifest-text)
+  dock-file/write-file-sync(dock-path/join(root, <lock.tree>), lock-text)
+  dock-file/mkdir-sync(dock-path/join(root, <advisory>), make-record(make(list, <recursive>, true)))
+  dock-file/write-file-sync(dock-path/join(root, <advisory>, <ghsa.json>), advisory-text)
+  dock-file/mkdir-sync(dock-path/join(root, <deck>, <x>, <code>), make-record(make(list, <recursive>, true)))
+  dock-file/write-file-sync(dock-path/join(root, <deck>, <x>, <code>, <danger.tree>), danger-text)
+  # scan with ONLY the local advisory source (no network), plus the code scan
+  save result, scan(root, true)
+  save run-now/result, result
+  save run-now/dependencies, of-kind(read-field(result, <findings>), <dependency>)
+  save run-now/codes, of-kind(read-field(result, <findings>), <code>)
+  # the fixer rewrites the manifest to the safe version
+  save upgrades, upgrade-fixing/plan-upgrades(run-now/dependencies)
+  save applied, wait upgrade-fixing/apply-upgrades(root, upgrades, true)
+  save run-now/applied, count-of(read-field(applied, <applied>))
+  save run-now/rewritten, dock-file/read-file-sync(dock-path/join(root, <deck.tree>), <utf-8>)
+  # after the fix, the lockfile bumped too (the post-install state), a second scan finds no dependency vulnerability
+  dock-file/write-file-sync(dock-path/join(root, <lock.tree>), text-replace(lock-text, <code \<1.1.0\>>, <code \<1.3.0\>>))
+  save run-now/after, of-kind(read-field(scan(root, false), <findings>), <dependency>)
+  back run-now
+
+task left-pad
+  like dynamic
+  mark async
+
+  back read-at(the-run()/dependencies, 0)
+
+test <reads both locked dependencies>
+  want hold, is-equal(read-field(the-run()/result, <dependencyCount>), 2)
+
+test <finds the one vulnerable dependency>
+  want hold, is-equal(the-run()/dependencies/length, 1)
+
+test <names the vulnerable package>
+  want hold, is-equal(read-field(read-field(left-pad(), <node>), <name>), <@term/left-pad>)
+
+test <reports the installed version>
+  want hold, is-equal(read-field(read-field(left-pad(), <node>), <version>), <1.1.0>)
+
+test <marks it a direct dependency>
+  want hold, is-equal(read-field(read-field(left-pad(), <node>), <direct>), true)
+
+test <carries the advisory severity>
+  want hold, is-equal(read-field(left-pad(), <severity>), <moderate>)
+
+test <computes the safe upgrade>
+  want hold, is-equal(read-field(left-pad(), <fixVersion>), <1.3.0>)
+
+test <flags the child_process import>
+  want hold, some-rule(the-run()/codes, <scan/native-danger>)
+
+test <flags the param -\> cp/exec taint>
+  want hold, some-rule(the-run()/codes, <scan/taint>)
+
+test <records the consulted source and no unavailable ones>
+  save result, the-run()/result
+  want hold, and(is-equal(count-of(read-field(result, <advisorySources>)), 1), is-equal(count-of(read-field(result, <unavailableSources>)), 0))
+
+test <applies one upgrade>
+  want hold, is-equal(the-run()/applied, 1)
+
+test <manifest now pins the safe version>
+  want hold, text-contains(the-run()/rewritten, <link @term/left-pad, mark \<^1.3.0\>>)
+
+test <no dependency findings after upgrading to the fixed version>
+  want hold, is-equal(the-run()/after/length, 0)

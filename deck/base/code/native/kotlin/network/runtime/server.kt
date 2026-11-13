@@ -19,6 +19,7 @@ import io.ktor.server.engine.sslConnector
 import io.ktor.server.request.receiveText
 import io.ktor.server.request.uri
 import io.ktor.server.response.header
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.route
@@ -28,7 +29,7 @@ import io.ktor.server.routing.routing
 // and a form's name there is not its own: loaded beside network/http, the server's `response` is `Response__in0_1`.
 // The handler is the native module's `answer-plain` over the program's (network/server/plain): the request goes in
 // as its parts (method, url, path, query, headers, body, dock), the response comes back as
-// `[status, body, name, value, ...]`.
+// `[status, body, hex, name, value, ...]`, `hex` a bytes body (item 1326).
 typealias ServerHandler =
   (String, String, String, String, MutableMap<String, String>, String, Any) -> MutableList<String>
 
@@ -63,8 +64,15 @@ object runtime {
     val engine = build(port, host, handler, secure, certificate, key)
     // Ktor's start binds before it returns, so the port is taken when `start` answers
     engine.start(wait = false)
+    // the port it is bound to, which is the OS's choice when port 0 was asked (item 1326)
+    val bound = engine.engine.resolvedConnectors().firstOrNull()?.port ?: port.toInt()
 
-    return Running(engine, port.toInt())
+    return Running(engine, bound)
+  }
+
+  // the port a started server is bound to: the OS's choice when `start` asked for port 0 (item 1326)
+  fun port(server: Running): Long {
+    return server.port.toLong()
   }
 
   suspend fun stop(server: Running) {
@@ -132,26 +140,46 @@ object runtime {
                 0L,
               )
 
-            // `[status, body, name, value, ...]`; a status that does not read as one is a 500
+            // `[status, body, hex, name, value, ...]`; a status that does not read as one is a 500
             val read = said.getOrNull(0)?.trim()?.toDoubleOrNull()
             val status = if (read != null && read >= 100.0 && read <= 999.0) read.toInt() else 500
 
             // appended, not set, so repeats survive: several set-cookie headers is the ordinary case and the
             // reason the Term response holds a LIST of headers rather than a map
-            var at = 2
+            var at = 3
             while (at + 1 < said.size) {
               call.response.header(said[at], said[at + 1])
               at += 2
             }
 
-            call.respondText(
-              said.getOrNull(1) ?: "",
-              status = HttpStatusCode.fromValue(status),
-            )
+            // a bytes body comes as hex, two digits a byte, and is sent as those bytes; a text body as text
+            // (item 1326)
+            val hex = said.getOrNull(2) ?: ""
+            if (hex.isEmpty()) {
+              call.respondText(
+                said.getOrNull(1) ?: "",
+                status = HttpStatusCode.fromValue(status),
+              )
+            } else {
+              call.respondBytes(
+                unhex(hex),
+                status = HttpStatusCode.fromValue(status),
+              )
+            }
           }
         }
       }
     }
+  }
+
+  // bytes from their hex, two digits a byte, as network/server/plain writes a bytes body
+  private fun unhex(text: String): ByteArray {
+    val out = ByteArray(text.length / 2)
+    for (at in out.indices) {
+      out[at] = ((Character.digit(text[2 * at], 16) shl 4) or Character.digit(text[2 * at + 1], 16)).toByte()
+    }
+
+    return out
   }
 
   // The Term API takes a certificate and a key as PEM text, which is what every other backend's TLS wants. The

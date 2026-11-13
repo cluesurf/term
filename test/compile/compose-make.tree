@@ -1,0 +1,315 @@
+note <term make --target compose and compose-android, run: the desktop app image and the APK each press a button twice>
+
+# Ported from compose-make.ts by statement (item term-self-host-001-0694). `term make --target compose` and
+# `--target compose-android` (compose-target-0004), through the CLI's own function, `makeCompose` in
+# deck/call/code/compose.ts, docked as the subject: an app folder holding an `app.tree` is built into `host/<target>/`,
+# and what comes out is RUN, not looked at. The desktop target's output is a jpackage app image with its own JVM, and
+# the launcher inside it is started headless (TERM_WINDOW_AWAY=1), so the program runs on the JVM the package carries.
+# The Android target's output is an APK, installed on the emulator (test/support/device/compose-android). Each presses a
+# button twice and reads it back from Compose's semantics, and must exit 0.
+#
+# The app folder is under this package's tmp/ (gitignored), so its `@term/*` imports resolve as any app's would.
+# COMPOSE_MAKE_ONLY=compose (or compose-android) runs one target. Each target is built and run once, by the first test
+# that asks. A check the original never reached (its build raised, or the target was skipped) skips.
+
+load ../support/cli
+  find term-root
+
+load ../support/device/compose-android
+  find run-compose-android
+  find prepare-nothing
+  find android-ran
+
+load ../support/device/host-fields
+  find host-field-text
+  find host-cause-text
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/process/run
+  find run
+
+load @term/base/process
+  find platform
+
+load @term/base/environment
+  find variable
+  find set-variable
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/call/code/compose>, name make-compose-cli
+  load <node:path>, name compose-make-path
+  load <node:fs>, name compose-make-file
+
+bind compose-make-recursive
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+bind compose-make-wipe
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true, force: true \})>
+
+# the line the program must print, read back from Compose after two presses
+host compose-want, <\<main\>\<button\>2\</button\>\</main\>>
+
+host compose-app-tree, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find run-app\n  find exit-app\n  find press\n  find child-at\n  find serialize\n  find say\n\ntask shown\n  take count, like signal number\n  like text\n  save value\n    call read-signal\n      bind self, read count\n  send back, text \<\{value\}\>\n\nview tally\n  take host, like view\n  save count\n    call make-signal\n      bind value, code 0\n  view button\n    seed click\n      call write-signal\n        bind self, read count\n        bind value\n          call add\n            call read-signal\n              bind self, read count\n            code 1\n    read\n      call shown\n        read count\n\ntask main\n  save root\n    call open-root\n      text \<Compose make\>\n      code 400\n      code 300\n  call tally\n    read root\n  call after-launch\n    task check\n      call press\n        call child-at\n          read root\n          code 0\n      call press\n        call child-at\n          read root\n          code 0\n      call say\n        call serialize\n          read root\n      call exit-app\n        code 0\n  call run-app\n>
+
+# the arguments for makeCompose
+form compose-make-input
+  link root, like text
+  link target, like text
+
+# one target built and run: `state` <ran>, <skipped> (with `reason`), <unasked> when COMPOSE_MAKE_ONLY names the other,
+# or <failed> when the build raised (`reason` its message). `made` is the app image or APK and `found` whether it is there
+form compose-made
+  link state, like text
+  link reason, like text, fall <>
+  link made, like text, fall <>
+  link found, like boolean, fall false
+  link runtime, like boolean, fall false
+  link output, like text, fall <>
+  link status, like number, fall -1
+  link installed, like boolean, fall false
+  link reads, like boolean, fall false
+  link exited, like boolean, fall false
+
+form compose-make-state
+  mark shared
+  link made, like boolean
+  link app, like text
+  link only, like text
+  link desktop, like compose-made
+  link android, like compose-made
+
+host compose-make-now, make(compose-make-state, bind(made, false), bind(app, <>), bind(only, <>), bind(desktop, make(compose-made, bind(state, <unasked>))), bind(android, make(compose-made, bind(state, <unasked>))))
+
+# makeCompose for a target, its app image or APK, or the message it raised
+task make-target
+  take app, like text
+  take target, like text
+  like compose-made
+
+  save failure, <>
+  save made, <>
+  fork
+    mark unsafe
+    save answer, wait make-compose-cli/make-compose(make(compose-make-input, bind(root, app), bind(target, target)))
+    save made, host-field-text(answer, <app>)
+  halt take
+    take cause
+    save failure, host-cause-text(cause)
+  fork test, is-unequal(failure, <>)
+    hold
+      back make(compose-made, bind(state, <failed>), bind(reason, failure))
+  back make(compose-made, bind(state, <ran>), bind(made, made), bind(found, file-exists(made)))
+
+task desktop
+  take app, like text
+  like compose-made
+
+  fork test, or(is-equal(find-tool(<jpackage>), <>), is-equal(find-tool(<kotlinc>), <>))
+    hold
+      back make(compose-made, bind(state, <skipped>), bind(reason, <jpackage or kotlinc not installed>))
+  save built, make-target(app, <compose>)
+  fork test, is-equal(built/state, <failed>)
+    hold
+      back built
+  # the launcher jpackage made, inside the image, running the JVM the image carries
+  save launcher, compose-make-path/join(built/made, <bin>, <composemake>)
+  save runtime, compose-make-path/join(built/made, <lib>, <runtime>)
+  fork test, is-equal(platform(), <darwin>)
+    hold
+      save launcher, compose-make-path/join(built/made, <Contents>, <MacOS>, <composemake>)
+      save runtime, compose-make-path/join(built/made, <Contents>, <runtime>)
+  save built/runtime, file-exists(runtime)
+  fork test, is-equal(variable(<TERM_WINDOW_AWAY>), <>)
+    hold
+      set-variable(<TERM_WINDOW_AWAY>, <1>)
+  fork
+    mark unsafe
+    save none, make list
+    save ran, run(launcher, none, bind(limit, 180000))
+    save built/output, <{ran/output}{ran/error}>
+    save built/status, ran/code
+    save built/exited, and(is-equal(ran/code, 0), text-contains(ran/output, <native-view exit 0>))
+    save built/reads, has-line(ran/output, compose-want)
+  halt take
+    take cause
+    save built/output, host-cause-text(cause)
+  back built
+
+task android
+  take app, like text
+  like compose-made
+
+  save built, make-target(app, <compose-android>)
+  fork test, and(is-equal(built/state, <failed>), matches(make(pattern, <<no Android platform|no Android build tools>>), built/reason))
+    hold
+      save built/state, <skipped>
+      back built
+  fork test, is-equal(built/state, <failed>)
+    hold
+      back built
+  save ran, run-compose-android(built/made, <surf.term.composemake>, <none.png>, compose-make-path/join(app, <none.png>), prepare-nothing)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      save built/state, <unrun>
+      save built/reason, ran/reason
+      back built
+  save built/installed, ran/installed
+  save built/output, ran/output
+  save built/reads, has-line(ran/output, compose-want)
+  save built/exited, ran/exited
+  back built
+
+# whether one line of a text is `line`
+task has-line
+  take said, like text
+  take line, like text
+  like boolean
+
+  walk text-split(said, <\n>)
+    take one, like text
+    fork test, is-equal(one, line)
+      hold
+        back true
+  back false
+
+# both targets, once: the app folder written fresh, then each target COMPOSE_MAKE_ONLY allows
+task the-make
+  like compose-make-state
+
+  fork test, compose-make-now/made
+    hold
+      back compose-make-now
+  save state, compose-make-now
+  save state/made, true
+  save state/only, variable(<COMPOSE_MAKE_ONLY>)
+  # a folder per run of each target: the gate runs the two targets at once, and a shared folder was wiped by one
+  # while the other built in it. The app keeps its name, `composemake`, in each
+  save part, state/only
+  fork test, is-equal(part, <>)
+    hold
+      save part, <both>
+  save state/app, compose-make-path/join(term-root(), <tmp>, <compose-make>, part, <composemake>)
+  compose-make-file/rm-sync(state/app, compose-make-wipe(0))
+  compose-make-file/mkdir-sync(state/app, compose-make-recursive(0))
+  write-file(compose-make-path/join(state/app, <app.tree>), compose-app-tree)
+  fork test, or(is-equal(state/only, <>), is-equal(state/only, <compose>))
+    hold
+      save state/desktop, desktop(state/app)
+  fork test, or(is-equal(state/only, <>), is-equal(state/only, <compose-android>))
+    hold
+      save state/android, android(state/app)
+  back state
+
+# why a target's check skips, <> when it is made: the target was not asked for or was skipped, or (for a check past the
+# build) the build raised, or (for a check of the run) the run was skipped
+task skip-for
+  take made, like compose-made
+  take past-build, like boolean
+  take past-run, like boolean
+  like text
+
+  fork test, is-equal(made/state, <unasked>)
+    hold
+      back <COMPOSE_MAKE_ONLY names the other target>
+  fork test, is-equal(made/state, <skipped>)
+    hold
+      back made/reason
+  fork test, and(past-build, is-equal(made/state, <failed>))
+    hold
+      back <the build raised>
+  fork test, and(past-run, is-equal(made/state, <unrun>))
+    hold
+      back made/reason
+  back <>
+
+test <compose: `term make --target compose` builds an app image>
+  save state, the-make()
+  save made, state/desktop
+  save why, skip-for(made, false, false)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, made/found
+
+test <compose: the image carries its own JVM>
+  save state, the-make()
+  save made, state/desktop
+  save why, skip-for(made, true, false)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, made/runtime
+
+test <compose: the packaged app runs, presses twice and reads it back from Compose>
+  save state, the-make()
+  save made, state/desktop
+  save why, skip-for(made, true, false)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, made/reads
+
+test <compose: it exits 0>
+  save state, the-make()
+  save made, state/desktop
+  save why, skip-for(made, true, false)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, made/exited
+
+test <compose-android: `term make --target compose-android` builds an APK>
+  save state, the-make()
+  save made, state/android
+  save why, skip-for(made, false, false)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, made/found
+
+test <compose-android: it installs on the emulator>
+  save state, the-make()
+  save made, state/android
+  save why, skip-for(made, true, true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, made/installed
+
+test <compose-android: the app presses twice and reads it back from Compose>
+  save state, the-make()
+  save made, state/android
+  save why, skip-for(made, true, true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, made/reads
+
+test <compose-android: it exits 0>
+  save state, the-make()
+  save made, state/android
+  save why, skip-for(made, true, true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, made/exited

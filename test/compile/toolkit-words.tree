@@ -1,0 +1,422 @@
+note <spacer, divider, image, scroll and a frame's bounds, read back from the views every toolkit host draws>
+
+# Ported from toolkit-words.ts by statement (item term-self-host-001-0697). The vocabulary words no toolkit host drew
+# until native-dom-0049 (note/project/term/view/11-vocabulary.md): spacer, divider, image and scroll, and frame's min and
+# max bounds, on AppKit (macOS), UIKit (the iPhone simulator), Android views (the emulator) and Compose on the desktop
+# JVM. One program mounts each on the window's root and says what it reads back FROM THE VIEWS: frames, the picture's
+# pixel size and accessibility label as the platform holds them, and a scroll's content extent. Built and run on each
+# leg by test/support/device/toolkit-run (item 0548), which skips a leg whose toolchain or device is not here.
+#
+# The image is a 4 by 3 red PNG as a `data:` URI, so no file has to reach a simulator or an emulator: the bytes the
+# original's `redPng(4, 3)` writes, held as text. WORDS_ONLY=macos (or ios, android, compose) runs one leg.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way (it compiles, holds no
+# WebView, builds, exits 0, installs) are one walked test, a case each, labeled by the check's name. Each `ok` of the
+# original's judge is one walked test over the legs, a leg a case of it, skipped where the leg was.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find exists, name file-exists
+  find read-bytes
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find index-of
+  find substring
+  find trim
+  find char-count
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/list
+  find push
+
+host items, 12
+
+# the original's program, its scroll items and PNG path filled in
+task words-program-of
+  take scroll-items, like text
+  take shot, like text
+  like text
+
+  back <load @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find show-window\n  find run-app\n  find exit-app\n  find frame-of\n  find child-at\n  find serialize\n  find snapshot\n  find say\n\n# each word on the root, in order: the spacer row, the divider column, the image, the scroll, the two bounds\nview words\n  take host, like view\n  view div\n    bind style, text \<display: flex; flex-direction: row; width: 300px\>\n    view button\n      text \<a\>\n    view div\n      bind style, text \<flex-grow: 1\>\n    view button\n      text \<bb\>\n  view div\n    bind style, text \<display: flex; flex-direction: column; width: 200px\>\n    view button\n      text \<a\>\n    view hr\n    view button\n      text \<bb\>\n  view img\n    bind src, text \<data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAEElEQVR4nGP4z8AARww4OQD1MQv1NXv7ggAAAABJRU5ErkJggg==\>\n    bind alt, text \<A red dot\>\n  view scroll\n    bind style, text \<height: 100px\>\n{scroll-items}  view div\n    bind style, text \<min-width: 250px\>\n    view button\n      text \<a\>\n  view button\n    bind style, text \<max-width: 60px\>\n    text \<a much longer label than sixty points\>\n\n# a node's frame and its children's, said as: the label, then x,y,w,h for the node and each of its first three children\ntask say-frames\n  take label, like text\n  take node, like view\n  save whole\n    call frame-of\n      read node\n  save first\n    call frame-of\n      call child-at\n        read node\n        code 0\n  save second\n    call frame-of\n      call child-at\n        read node\n        code 1\n  save third\n    call frame-of\n      call child-at\n        read node\n        code 2\n  call say\n    text \<frames \{\{label\}\} \{\{whole\}\} \{\{first\}\} \{\{second\}\} \{\{third\}\}\>\n\ntask main\n  save root\n    call open-root\n      text \<Term words\>\n      code 420\n      code 640\n  call words\n    read root\n  call after-launch\n    task check\n      call show-window\n      call say-frames\n        text \<spacer\>\n        call child-at\n          read root\n          code 0\n      call say-frames\n        text \<divider\>\n        call child-at\n          read root\n          code 1\n      save column\n        call serialize\n          call child-at\n            read root\n            code 1\n      call say\n        text \<tree divider \{\{column\}\}\>\n      save picture\n        call child-at\n          read root\n          code 2\n      save image-tree\n        call serialize\n          read picture\n      save image-frame\n        call frame-of\n          read picture\n      call say\n        text \<tree image \{\{image-tree\}\} \{\{image-frame\}\}\>\n      save scroller\n        call child-at\n          read root\n          code 3\n      save scroll-tree\n        call serialize\n          read scroller\n      save scroll-frame\n        call frame-of\n          read scroller\n      call say\n        text \<tree scroll \{\{scroll-frame\}\} \{\{scroll-tree\}\}\>\n      save least\n        call frame-of\n          call child-at\n            read root\n            code 4\n      save most\n        call frame-of\n          call child-at\n            read root\n            code 5\n      call say\n        text \<bounds \{\{least\}\} \{\{most\}\}\>\n      call snapshot\n        text \<{shot}\>\n      call exit-app\n        code 0\n  call run-app\n>
+
+# the scroll's items, a button each
+task scroll-items
+  like text
+
+  save out, <>
+  walk make(list, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+    take at, like number
+    save out, <{out}    view button\n      text \<{at}\>\n>
+  back out
+
+# the program for one leg, writing its PNG at `shot`
+task words-source
+  take leg, like text
+  take shot, like text
+  like text
+
+  back words-program-of(scroll-items(), shot)
+
+# where a leg's PNG goes, by leg, when the run names one
+task shots
+  like hash, like text, like text
+
+  save named, make hash
+  walk make(list, <macos>, <ios>, <android>, <compose>)
+    take leg, like text
+    save variable-name, <SNAPSHOT_WORDS>
+    fork test, is-unequal(leg, <macos>)
+      hold
+        save variable-name, <SNAPSHOT_WORDS_{to-upper(leg)}>
+    save value, variable(variable-name)
+    fork test, is-unequal(value, <>)
+      hold
+        save named/{leg}, value
+  back named
+
+task to-upper
+  take leg, like text
+  like text
+
+  fork test, is-equal(leg, <ios>)
+    hold
+      back <IOS>
+  fork test, is-equal(leg, <android>)
+    hold
+      back <ANDROID>
+  back <COMPOSE>
+
+form words-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host words-now, make(words-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# the app and the legs WORDS_ONLY allows, made once
+task the-app
+  like words-state
+
+  fork test, words-now/made
+    hold
+      back words-now
+  save words-now/made, true
+  save words-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-toolkit-words->)), bind(name, <Words>), bind(who, <toolkit-words>), bind(ios-identifier, <surf.term.toolkit-words-test>), bind(android-identifier, <surf.term.toolkitwords>), bind(shots, shots()), bind(compose, true))
+  save words-now/legs, legs-of(words-now/app, variable(<WORDS_ONLY>))
+  back words-now
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, words-source, prepare-no-device)
+  save words-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# within one of each other
+task near
+  take a, like float
+  take b, like float
+  like boolean
+
+  back and(is-maximum(a, add(b, 1.0)), is-minimum(a, subtract(b, 1.0)))
+
+# the text after `<marker> ` on the line holding it
+task after
+  take output, like text
+  take marker, like text
+  like text
+
+  save found, <>
+  save mark, <{marker} >
+  walk lines-of(output)
+    take line, like text
+    fork test, and(is-equal(found, <>), text-contains(line, mark))
+      hold
+        save from, add(index-of(line, mark), char-count(mark))
+        save found, trim(substring(line, from, char-count(line)))
+  back found
+
+# x,y,w,h as numbers
+task numbers-of
+  take part, like text
+  like list, like float
+
+  save out, make list
+  fork
+    mark unsafe
+    walk text-split(part, <,>)
+      take one, like text
+      out/push(parse-float(one))
+  halt take
+    take cause
+    back make list
+  back out
+
+# the frames said after `frames <label>`, each x,y,w,h, the node first and then its children
+task frames
+  take output, like text
+  take label, like text
+  like list, like list, like float
+
+  save out, make list
+  walk text-split(after(output, <frames {label}>), < >)
+    take part, like text
+    out/push(numbers-of(part))
+  back out
+
+# a frame is there: four numbers
+task whole
+  take frame, like list, like float
+  like boolean
+
+  back is-equal(frame/length, 4)
+
+# the judge's input for a leg that ran, else why the case skips
+task output-of
+  take leg, like text
+  like toolkit-leg
+
+  back leg-run(leg)
+
+test <the spacer takes the rest of a 300 row, so the last button ends at its edge>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  save seen, frames(ran/output, <spacer>)
+  want hold, is-equal(seen/length, 4)
+  want hold, and(whole(seen/0), and(whole(seen/1), and(whole(seen/2), whole(seen/3))))
+  save row, seen/0
+  save a, seen/1
+  save spacer, seen/2
+  save bb, seen/3
+  want hold, near(row/2, 300.0)
+  want hold, near(a/0, row/0)
+  want hold, near(add(bb/0, bb/2), add(row/0, 300.0))
+  want hold, near(spacer/2, subtract(subtract(300.0, a/2), bb/2))
+
+test <the divider is a hairline across the 200 column, between its neighbors>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  save seen, frames(ran/output, <divider>)
+  want hold, is-equal(seen/length, 4)
+  want hold, and(whole(seen/0), and(whole(seen/1), and(whole(seen/2), whole(seen/3))))
+  save top, seen/1
+  save line, seen/2
+  save bottom, seen/3
+  want hold, near(line/2, 200.0)
+  want hold, is-minimum(line/3, 0.0)
+  want hold, is-maximum(line/3, 2.0)
+  want hold, is-minimum(line/1, subtract(add(top/1, top/3), 1.0))
+  want hold, is-minimum(bottom/1, subtract(add(line/1, line/3), 1.0))
+
+test <the divider reads back as one>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, text-contains(after(ran/output, <tree divider>), <\<hr\>\</hr\>>)
+
+test <the image holds the 4x3 picture, decoded by the platform>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, text-contains(after(ran/output, <tree image>), <size="4x3">)
+
+test <the image's words are the platform's accessibility label>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, text-contains(after(ran/output, <tree image>), <alt="A red dot">)
+
+# the scroll's own frame, the first part said after `tree scroll`
+task scroll-frame
+  take output, like text
+  like list, like float
+
+  back numbers-of(text-split(after(output, <tree scroll>), < >)/0)
+
+# the content's height in `extent="w,h"`, -1 when it is not said
+task extent-height
+  take output, like text
+  like float
+
+  save scroll, after(output, <tree scroll>)
+  save mark, <extent=">
+  save at, index-of(scroll, mark)
+  fork test, is-below(at, 0)
+    hold
+      back -1.0
+  save rest, substring(scroll, add(at, char-count(mark)), char-count(scroll))
+  save pair, substring(rest, 0, index-of(rest, <">))
+  save parts, text-split(pair, <,>)
+  fork test, is-unequal(parts/length, 2)
+    hold
+      back -1.0
+  back parse-float(parts/1)
+
+test <the scroll's frame is its 100 height>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  save frame, scroll-frame(ran/output)
+  want hold, whole(frame)
+  want hold, near(frame/3, 100.0)
+
+test <its content is taller than its frame, so it scrolls>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-above(extent-height(ran/output), 100.0)
+
+test <its content holds all 12 items>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  save pieces, text-split(after(ran/output, <tree scroll>), <\<button\>>)
+  want hold, is-equal(subtract(pieces/length, 1), items)
+
+# the two bounds said after `bounds`, each x,y,w,h
+task bounds
+  take output, like text
+  like list, like list, like float
+
+  save out, make list
+  walk text-split(after(output, <bounds>), < >)
+    take part, like text
+    out/push(numbers-of(part))
+  back out
+
+test <min-width 250 holds a block at least 250 wide>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  save seen, bounds(ran/output)
+  want hold, is-minimum(seen/length, 1)
+  want hold, whole(seen/0)
+  want hold, is-minimum(seen/0/2, 249.0)
+
+test <max-width 60 holds a long button to 60>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  save seen, bounds(ran/output)
+  want hold, is-minimum(seen/length, 2)
+  want hold, whole(seen/1)
+  want hold, is-maximum(seen/1/2, 61.0)
+  want hold, is-above(seen/1/2, 0.0)
+
+test <a PNG of the screen was written>
+  take leg, like text
+    walk leg-names()
+  save ran, output-of(leg)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, file-exists(ran/shot)
+  save bytes, read-bytes(ran/shot)
+  want hold, and(is-equal(bytes/1, 80), and(is-equal(bytes/2, 78), is-equal(bytes/3, 71)))

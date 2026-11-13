@@ -1,0 +1,427 @@
+note <the font contract held to the web's on every target: each probe resolves to the face the web resolver picks>
+
+# Ported from font-registry.ts by statement (item term-self-host-001-0631), one test per `ok` in its order, on the shape
+# of swift-try (a toolchain leg reads its tool, then skips). deck/face/code/font/font.tree resolves which face a run is
+# set in, and mesh's resolve.ts is the resolver word.surf runs today. Both read belt's tables, so the two must agree on
+# every input the web can be given: every script belt sets, every alias, every family named outright, and the misses.
+# The web's answers are held as test/fixture/font-probes.json, since the web's resolver is written outside this
+# repository.
+#
+# One probe program resolves every probe and prints the families joined by `|`, beside the contract's three files
+# (font, record, table), which the compile is handed by name. It is compiled, built and run through test/support/running
+# on TypeScript, on Swift (swiftc) and on Kotlin (kotlinc, then java), each leg run once and held for its tests. A
+# missing toolchain skips its leg. The TypeScript leg also prints the three weights the contract decides. FONT_DIR reads
+# the three files from elsewhere, and FONT_LEGS (as `swift` or `typescript,kotlin`) picks the legs, all three by default.
+
+load ../support/compiling
+  find compiling-source
+  find compile-choice
+  find file-text
+  find project-path
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/json
+  find parse, name json-read
+
+load @term/base/list
+  find contains
+
+load @term/base/environment
+  find variable, name env-variable
+  find has-variable, name env-has
+
+load @term/base/pattern
+  find pattern
+  find find-matches
+  find pattern-match
+
+load @term/base/text
+  find split, name text-split
+  find trim
+
+# the face a run with nothing known is set in
+host house, <CrowMark>
+
+# where the contract's three files are read from
+task font-folder
+  like text
+
+  fork test, env-has(<FONT_DIR>)
+    hold
+      back project-path(<.>, env-variable(<FONT_DIR>))
+  back project-path(<.>, <deck/face/code/font>)
+
+host font-dir, font-folder()
+
+# the legs to run, all three unless FONT_LEGS names some
+task leg-names
+  like list, like text
+
+  fork test, env-has(<FONT_LEGS>)
+    hold
+      back text-split(env-variable(<FONT_LEGS>), <,>)
+  back make list(<typescript>, <swift>, <kotlin>)
+
+host legs, leg-names()
+
+# every input, with what the web answers for it, as the snapshot orders them: a script or an alias alone, a family alone,
+# then the 4 orderings (a family over a script, an unknown family over a script, and two misses)
+host probes, json-read(file-text(<test/fixture/font-probes.json>))
+
+# the contract's three files, answered by the path their loads ask for: a relative load may not leave its package, and
+# the temporary folder the probe is written to is in no package
+task contract-files
+  like list, like compiling-source
+
+  save files, make list
+  walk make list(<font>, <record>, <table>)
+    take name, like text
+    save path, project-path(font-dir, <{name}.tree>)
+    files/push(make(compiling-source, bind(file, <./{name}>), bind(text, file-text(path)), bind(answer, path)))
+  back files
+
+host choice, make(compile-choice, bind(files, contract-files()))
+
+# belt's decided weight for anatolian, read from face's table, which `pnpm term:parity` holds equal to belt's. <> when
+# the table holds none
+host weight-shape, make pattern, <<bind script, text [<]anatolian[>]\n(?:.*\n)??(?:.*\n)??(?:.*\n)??\s*bind weight, code (\d+)>>
+
+task anatolian-weight
+  like text
+
+  walk find-matches(weight-shape, file-text(project-path(font-dir, <table.tree>)))
+    take found, like pattern-match
+    back found/groups/0
+  back <>
+
+# ---- the probe program ----
+
+host program-head, <load ./font\n  find resolve-font\n  find resolve-weight\nload ./record\n  find font\nload @term/base/code/list\n  find list\n  find push\nload @term/base/code/text/util\n  find join\n\n# every probe's family, in order, as one line every backend can print\ntask report\n  like text\n  send back\n    call join\n      call families\n      text \<|\>\n\ntask families\n  like list\n    like text\n  save out\n    make list\n>
+
+host program-weights, <  send back, read out\n\ntask run-weights\n  like list\n    like number\n  save out\n    make list\n  call push\n    bind list, read out\n    bind item\n      call resolve-weight\n        text \<anatolian\>\n  call push\n    bind list, read out\n    bind item\n      call resolve-weight\n        text \<anatolian-hieroglyphs\>\n  call push\n    bind list, read out\n    bind item\n      call resolve-weight\n        text \<latin\>\n  send back, read out\n\n>
+
+# what a leg's `run` prints: the families, and on TypeScript the weights after a `#`
+host run-report, <task run\n  like text\n  send back\n    call report\n>
+host run-both, <task run\n  like text\n  save said\n    call report\n  save weights\n    call run-weights\n  send back, text \<\{said\}#\{weights/0\},\{weights/1\},\{weights/2\}\>\n>
+
+# a call per probe, each family pushed in order
+task probe-calls
+  like text
+
+  save out, <>
+  save at, 0
+  walk probes
+    take probe, like dynamic
+    save out, <{out}  save picked-{at}\n    call resolve-font\n      bind family, text \<{probe/family}\>\n      bind script, text \<{probe/script}\>\n  call push\n    bind list, read out\n    bind item, read picked-{at}/family\n>
+    save at, add(at, 1)
+  back out
+
+host calls, probe-calls()
+
+task program-for
+  take leg, like text
+  like text
+
+  fork test, is-equal(leg, <typescript>)
+    hold
+      back <{program-head}{calls}{program-weights}{run-both}>
+  back <{program-head}{calls}{program-weights}{run-report}>
+
+# ---- each leg, run once ----
+
+form leg-run
+  mark shared
+  link done, like boolean
+  link state, like text
+  link stage, like text
+  link reason, like text
+  link output, like text
+
+host typescript-run, make(leg-run, bind(done, false), bind(state, <>), bind(stage, <>), bind(reason, <>), bind(output, <>))
+host swift-run, make(leg-run, bind(done, false), bind(state, <>), bind(stage, <>), bind(reason, <>), bind(output, <>))
+host kotlin-run, make(leg-run, bind(done, false), bind(state, <>), bind(stage, <>), bind(reason, <>), bind(output, <>))
+
+task held-of
+  take leg, like text
+  like leg-run
+
+  fork test, is-equal(leg, <swift>)
+    hold
+      back swift-run
+  fork test, is-equal(leg, <kotlin>)
+    hold
+      back kotlin-run
+  back typescript-run
+
+# a leg compiled, built and run, once: skipped when FONT_LEGS leaves it out or its toolchain is missing
+task leg-of
+  take leg, like text
+  like leg-run
+  mark async
+
+  save held, held-of(leg)
+  fork test, held/done
+    hold
+      back held
+  fork test, not(contains(legs, leg))
+    hold
+      save held/state, <skipped>
+      save held/reason, <FONT_LEGS leaves {leg} out>
+      save held/done, true
+      back held
+  host folder, temp-folder(<term-font-registry->)
+  host ran, run-text(program-for(leg), leg, folder, <probe>, choice)
+  save held/state, ran/state
+  save held/stage, ran/stage
+  save held/reason, ran/reason
+  save held/output, trim(ran/output)
+  save held/done, true
+  back held
+
+# why the contract did not compile, <> when it did
+task compile-refusal
+  take run, like leg-run
+  like text
+
+  fork test, and(is-equal(run/state, <failed>), is-equal(run/stage, <compile>))
+    hold
+      back run/reason
+  back <>
+
+# why the leg did not build, <> when it built (a run that failed after it built still built)
+task build-failure
+  take run, like leg-run
+  like text
+
+  fork test, or(is-equal(run/state, <ran>), is-equal(run/stage, <run>))
+    hold
+      back <>
+  back <{run/state} at {run/stage}: {run/reason}>
+
+# why the leg did not run, <> when it ran
+task run-failure
+  take run, like leg-run
+  like text
+
+  fork test, is-equal(run/state, <ran>)
+    hold
+      back <>
+  back <{run/state} at {run/stage}: {run/reason}>
+
+# ---- judging a leg's answer ----
+
+# the families a leg printed, in probe order
+task families-of
+  take run, like leg-run
+  like list, like text
+
+  save parts, text-split(run/output, <#>)
+  back text-split(parts/0, <|>)
+
+# the weights the TypeScript leg printed, <> when it printed none
+task weights-of
+  take run, like leg-run
+  like text
+
+  save parts, text-split(run/output, <#>)
+  fork test, is-below(parts/length, 2)
+    hold
+      back <>
+  back parts/1
+
+# the web's answer for a script alone, from the snapshot
+task web-script
+  take script, like text
+  like text
+
+  walk probes
+    take probe, like dynamic
+    fork test, and(is-equal(<{probe/family}>, <>), is-equal(<{probe/script}>, script))
+      hold
+        back <{probe/web}>
+  back <>
+
+# every probe the leg answered other than the web, the first six of them, <> when every answer is the web's
+task wrong-of
+  take run, like leg-run
+  like text
+
+  save families, families-of(run)
+  save wrong, 0
+  save shown, <>
+  save at, 0
+  walk probes
+    take probe, like dynamic
+    save said, <>
+    fork test, is-below(at, families/length)
+      hold
+        save said, families/{at}
+    fork test, is-unequal(said, <{probe/web}>)
+      hold
+        save wrong, add(wrong, 1)
+        fork test, is-below(wrong, 7)
+          hold
+            save shown, <{shown} | {probe/family} / {probe/script}: term {said}, web {probe/web}>
+    save at, add(at, 1)
+  fork test, and(is-equal(families/length, probes/length), is-equal(wrong, 0))
+    hold
+      back <>
+  back <{families/length} answers, {wrong} of {probes/length} wrong{shown}>
+
+# the family a leg answered for the probe `places` from the end
+task answer-from-end
+  take run, like leg-run
+  take places, like number
+  like text
+
+  save families, families-of(run)
+  save at, subtract(families/length, places)
+  fork test, or(is-below(at, 0), is-unequal(families/length, probes/length))
+    hold
+      back <>
+  back families/{at}
+
+# ---- TypeScript ----
+
+test <typescript: the contract and its table compile>
+  save run, leg-of(<typescript>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(compile-refusal(run), <>)
+
+test <typescript: it runs>
+  save run, leg-of(<typescript>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(run-failure(run), <>)
+
+test <typescript: every probe resolves to the web's face>
+  save run, leg-of(<typescript>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(wrong-of(run), <>)
+
+test <typescript: a family named outright wins over the script>
+  save run, leg-of(<typescript>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(answer-from-end(run, 4), <Noto Sans Mono>)
+
+test <typescript: an unknown family falls to the script>
+  save run, leg-of(<typescript>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(answer-from-end(run, 3), web-script(<tibetan>))
+
+test <typescript: nothing known falls to the house face>
+  save run, leg-of(<typescript>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(<{answer-from-end(run, 2)} {answer-from-end(run, 1)}>, <{house} {house}>)
+
+test <typescript: a decided weight is read, under an alias too, and an undecided one is 0>
+  save run, leg-of(<typescript>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  save weight, anatolian-weight()
+  want hold, is-equal(weights-of(run), <{weight},{weight},0>)
+
+# ---- Swift ----
+
+test <swift: the contract and its table compile>
+  save run, leg-of(<swift>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(compile-refusal(run), <>)
+
+test <swift: builds>
+  save run, leg-of(<swift>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(build-failure(run), <>)
+
+test <swift: every probe resolves to the web's face>
+  save run, leg-of(<swift>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(wrong-of(run), <>)
+
+test <swift: a family named outright wins over the script>
+  save run, leg-of(<swift>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(answer-from-end(run, 4), <Noto Sans Mono>)
+
+test <swift: an unknown family falls to the script>
+  save run, leg-of(<swift>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(answer-from-end(run, 3), web-script(<tibetan>))
+
+test <swift: nothing known falls to the house face>
+  save run, leg-of(<swift>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(<{answer-from-end(run, 2)} {answer-from-end(run, 1)}>, <{house} {house}>)
+
+# ---- Kotlin ----
+
+test <kotlin: the contract and its table compile>
+  save run, leg-of(<kotlin>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(compile-refusal(run), <>)
+
+test <kotlin: builds>
+  save run, leg-of(<kotlin>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(build-failure(run), <>)
+
+test <kotlin: every probe resolves to the web's face>
+  save run, leg-of(<kotlin>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(wrong-of(run), <>)
+
+test <kotlin: a family named outright wins over the script>
+  save run, leg-of(<kotlin>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(answer-from-end(run, 4), <Noto Sans Mono>)
+
+test <kotlin: an unknown family falls to the script>
+  save run, leg-of(<kotlin>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(answer-from-end(run, 3), web-script(<tibetan>))
+
+test <kotlin: nothing known falls to the house face>
+  save run, leg-of(<kotlin>)
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(<{answer-from-end(run, 2)} {answer-from-end(run, 1)}>, <{house} {house}>)

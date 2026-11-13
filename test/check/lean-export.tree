@@ -1,0 +1,442 @@
+note <the Lean 4 export of the stdlib's claims: every claim proven and exported, re-checked by the judge, and by Lean when it is there>
+
+# Ported from lean-export.ts by statement (item 0652), one test per `ok` in its order. The Lean 4 export of the stdlib's
+# claims (check/lean-export.ts, note/project/term/proof/lean-export/spec.md). The exporter is the subject with lean-run,
+# and the judge re-checks what it kept (decision 106).
+#
+# What it holds, without Lean:
+#   - every claim of deck/base/code/proof/ is proven by the kernel and exported, none refused, none on an axiom
+#   - each exported term is the term the kernel checked: Term's own judge re-checks it against the exported type (one
+#     walked test, a case per exported term)
+#   - a planted wrong proof (symmetry proved by `refl x`, claiming `equal a y x`) is refused by Term's judge, and the
+#     planted Lean file differs from the export in that one body only
+# And with Lean on the PATH (or at TERM_LEAN), it runs `lean` on both files: the export must check, the plant must not.
+# Without Lean each of those tests skips, never passes. The original's `--write <dir>` writes the two files and asserts
+# nothing, so it is not ported.
+
+load ../support/compiling
+  find file-text
+
+load ../support/judging
+  find make-record
+  find read-field
+  find read-at
+  find truth
+  find empty-list
+  find var
+  find const-term
+  find lam
+  find app
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find starts-with
+  find split, name text-split
+
+load @term/base/text/util
+  find join, name text-join
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+
+dock load
+  load <@term/make/code/check/lean-export>, name lean-export
+  load <@term/make/code/check/lean-run>, name lean-run
+  load <@term/make/code/check/judge>, name judge-kernel
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# host value: the record with these fields put over it, a new record
+bind with-fields
+  take record, like dynamic
+  take fields, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$record, ...$fields \})>
+
+# host value: a Map's entries, each a [key, value] pair
+bind map-entries
+  take map, like dynamic
+  like list, like dynamic
+  case node
+    text <Array.from($map.entries())>
+
+host base, <deck/base/code/proof>
+
+host files, make list(<equal.tree>, <equal/refl.tree>, <equal/symmetry.tree>, <equal/transitivity.tree>, <equal/congruence.tree>, <equal/substitution.tree>, <absurd.tree>)
+
+host claims, make list(<refl>, <symmetry>, <transitivity>, <congruence>, <substitution>, <absurd>)
+
+task proof-source
+  take seed, like number
+  like dynamic
+
+  save sources, make list
+  walk files
+    take file, like text
+    sources/push(make-record(make(list, <file>, <proof/{file}>, <text>, file-text(<{base}/{file}>))))
+  back lean-export/joinSources(sources)
+
+host out, lean-export/exportLean(proof-source(0))
+host lean-text, out/lean
+
+# whether every claim of proof/ is in `names`
+task holds-every
+  take names, like dynamic
+  like boolean
+
+  walk claims
+    take claim, like text
+    fork test, not(names/includes(claim))
+      hold
+        back false
+  back true
+
+# whether an export holds an entry by this name, marked a claim, resting on no axiom when `axiom-free`
+task exported-as-claim
+  take result, like dynamic
+  take name, like text
+  take axiom-free, like boolean
+  like boolean
+
+  walk result/exported
+    take one, like dynamic
+    fork test, and(is-equal(one/name, name), truth(one/claim))
+      hold
+        fork test, not(axiom-free)
+          hold
+            back true
+        back is-equal(one/axioms/length, 0)
+  back false
+
+host axiom-line, make pattern, <<(^|\n)axiom >>
+host loose-proof, make pattern, <<\bsorry\b|\bpartial\b>>
+host equal-inductive, make pattern, <<inductive TermExport\.«equal» \(\w+ : Type\)>>
+host absurd-by-name, make pattern, <<def TermExport\.«absurd»[^\n]*\n[^\n]*TermExport\.«absurd»>>
+host binder, make pattern, <<\((\w+) : >>
+
+# QUANTITIES FORGOTTEN, as Lean reads a term: every binder `many`. The kept term is the zonked one, and a contextual
+# metavariable `?m a` (elaborating-terms.tree `contextual-type-meta`) used an erased generic `a` at 0 before it was
+# solved and at `many` after, so symmetry and congruence fail the usage check as quoted though the kernel accepted them
+# as elaborated (logged in the project, 2026-10-20). Types are what Lean re-checks, so types are what this compares
+task forget-usage
+  take term, like dynamic
+  like dynamic
+
+  host tag, read-field(term, <tag>)
+  fork test, or(is-equal(tag, <pi>), is-equal(tag, <sigma>))
+    hold
+      back with-fields(term, make-record(make(list, <mult>, <many>, <domain>, forget-usage(term/domain), <codomain>, forget-usage(term/codomain))))
+  fork test, is-equal(tag, <lam>)
+    hold
+      back with-fields(term, make-record(make(list, <body>, forget-usage(term/body))))
+  fork test, is-equal(tag, <app>)
+    hold
+      back with-fields(term, make-record(make(list, <fun>, forget-usage(term/fun), <arg>, forget-usage(term/arg))))
+  fork test, is-equal(tag, <ann>)
+    hold
+      back with-fields(term, make-record(make(list, <term>, forget-usage(term/term), <type>, forget-usage(term/type))))
+  back term
+
+# the terms are the kernel's: Term's own judge checks each against its type again, in the signature elaboration used
+task signature-context
+  take seed, like number
+  like dynamic
+
+  save entries, make list
+  walk out/signature
+    take entry, like dynamic
+    entries/push(make-record(make(list, <name>, entry/name, <type>, forget-usage(entry/type))))
+  back judge-kernel/contextWithSignature(entries)
+
+host context, signature-context(0)
+
+# the names of the exported terms, in the export's order
+task term-names
+  like list, like text
+
+  save names, make list
+  walk map-entries(out/terms)
+    take entry, like dynamic
+    names/push(read-at(entry, 0))
+  back names
+
+# whether the judge accepts `value` at `type`, both with quantities forgotten
+task judged
+  take value, like dynamic
+  take type, like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    judge-kernel/check(context, forget-usage(value), judge-kernel/evaluate(empty-list(), forget-usage(type)))
+    back true
+  halt take
+    take cause
+    back false
+
+# THE PLANTED TWIN: symmetry "proved" by `refl a x`, which has type `equal a x x`, not `equal a y x`. Under the four
+# binders a, x, y, proof: a is #3, x is #2
+host wrong, lam(lam(lam(lam(app(app(const-term(<equal__refl>), var(3)), var(2))))))
+
+# the first line of a Lean text that starts with `start`
+task line-starting
+  take lean, like text
+  take start, like text
+  like text
+
+  walk text-split(lean, <\n>)
+    take line, like text
+    fork test, starts-with(line, start)
+      hold
+        back line
+  back <>
+
+# the names of a definition's binders, in order, from its header line
+task binder-names
+  take header, like text
+  like list, like text
+
+  save names, make list
+  walk find-matches(binder, header)
+    take match
+    names/push(match/groups/0)
+  back names
+
+host symmetry-binders, binder-names(line-starting(lean-text, <def TermExport.«symmetry»>))
+host planted, lean-export/plantLean(lean-text, <symmetry>, <(@TermExport.«equal».«refl» {symmetry-binders/0} {symmetry-binders/1})>)
+
+# the lines of the export the plant changed, by their index
+task changed-lines
+  like list, like number
+
+  save mine, text-split(lean-text, <\n>)
+  save theirs, text-split(planted, <\n>)
+  save changed, make list
+  save at, 0
+  walk mine
+    take line, like text
+    fork test, not(is-equal(read-at(theirs, at), line))
+      hold
+        changed/push(at)
+    save at, add(at, 1)
+  back changed
+
+# A CLAIM ABOUT A TASK (term-proof-0004): its type calls `flip`, which the kernel checked and keeps as a transparent
+# definition, so the export writes `flip` as a `def` before the claim and nothing as an axiom
+host about-task, lean-export/exportLean(make-record(make(list, <file>, <flip.tree>, <text>, <form equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nform flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  sift g\n    case yes\n      back make no\n    case no\n      back make yes\n\nrule flip-twice\n  take g, like flag\n  like equal flag\n    head\n      flip(flip(g))\n    head\n      read g\n\ntask flip-twice\n  take g\n  sift g\n    case yes\n      back\n        make equal/refl\n          bind c, make yes\n    case no\n      back\n        make equal/refl\n          bind c, make no\n>)))
+host about-lean, about-task/lean
+
+# A CLAIM THROUGH A WALK (proof-by-default-0010): `two-last` walks a list it builds, the kernel computes the walk by its
+# list eliminator, and the export writes the list as an inductive and the eliminator as its `Array.rec`, so Lean
+# computes the same walk and nothing is an axiom
+host through-walk, lean-export/exportLean(make-record(make(list, <file>, <walk.tree>, <text>, <form equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nform flag\n  case yes\n  case no\n\ntask two-last\n  take a, like flag\n  take b, like flag\n  like flag\n  save xs\n    make list\n      read a\n      read b\n  save out, read a\n  walk list, read xs\n    hook next\n      take x\n      save out, read x\n  send back out\n\nrule last-of-two\n  take a, like flag\n  take b, like flag\n  like equal flag\n    head\n      two-last(a, b)\n    head\n      read b\n\ntask last-of-two\n  take a\n  take b\n  back\n    make equal/refl\n      bind c, read b\n\ntask last-or\n  take xs, like list, like flag\n  take d, like flag\n  like flag\n  save out, read d\n  walk list, read xs\n    hook next\n      take x\n      save out, read x\n  send back out\n\nrule last-is-itself\n  take xs, like list, like flag\n  take d, like flag\n  like equal flag\n    head\n      last-or(xs, d)\n    head\n      last-or(xs, d)\n\ntask last-is-itself\n  take xs\n  take d\n  back\n    make equal/refl\n      bind c\n        call last-or\n          read xs\n          read d\n>)))
+host walk-lean, through-walk/lean
+
+test <the kernel reports no error on the stdlib proofs>
+  want hold, is-equal(out/kernel/diagnostics/length, 0)
+
+test <the claims read are the six of proof/>
+  want hold, and(holds-every(out/claims), is-equal(out/claims/length, claims/length))
+
+test <every claim is proven by the kernel>
+  want hold, holds-every(out/kernel/proven)
+
+test <every claim is exported>
+  save all, true
+  walk claims
+    take claim, like text
+    fork test, not(exported-as-claim(out, claim, false))
+      hold
+        save all, false
+  want hold, all
+
+test <nothing is refused>
+  want hold, is-equal(out/refused/length, 0)
+
+test <no claim rests on an axiom>
+  save all, is-equal(out/axioms/length, 0)
+  walk out/exported
+    take one, like dynamic
+    fork test, is-above(one/axioms/length, 0)
+      hold
+        save all, false
+  want hold, all
+
+test <every form is a Lean inductive>
+  want hold, and(matches(equal-inductive, lean-text), text-contains(lean-text, <inductive TermExport.«never» : Type where>))
+
+test <the eliminator is defined by casesOn>
+  want hold, text-contains(lean-text, <@TermExport.«equal».casesOn>)
+
+test <absurd recurses through the recursor, not by name>
+  want hold, and(text-contains(lean-text, <@TermExport.«never».rec>), not(matches(absurd-by-name, lean-text)))
+
+test <no sorry, no partial, no axiom in the file>
+  want hold, and(not(matches(loose-proof, lean-text)), not(matches(axiom-line, lean-text)))
+
+test <a definition comes after everything it names>
+  want hold, and(is-below(index-of(lean-text, <def TermExport.«chain»>), index-of(lean-text, <def TermExport.«transitivity»>)), is-below(index-of(lean-text, <inductive TermExport.«equal»>), index-of(lean-text, <def TermExport.«refl»>)))
+
+test <the judge re-checks the exported term>
+  take name, like text
+    walk term-names()
+  host kept, out/terms/get(name)
+  want hold, judged(kept/value, kept/type)
+
+test <the judge refuses the planted proof>
+  host symmetry, out/terms/get(<symmetry>)
+  want hold, not(judged(wrong, symmetry/type))
+
+test <the plant changes exactly one line, the body of symmetry>
+  want hold, and(is-equal(changed-lines()/length, 1), is-unequal(planted, lean-text))
+
+test <a claim whose type calls a task is exported, the task a def before it, no axiom>
+  host flip-at, index-of(about-lean, <def TermExport.«flip»>)
+  want hold, exported-as-claim(about-task, <flip-twice>, true)
+  want hold, and(is-minimum(flip-at, 0), is-below(flip-at, index-of(about-lean, <def TermExport.«flip-twice»>)))
+  want hold, is-equal(about-task/axioms/length, 0)
+  want hold, text-contains(about-lean, <(TermExport.«flip» (TermExport.«flip» g_1)) g_1)>)
+
+test <a claim through a walk is exported, the list an inductive and its eliminator Array.rec, no axiom>
+  want hold, exported-as-claim(through-walk, <last-of-two>, true)
+  want hold, exported-as-claim(through-walk, <last-is-itself>, true)
+  want hold, is-equal(through-walk/axioms/length, 0)
+  want hold, text-contains(walk-lean, <inductive TermExport.«Array»>)
+  want hold, text-contains(walk-lean, <@TermExport.«Array».rec>)
+
+# ---- LEAN ITSELF, at TERM_LEAN or else on the PATH, found as `term hold --lean` finds it ----
+
+host lean, lean-run/findLean()
+
+form lean-runs
+  mark shared
+  link done, like boolean
+  link good, like dynamic
+  link bad, like dynamic
+  link walked, like dynamic
+  link wrong-walk, like dynamic
+
+host lean-now, make(lean-runs, bind(done, false), bind(good, void), bind(bad, void), bind(walked, void), bind(wrong-walk, void))
+
+# over a list it does not know, the walk stays a fold: answering `d` for it must be refused by Lean's own reduction
+host last-binders, binder-names(line-starting(walk-lean, <def TermExport.«last-is-itself»>))
+host wrong-walk, lean-export/plantLean(walk-lean, <last-is-itself>, <(@TermExport.«equal».«refl» TermExport.«flag» {last-binders/1})>)
+
+# Lean run on a file of the text, written under the run folder
+task lean-on
+  take folder, like text
+  take name, like text
+  take text, like text
+  like dynamic
+
+  save file, dock-path/join(folder, name)
+  dock-file/writeFileSync(file, text)
+  back run(lean, make list(file))
+
+# the four Lean runs, once
+task the-lean
+  like lean-runs
+
+  fork test, lean-now/done
+    hold
+      back lean-now
+  save lean-now/done, true
+  save folder, dock-path/resolve(<tmp/lean-export/run>)
+  dock-file/mkdirSync(folder, make-record(make(list, <recursive>, true)))
+  save lean-now/good, lean-on(folder, <stdlib.lean>, lean-text)
+  save lean-now/bad, lean-on(folder, <planted.lean>, planted)
+  save lean-now/walked, lean-on(folder, <walk.lean>, walk-lean)
+  save lean-now/wrong-walk, lean-on(folder, <walk-planted.lean>, wrong-walk)
+  back lean-now
+
+host lean-warning, make pattern, <<:\d+:\d+: warning:>>
+host planted-error, make pattern, <<planted\.lean:(\d+):\d+: error>>
+host sorried, make pattern, <<'TermExport\.(\S+)' depends on axioms: \[sorryAx\]>>
+
+test <lean checks the export>
+  fork test, is-absent(lean)
+    hold
+      skip <lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)>
+  want hold, is-equal(the-lean()/good/code, 0)
+
+test <lean reports every claim free of axioms>
+  fork test, is-absent(lean)
+    hold
+      skip <lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)>
+  host said, the-lean()/good/output
+  save all, true
+  walk claims
+    take claim, like text
+    fork test, not(text-contains(said, <'TermExport.{claim}' does not depend on any axioms>))
+      hold
+        save all, false
+  want hold, all
+
+# Lean's own warnings only, `<file>:<line>:<col>: warning:`. The elan proxy says `warning: failed to query latest
+# release` on stderr when it cannot reach the network, and that is not Lean's verdict on the file (traps.md)
+test <lean prints no warning on the export>
+  fork test, is-absent(lean)
+    hold
+      skip <lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)>
+  host good, the-lean()/good
+  save warned, 0
+  walk text-split(<{good/output}{good/error}>, <\n>)
+    take line, like text
+    fork test, matches(lean-warning, line)
+      hold
+        save warned, add(warned, 1)
+  want hold, is-equal(warned, 0)
+
+test <lean refuses the planted proof>
+  fork test, is-absent(lean)
+    hold
+      skip <lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)>
+  want hold, is-unequal(the-lean()/bad/code, 0)
+
+# refused for the plant and nothing else: one error, on the planted body line, and symmetry alone rests on sorry
+test <lean refuses the planted body alone>
+  fork test, is-absent(lean)
+    hold
+      skip <lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)>
+  host bad, the-lean()/bad
+  host planted-line, add(changed-lines()/0, 1)
+  save error-lines, make list
+  walk find-matches(planted-error, <{bad/output}{bad/error}>)
+    take match
+    error-lines/push(match/groups/0)
+  save sorry-names, make list
+  walk find-matches(sorried, bad/output)
+    take match
+    sorry-names/push(match/groups/0)
+  want hold, is-equal(error-lines/length, 1)
+  want hold, is-equal(error-lines/0, <{planted-line}>)
+  want hold, is-equal(text-join(sorry-names, <,>), <symmetry>)
+
+# the walk: Lean checks the claim by computing the walk through Array.rec, and refuses the claim that it gives `a`
+test <lean checks both claims through a walk, free of axioms>
+  fork test, is-absent(lean)
+    hold
+      skip <lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)>
+  host walked, the-lean()/walked
+  want hold, is-equal(walked/code, 0)
+  want hold, text-contains(walked/output, <'TermExport.«last-of-two»' does not depend on any axioms>)
+  want hold, text-contains(walked/output, <'TermExport.«last-is-itself»' does not depend on any axioms>)
+
+test <lean refuses the claim that a walk over an unknown list gives its default>
+  fork test, is-absent(lean)
+    hold
+      skip <lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)>
+  want hold, is-unequal(the-lean()/wrong-walk/code, 0)

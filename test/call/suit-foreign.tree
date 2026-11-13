@@ -1,0 +1,142 @@
+note <`suit` wears a mask from one linked package for a form another linked package declares, built and tested by the CLI>
+
+# Ported from suit-foreign.ts by statement (item term-self-host-001-0605), one test per `ok` in its order. Gap 110 of
+# note/project/term/guides/research/gaps/plan.md (term-compiler-0004): the form `tile` is in @fixture/shape, the mask
+# `sizer` in @fixture/sizer, and the app suits one to the other and calls the method through a bounded generic, as a
+# real project with two `link/` packages built by the `term` under test (@term/test/self). Held: the one-unit-at-a-time
+# build, the merged build, the test on node and on every native toolchain present (a walked test, a backend without
+# its toolchain skipping its case), and a suit whose worn task does not fit the foreign mask is refused. The child
+# collects only the temporary project's own test folder, never this one (T-0705).
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host shape-text, <form tile\n  link side, like number\n\ntask make-tile\n  take side, like number\n  like tile\n  send back\n    make tile\n      bind side, read side\n>
+
+host sizer-text, <mask sizer\n  task size-of\n    take self\n    like number\n>
+
+host fits, <      take self\n      like number\n      send back\n        call multiply\n          read self/side\n          read self/side>
+
+host misfits, <      take self\n      like text\n      send back, text \<wide\>>
+
+host test-text, <load @fixture/shape\n  find tile\n  find make-tile\n\nload @fixture/sizer\n  find sizer\n\nload @/base\n  find describe\n\ntest a-suit-for-a-foreign-form-dispatches\n  save b, call make-tile(code 4)\n  want hold\n    call is-equal\n      call describe(read b)\n      code 16\n>
+
+host app-manifest, <deck @fixture/app\n  mark \<0.0.2\>\n  link @fixture/shape, mark \<0.0.x\>\n  link @fixture/sizer, mark \<0.0.x\>\n>
+
+task app-text
+  take worn, like text
+  like text
+
+  back <load @fixture/shape\n  find tile\n  find make-tile\n\nload @fixture/sizer\n  find sizer\n\nsuit tile\n  wear sizer\n    task size-of\n{worn}\n\ntask describe\n  head t\n    need sizer\n  take x, like t\n  like number\n  send back\n    call size-of\n      read x\n>
+
+task project
+  take worn, like text
+  like text
+
+  save root, temp-folder(<term-suit-foreign->)
+  make-folder(<{root}/link/@fixture/shape/code>)
+  make-folder(<{root}/link/@fixture/sizer/code>)
+  make-folder(<{root}/code>)
+  make-folder(<{root}/test>)
+  write-file(<{root}/deck.tree>, app-manifest)
+  write-file(<{root}/link/@fixture/shape/deck.tree>, <deck @fixture/shape\n  mark \<0.0.2\>\n>)
+  write-file(<{root}/link/@fixture/shape/code/base.tree>, shape-text)
+  write-file(<{root}/link/@fixture/sizer/deck.tree>, <deck @fixture/sizer\n  mark \<0.0.2\>\n>)
+  write-file(<{root}/link/@fixture/sizer/code/base.tree>, sizer-text)
+  write-file(<{root}/code/base.tree>, app-text(worn))
+  write-file(<{root}/test/base.tree>, test-text)
+  back root
+
+form suit-state
+  mark shared
+  link made, like boolean
+  link root, like text
+
+host suit-now, make(suit-state, bind(made, false), bind(root, <>))
+
+# the project whose worn task fits, made once: every test of the original's first block reads it
+task fitting
+  like text
+
+  fork test, suit-now/made
+    hold
+      back suit-now/root
+  save suit-now/root, project(fits)
+  save suit-now/made, true
+  back suit-now/root
+
+form suit-run
+  link code, like number
+  link out, like text
+
+task term-in
+  take root, like text
+  take arguments, like list, like text
+  like suit-run
+  mark async
+
+  save environment
+    make hash
+      save <NO_COLOR>, <1>
+  save ran, run-self(arguments, root, 600000, environment)
+  back make(suit-run, bind(code, ran/code), bind(out, <{ran/output}{ran/error}>))
+
+task tool-of
+  take env, like text
+  like text
+
+  fork test, is-equal(env, <rust>)
+    hold
+      back <cargo>
+  fork test, is-equal(env, <swift>)
+    hold
+      back <swiftc>
+  back <kotlinc>
+
+test <a suit for a form of another package builds one unit at a time>
+  save separate, term-in(fitting(), make list(<make>))
+  want hold, is-equal(separate/code, 0)
+
+test <and merged>
+  save merged, term-in(fitting(), make list(<make>, <--merged>))
+  want hold, is-equal(merged/code, 0)
+
+test <and its method answers through a bounded generic on node>
+  save node, term-in(fitting(), make list(<test>))
+  want hold, is-equal(node/code, 0)
+  want hold, matches(make(pattern, <<1 passed>>), node/out)
+
+test <and on a native backend>
+  take env, like text
+    walk make list(<rust>, <swift>, <kotlin>)
+  fork test, is-equal(find-tool(tool-of(env)), <>)
+    hold
+      skip <its toolchain is not here>
+  save native, term-in(fitting(), make list(<test>, <--env>, env))
+  want hold, is-equal(native/code, 0)
+  want hold, matches(make(pattern, <<1 passed>>), native/out)
+
+# the foreign mask's signature reaches the app's suit: a worn task answering text where the mask says number
+test <a suit whose task does not fit the foreign mask is refused>
+  save built, term-in(project(misfits), make list(<make>))
+  want hold, is-unequal(built/code, 0)
+  want hold, matches(make(pattern, <<answers number, and this one\s+answers text>>), built/out)

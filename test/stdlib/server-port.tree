@@ -1,0 +1,69 @@
+note <network/server started on port 0 is bound to a free port the OS chose, and its `port` says which, on every backend (item term-self-host-001-1326)>
+
+# A program that must not collide with another on a fixed port asks for port 0 (suite ports 0701 and 0702 do). The
+# running server's `port` is then the one the OS bound, never the 0 that was asked: the stdlib's own fetch to it is
+# answered, and a path the handler does not serve is still a 404.
+
+load @term/base/network/server
+  find start
+  find stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-ok
+  find make-status
+
+load @term/base/network/http
+  find fetch
+
+# /text answers a text body, anything else a 404
+task route
+  take req, like request
+  like response
+
+  fork test, is-equal(req/path, </text>)
+    hold
+      back make-ok(<plain>)
+  back make-status(404)
+
+# what each fetch answered, asked once while one server runs on port 0
+form asked
+  mark shared
+  link done, like boolean
+  link port, like number
+  link text, like text
+  link missing, like text
+
+host now, make(asked, bind(done, false), bind(port, 0), bind(text, <>), bind(missing, <>))
+
+# the server up on port 0, two paths fetched at the port it says, and the server stopped. Once, for every test
+task ask
+  mark async
+  like void
+
+  fork test, now/done
+    hold
+      back
+  save now/done, true
+  save running, start(0, <127.0.0.1>, route)
+  save now/port, running/port
+  save text, fetch(<http://127.0.0.1:{running/port}/text>)
+  save now/text, <{text/status} {text/body}>
+  save missing, fetch(<http://127.0.0.1:{running/port}/nope>)
+  save now/missing, <{missing/status}>
+  stop(running)
+
+test <a server started on port 0 says the port the OS bound>
+  ask()
+  want hold, is-above(now/port, 0)
+
+test <the stdlib fetch to that port is answered>
+  ask()
+  want hold, is-equal(now/text, <200 plain>)
+
+test <a path the handler does not serve is still a 404>
+  ask()
+  want hold, is-equal(now/missing, <404>)

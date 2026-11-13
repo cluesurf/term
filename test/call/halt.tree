@@ -1,0 +1,230 @@
+note <term halt stops a project's own term boot through the boot, and term halt -p the program on a port>
+
+# Ported from halt.ts by statement (item term-self-host-001-0651), one test per `ok` in its order. Until 2026-10-04 bare
+# `halt` stopped every boot on the machine, and it stopped the PROGRAM, so the boot that started it stayed, watching,
+# with nothing to serve. Two real servers, one in each of two projects, then a browser development server.
+#
+# Each boot is the `term` under test (self-command, decision 111), kept running beside the test (test/support/children):
+# `sh` says its own pid, then becomes the CLI with both streams on one, as the original read them together. A boot's
+# end is its stream's end, waited for under a limit (`ends-within`). Whether one still serves is `kill -0` on its pid
+# after the original's second, since a wait past its limit stops the child. The servers are booted once, by the first
+# test that asks, and every child still running is stopped by the last test of each part.
+
+load @term/test/self
+  find self-command
+  find run-self
+
+load ../support/children
+  find start-child
+  find held-child
+  find wait-for-line
+  find next-line
+  find wait-child
+  find stop-children
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/clock
+  find sleep
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+
+host route-text, <load @term/site/dom/dom\n  find view\n\nload @term/site/view/native/\{platform\}/host\n  find host\n\nview home\n  take host, like view\n  view h1, \<Shelf\>\n\nhook /\n  view home\n>
+
+# a boot kept running: the child, its pid, its project, and whether `✓ start` came
+form boot-run
+  mark shared
+  link held, like held-child
+  link pid, like text
+  link dir, like text
+  link started, like boolean
+
+form halt-state
+  mark shared
+  link made, like boolean
+  link a, like dynamic
+  link b, like dynamic
+  link halted, like run-result
+  link a-ended, like boolean
+  link a-log, like text
+  link b-alive, like boolean
+  link by-port, like run-result
+  link b-ended, like boolean
+  link fed-made, like boolean
+  link fed-halted, like run-result
+  link fed-ended, like boolean
+
+task no-run
+  like run-result
+
+  back make(run-result, bind(code, 0), bind(output, <>), bind(error, <>), bind(signal, 0))
+
+host halt-now, make(halt-state, bind(made, false), bind(a, 0), bind(b, 0), bind(halted, no-run()), bind(a-ended, false), bind(a-log, <>), bind(b-alive, false), bind(by-port, no-run()), bind(b-ended, false), bind(fed-made, false), bind(fed-halted, no-run()), bind(fed-ended, false))
+
+# the `term` under test with `arguments`, as a child in `dir` whose first line is its pid, both streams on one
+task launch
+  mark async
+  take arguments, like list, like text
+  take dir, like text
+  take environment, like hash, like text, like text
+  like boot-run
+
+  save argument-list, make(list, <sh>, <-c>, <echo $$; exec "$@" 2\>&1>, <sh>)
+  walk self-command()
+    take part, like text
+    argument-list/push(part)
+  walk arguments
+    take part, like text
+    argument-list/push(part)
+  save held, start-child(argument-list, bind(directory, dir), bind(environment, environment))
+  save pid, next-line(held, 10000)
+  save start, wait-for-line(held, <✓ start>, 60000)
+  back make(boot-run, bind(held, held), bind(pid, pid), bind(dir, dir), bind(started, is-unequal(start, <>)))
+
+# a project of its own, `deck.tree` and `code/<file>`
+task project
+  take name, like text
+  take deck, like text
+  take file, like text
+  take text, like text
+  like text
+
+  save dir, temp-folder(<term-halt-{name}->)
+  make-folder(<{dir}/code>)
+  write-file(<{dir}/deck.tree>, deck)
+  write-file(<{dir}/code/{file}>, text)
+  back dir
+
+# production: no watchers, so the boot ends when its program does
+task boot
+  mark async
+  take name, like text
+  take port, like number
+  like boot-run
+
+  save dir, project(name, <deck {name}\n  mark \<0.0.1\>\n>, <route.tree>, route-text)
+  save environment
+    make hash
+      save <NO_COLOR>, <1>
+      save <NODE_ENV>, <production>
+  back launch(make(list, <boot>, <code/route.tree>, <--port>, <{port}>), dir, environment)
+
+# whether the child's output ends within `limit` milliseconds
+task ends-within
+  mark async
+  take run, like boot-run
+  take limit, like number
+  like boolean
+
+  save line, wait-for-line(run/held, <no line holds this>, limit)
+  back not(run/held/late)
+
+# everything the child printed, once it has ended
+task log-of
+  mark async
+  take run, like boot-run
+  like text
+
+  save rest, wait-child(run/held)
+  back <{run/held/heard/join(<\n>)}\n{rest/output}>
+
+# whether process `pid` is still there
+task alive
+  mark async
+  take pid, like text
+  like boolean
+
+  save probe, run(<kill>, make(list, <-0>, pid))
+  back is-equal(probe/code, 0)
+
+task halted
+  mark async
+  like halt-state
+
+  fork test, halt-now/made
+    hold
+      back halt-now
+  save halt-now/made, true
+  save halt-now/a, boot(<halt-a>, 4981)
+  save halt-now/b, boot(<halt-b>, 4982)
+  save environment
+    make hash
+      save <NO_COLOR>, <1>
+  save halt-now/halted, run-self(make(list, <halt>), bind(directory, halt-now/a/dir), bind(environment, environment))
+  save halt-now/a-ended, ends-within(halt-now/a, 15000)
+  save halt-now/a-log, log-of(halt-now/a)
+  sleep(1000)
+  save halt-now/b-alive, alive(halt-now/b/pid)
+  save halt-now/by-port, run-self(make(list, <halt>, <-p>, <4982>), bind(directory, temp-folder(<term-halt-elsewhere->)), bind(environment, environment))
+  save halt-now/b-ended, ends-within(halt-now/b, 15000)
+  stop-children()
+  back halt-now
+
+test <both projects are serving>
+  save state, halted()
+  want hold, and(state/a/started, state/b/started)
+
+test <`term halt` in a project names it as this project's boot, and stops one>
+  save ran, halted()/halted
+  save said, <{ran/output}{ran/error}>
+  want hold, and(is-equal(ran/code, 0), and(text-contains(said, <this project's term boot>), text-contains(said, <1 instance>)))
+
+test <the boot itself ends, not only its program>
+  want hold, halted()/a-ended
+
+test <and closes with its own item>
+  want hold, text-contains(halted()/a-log, <Stopped>)
+
+test <the other project's boot is still serving>
+  want hold, halted()/b-alive
+
+test <`term halt -p` stops the program on that port>
+  save ran, halted()/by-port
+  want hold, and(is-equal(ran/code, 0), text-contains(<{ran/output}{ran/error}>, <:4982>))
+
+test <and the boot that started it ends too>
+  want hold, halted()/b-ended
+
+# ---- bare `halt` stops the project's browser development server too ----
+# it runs no `run.mjs`, so only `-p` stopped one (guides: commands/halt, 2026-10-05). It was `term feed`, and is
+# `term boot --env browser` since the same day, which halt finds by its command line (call/code/halt.ts `services`)
+
+task fed
+  mark async
+  like halt-state
+
+  fork test, halt-now/fed-made
+    hold
+      back halt-now
+  save halt-now/fed-made, true
+  save dir, project(<halt-feed>, <deck halt-feed\n  mark \<0.0.1\>\n  boot ./code/boot\n>, <boot.tree>, <load @term/base/console\n  find log\n\ntask boot\n  mark async\n  log \<fed\>\n>)
+  save environment
+    make hash
+      save <NO_COLOR>, <1>
+  save feed, launch(make(list, <boot>, <--env>, <browser>, <-p>, <4983>), dir, environment)
+  save halt-now/fed-halted, run-self(make(list, <halt>), bind(directory, dir), bind(environment, environment))
+  save halt-now/fed-ended, ends-within(feed, 15000)
+  stop-children()
+  back halt-now
+
+test <bare `term halt` in a project stops its browser server, naming it>
+  save ran, fed()/fed-halted
+  want hold, and(is-equal(ran/code, 0), text-contains(<{ran/output}{ran/error}>, <stop term boot>))
+
+test <and the server ends>
+  want hold, fed()/fed-ended

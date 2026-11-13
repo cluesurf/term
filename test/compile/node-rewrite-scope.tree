@@ -1,0 +1,495 @@
+note <compile/node-rewrite's writing walks: rename-local and its scope guard, apply-aliases, free-alias-targets, and a copy's place-row>
+
+# Ported from node-rewrite-scope.ts by statement (item term-self-host-001-1311, decision 159). compile/node-rewrite is the
+# subject (decision 106), docked as node-walk-fields docks node-reach. Each case is held to the answer written here alone: the
+# original also held it to its retired reference copy of the mint bridge, a leg that read zero at items 0302 and 0353 and
+# that resolves nowhere today (decision 159). Every node is a record made from its parts, and the port's answer is compared
+# with the written one as the original's sorted JSON did: field order aside, a field holding no value the same as none.
+
+load ../support/judging
+  find make-record
+  find set-field
+  find empty-record
+  find read-at
+
+load ../support/walking
+  find kind-of
+  find fields-of
+  find field-of
+  find json-of
+  find is-written
+
+dock load
+  load <@term/make/code/compile/node-rewrite>, name node-rewrite
+
+# host value: a deep copy, as the original's structuredClone
+bind clone
+  take value, like dynamic
+  like dynamic
+  case node
+    text <structuredClone($value)>
+
+# host reflect: the very same record, not an equal one
+bind is-same
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <($left === $right)>
+
+# host reflect: the record holds the key, whatever its value
+bind has-key
+  take record, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <(typeof $record === "object" && $record !== null && $key in $record)>
+
+bind new-table
+  like dynamic
+  case node
+    text <new Map()>
+
+bind table-set
+  take table, like dynamic
+  take key, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <void $table.set($key, $value)>
+
+# ---- comparing ----
+
+# every written field of `left` but `skip` is alike in `right`
+task fields-within
+  take left, like dynamic
+  take right, like dynamic
+  take skip, like text
+  like boolean
+
+  walk fields-of(left)
+    take field, like text
+    fork test, and(is-unequal(field, skip), is-written(field-of(left, field)))
+      hold
+        fork test, not(is-alike(field-of(left, field), field-of(right, field)))
+          hold
+            back false
+  back true
+
+# two values alike as their sorted JSON: a list item by item, a record field by field in any order
+task is-alike
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+
+  back is-alike-but(left, right, <>)
+
+# the same, the top record's field `skip` left out
+task is-alike-but
+  take left, like dynamic
+  take right, like dynamic
+  take skip, like text
+  like boolean
+
+  host kind, kind-of(left)
+  fork test, is-unequal(kind, kind-of(right))
+    hold
+      back false
+  fork test, is-equal(kind, <list>)
+    hold
+      fork test, is-unequal(left/length, right/length)
+        hold
+          back false
+      save at, 0
+      walk left
+        take one, like dynamic
+        fork test, not(is-alike(one, read-at(right, at)))
+          hold
+            back false
+        save at, add(at, 1)
+      back true
+  fork test, is-equal(kind, <object>)
+    hold
+      back and(fields-within(left, right, skip), fields-within(right, left, skip))
+  back is-equal(json-of(left), json-of(right))
+
+# ---- nodes ----
+
+# a list or a truth handed on as a value of any kind, so it stands among a record's parts
+task as-value
+  take value, like dynamic
+  like dynamic
+
+  back value
+
+task no-items
+  like dynamic
+
+  back make list
+
+task place-at
+  take line, like dynamic
+  take column, like dynamic
+  take offset, like dynamic
+  like dynamic
+
+  back make-record(make(list, <line>, line, <column>, column, <offset>, offset))
+
+host span, make-record(make(list, <file>, </t.tree>, <start>, place-at(1, 1, 0), <end>, place-at(1, 2, 1)))
+
+task variable-of
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <variable>, <name>, name, <span>, span))
+
+task integer-of
+  take value, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <integer>, <value>, value, <span>, span))
+
+task call-of
+  take callee, like dynamic
+  take args, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <call>, <callee>, variable-of(callee), <args>, args, <span>, span))
+
+task said
+  take expr, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <expression>, <expr>, expr, <span>, span))
+
+task let-of
+  take name, like dynamic
+  take init, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <let>, <name>, name, <init>, init, <mutable>, as-value(false), <span>, span))
+
+task param-of
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <name>, name))
+
+task closure-of
+  take params, like dynamic
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <closure>, <params>, params, <body>, body, <span>, span))
+
+task task-of
+  take name, like dynamic
+  take params, like dynamic
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <function>, <name>, name, <params>, params, <body>, body, <generics>, no-items(), <span>, span))
+
+task each-of
+  take item, like dynamic
+  take iterable, like dynamic
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <for-each>, <item>, item, <iterable>, iterable, <body>, body, <span>, span))
+
+task named-type
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <kind>, <named>, <name>, name))
+
+task named-with
+  take name, like dynamic
+  take value-args, like dynamic
+  like dynamic
+
+  back make-record(make(list, <kind>, <named>, <name>, name, <valueArgs>, value-args))
+
+# a match whose first arm, `some`, binds x
+task arms
+  take subject, like dynamic
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+
+  host some, make-record(make(list, <label>, <some>, <body>, first, <binds>, as-value(make(list, <x>))))
+  host none, make-record(make(list, <label>, <none>, <body>, second))
+  back make-record(make(list, <form>, <match>, <subject>, subject, <cases>, as-value(make(list, some, none)), <span>, span))
+
+task guarded
+  take body, like dynamic
+  take name, like dynamic
+  take handler, like dynamic
+  like dynamic
+
+  host caught, make-record(make(list, <name>, name, <body>, handler, <span>, span))
+  back make-record(make(list, <form>, <guard>, <body>, body, <catch>, caught, <span>, span))
+
+# ---- the rules ----
+
+task renamed
+  take block, like dynamic
+  take before-name, like text
+  take after-name, like text
+  like dynamic
+
+  back node-rewrite/rewriteProgram(clone(block), make-record(make(list, <form>, <rename-local>, <from>, before-name, <to>, after-name)))
+
+# a table from a list of names, an alias then its target, again and again
+task alias-table
+  take pairs, like list, like text
+  like dynamic
+
+  host out, new-table()
+  save key, <>
+  save keyed, false
+  walk pairs
+    take one, like text
+    fork test, keyed
+      hold
+        table-set(out, key, one)
+        save keyed, false
+      miss
+        save key, one
+        save keyed, true
+  back out
+
+# the targets of those pairs, each true
+task target-table
+  take pairs, like list, like text
+  like dynamic
+
+  host out, new-table()
+  save keyed, false
+  walk pairs
+    take one, like text
+    fork test, keyed
+      hold
+        table-set(out, one, true)
+        save keyed, false
+      miss
+        save keyed, true
+  back out
+
+task aliased
+  take block, like dynamic
+  take pairs, like list, like text
+  like dynamic
+
+  back node-rewrite/rewriteProgram(clone(block), make-record(make(list, <form>, <apply-aliases>, <aliases>, alias-table(pairs))))
+
+task fresh-count
+  like dynamic
+
+  back set-field(empty-record(), <count>, 0)
+
+task freed
+  take block, like dynamic
+  take pairs, like list, like text
+  take fresh, like dynamic
+  like dynamic
+
+  back node-rewrite/rewriteProgram(clone(block), make-record(make(list, <form>, <free-alias-targets>, <aliases>, alias-table(pairs), <targets>, target-table(pairs), <fresh>, fresh)))
+
+task count-of
+  take fresh, like dynamic
+  like text
+
+  back json-of(field-of(fresh, <count>))
+
+# ---- rename-local ----
+
+test <rename-local: a free read and write>
+  host given, make(list, let-of(<y>, variable-of(<x>)), said(call-of(<f>, make(list, variable-of(<x>), variable-of(<y>)))))
+  host wanted, make(list, let-of(<y>, variable-of(<x__1>)), said(call-of(<f>, make(list, variable-of(<x__1>), variable-of(<y>)))))
+  want hold, is-alike(renamed(given, <x>, <x__1>), wanted)
+
+test <rename-local: a closure whose parameter rebinds the name is left whole>
+  host given, make(list, said(closure-of(make(list, param-of(<x>)), make(list, said(variable-of(<x>))))), said(variable-of(<x>)))
+  host wanted, make(list, said(closure-of(make(list, param-of(<x>)), make(list, said(variable-of(<x>))))), said(variable-of(<z>)))
+  want hold, is-alike(renamed(given, <x>, <z>), wanted)
+
+test <rename-local: a closure over other names is entered>
+  host given, make(list, said(closure-of(make(list, param-of(<a>)), make(list, said(variable-of(<x>))))))
+  host wanted, make(list, said(closure-of(make(list, param-of(<a>)), make(list, said(variable-of(<z>))))))
+  want hold, is-alike(renamed(given, <x>, <z>), wanted)
+
+test <rename-local: a task whose parameter rebinds the name is left whole>
+  host given, make(list, task-of(<t>, make(list, param-of(<x>)), make(list, said(variable-of(<x>)))), said(variable-of(<x>)))
+  host wanted, make(list, task-of(<t>, make(list, param-of(<x>)), make(list, said(variable-of(<x>)))), said(variable-of(<z>)))
+  want hold, is-alike(renamed(given, <x>, <z>), wanted)
+
+test <rename-local: a walk binding the name as its item is left whole, iterable too>
+  host given, make(list, each-of(<x>, variable-of(<x>), make(list, said(variable-of(<x>)))), said(variable-of(<x>)))
+  host wanted, make(list, each-of(<x>, variable-of(<x>), make(list, said(variable-of(<x>)))), said(variable-of(<z>)))
+  want hold, is-alike(renamed(given, <x>, <z>), wanted)
+
+test <rename-local: a walk binding the name as its index is left whole>
+  host given, make(list, set-field(each-of(<i>, variable-of(<x>), make(list, said(variable-of(<x>)))), <index>, <x>))
+  host wanted, make(list, set-field(each-of(<i>, variable-of(<x>), make(list, said(variable-of(<x>)))), <index>, <x>))
+  want hold, is-alike(renamed(given, <x>, <z>), wanted)
+
+test <rename-local: a walk over other names is entered>
+  host given, make(list, each-of(<i>, variable-of(<x>), make(list, said(variable-of(<x>)))))
+  host wanted, make(list, each-of(<i>, variable-of(<z>), make(list, said(variable-of(<z>)))))
+  want hold, is-alike(renamed(given, <x>, <z>), wanted)
+
+test <rename-local: a match arm binding the name is left whole, the other arm and the subject renamed>
+  host given, make(list, arms(variable-of(<x>), make(list, said(variable-of(<x>))), make(list, said(variable-of(<x>)))))
+  host wanted, make(list, arms(variable-of(<z>), make(list, said(variable-of(<x>))), make(list, said(variable-of(<z>)))))
+  want hold, is-alike(renamed(given, <x>, <z>), wanted)
+
+test <rename-local: a handler catching the name is left whole, the guarded body renamed>
+  host given, make(list, guarded(make(list, said(variable-of(<x>))), <x>, make(list, said(variable-of(<x>)))))
+  host wanted, make(list, guarded(make(list, said(variable-of(<z>))), <x>, make(list, said(variable-of(<x>)))))
+  want hold, is-alike(renamed(given, <x>, <z>), wanted)
+
+test <rename-local: a handler catching another name is entered>
+  host given, make(list, guarded(make(list, said(variable-of(<x>))), <e>, make(list, said(variable-of(<x>)))))
+  host wanted, make(list, guarded(make(list, said(variable-of(<z>))), <e>, make(list, said(variable-of(<z>)))))
+  want hold, is-alike(renamed(given, <x>, <z>), wanted)
+
+test <rename-local: a value index of a closure result is renamed, an expression type never>
+  host given-closure, closure-of(no-items(), no-items())
+  set-field(given-closure, <result>, named-with(<vec>, make(list, variable-of(<x>))))
+  set-field(given-closure, <type>, named-with(<vec>, make(list, variable-of(<x>))))
+  host wanted-closure, closure-of(no-items(), no-items())
+  set-field(wanted-closure, <result>, named-with(<vec>, make(list, variable-of(<z>))))
+  set-field(wanted-closure, <type>, named-with(<vec>, make(list, variable-of(<x>))))
+  want hold, is-alike(renamed(make(list, said(given-closure)), <x>, <z>), make(list, said(wanted-closure)))
+
+# ---- apply-aliases ----
+
+test <apply-aliases: a variable, a construction and a named type>
+  host field, make-record(make(list, <name>, <k>, <value>, variable-of(<get>)))
+  host given, make(list, set-field(let-of(<a>, make-record(make(list, <form>, <record>, <name>, <el>, <fields>, as-value(make(list, field)), <span>, span))), <type>, named-type(<el>)))
+  host wanted-field, make-record(make(list, <name>, <k>, <value>, set-field(variable-of(<list-get>), <alias>, <get>)))
+  host wanted-record, make-record(make(list, <form>, <record>, <name>, <chart-element>, <alias>, <el>, <fields>, as-value(make(list, wanted-field)), <span>, span))
+  host wanted, make(list, set-field(let-of(<a>, wanted-record), <type>, set-field(named-type(<chart-element>), <alias>, <el>)))
+  want hold, is-alike(aliased(given, make(list, <get>, <list-get>, <el>, <chart-element>)), wanted)
+
+test <apply-aliases: an expression type and a match arm type>
+  host given-case, make-record(make(list, <label>, <el>, <body>, no-items(), <type>, named-type(<el>)))
+  host given, make(list, make-record(make(list, <form>, <match>, <subject>, set-field(variable-of(<s>), <type>, named-type(<el>)), <cases>, as-value(make(list, given-case)), <span>, span)))
+  host wanted-case, make-record(make(list, <label>, <el>, <body>, no-items(), <type>, set-field(named-type(<chart-element>), <alias>, <el>)))
+  host wanted, make(list, make-record(make(list, <form>, <match>, <subject>, set-field(variable-of(<s>), <type>, set-field(named-type(<chart-element>), <alias>, <el>)), <cases>, as-value(make(list, wanted-case)), <span>, span)))
+  want hold, is-alike(aliased(given, make(list, <el>, <chart-element>)), wanted)
+
+# a lean call whose label is an alias notes the target, one whose label is no alias does not, and a plain call does not
+task lean-call
+  take args, like dynamic
+  take names, like dynamic
+  like dynamic
+
+  back set-field(set-field(call-of(<f>, args), <lean>, true), <names>, names)
+
+task plain-call
+  take args, like dynamic
+  take names, like dynamic
+  like dynamic
+
+  back set-field(call-of(<f>, args), <names>, names)
+
+test <apply-aliases: a lean call whose label is an alias notes it, a plain call does not>
+  host given, make(list, said(lean-call(make(list, integer-of(1), integer-of(2)), make(list, <>, <get>))), said(lean-call(make(list, integer-of(1)), make(list, <k>))), said(plain-call(make(list, integer-of(1)), make(list, <get>))))
+  host noted, set-field(lean-call(make(list, integer-of(1), integer-of(2)), make(list, <>, <get>)), <leanAliases>, make(list, <>, <list-get>))
+  host wanted, make(list, said(noted), said(lean-call(make(list, integer-of(1)), make(list, <k>))), said(plain-call(make(list, integer-of(1)), make(list, <get>))))
+  want hold, is-alike(aliased(given, make(list, <get>, <list-get>)), wanted)
+
+# ---- free-alias-targets: the program and the fresh names made, numbered in one count ----
+
+test <free-alias-targets: a let named like a target whose rest reads an alias, then a second one>
+  host given, make(list, let-of(<root>, call-of(<project-root>, no-items())), said(variable-of(<root>)), let-of(<root>, integer-of(1)), said(call-of(<project-root>, no-items())))
+  host wanted, make(list, let-of(<root__1>, call-of(<project-root>, no-items())), said(variable-of(<root__1>)), let-of(<root__2>, integer-of(1)), said(call-of(<project-root>, no-items())))
+  host fresh, fresh-count()
+  want hold, is-alike(freed(given, make(list, <project-root>, <root>), fresh), wanted)
+  want hold, is-equal(count-of(fresh), <2>)
+
+test <free-alias-targets: a let named like a target that reads no alias is left>
+  host given, make(list, let-of(<root>, integer-of(1)), said(variable-of(<root>)))
+  host wanted, make(list, let-of(<root>, integer-of(1)), said(variable-of(<root>)))
+  host fresh, fresh-count()
+  want hold, is-alike(freed(given, make(list, <project-root>, <root>), fresh), wanted)
+  want hold, is-equal(count-of(fresh), <0>)
+
+test <free-alias-targets: a closure parameter and a walk item, numbered in the order met>
+  host given, make(list, said(closure-of(make(list, param-of(<root>)), make(list, said(call-of(<project-root>, no-items())), said(variable-of(<root>))))), each-of(<root>, variable-of(<xs>), make(list, said(call-of(<project-root>, no-items())))))
+  host wanted, make(list, said(closure-of(make(list, param-of(<root__1>)), make(list, said(call-of(<project-root>, no-items())), said(variable-of(<root__1>))))), each-of(<root__2>, variable-of(<xs>), make(list, said(call-of(<project-root>, no-items())))))
+  host fresh, fresh-count()
+  want hold, is-alike(freed(given, make(list, <project-root>, <root>), fresh), wanted)
+  want hold, is-equal(count-of(fresh), <2>)
+
+test <free-alias-targets: a nested let inside a renamed scope is numbered before the next statement>
+  host given, make(list, let-of(<root>, closure-of(no-items(), make(list, let-of(<root>, call-of(<project-root>, no-items())), said(variable-of(<root>))))), said(call-of(<project-root>, no-items())), said(variable-of(<root>)))
+  host wanted, make(list, let-of(<root__1>, closure-of(no-items(), make(list, let-of(<root__2>, call-of(<project-root>, no-items())), said(variable-of(<root__2>))))), said(call-of(<project-root>, no-items())), said(variable-of(<root__1>)))
+  host fresh, fresh-count()
+  want hold, is-alike(freed(given, make(list, <project-root>, <root>), fresh), wanted)
+  want hold, is-equal(count-of(fresh), <2>)
+
+# ---- copy-statement and copy-expression (item 0309, decision 011 rule 6): a copy stands at no place yet ----
+
+# the row a node answers, 0 when it carries none
+task row-of
+  take node, like dynamic
+  like text
+
+  host row, field-of(node, <placeRow>)
+  fork test, is-written(row)
+    hold
+      back json-of(row)
+  back <0>
+
+task stamped
+  take node, like dynamic
+  take row, like dynamic
+  like dynamic
+
+  back set-field(node, <placeRow>, row)
+
+host statement-given, stamped(said(stamped(call-of(<f>, make(list, variable-of(<a>))), 4)), 3)
+host statement-before, clone(statement-given)
+host statement-made, node-rewrite/copyStatement(statement-given)
+
+test <copy-statement: the copy answers place-row 0>
+  want hold, is-equal(row-of(statement-made), <0>)
+
+test <copy-statement: the copy equals the input but for its row>
+  want hold, is-alike-but(statement-made, statement-given, <placeRow>)
+
+test <copy-statement: the input keeps its row and is not written>
+  want hold, is-equal(row-of(statement-given), <3>)
+  want hold, is-alike(statement-given, statement-before)
+
+test <copy-statement: the copy shares nothing with the input>
+  want hold, not(is-same(statement-made, statement-given))
+  want hold, not(is-same(field-of(statement-made, <expr>), field-of(statement-given, <expr>)))
+
+host expression-given, stamped(call-of(<g>, make(list, stamped(variable-of(<b>), 8))), 7)
+host expression-before, clone(expression-given)
+host expression-made, node-rewrite/copyExpression(expression-given)
+
+test <copy-expression: the copy answers place-row 0>
+  want hold, is-equal(row-of(expression-made), <0>)
+
+test <copy-expression: the copy equals the input but for its row>
+  want hold, is-alike-but(expression-made, expression-given, <placeRow>)
+
+test <copy-expression: the input keeps its row and is not written>
+  want hold, is-equal(row-of(expression-given), <7>)
+  want hold, is-alike(expression-given, expression-before)
+
+test <copy-expression: the copy shares nothing with the input>
+  want hold, not(is-same(expression-made, expression-given))
+  want hold, not(is-same(field-of(expression-made, <args>), field-of(expression-given, <args>)))
+
+test <copy-expression: a node never stamped copies with no placeRow key>
+  want hold, not(has-key(node-rewrite/copyExpression(variable-of(<c>)), <placeRow>))
+
+test <copy-statement: a node never stamped copies with no placeRow key>
+  want hold, not(has-key(node-rewrite/copyStatement(said(variable-of(<d>))), <placeRow>))

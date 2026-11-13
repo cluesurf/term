@@ -1,0 +1,139 @@
+note <every term verb, fed bad input outside a project, answers in words, never a stack trace or a raw error>
+
+# Ported from bad-input.ts by statement (items term-self-host-001-0602 and 1198), its one `ok` a walked test over the verbs, a case
+# for each. The CLI is the surface most people touch, and a crash is the worst thing it can do: it says nothing about
+# what went wrong or what to do, and it leaks the machine's own paths. Five verbs (`host`, `load`, `note`, `save`, `toss`)
+# all reached the manifest through one function, and each printed `ENOENT: no such file or directory, open
+# '.../deck.tree'` when run outside a project. That is now a sentence, and this holds it so for every verb.
+#
+# A crash is a `at <fn> (<file>:<line>:<col>)` frame, or a raw runtime error class (TypeError, ReferenceError) or a bare
+# errno (ENOENT, EACCES) reaching the output. A verb is free to fail, and most SHOULD fail on this input, in words. The
+# verbs are read from the console's own routes (deck/call/code/line/base.tree through the harness's front end, its routes
+# by the hook parsing port, the subject, decision 106), so a new one is covered the day it is added. The routes are its
+# `dock` statements, which parse and mill alone give: the whole compile the .ts ran took 217 s of its 255 (item 1198), and
+# the front end reads the same 38 verbs in under 3 s. That the console compiles is build-all/call's and cli drift's to
+# hold. Each runs as the `term`
+# under test (@term/test/self) in an empty temporary folder. A long-lived verb only has to not crash within 8 seconds: a
+# run its limit ended said what it was going to say already.
+
+load ../support/compiling
+  find front-end
+  find compile-choice
+  find file-text
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find command-timeout
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find push
+  find contains
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find split, name text-split
+
+dock load
+  load <@term/call/host/port/code/work/hook/parsing>, name bad-parsing
+
+# verbs that start something long-lived or interactive rather than answering and exiting
+host long, make list(<walk>, <work>, <feed>, <wash>, <time>, <test>, <boot>, <zone>, <cast>, <hunt>)
+
+form bad-state
+  mark shared
+  link empty, like text
+
+host bad-now, make(bad-state, bind(empty, <>))
+
+# what `said-by` answers when the `term` under test never ran: a case that cannot pass
+host no-run, <the term under test did not run>
+
+# an empty directory: no deck.tree, no .tree files, nothing. The ordinary way to be in the wrong place
+task empty-folder
+  like text
+
+  fork test, is-equal(bad-now/empty, <>)
+    hold
+      save bad-now/empty, temp-folder(<term-bad->)
+  back bad-now/empty
+
+# the verbs of the console's routes, each once, sorted
+task verbs
+  like list, like text
+
+  save root, term-root()
+  save file, <{root}/deck/call/code/line/base.tree>
+  # a parse or a mill that fails raises its messages
+  save out, front-end(file-text(file), make(compile-choice, bind(file, file)))
+  save found, make list
+  walk bad-parsing/program-of(bad-parsing/command-routes(out/program))/commands
+    take route, like dynamic
+    save path, <{route/path}>
+    fork test, not(contains(found, path))
+      hold
+        found/push(path)
+  back sort(found, from-texts)
+
+# all a verb wrote, given bad input in the empty folder
+task said-by
+  take verb, like text
+  like text
+  mark async
+
+  save limit, 30000
+  fork test, contains(long, verb)
+    hold
+      save limit, 8000
+  fork
+    mark unsafe
+    save ran, run-self(make(list, verb, <--no-such-flag>, <no-such-path>), empty-folder(), limit)
+    back <{ran/output}\n{ran/error}>
+  halt take
+    take problem
+    sift problem
+      case command-timeout
+        back <{output}\n{error}>
+      case command-absence
+        back no-run
+      case absence
+        back no-run
+      case failure
+        back no-run
+
+# whether a text holds a stack frame, a raw runtime error class, or a bare errno
+task crashed
+  take out, like text
+  like boolean
+
+  save frame, make(pattern, <<^\s+at .+\(.*:\d+:\d+\)>>)
+  save raw, make(pattern, <<\b(TypeError|ReferenceError|SyntaxError|RangeError|ENOENT|EACCES|EISDIR|ENOTDIR)\b>>)
+  fork test, matches(raw, out)
+    hold
+      back true
+  walk text-split(out, <\n>)
+    take line, like text
+    fork test, matches(frame, line)
+      hold
+        back true
+  back false
+
+test <`term` answers bad input in words>
+  take verb, like text
+    walk verbs()
+  save said, said-by(verb)
+  want hold, and(is-unequal(said, no-run), not(crashed(said)))

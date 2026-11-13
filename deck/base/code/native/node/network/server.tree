@@ -1,6 +1,7 @@
 # node HTTP/HTTPS server: forwards to the linked server runtime shim (node http / https). The shim reads each request,
-# hands a normalized request to the Term handler, and writes the handler's response. The opaque handle a Term `server`
-# holds is the node `http.Server`. Internal: reached only through the public network/server API.
+# hands a normalized request to the Term handler, and writes the handler's response (its `data` bytes when it has any,
+# else its text `body`). The opaque handle a Term `server` holds is the node `http.Server`, and its `port` the one the
+# server is bound to. Internal: reached only through the public network/server API.
 
 dock type
   # the node http.Server / https.Server the shim returns
@@ -51,19 +52,31 @@ task server-start
   take certificate, like text
   take key, like text
   like server
+  save raw
+    call runtime/start
+      read port
+      read host
+      read handler
+      read secure
+      read certificate
+      read key
+      wait true
   send back
     make server
-      bind dock
-        call runtime/start
-          read port
-          read host
-          read handler
-          read secure
-          read certificate
-          read key
-          wait true
+      bind dock, read raw
       bind host, read host
-      bind port, read port
+      bind port
+        call bound-port
+          read raw
+
+# the port a started server is bound to: the one the OS chose when `start` asked for port 0 (item
+# term-self-host-001-1326)
+task bound-port
+  take raw, like server-dock
+  like size
+  send back
+    call runtime/port
+      read raw
 
 task server-stop
   mark async

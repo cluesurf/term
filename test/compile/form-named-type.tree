@@ -1,0 +1,55 @@
+note <a program's own form type is the type of a field it types like type, and like type alone is still any>
+
+# Ported from form-named-type.ts by statement (item term-self-host-001-0571), one test per `ok` in its order. A program
+# that declares `form type` gets that form wherever it writes `like type`, as a local `form text` gets its own `text`.
+# The TypeScript emitter read `like type` as the universe of types and spelled it `any` even then, so a field typed by
+# the form was `any`. Without such a form, `like type` is still the universe and still `any`. The original's one
+# "builds" line stood in for the rest when a compile refused: here each test wants the compile first.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host declared, <form type\n  mark tag, name kind\n  case number\n  case named\n    link name, like text\n    link args\n      like list, like type\n      need false\n\nform slot\n  link held, like type\n  link maybe-held\n    like type\n    need false\n>
+
+host universe, <task identity\n  take t, like type\n  like type\n\n  back t\n>
+
+host case-field, make pattern, <<args\?: Type\[\]>>
+host held-field, make pattern, <<held: Type\b>>
+host maybe-held-field, make pattern, <<maybeHeld\?: Type\b>>
+host any-field, make pattern, <<: any\b>>
+host identity-any, make pattern, <<identity\(t: any\): any>>
+
+# the program compiled as a lean library on node's stdlib, under `file`
+task built
+  take source, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, file), bind(lean, true), bind(stdlib, <node>), bind(library, true)))
+
+test <a case field typed by it is the form>
+  host out, built(declared, <own.tree>)
+  want hold, out/ok
+  want hold, matches(case-field, out/emitted)
+
+test <a record field typed by it is the form>
+  host out, built(declared, <own.tree>)
+  want hold, out/ok
+  want hold, matches(held-field, out/emitted)
+  want hold, matches(maybe-held-field, out/emitted)
+
+test <and none is any>
+  host out, built(declared, <own.tree>)
+  want hold, out/ok
+  want hold, not(matches(any-field, out/emitted))
+
+test <without a form type, like type is still the universe, any>
+  host out, built(universe, <universe.tree>)
+  want hold, out/ok
+  want hold, matches(identity-any, out/emitted)

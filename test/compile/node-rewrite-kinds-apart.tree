@@ -1,0 +1,362 @@
+note <compile/node-rewrite's kinds-apart rule: a form named like a task, a parameter, a host value or `type` set apart from it>
+
+# Ported from node-rewrite-kinds-apart.ts by statement (item term-self-host-001-1311, decision 159). compile/node-rewrite is
+# the subject (decision 106), docked as node-walk-fields docks node-reach. The rule is the kernel's own copy of a program
+# (item 0353, decision 055 section 1): a form named like a task, a parameter, a top-level host value or `type` is
+# `<name>__form`, and a task named like a kernel constant `<name>__task`. Each case is held to the answer written here alone:
+# the original also held it to check/elaborate.ts `kindsApart` in a retired reference copy, a leg that read zero at item 0353
+# and resolves nowhere today (decision 159). The port's answer is compared with the written one as the original's sorted
+# JSON did: field order aside, a field holding no value the same as none. The last cases hold that the program handed to a
+# caller that copies first is not written.
+
+load ../support/judging
+  find make-record
+  find set-field
+  find read-at
+
+load ../support/walking
+  find kind-of
+  find fields-of
+  find field-of
+  find json-of
+  find is-written
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/node-rewrite>, name node-rewrite
+
+# host value: a deep copy, as the original's structuredClone (the port has no copy-program of its own to hand out)
+bind clone
+  take value, like dynamic
+  like dynamic
+  case node
+    text <structuredClone($value)>
+
+# host reflect: the very same record, not an equal one
+bind is-same
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <($left === $right)>
+
+# ---- comparing ----
+
+# every written field of `left` is alike in `right`
+task fields-within
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+
+  walk fields-of(left)
+    take field, like text
+    fork test, is-written(field-of(left, field))
+      hold
+        fork test, not(is-alike(field-of(left, field), field-of(right, field)))
+          hold
+            back false
+  back true
+
+# two values alike as their sorted JSON: a list item by item, a record field by field in any order
+task is-alike
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+
+  host kind, kind-of(left)
+  fork test, is-unequal(kind, kind-of(right))
+    hold
+      back false
+  fork test, is-equal(kind, <list>)
+    hold
+      fork test, is-unequal(left/length, right/length)
+        hold
+          back false
+      save at, 0
+      walk left
+        take one, like dynamic
+        fork test, not(is-alike(one, read-at(right, at)))
+          hold
+            back false
+        save at, add(at, 1)
+      back true
+  fork test, is-equal(kind, <object>)
+    hold
+      back and(fields-within(left, right), fields-within(right, left))
+  back is-equal(json-of(left), json-of(right))
+
+# ---- nodes ----
+
+# a list or a truth handed on as a value of any kind, so it stands among a record's parts
+task as-value
+  take value, like dynamic
+  like dynamic
+
+  back value
+
+task no-items
+  like dynamic
+
+  back make list
+
+task no-names
+  like list, like text
+
+  back make list
+
+task place-at
+  take line, like dynamic
+  take column, like dynamic
+  take offset, like dynamic
+  like dynamic
+
+  back make-record(make(list, <line>, line, <column>, column, <offset>, offset))
+
+host span, make-record(make(list, <file>, </t.tree>, <start>, place-at(1, 1, 0), <end>, place-at(1, 2, 1)))
+
+task variable-of
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <variable>, <name>, name, <span>, span))
+
+task integer-of
+  take value, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <integer>, <value>, value, <span>, span))
+
+task call-of
+  take callee, like dynamic
+  take args, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <call>, <callee>, variable-of(callee), <args>, args, <span>, span))
+
+task back-of
+  take value, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <return>, <value>, value, <span>, span))
+
+task named-type
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <kind>, <named>, <name>, name))
+
+task named-with
+  take name, like dynamic
+  take args, like dynamic
+  like dynamic
+
+  back make-record(make(list, <kind>, <named>, <name>, name, <args>, args))
+
+task number-type
+  like dynamic
+
+  back make-record(make(list, <kind>, <number>))
+
+# a construction, its fields given as name then value
+task made
+  take name, like dynamic
+  take field, like dynamic
+  take value, like dynamic
+  like dynamic
+
+  host one, make-record(make(list, <name>, field, <value>, value))
+  back make-record(make(list, <form>, <record>, <name>, name, <fields>, as-value(make(list, one)), <span>, span))
+
+# a form with the one field x, a number
+task form-of
+  take name, like dynamic
+  like dynamic
+
+  host one, make-record(make(list, <name>, <x>, <type>, number-type()))
+  back make-record(make(list, <form>, <record-type>, <name>, name, <params>, no-items(), <fields>, as-value(make(list, one)), <variants>, no-items(), <span>, span))
+
+task param-of
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <name>, name))
+
+task typed-param
+  take name, like dynamic
+  take type, like dynamic
+  like dynamic
+
+  back make-record(make(list, <name>, name, <type>, type))
+
+task task-of
+  take name, like dynamic
+  take params, like dynamic
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <function>, <name>, name, <params>, params, <body>, body, <generics>, no-items(), <span>, span))
+
+# a task with one more field
+task task-with
+  take name, like dynamic
+  take params, like dynamic
+  take body, like dynamic
+  take field, like text
+  take value, like dynamic
+  like dynamic
+
+  back set-field(task-of(name, params, body), field, value)
+
+task host-of
+  take name, like dynamic
+  take init, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <let>, <name>, name, <init>, init, <mutable>, as-value(false), <span>, span))
+
+task method-of
+  take owner, like dynamic
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, owner, <name>, name))
+
+# the rule as decision 055 builds it, the port's answer for one program
+task rewritten
+  take program, like dynamic
+  take forms, like list, like text
+  take tasks, like list, like text
+  like dynamic
+
+  back node-rewrite/rewriteProgram(clone(program), make-record(make(list, <form>, <kinds-apart>, <forms>, as-value(forms), <tasks>, as-value(tasks))))
+
+# ---- each case ----
+
+# a form and a task of one name: the type, the construction and the definition apart, the task and its call kept
+task point-program
+  take point, like text
+  like dynamic
+
+  host first, task-with(<point>, make(list, typed-param(<x>, number-type())), make(list, back-of(made(point, <x>, variable-of(<x>)))), <result>, named-type(point))
+  host second, task-with(<twice>, make(list, typed-param(<p>, named-type(point))), make(list, back-of(call-of(<point>, make(list, integer-of(2))))), <result>, named-type(point))
+  back make(list, form-of(point), first, second)
+
+test <kinds-apart: a form named like a task>
+  want hold, is-alike(rewritten(point-program(<point>), make(list, <point>), no-names()), point-program(<point__form>))
+
+# a parameter named like its form: the parameter and its reads keep their name
+task box-program
+  take box, like text
+  like dynamic
+
+  back make(list, form-of(box), task-with(<grow>, make(list, typed-param(<box>, named-type(box))), make(list, back-of(variable-of(<box>))), <result>, named-type(box)))
+
+test <kinds-apart: a form named like a parameter>
+  want hold, is-alike(rewritten(box-program(<box>), make(list, <box>), no-names()), box-program(<box__form>))
+
+# a top-level host value named like its form, a list type of the form inside a type argument
+task finite-program
+  take non-finite, like text
+  like dynamic
+
+  host items, make-record(make(list, <form>, <array>, <items>, as-value(make(list, made(non-finite, <x>, integer-of(1)))), <span>, span))
+  back make(list, form-of(non-finite), set-field(host-of(<non-finite>, items), <type>, named-with(<list>, make(list, named-type(non-finite)))))
+
+test <kinds-apart: a form named like a top-level host value>
+  want hold, is-alike(rewritten(finite-program(<non-finite>), make(list, <non-finite>), no-names()), finite-program(<non-finite__form>))
+
+# a form named `type`: an expression's own type and a match arm's type are entered too
+task type-program
+  take type-name, like text
+  like dynamic
+
+  host arm, make-record(make(list, <label>, <type>, <body>, no-items(), <type>, named-type(type-name)))
+  host matched, make-record(make(list, <form>, <match>, <subject>, set-field(variable-of(<t>), <type>, named-type(type-name)), <cases>, as-value(make(list, arm)), <span>, span))
+  back make(list, form-of(type-name), task-of(<describe>, make(list, typed-param(<t>, named-type(type-name))), make(list, matched)))
+
+test <kinds-apart: a form named type>
+  want hold, is-alike(rewritten(type-program(<type>), make(list, <type>), no-names()), type-program(<type__form>))
+
+# a task named like a kernel constant: its definition and every call's variable callee, never a value reference, a
+# method of that name, or a callee that is no variable
+task equal-program
+  take equal, like text
+  like dynamic
+
+  host first, task-of(equal, make(list, param-of(<a>), param-of(<b>)), make(list, back-of(call-of(<is-equal>, make(list, variable-of(<a>), variable-of(<b>))))))
+  host second, task-of(<same>, make(list, param-of(<a>)), make(list, back-of(call-of(equal, make(list, variable-of(<a>), variable-of(<a>)))), back-of(call-of(<keep>, make(list, variable-of(<equal>))))))
+  host third, task-with(<equal>, make(list, param-of(<a>)), no-items(), <method>, method-of(<point>, <equal>))
+  host callee, make-record(make(list, <form>, <member>, <target>, variable-of(<p>), <name>, <equal>, <span>, span))
+  host member-call, make-record(make(list, <form>, <call>, <callee>, callee, <args>, no-items(), <span>, span))
+  host fourth, task-of(<member>, make(list, param-of(<p>)), make(list, back-of(member-call)))
+  back make(list, first, second, third, fourth)
+
+test <kinds-apart: a task named like a kernel constant, called, passed and shadowed by a method>
+  want hold, is-alike(rewritten(equal-program(<equal>), no-names(), make(list, <equal>)), equal-program(<equal__task>))
+
+# a method's owner and a raise apart, the method's own name kept
+task shape-program
+  take shape, like text
+  like dynamic
+
+  host first, task-of(<shape>, make(list, param-of(<side>)), make(list, back-of(made(shape, <x>, variable-of(<side>)))))
+  host thrown, make-record(make(list, <form>, <throw>, <value>, made(shape, <x>, integer-of(0)), <raise>, shape, <span>, span))
+  host second, task-with(<shape_area>, no-items(), make(list, thrown), <method>, method-of(shape, <area>))
+  back make(list, form-of(shape), first, second)
+
+test <kinds-apart: a method on a form kept apart, and a raise of it>
+  want hold, is-alike(rewritten(shape-program(<shape>), make(list, <shape>), no-names()), shape-program(<shape__form>))
+
+# a separate build's stub: its carried body and its one-statement shape are entered
+task stub-program
+  take thing, like text
+  take equal, like text
+  like dynamic
+
+  host carried, back-of(made(thing, <x>, call-of(equal, make(list, variable-of(<a>), variable-of(<a>)))))
+  host stub, task-with(<cell-thing>, make(list, typed-param(<a>, named-type(thing))), no-items(), <stub>, true)
+  set-field(stub, <stubBody>, make(list, carried))
+  set-field(stub, <stubShape>, carried)
+  set-field(stub, <result>, named-type(thing))
+  back make(list, form-of(thing), stub, task-with(equal, make(list, param-of(<a>), param-of(<b>)), no-items(), <stub>, true))
+
+test <kinds-apart: a stub carrying a body and a shape>
+  want hold, is-alike(rewritten(stub-program(<cell-thing>, <equal>), make(list, <cell-thing>), make(list, <equal>)), stub-program(<cell-thing__form>, <equal__task>))
+
+# ---- the caller copies, so the program it was handed is never written ----
+
+host handed, make(list, form-of(<point>), task-of(<point>, make(list, param-of(<x>)), make(list, back-of(made(<point>, <x>, variable-of(<x>))))), task-of(<equal>, make(list, param-of(<a>)), make(list, back-of(call-of(<equal>, make(list, variable-of(<a>)))))))
+host handed-before, clone(handed)
+host answer, node-rewrite/rewriteProgram(clone(handed), make-record(make(list, <form>, <kinds-apart>, <forms>, as-value(make(list, <point>)), <tasks>, as-value(make(list, <equal>)))))
+
+# no statement of the answer is the very statement handed in at its place
+task shares-none
+  take given, like dynamic
+  take copied, like dynamic
+  like boolean
+
+  save at, 0
+  walk copied
+    take one, like dynamic
+    fork test, is-same(one, read-at(given, at))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+test <kinds-apart over a copy: the program handed in is unchanged>
+  want hold, is-alike(handed, handed-before)
+
+test <kinds-apart over a copy: the answer is renamed>
+  want hold, text-contains(json-of(answer), <point__form>)
+  want hold, text-contains(json-of(answer), <equal__task>)
+
+test <kinds-apart over a copy: the answer shares no statement with the input>
+  want hold, shares-none(handed, answer)
+
+# both lists empty: nothing is renamed (decision 055: the caller hands the program back as given)
+test <kinds-apart with both lists empty renames nothing>
+  host program, make(list, form-of(<point>), task-of(<move>, make(list, typed-param(<p>, named-type(<point>))), make(list, back-of(call-of(<equal>, make(list, variable-of(<p>)))))))
+  want hold, is-alike(rewritten(program, no-names(), no-names()), program)

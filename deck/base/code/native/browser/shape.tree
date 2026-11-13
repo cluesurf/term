@@ -1,39 +1,97 @@
-# browser value shape questions (is-null, is-present, is-text, type-of), through the shape runtime shim (runtime/shape.ts). Internal: shared modules reach it through `@term/base/native/{platform}/shape` and call its tasks by name.
+# browser value shape questions (is-null, is-present, is-text, type-of) in Term over host binds (decision 132 point 1,
+# item term-self-host-001-1068). Each host question is a bind, one host expression. type-of is a Term decision over
+# them, answering in Term's words, the same on every backend: null, list, text, boolean, number or object. Internal:
+# shared modules reach it through `@term/base/native/{platform}/shape` and call its tasks by name.
 
-dock load
-  load <global:shape>, name shape
+# null or undefined: the loose `==` holds for both and reads the value once
+bind is-host-absent
+  take value, like dynamic
+  like boolean
+  case browser
+    text <($value == null)>
 
-# Each task below is one call to the shim it keeps, so a caller finds the task by name and never the dock alias
-# (decision 146 point 1).
+bind is-host-list
+  take value, like dynamic
+  like boolean
+  case browser
+    text <Array.isArray($value)>
+
+bind is-host-text
+  take value, like dynamic
+  like boolean
+  case browser
+    text <(typeof $value === "string")>
+
+bind is-host-boolean
+  take value, like dynamic
+  like boolean
+  case browser
+    text <(typeof $value === "boolean")>
+
+# a bigint is a number too, as on every backend (item term-self-host-001-1091)
+bind is-host-number
+  take value, like dynamic
+  like boolean
+  case browser
+    text <((shapeV: unknown): boolean =\> typeof shapeV === "number" || typeof shapeV === "bigint")($value)>
 
 # whether the value is present, not null
 task is-present
   take value, like unknown
   like boolean
   send back
-    call shape/is-present
-      bind value, read value
+    call not
+      call is-host-absent
+        read value
 
 # whether the value is text
 task is-text
   take value, like unknown
   like boolean
   send back
-    call shape/is-text
-      bind value, read value
+    call is-host-text
+      read value
 
 # whether the value is null
 task is-null
   take value, like unknown
   like boolean
   send back
-    call shape/is-null
-      bind value, read value
+    call is-host-absent
+      read value
 
 # the value's type in Term's words: null, list, text, boolean, number or object
 task type-of
   take value, like unknown
   like text
-  send back
-    call shape/type-of
-      bind value, read value
+  fork test
+    hook test
+      call is-host-absent
+        read value
+    hook hold
+      send back, text <null>
+  fork test
+    hook test
+      call is-host-list
+        read value
+    hook hold
+      send back, text <list>
+  fork test
+    hook test
+      call is-host-text
+        read value
+    hook hold
+      send back, text <text>
+  fork test
+    hook test
+      call is-host-boolean
+        read value
+    hook hold
+      send back, text <boolean>
+  fork test
+    hook test
+      call is-host-number
+        read value
+    hook hold
+      send back, text <number>
+  send back, text <object>

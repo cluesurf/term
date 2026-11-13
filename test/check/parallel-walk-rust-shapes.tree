@@ -1,0 +1,20 @@
+note <every shaped kind a parallel walk's turn may carry crosses melt, to-code, from-code and fill on Rust and reads back equal>
+
+# Part of the port of parallel-walk.ts (item 0652): its Rust round trips of the shaped kinds (a list, a form, a list of
+# forms, a need false maybe field holding a value and none), one walked test, a case per kind. The plain kinds are
+# parallel-walk-rust.tree's, the kinds and the project parallel-walk-kinds.tree's. Split to keep each file well under
+# term test's 300 s a file.
+
+load ./parallel-walk-kinds
+  find crossing-of
+  find crossed
+
+test <rust: a shaped kind crosses melt, to-code, from-code and fill unchanged>
+  take kind, like text
+    walk make list(<list>, <form>, <list of forms>, <need false maybe field, some>, <need false maybe field, none>)
+  host ran, crossed(kind, <rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <{ran/reason}>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, crossing-of(kind)/want)

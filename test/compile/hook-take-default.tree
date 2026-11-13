@@ -1,0 +1,83 @@
+note <a hook take's default reaches its route, whichever literal spells it>
+
+# Ported from hook-take-default.ts by statement (item term-self-host-001-0571), one test per `ok` in its order. The bind
+# mill read a lone word under `bind` as the bind's NAME, so `bind true` minted a bind named `true` with no value, the
+# route found no seed, and the take lost its default in silence (term-compiler-0065). `bind true` / `bind false` are
+# kept as a flag, the same fallback `bind code true` gives, and any other lone word under a take's `bind` is refused,
+# naming the literal spellings. The original's one "the console builds" line stood in for the five defaults when the
+# console was refused: here each of those tests wants the compile first.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/walking
+  find field-of
+  find json-without
+
+load @term/base/text/util
+  find join
+
+load @term/base/text
+  find contains, name text-contains
+
+# a console whose `tool` hook holds `takes`, its `run` command the task run
+task console
+  take takes, like text
+  like text
+
+  back <hook tool\n{takes}  hook run\n    task run\n\ntask run\n  like text\n\n  send back, \<z\>\n>
+
+# the console compiled in the call role
+task built
+  take takes, like text
+  like compile-outcome
+
+  back compile-text(console(takes), make(compile-choice, bind(file, </gate/code/line/base.tree>), bind(role, <call>)))
+
+host five, built(<  take one\n    like boolean\n    bind true\n  take two\n    like boolean\n    bind false\n  take three\n    like boolean\n    bind code true\n  take four\n    like text\n    bind \<line\>\n  take five\n    like number\n    bind 3000\n>)
+
+# the fallback of the route's take `name`, as JSON writes it, <none> when the program has no dock route or no such take
+task fallback
+  take out, like compile-outcome
+  take name, like text
+  like text
+
+  walk out/program
+    take one, like dynamic
+    fork test, is-equal(<{field-of(one, <form>)}>, <dock>)
+      hold
+        host route, field-of(one, <route>)
+        walk field-of(route, <takes>)
+          take held, like dynamic
+          fork test, is-equal(<{field-of(held, <name>)}>, name)
+            hold
+              back json-without(field-of(held, <fallback>), make list)
+  back <none>
+
+test <`bind true` keeps its default>
+  want hold, five/ok
+  want hold, is-equal(fallback(five, <one>), <\{"form":"flag","value":true\}>)
+
+test <`bind false` keeps its default>
+  want hold, five/ok
+  want hold, is-equal(fallback(five, <two>), <\{"form":"flag","value":false\}>)
+
+test <`bind code true` still keeps its default>
+  want hold, five/ok
+  want hold, is-equal(fallback(five, <three>), <\{"form":"flag","value":true\}>)
+
+test <`bind \<line\>` still keeps its default>
+  want hold, five/ok
+  want hold, is-equal(fallback(five, <four>), <\{"form":"text","value":"line"\}>)
+
+test <`bind 3000` still keeps its default>
+  want hold, five/ok
+  want hold, is-equal(fallback(five, <five>), <\{"form":"number","value":3000\}>)
+
+# a lone word that is no literal is no default either: refused, never dropped
+test <a lone word default is refused, naming the literal spellings>
+  host out, built(<  take mode\n    like text\n    bind fast\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(join(out/messages, < | >), <bind \<fast\>>)

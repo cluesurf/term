@@ -1,0 +1,319 @@
+note <every vocabulary word placed on each toolkit host is reported by the platform's accessibility API with the contract's role and its name>
+
+# Ported from toolkit-accessibility.ts by statement (item term-self-host-001-0695). The accessibility contract on the
+# toolkit hosts (native-accessibility-0007): every vocabulary word placed on the window of AppKit (macOS), UIKit (the
+# iPhone simulator), Android views (the emulator), Compose on the desktop JVM and Jetpack Compose (the emulator), with
+# the props that name it, and what each PLATFORM'S ACCESSIBILITY API reports for it read back (`accessibility-of`). Each
+# role must be one the contract's column for that platform names (note/project/term/view/11-vocabulary.md,
+# "Accessibility", held as test/fixture/accessibility.json), and each named word must carry its name. Built and run on
+# each leg by test/support/device/toolkit-run, which skips a leg whose toolchain or device is not here. A11Y_ONLY=macos
+# (or ios, android, compose, compose-android) runs one leg.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way are one walked test, a
+# case each. The judge's two `ok`s are two walked tests over every leg and word, labeled `<leg> <index> <what>`: the
+# role over every word, the name over the named ones. A word the platform did not report fails its role case, where the
+# original printed one `reported` failure in its place, and skips its name case, which the original then never judged.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/compiling
+  find file-text
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/json
+  find parse, name json-read
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+  find pattern-match
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+# each placed word, in placement order: the word, what it is, and the name it must carry (<> for none)
+form word-case
+  link word, like text
+  link what, like text
+  link name, like text
+
+host cases, make list(make(word-case, bind(word, <text>), bind(what, <plain text>), bind(name, <plain>)), make(word-case, bind(word, <text>), bind(what, <text with a level>), bind(name, <Title>)), make(word-case, bind(word, <image>), bind(what, <an image with words>), bind(name, <A dot>)), make(word-case, bind(word, <image>), bind(what, <an image with none>), bind(name, <>)), make(word-case, bind(word, <field>), bind(what, <a field>), bind(name, <Your name>)), make(word-case, bind(word, <button>), bind(what, <a button>), bind(name, <Save>)), make(word-case, bind(word, <stack>), bind(what, <a stack>), bind(name, <>)), make(word-case, bind(word, <scroll>), bind(what, <a scroll>), bind(name, <>)), make(word-case, bind(word, <spacer>), bind(what, <a spacer>), bind(name, <>)), make(word-case, bind(word, <divider>), bind(what, <a divider>), bind(name, <>)), make(word-case, bind(word, <frame>), bind(what, <a frame>), bind(name, <>)), make(word-case, bind(word, <toggle>), bind(what, <a toggle>), bind(name, <Wi-Fi>)), make(word-case, bind(word, <range>), bind(what, <a range>), bind(name, <Volume>)), make(word-case, bind(word, <choice>), bind(what, <a choice>), bind(name, <Size>)))
+
+form accessibility-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host accessibility-now, make(accessibility-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# the app and the legs A11Y_ONLY allows, made once
+task the-app
+  like accessibility-state
+
+  fork test, accessibility-now/made
+    hold
+      back accessibility-now
+  save accessibility-now/made, true
+  save accessibility-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-toolkit-accessibility->)), bind(name, <Accessible>), bind(who, <toolkit-accessibility>), bind(ios-identifier, <surf.term.toolkit-accessibility-test>), bind(android-identifier, <surf.term.toolkitaccessible>), bind(compose, true), bind(compose-android, true))
+  save accessibility-now/legs, legs-of(accessibility-now/app, variable(<A11Y_ONLY>))
+  back accessibility-now
+
+# the original's program, its PNG path filled in
+task accessibility-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  back <load @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find show-window\n  find run-app\n  find exit-app\n  find child-at\n  find accessibility-of\n  find snapshot\n  find say\n\nload @term/site/code/view/reactive\n  find make-signal\n\nload @term/face/code/logic/disclosure\n  find make-disclosure\n\nload @term/face/code/logic/range\n  find make-range\n\nload @term/base/code/list\n  find list\n  find push\n\nload @term/face/code/component/stack\n  find stack\nload @term/face/code/component/text\n  find text\nload @term/face/code/component/spacer\n  find spacer\nload @term/face/code/component/divider\n  find divider\nload @term/face/code/component/image\n  find image\nload @term/face/code/component/frame\n  find frame\nload @term/face/code/component/scroll\n  find scroll\nload @term/face/code/component/switch\n  find switch\nload @term/face/code/component/slider\n  find slider\nload @term/face/code/component/select\n  find select\n\nview still\n  take host, like view\n  view text\n    bind content, text \<plain\>\n  view text\n    bind content, text \<Title\>\n    bind level, code 2\n  view image\n    bind source, text \<data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC\>\n    bind text, text \<A dot\>\n  view image\n    bind source, text \<data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC\>\n  view input\n    bind placeholder, text \<Your name\>\n  view button\n    text \<Save\>\n  view stack\n    view text\n      bind content, text \<in a stack\>\n  view scroll\n    bind style, text \<height: 40px\>\n    view text\n      bind content, text \<in a scroll\>\n  view spacer\n  view divider\n  view frame\n    bind width, code 100\n    view text\n      bind content, text \<in a frame\>\n\ntask size-names\n  like list\n    like text\n  save names\n    make list\n  call push\n    bind list, read names\n    bind item, text \<small\>\n  call push\n    bind list, read names\n    bind item, text \<large\>\n  send back, read names\n\ntask main\n  save root\n    call open-root\n      text \<Term accessibility\>\n      code 420\n      code 900\n  call still\n    read root\n  call switch\n    read root\n    text \<\>\n    call make-disclosure\n      bind start, false\n    text \<Wi-Fi\>\n  call slider\n    read root\n    text \<\>\n    call make-range\n      bind start, code 40.0\n    code 0.0\n    code 100.0\n    code 1.0\n    text \<Volume\>\n  call select\n    read root\n    text \<\>\n    call make-signal\n      bind value, text \<small\>\n    call size-names\n    text \<Size\>\n  call after-launch\n    task check\n      call show-window\n      save said-0\n        call accessibility-of\n          call child-at\n            call child-at\n              read root\n              code 0\n            code 0\n      call say\n        text \<a11y 0|\{\{said-0\}\}|\>\n      save said-1\n        call accessibility-of\n          call child-at\n            call child-at\n              read root\n              code 1\n            code 0\n      call say\n        text \<a11y 1|\{\{said-1\}\}|\>\n      save said-2\n        call accessibility-of\n          call child-at\n            read root\n            code 2\n      call say\n        text \<a11y 2|\{\{said-2\}\}|\>\n      save said-3\n        call accessibility-of\n          call child-at\n            read root\n            code 3\n      call say\n        text \<a11y 3|\{\{said-3\}\}|\>\n      save said-4\n        call accessibility-of\n          call child-at\n            read root\n            code 4\n      call say\n        text \<a11y 4|\{\{said-4\}\}|\>\n      save said-5\n        call accessibility-of\n          call child-at\n            read root\n            code 5\n      call say\n        text \<a11y 5|\{\{said-5\}\}|\>\n      save said-6\n        call accessibility-of\n          call child-at\n            read root\n            code 6\n      call say\n        text \<a11y 6|\{\{said-6\}\}|\>\n      save said-7\n        call accessibility-of\n          call child-at\n            read root\n            code 7\n      call say\n        text \<a11y 7|\{\{said-7\}\}|\>\n      save said-8\n        call accessibility-of\n          call child-at\n            read root\n            code 8\n      call say\n        text \<a11y 8|\{\{said-8\}\}|\>\n      save said-9\n        call accessibility-of\n          call child-at\n            read root\n            code 9\n      call say\n        text \<a11y 9|\{\{said-9\}\}|\>\n      save said-10\n        call accessibility-of\n          call child-at\n            read root\n            code 10\n      call say\n        text \<a11y 10|\{\{said-10\}\}|\>\n      save said-11\n        call accessibility-of\n          call child-at\n            read root\n            code 11\n      call say\n        text \<a11y 11|\{\{said-11\}\}|\>\n      save said-12\n        call accessibility-of\n          call child-at\n            read root\n            code 12\n      call say\n        text \<a11y 12|\{\{said-12\}\}|\>\n      save said-13\n        call accessibility-of\n          call child-at\n            read root\n            code 13\n      call say\n        text \<a11y 13|\{\{said-13\}\}|\>\n      call snapshot\n        text \<{shot}\>\n      call exit-app\n        code 0\n  call run-app\n>
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, accessibility-program, prepare-no-device)
+  save accessibility-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# the contract's column per platform: the cell for each word, from the vocabulary's "Accessibility" table, held as a
+# json fixture (the vocabulary is written outside this repository, and the check that holds the snapshot equal to it
+# runs there)
+host table, json-read(file-text(<test/fixture/accessibility.json>))
+
+host none-word, make pattern, <<(^|[ (;])none\b>>
+host said-shape, make pattern, <<a11y \d+\|([^|]*)\|([^|]*)\|>>
+
+# both Compose legs read one column: Compose's semantics, from which each platform's bridge is made
+task column-of
+  take leg, like text
+  like number
+
+  fork test, is-equal(leg, <macos>)
+    hold
+      back 2
+  fork test, is-equal(leg, <ios>)
+    hold
+      back 3
+  fork test, is-equal(leg, <android>)
+    hold
+      back 4
+  back 5
+
+# a word's cell in a leg's column, <> when there is no row of ten cells for it (the last such row wins, as a map of
+# rows keeps it)
+task cell-of
+  take leg, like text
+  take word, like text
+  like text
+
+  save cell, <>
+  save column, column-of(leg)
+  walk table
+    take cells, like dynamic
+    fork test, and(is-equal(cells/length, 10), is-equal(cells/0, word))
+      hold
+        save found, cells/{column}
+        save cell, <{found}>
+  back cell
+
+# the cell allows this role: every part of it named in backticks, `none` for an empty role
+task allows
+  take leg, like text
+  take word, like text
+  take role, like text
+  like boolean
+
+  save cell, cell-of(leg, word)
+  fork test, is-equal(role, <>)
+    hold
+      back matches(none-word, cell)
+  walk text-split(role, <+>)
+    take part, like text
+    fork test, not(text-contains(cell, <`{part}`>))
+      hold
+        back false
+  back true
+
+# what the platform said for word `index`: its role and name, or nothing when no line reports it
+form said-word
+  link found, like boolean
+  link role, like text
+  link name, like text
+
+task said-of
+  take output, like text
+  take index, like number
+  like said-word
+
+  save mark, <a11y {index}|>
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        walk find-matches(said-shape, line)
+          take found, like pattern-match
+          back make(said-word, bind(found, true), bind(role, found/groups/0), bind(name, found/groups/1))
+        back make(said-word, bind(found, false), bind(role, <>), bind(name, <>))
+  back make(said-word, bind(found, false), bind(role, <>), bind(name, <>))
+
+# every leg and word, `<leg> <index> <what>`, each the case of a judge test. `named` keeps only the words with a name
+task leg-words
+  take named, like boolean
+  like list, like text
+
+  save out, make list
+  walk leg-names()
+    take leg, like text
+    save index, 0
+    walk cases
+      take one, like word-case
+      fork test, or(not(named), is-unequal(one/name, <>))
+        hold
+          out/push(<{leg} {index} {one/what}>)
+      save index, add(index, 1)
+  back out
+
+task case-leg
+  take case, like text
+  like text
+
+  back text-split(case, < >)/0
+
+task case-index
+  take case, like text
+  like number
+
+  save at, 0
+  save wanted, text-split(case, < >)/1
+  save index, 0
+  walk cases
+    take one, like word-case
+    fork test, is-equal(<{index}>, wanted)
+      hold
+        save at, index
+    save index, add(index, 1)
+  back at
+
+test <each word's role, as the platform reports it, is the contract's>
+  take case, like text
+    walk leg-words(false)
+  save leg, case-leg(case)
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save index, case-index(case)
+  save said, said-of(ran/output, index)
+  want hold, said/found
+  want hold, allows(leg, cases/{index}/word, said/role)
+
+test <each named word carries its name>
+  take case, like text
+    walk leg-words(true)
+  save ran, leg-run(case-leg(case))
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save index, case-index(case)
+  save said, said-of(ran/output, index)
+  fork test, not(said/found)
+    hold
+      skip <not reported, as its role case says>
+  want hold, is-equal(said/name, cases/{index}/name)

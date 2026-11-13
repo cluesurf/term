@@ -17,10 +17,13 @@ type SeedRequest = {
   dock: nodeHttp.IncomingMessage
 }
 
+// `data` is a bytes body (network/server/response): when it holds a byte it is sent as it is and `body` is not read
+// (item term-self-host-001-1326)
 type SeedResponse = {
   status?: number
   headers?: Array<{ name: string; value: string }>
   body?: string
+  data?: Uint8Array
 }
 
 type Handler = (
@@ -64,7 +67,7 @@ const server = {
               raw.push(header.name, header.value)
             }
             res.writeHead(out.status ?? 200, raw)
-            res.end(out.body ?? '')
+            res.end(out.data && out.data.length > 0 ? out.data : (out.body ?? ''))
           })
         })
       }
@@ -75,6 +78,14 @@ const server = {
 
       raw.listen(port, host, () => resolve(raw))
     }),
+
+  // the port a listening server is bound to: the one the OS chose when `start` asked for port 0 (item
+  // term-self-host-001-1326). A server that is not listening answers 0
+  port: (raw: nodeHttp.Server): number => {
+    const address = raw.address()
+
+    return address !== null && typeof address === 'object' ? address.port : 0
+  },
 
   // stop a running server, resolving when its port is released: close stops listening at once, and every kept-alive
   // connection with no request in flight is closed now rather than at its keep-alive timeout, which is what every

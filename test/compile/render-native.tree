@@ -1,0 +1,217 @@
+note <the same reactive runtime renders the same component into the same memory host on every backend>
+
+# Ported from render-native.ts by statement (item term-self-host-001-0689). The renderer on every backend
+# (native-dom-0004): the SAME Solid-style runtime (@term/site view/reactive and view/render) rendering the SAME component
+# into the SAME in-memory host (dom/native/memory), compiled to TypeScript, Swift, Kotlin and Rust (native-dom-0020).
+# Each program mounts its view under a root, drives it, and returns the tree as HTML, and every backend must print the
+# same. The dom's `{platform}` slot is pinned to `memory` by a rewrite of the load path, so TypeScript runs the identical
+# host rather than the server's (`native/node`), and a difference can only be the backend.
+#
+# The original's six programs are one walked test per `ok` it makes for a backend, each program a case of it, labeled by
+# its name: TypeScript renders, the server dom renders (the two portable programs), and for Swift, Kotlin and Rust the
+# program builds and it renders. Each program is built and run once per backend, by the first test that asks, and kept.
+#
+#   render calls         the counter clicked eleven times shows 11: a signal write reached the effect that read it
+#   view dsl             the same in the `view` DSL, with a `fork` the renderer swaps live: low at five, high past ten
+#   view call statement  a `call` in a view body runs as the view is built (beat-term-0068, trap T022): 7, never 0
+#   device trait         a device trait as a signal (native-dom-0012): only the node that read it is rewritten
+#   owned branch         a replaced branch is disposed (reactive-bridge-0005): its effect runs 2 times, never 5
+#   owned items          the keyed and plain list renderers dispose what they drop, and keep their place before a `b`
+#
+# The server dom (reactive-bridge-0004): a portable program with its host load pointed at the public dom module,
+# unpinned, so `{platform}` resolves to the server's DOM host as SSR does. Its serializer indents an element holding
+# elements, a line and two spaces per level, which is layout of the text and not of the tree, so it is taken out before
+# the trees are compared.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/text
+  find trim
+
+load @term/base/pattern
+  find pattern
+  find replace-matches
+
+host calls-program, <load @term/site/code/test/site/counter-render\n  find counter\n\nload @term/site/code/dom/native/memory/dom\n  find create-element\n  find child-at\n  find fire\n  find serialize\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call counter\n    read root\n  save button\n    call child-at\n      read root\n      code 0\n  walk size\n    bind base, code 0\n    bind head, code 11\n    hook next\n      take site, name step\n      call fire\n        read button\n        text \<click\>\n  send back\n    call serialize\n      read root\n>
+
+host dsl-program, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n  find attach-event\n  find show\n\nload @term/site/code/dom/dom\n  find view\n  find append\n\nload @term/site/code/dom/native/memory/dom\n  find create-element\n  find child-at\n  find fire\n  find serialize\n\ntask shown\n  take count, like signal number\n  like text\n  save value\n    call read-signal\n      bind self, read count\n  send back, text \<\{\{value\}\}\>\n\nview tally\n  take host, like view\n  save count\n    call make-signal\n      bind value, code 0\n  view button\n    seed click\n      call write-signal\n        bind self, read count\n        bind value\n          call add\n            call read-signal\n              bind self, read count\n            code 1\n    read\n      call shown\n        read count\n  fork test\n    hook test\n      call is-above\n        call read-signal\n          bind self, read count\n        code 10\n    hook hold\n      view span\n        text \<high\>\n    hook miss\n      view span\n        text \<low\>\n\ntask press\n  take button, like view\n  take times, like number\n  walk size\n    bind base, code 0\n    bind head, read times\n    hook next\n      take site, name step\n      call fire\n        read button\n        text \<click\>\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call tally\n    read root\n  save button\n    call child-at\n      read root\n      code 0\n  call press\n    read button\n    code 5\n  save early\n    call serialize\n      read root\n  call press\n    read button\n    code 6\n  save late\n    call serialize\n      read root\n  send back, text \<\{\{early\}\}|\{\{late\}\}\>\n>
+
+host call-program, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n  find attach-event\n  find show\n\nload @term/site/code/dom/dom\n  find view\n  find append\n\nload @term/site/code/dom/native/memory/dom\n  find create-element\n  find serialize\n\ntask shown\n  take count, like signal number\n  like text\n  save value\n    call read-signal\n      bind self, read count\n  send back, text \<\{\{value\}\}\>\n\nview seven\n  take host, like view\n  save count\n    call make-signal\n      bind value, code 0\n  call write-signal\n    bind self, read count\n    bind value, code 7\n  view span\n    read\n      call shown\n        read count\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call seven\n    read root\n  send back\n    call serialize\n      read root\n>
+
+host device-program, <load @term/site/code/view/device\n  find device-trait\n\nload @term/site/code/view/native/memory/device\n  find change-trait\n\nload @term/site/code/view/reactive\n  find read-signal\n\nload @term/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n\nload @term/site/code/dom/dom\n  find view\n  find append\n\nload @term/site/code/dom/native/memory/dom\n  find create-element\n  find serialize\n\ntask scheme-text\n  like text\n  save scheme\n    call device-trait\n      text \<color-scheme\>\n  send back\n    call read-signal\n      bind self, read scheme\n\nview theme\n  take host, like view\n  view span\n    read\n      call scheme-text\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call theme\n    read root\n  save early\n    call serialize\n      read root\n  call change-trait\n    text \<color-scheme\>\n    text \<dark\>\n  save late\n    call serialize\n      read root\n  send back, text \<\{\{early\}\}|\{\{late\}\}\>\n>
+
+host owned-program, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/view/render\n  find make-element\n  find make-dynamic-text\n  find show\n\nload @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/memory/dom\n  find create-element\n  find serialize\n\nform tally\n  mark shared\n  link runs, like number\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  save open\n    call make-signal\n      bind value, true\n  save count\n    call make-signal\n      bind value, code 0\n  save seen\n    make tally\n      bind runs, code 0\n  call show\n    bind host, read root\n    bind when\n      task is-open\n        like boolean\n        send back\n          call read-signal\n            bind self, read open\n    bind then\n      task build-open\n        like view\n        send back\n          call make-dynamic-text\n            bind source\n              task count-text\n                like text\n                save seen/runs\n                  call add\n                    read seen/runs\n                    code 1\n                save value\n                  call read-signal\n                    bind self, read count\n                send back, text \<\{value\}\>\n    bind other\n      task build-closed\n        like view\n        send back\n          call make-element\n            bind tag, text \<span\>\n  call write-signal\n    bind self, read count\n    bind value, code 1\n  call write-signal\n    bind self, read open\n    bind value, false\n  call write-signal\n    bind self, read count\n    bind value, code 2\n  call write-signal\n    bind self, read count\n    bind value, code 3\n  call write-signal\n    bind self, read count\n    bind value, code 4\n  save tree\n    call serialize\n      read root\n  save runs, read seen/runs\n  send back, text \<\{tree\}|\{runs\}\>\n>
+
+host list-program, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/view/render\n  find make-dynamic-text\n  find render-each\n  find render-each-keyed\n\nload @term/site/code/dom/dom\n  find view\n  find append\n\nload @term/site/code/dom/native/memory/dom\n  find create-element\n  find serialize\n\nload @term/base/code/list\n  find list\n  find push\n\nform tally\n  mark shared\n  link runs, like number\n\ntask make-letters\n  take both, like boolean\n  like list\n    like text\n  save out\n    make list\n  call push\n    bind list, read out\n    bind item, text \<a\>\n  fork test\n    hook test\n      read both\n    hook hold\n      call push\n        bind list, read out\n        bind item, text \<b\>\n  send back, read out\n\ntask make-item\n  take item, like text\n  take count, like signal number\n  take seen, like tally\n  like view\n  send back\n    call make-dynamic-text\n      bind source\n        task item-text\n          like text\n          save seen/runs\n            call add\n              read seen/runs\n              code 1\n          save value\n            call read-signal\n              bind self, read count\n          send back, text \<\{item\}\{value\}\>\n\ntask run\n  like text\n  save keyed-root\n    call create-element\n      bind tag, text \<main\>\n  save plain-root\n    call create-element\n      bind tag, text \<main\>\n  save letters\n    call make-signal\n      bind value\n        call make-letters\n          bind both, true\n  save count\n    call make-signal\n      bind value, code 0\n  save keyed-seen\n    make tally\n      bind runs, code 0\n  save plain-seen\n    make tally\n      bind runs, code 0\n  call render-each-keyed\n    bind host, read keyed-root\n    bind items\n      task keyed-items\n        like list\n          like text\n        send back\n          call read-signal\n            bind self, read letters\n    bind key\n      task keyed-key\n        take item, like text\n        like text\n        send back, read item\n    bind build\n      task keyed-build\n        take item, like text\n        like view\n        send back\n          call make-item\n            bind item, read item\n            bind count, read count\n            bind seen, read keyed-seen\n  call render-each\n    bind host, read plain-root\n    bind items\n      task plain-items\n        like list\n          like text\n        send back\n          call read-signal\n            bind self, read letters\n    bind build\n      task plain-build\n        take item, like text\n        like view\n        send back\n          call make-item\n            bind item, read item\n            bind count, read count\n            bind seen, read plain-seen\n  call append\n    bind parent, read keyed-root\n    bind child\n      call create-element\n        bind tag, text \<b\>\n  call append\n    bind parent, read plain-root\n    bind child\n      call create-element\n        bind tag, text \<b\>\n  call write-signal\n    bind self, read letters\n    bind value\n      call make-letters\n        bind both, false\n  call write-signal\n    bind self, read count\n    bind value, code 1\n  save keyed-tree\n    call serialize\n      read keyed-root\n  save plain-tree\n    call serialize\n      read plain-root\n  save keyed-runs, read keyed-seen/runs\n  save plain-runs, read plain-seen/runs\n  send back, text \<\{keyed-tree\}\{plain-tree\}|\{keyed-runs\}|\{plain-runs\}\>\n>
+
+form render-case
+  link program, like text
+  link want, like text
+
+task case-of
+  take name, like text
+  like render-case
+
+  fork test, is-equal(name, <render calls>)
+    hold
+      back make(render-case, bind(program, calls-program), bind(want, <\<main\>\<button\>11\</button\>\</main\>>))
+  fork test, is-equal(name, <view dsl>)
+    hold
+      back make(render-case, bind(program, dsl-program), bind(want, <\<main\>\<button\>5\</button\>\<span\>low\</span\>\</main\>|\<main\>\<button\>11\</button\>\<span\>high\</span\>\</main\>>))
+  fork test, is-equal(name, <view call statement>)
+    hold
+      back make(render-case, bind(program, call-program), bind(want, <\<main\>\<span\>7\</span\>\</main\>>))
+  fork test, is-equal(name, <device trait>)
+    hold
+      back make(render-case, bind(program, device-program), bind(want, <\<main\>\<span\>light\</span\>\</main\>|\<main\>\<span\>dark\</span\>\</main\>>))
+  fork test, is-equal(name, <owned branch>)
+    hold
+      back make(render-case, bind(program, owned-program), bind(want, <\<main\>\<span\>\</span\>\</main\>|2>))
+  back make(render-case, bind(program, list-program), bind(want, <\<main\>a1\<b\>\</b\>\</main\>\<main\>a1\<b\>\</b\>\</main\>|3|4>))
+
+task case-names
+  like list, like text
+
+  back make(list, <render calls>, <view dsl>, <view call statement>, <device trait>, <owned branch>, <owned items>)
+
+# the two programs that reach the memory host only for `create-element` and `serialize`, which every host has
+task portable-names
+  like list, like text
+
+  back make(list, <owned branch>, <owned items>)
+
+# every env resolves the dom to the memory host, so the host is the same file on every backend
+task pinned
+  like compile-choice
+
+  back make(compile-choice, bind(rewrites, make(list, make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|device|view)$>>), bind(into, <native/memory/$1>)))))
+
+form render-state
+  mark shared
+  link folder, like text
+  link runs, like hash, like text, like ran-program
+
+host render-now, make(render-state, bind(folder, <>), bind(runs, make hash))
+
+task render-folder
+  like text
+
+  fork test, is-equal(render-now/folder, <>)
+    hold
+      save render-now/folder, temp-folder(<term-render-native->)
+  back render-now/folder
+
+task file-name
+  take name, like text
+  like text
+
+  back replace-matches(make(pattern, < >), name, <->)
+
+# a program built and run on a backend once, kept under the backend and its name. `dom` is the server dom on TypeScript
+task rendered
+  take backend, like text
+  take name, like text
+  like ran-program
+
+  save key, <{backend}/{name}>
+  fork test, render-now/runs/has(key)
+    hold
+      back render-now/runs/{key}
+  save one, case-of(name)
+  save made, make(ran-program, bind(state, <>))
+  fork test, is-equal(backend, <dom>)
+    hold
+      save program, replace-matches(make(pattern, <@term/site/code/dom/native/memory/dom>), one/program, <@term/site/code/dom/dom>)
+      save made, run-text(program, <typescript>, render-folder(), <{file-name(name)}-dom>)
+    miss
+      save made, run-text(one/program, backend, render-folder(), file-name(name), pinned())
+  save render-now/runs/{key}, made
+  back made
+
+# what a run printed, held to its program's want: the run's output trimmed, else how it failed
+task shown
+  take ran, like ran-program
+  like text
+
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back trim(ran/output)
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+test <typescript renders>
+  take name, like text
+    walk case-names()
+  want hold, is-equal(shown(rendered(<typescript>, name)), case-of(name)/want)
+
+test <server dom renders>
+  take name, like text
+    walk portable-names()
+  save ran, rendered(<dom>, name)
+  save flat, replace-matches(make(pattern, <<[>]\n *[<]>>), shown(ran), <\>\<>)
+  want hold, is-equal(flat, case-of(name)/want)
+
+test <swift builds>
+  take name, like text
+    walk case-names()
+  save ran, rendered(<swift>, name)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, not(and(is-equal(ran/state, <failed>), is-equal(ran/stage, <build>)))
+  want hold, is-unequal(ran/stage, <compile>)
+
+test <swift renders>
+  take name, like text
+    walk case-names()
+  save ran, rendered(<swift>, name)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran), case-of(name)/want)
+
+test <kotlin builds>
+  take name, like text
+    walk case-names()
+  save ran, rendered(<kotlin>, name)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, not(and(is-equal(ran/state, <failed>), is-equal(ran/stage, <build>)))
+  want hold, is-unequal(ran/stage, <compile>)
+
+test <kotlin renders>
+  take name, like text
+    walk case-names()
+  save ran, rendered(<kotlin>, name)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran), case-of(name)/want)
+
+test <rust builds>
+  take name, like text
+    walk case-names()
+  save ran, rendered(<rust>, name)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, not(and(is-equal(ran/state, <failed>), is-equal(ran/stage, <build>)))
+  want hold, is-unequal(ran/stage, <compile>)
+
+test <rust renders>
+  take name, like text
+    walk case-names()
+  save ran, rendered(<rust>, name)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran), case-of(name)/want)

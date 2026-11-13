@@ -3,8 +3,9 @@ note <the view reader: a real document reads into the forms, every bound the dia
 # Ported from read.ts by statement (item term-self-host-001-0645), one test per `ok` in its order, each `refuses` call
 # of the original one test of its own (`refuses <what>`), and its loop over three spellings of one call a pair of tests
 # per spelling. See note/project/term/view/ and deck/mill/code/tree/view/. The parser, the view reader
-# (compile/view), the host reader, the render runtime's names, the role file reader of @cluesurf/deck.tree, the
-# compiler and the template collector are the subject, docked as the original imported them (decision 106). A record
+# (compile/view), the host reader, the render runtime's names, the compiler and the template collector are the
+# subject, docked as the original imported them (decision 106). The role file reader is @term/deck's port, loaded
+# (decision 153: Term code never reaches a port through a TypeScript face). A record
 # the original read with `?.` is read here by its path, so a field that is not there fails its test as the original's
 # did. A pattern of literal characters is the text it spells, read with `text-contains`.
 
@@ -23,19 +24,17 @@ dock load
   load <@term/make/code/compile/render-names>, name render-names
   load <@term/make/code/compile/compile>, name view-compiling
   load <@term/make/code/compile/template>, name view-templates
-  load <@cluesurf/deck.tree>, name role-reader
+
+load @term/deck/package/role-reading
+  find parse-role-file
+  find match-role
+
+load @term/deck/package/grammar-reading
+  find make-grammars
 
 form view-source
   link file, like text
   link text, like text
-
-form role-text
-  link text, like text
-  link root, like text
-
-form role-ask
-  link file-path, like text
-  link config, like dynamic
 
 form view-options
   link role-of, like dynamic
@@ -464,14 +463,20 @@ test <a plain text is not a mark>
 
 host role-source, <\nrole view\n  take @/page/**/*.tree\n  take @/view/**/*.tree\n\nrole code\n  take @/code/**/*.tree\n>
 
-host config, role-reader/parse-role-file(make(role-text, bind(text, role-source), bind(root, </app>)))
+host config, parse-role-file(role-source, </app>, make-grammars())
 
-# the role of a path, handed to the compiler as its `roleOf`
+# the role of a path, handed to the compiler as its `roleOf`: the rule's name, or nothing when no rule takes it, as
+# the build's own role reader answers it (deck/call/code/work/build/host-faces.tree face-role-reader)
 task role-of
   take path, like text
   like dynamic
 
-  back role-reader/match-role(make(role-ask, bind(file-path, path), bind(config, config)))
+  sift match-role(path, config)
+    case some
+      link role
+      back role
+    case none
+      back void
 
 task compiled
   take file, like text

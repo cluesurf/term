@@ -1,0 +1,206 @@
+note <a per-item memo for the suites that check thousands of independent items>
+
+# A per-item memo for the suites that check thousands of independent items (every .tree file in the tree), so a change
+# to one file rechecks one file. The gate's result cache (task/term/gate/cache.ts) skips a WHOLE suite whose inputs did
+# not change, and a sweep over every file has every file as an input, so one edited file anywhere reran all 14,394 of
+# them: format-sweep alone was 398 seconds on 2026-10-02.
+#
+# An item is remembered only as a PASS, under the sha1 of the item's own input AND of every source file of the code
+# that judges it (`code`, a list of folders hashed whole). A change to the item, or to any file of that code, is a
+# different key, so it is checked again. A failure is never remembered. `TERM_MEMO=off` (or the gate's `--fresh`,
+# which sets it) checks everything.
+#
+# Stored under .base/@term/code/memo/<suite>.json, rebuildable by running. Ported from memo.ts beside it (item 0643): the
+# same keys, so a memo file either one wrote answers the other.
+
+load @term/base/environment
+  find variable
+
+load @term/base/set
+  find make-set
+  find set
+
+load @term/base/json
+  find parse, name json-parse
+  find stringify, name json-stringify
+  find array-size
+  find array-item
+  find as-text
+
+load @term/base/text
+  find substring
+  find starts-with
+
+load ./support/cli
+  find term-root
+
+dock load
+  load <node:crypto>, name memo-crypto
+  load <node:fs>, name memo-fs
+  load <node:path>, name memo-path
+
+# host value: the NUL character, which a key puts between its parts
+bind memo-nul
+  take seed, like number
+  like text
+  case node
+    text <<"\0">>
+
+bind memo-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+# a remembered set of passes: `known` read from the suite's file, `kept` the keys of this run, `reused` how many of
+# this run's items it answered
+form memo
+  mark shared
+  link off, like boolean
+  link dir, like text
+  link file, like text
+  link salt, like text
+  link known, like set, like text
+  link kept, like set, like text
+  link reused, like number
+
+# the sha1 of a text or of bytes, in hex
+task sha1
+  take input, like dynamic
+  like text
+
+  save hasher, memo-crypto/create-hash(<sha1>)
+  hasher/update(input)
+  back hasher/digest(<hex>)
+
+# every file under `dir`, its path from the Term root and its bytes, into the hash, in a stable order. A folder it
+# cannot read adds nothing
+task hash-folder
+  take hasher, like dynamic
+  take root, like text
+  take dir, like text
+  like void
+  mark private
+
+  save entries, make list
+  fork
+    mark unsafe
+    save listed, memo-fs/readdir-sync(dir)
+    save entries, listed/sort()
+  halt take
+    take problem
+    back
+  walk entries
+    take entry, like text
+    fork test, or(is-equal(entry, <node_modules>), or(is-equal(entry, <host>), or(is-equal(entry, <.base>), or(is-equal(entry, <tmp>), starts-with(entry, <.>)))))
+      hold
+        turn next
+    save path, memo-path/join(dir, entry)
+    save stat, memo-fs/stat-sync(path)
+    fork test, stat/is-directory()
+      hold
+        hash-folder(hasher, root, path)
+      miss
+        hasher/update(substring(path, root/length))
+        hasher/update(memo-nul(0))
+        hasher/update(memo-fs/read-file-sync(path))
+        hasher/update(memo-nul(0))
+
+# every file under the folders, path and bytes, in a stable order
+task code-hash
+  take dirs, like list, like text
+  like text
+
+  save root, term-root()
+  save hasher, memo-crypto/create-hash(<sha1>)
+  walk dirs
+    take dir, like text
+    hash-folder(hasher, root, memo-path/join(root, dir))
+  back hasher/digest(<hex>)
+
+task key-of
+  take memo, like memo
+  take item, like text
+  take input, like dynamic
+  like text
+  mark private
+
+  back sha1(<{memo/salt}{memo-nul(0)}{item}{memo-nul(0)}{sha1(input)}>)
+
+# the keys a memo file holds, none when it is missing or not a JSON list
+task read-known
+  take file, like text
+  like set, like text
+  mark private
+
+  save known, make-set(make list)
+  fork test, memo-fs/exists-sync(file)
+    hold
+      fork
+        mark unsafe
+        save parsed, json-parse(memo-fs/read-file-sync(file, <utf8>))
+        save at, 0
+        save size, array-size(parsed)
+        walk test
+          hook test, is-below(at, size)
+          hook hold
+            known/insert(as-text(array-item(parsed, at)))
+            save at, add(at, 1)
+      halt take
+        take problem
+        save known, make-set(make list)
+  back known
+
+# the memo of `suite`, judged by the code in the folders `code`
+task make-memo
+  take suite, like text
+  take code, like list, like text
+  like memo
+
+  save off, is-equal(variable(<TERM_MEMO>), <off>)
+  save dir, memo-path/join(term-root(), <.base/@term/code/memo>)
+  save file, memo-path/join(dir, <{suite}.json>)
+  save known, make-set(make list)
+  fork test, not(off)
+    hold
+      save known, read-known(file)
+  back make(memo, bind(off, off), bind(dir, dir), bind(file, file), bind(salt, code-hash(code)), bind(known, known), bind(kept, make-set(make list)), bind(reused, 0))
+
+# was this item, with this input, already passed by this code?
+task has-passed
+  take memo, like memo
+  take item, like text
+  take input, like dynamic
+  like boolean
+
+  fork test, memo/off
+    hold
+      back false
+  save key, key-of(memo, item, input)
+  fork test, memo/known/has(key)
+    hold
+      memo/kept/insert(key)
+      save memo/reused, add(memo/reused, 1)
+      back true
+  back false
+
+# remember a pass
+task keep-pass
+  take memo, like memo
+  take item, like text
+  take input, like dynamic
+  like void
+
+  memo/kept/insert(key-of(memo, item, input))
+
+# write what was remembered (only the keys of THIS run, so the file never grows past the items that exist), and say
+# how many were answered from it
+task save-memo
+  take memo, like memo
+  like number
+
+  fork test, not(memo/off)
+    hold
+      memo-fs/mkdir-sync(memo/dir, memo-folder-options(0))
+      memo-fs/write-file-sync(memo/file, json-stringify(memo/kept/to-list()))
+  back memo/reused

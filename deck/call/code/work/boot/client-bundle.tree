@@ -73,10 +73,12 @@ dock load
 # 11: a units bundle's entry exports what the run calls, not the whole closure (call/code/unit-bundle.ts
 # `runtimeExports`), and a bundle written under 10 held every name (2026-10-05)
 # 12: keyed by hash-key, SHA-256 cut to 32 hex digits, no longer cyrb53 (decision 080, 2026-10-30)
+# 13: the bare specifiers made external by options, not a plugin, and each bare dock in a side-effect-free module of
+# its own beside boot.ts (decision 152, item 1283)
 task boot-cache-epoch
   like text
 
-  back <12>
+  back <13>
 
 # what `build-client-bundle` is handed, as the original's one input record
 form client-ask
@@ -99,7 +101,7 @@ form compile-options
   link role-of, like dynamic
   link lean-of, like dynamic
 
-# the browser bundle: everything inlined (no `packages: external`), minified in prod for the smallest payload. Its
+# the browser bundle: minified in prod for the smallest payload. Its
 # fields in the original's order: the cache key holds it as JSON
 form client-config
   link bundle, like boolean
@@ -115,7 +117,7 @@ form client-build
   link platform, like text
   link minify, like boolean
   link metafile, like boolean
-  link plugins, like list, like dynamic
+  link external, like list, like text
 
 form folder-ask
   link recursive, like boolean
@@ -164,12 +166,17 @@ bind boot-thrown-message
   case node
     text <($error instanceof Error ? $error.message : String($error))>
 
-# externalize every bare (npm) specifier, so the import map loads it from a CDN. `sideEffects: false` lets esbuild drop
-# an import whose bindings nothing uses, and the metafile then names only the externals the bundle kept
+# every bare (npm) specifier external, so the import map loads it from a CDN: one esbuild `external` pattern per
+# printable character a bare specifier can begin with (all but `.`, `/` and the wildcard), as options and not an
+# onResolve plugin, so the command line says them too (decision 152, item 1283). esbuild checks an `external` pattern
+# before a tsconfig's `paths`, as it ran the plugin, so a project's tsconfig maps nothing into the browser bundle.
+# `packages: 'external'` is not used: esbuild applies the tsconfig's `paths` before it. What options cannot say is the
+# plugin's `sideEffects: false`, and esbuild keeps an external import nothing uses, so the bare docks are moved out of
+# boot.ts (write-boot-docks below)
 bind boot-bare-externals
-  like dynamic
+  like list, like text
   case node
-    text <(\{ name: "externalize-bare-specifiers", setup(b) \{ b.onResolve(\{ filter: /^[^./]/ \}, (args) =\> (\{ path: args.path, external: true, sideEffects: false \})) \} \})>
+    text <Array.from(\{ length: 95 \}, (_, at) =\> String.fromCharCode(32 + at)).filter((first) =\> first !== "." && first !== "/" && first !== "*").map((first) =\> first + "*")>
 
 # the externals the bundle kept, once each in the order met, without `node:` builtins
 bind boot-kept-externals
@@ -178,12 +185,58 @@ bind boot-kept-externals
   case node
     text <[...new Set(Object.values($metafile.outputs).flatMap((output) =\> output.imports).filter((found) =\> found.external && !found.path.startsWith("node:")).map((found) =\> found.path))]>
 
+# a bare dock line of the emitted program, `import * as __dock_<alias> from "<package>"` (compile/ts-assemble.tree
+# dock-import)
+form boot-dock
+  link name, like text
+  link module, like text
+
+# the program's bare dock lines, in the order written
+bind boot-bare-docks
+  take source, like text
+  like list, like boot-dock
+  case node
+    text <[...$source.matchAll(/^import \* as (__dock_[A-Za-z0-9_]+) from "([^"./][^"]*)"$/gm)].map((found) =\> (\{ name: found[1], module: found[2] \}))>
+
+# the program with each bare dock line importing its binding from `./dock/<name>` instead
+bind boot-docks-routed
+  take source, like text
+  like text
+  case node
+    text <$source.replace(/^import \* as (__dock_[A-Za-z0-9_]+) from "[^"./][^"]*"$/gm, (line, name) =\> "import \{ " + name + " \} from \"./dock/" + name + "\"")>
+
 # a web-standard import map sending each external to its esm.sh module, as JSON with two-space indentation
 bind boot-import-map
   take externals, like list, like text
   like text
   case node
     text <JSON.stringify(\{ imports: Object.fromEntries($externals.map((dep) =\> [dep, "https://esm.sh/" + dep])) \}, null, 2)>
+
+# each bare dock of the program in a module of its own, `<dir>/dock/<name>.ts`, in a folder whose package.json says
+# `sideEffects: false`: esbuild drops a dock module whose binding nothing on the page reaches, with its external
+# import, as the plugin's `sideEffects: false` dropped the import (a page that never anchors fetches no
+# @floating-ui/dom). A page that does reach it keeps the same import, under the dock module's path comment
+task write-boot-docks
+  take dir, like text
+  take source, like text
+  like void
+  mark private
+
+  save docks, boot-bare-docks(source)
+  fork test, is-above(docks/length, 0)
+    hold
+      save dock-dir, node-path/join(dir, <dock>)
+      node-file/mkdir-sync(dock-dir, make(folder-ask, bind(recursive, true)))
+      node-file/write-file-sync(node-path/join(dock-dir, <package.json>), <\{ "sideEffects": false \}>)
+      walk docks
+        take dock
+        save name, dock/name
+        save module, dock/module
+        save lines, make list
+        lines/push(<import * as {name} from "{module}">)
+        lines/push(<export \{ {name} \}>)
+        lines/push(<>)
+        node-file/write-file-sync(node-path/join(dock-dir, <{name}.ts>), boot-joined-lines(lines))
 
 # a runtime shim's text, or undefined when the file is not there
 task read-boot-runtime
@@ -322,16 +375,15 @@ task bundle-compiled
       fork test, not(node-file/exists-sync(cache-file))
         hold
           node-file/mkdir-sync(cache-out, make(folder-ask, bind(recursive, true)))
-          node-file/write-file-sync(node-path/join(cache-out, <boot.ts>), source)
+          node-file/write-file-sync(node-path/join(cache-out, <boot.ts>), boot-docks-routed(source))
+          write-boot-docks(cache-out, source)
           # the entry IMPORTS the program rather than being it, so the program keeps its own top-level run and esbuild
           # drops every task nothing reaches (guides: applications/web, 2026-10-04)
           save entry-file, node-path/join(cache-out, <entry.ts>)
           node-file/write-file-sync(entry-file, client-entry-text(runs))
           save entries, make list
           entries/push(entry-file)
-          save plugins, make list
-          plugins/push(boot-bare-externals())
-          save built, wait esbuild-module/build(make(client-build, bind(entry-points, entries), bind(outfile, cache-file), bind(bundle, true), bind(format, <esm>), bind(platform, <browser>), bind(minify, opts/prod), bind(metafile, true), bind(plugins, plugins)))
+          save built, wait esbuild-module/build(make(client-build, bind(entry-points, entries), bind(outfile, cache-file), bind(bundle, true), bind(format, <esm>), bind(platform, <browser>), bind(minify, opts/prod), bind(metafile, true), bind(external, boot-bare-externals())))
           node-file/write-file-sync(cache-map, boot-import-map(boot-kept-externals(built/metafile)))
       node-file/copy-file-sync(cache-file, out-file)
       fork test, node-file/exists-sync(cache-map)

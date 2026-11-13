@@ -1,0 +1,276 @@
+note <beat-term as it ships: built for the simulator and, unsigned, for a device, each built Info.plist read back with plutil>
+
+# Ported from beat-term-build.ts by statement (item term-self-host-001-0694). beat-term as it ships (beat-term-0022):
+# `term make --target uikit` writes the Xcode project, it builds for the simulator and, unsigned, for a device, and the
+# BUILT Info.plist of each holds the keys the toolchain writes, read back with plutil. No simulator is touched: this
+# builds, the drive installs. The builds are test/support/device/beat-term-app's, each made once, by the first test that
+# asks. Skips without macOS and Xcode, and where BEAT_TERM_ROOT names no beat-term app folder (the app lives outside
+# this repository). A check past a build that failed skips: the original made one failing check in its place.
+
+load ../support/device/beat-term-app
+  find beat-term-root
+  find beat-term-built
+  find build-beat-term-for-simulator
+  find xcodebuild-beat-term
+
+load ../support/device/host-fields
+  find host-cause-text
+
+load @term/base/process/run
+  find run
+
+load @term/base/process
+  find platform
+
+load @term/base/file
+  find read, name read-file
+  find exists, name file-exists
+
+load @term/base/text
+  find split, name text-split
+  find trim
+  find ends-with
+  find substring
+  find char-count
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <node:path>, name beat-build-path
+
+# what each build gave: `xcode` false without macOS and Xcode, `root` the app folder (<> when none is named)
+form beat-build-state
+  mark shared
+  link made, like boolean
+  link xcode, like boolean
+  link root, like text
+  link simulator, like beat-term-built
+  link main, like text
+  link device, like beat-term-built
+
+host beat-build-now, make(beat-build-state, bind(made, false), bind(xcode, false), bind(root, <>), bind(simulator, make beat-term-built), bind(main, <>), bind(device, make beat-term-built))
+
+# whether xcodebuild answers `-version` with 0
+task xcode-answers
+  take tool, like text
+  like boolean
+
+  save got, -1
+  fork
+    mark unsafe
+    save version, run(tool, make list(<-version>))
+    save got, version/code
+  halt take
+    take cause
+    save got, -1
+  back is-equal(got, 0)
+
+# both builds, once: 1. the simulator build, through the helper the drive uses, 2. the same project for a device,
+# unsigned
+task the-builds
+  like beat-build-state
+
+  fork test, beat-build-now/made
+    hold
+      back beat-build-now
+  save state, beat-build-now
+  save state/made, true
+  save state/xcode, and(is-equal(platform(), <darwin>), xcode-answers(<xcodebuild>))
+  fork test, not(state/xcode)
+    hold
+      back state
+  save state/root, beat-term-root()
+  fork test, is-equal(state/root, <>)
+    hold
+      back state
+  # the helper raises where `term make --target uikit` or xcodebuild does: the original caught it as one failing check
+  fork
+    mark unsafe
+    save state/simulator, build-beat-term-for-simulator()
+  halt take
+    take cause
+    save state/simulator, make(beat-term-built, bind(failed, <`term make --target uikit` and xcodebuild build the app: {host-cause-text(cause)}>))
+  fork test, is-equal(state/simulator/failed, <>)
+    hold
+      save swift, beat-build-path/join(state/simulator/root, <host>, <uikit>, <beatterm>, <main.swift>)
+      fork test, file-exists(swift)
+        hold
+          save state/main, read-file(swift)
+  fork
+    mark unsafe
+    save state/device, xcodebuild-beat-term(state/root, <generic/platform=iOS>, beat-build-path/join(state/root, <host>, <uikit>, <derived-device>), <Release-iphoneos>)
+  halt take
+    take cause
+    save state/device, make(beat-term-built, bind(failed, <xcodebuild builds the app unsigned: {host-cause-text(cause)}>))
+  back state
+
+# why every check skips, <> when the builds ran
+task build-skip
+  take state, like beat-build-state
+  like text
+
+  fork test, not(state/xcode)
+    hold
+      back <beat-term-build: needs macOS with Xcode>
+  fork test, is-equal(state/root, <>)
+    hold
+      back <beat-term-build: BEAT_TERM_ROOT names no beat-term app folder>
+  back <>
+
+# why a check past a build skips: no build ran, or it failed
+task built-skip
+  take state, like beat-build-state
+  take built, like beat-term-built
+  like text
+
+  save why, build-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      back why
+  fork test, is-unequal(built/failed, <>)
+    hold
+      back <the build failed: {built/failed}>
+  back <>
+
+# the key as plutil reads it from the built plist: its text, or <absent> when the key is not there. Read `raw`, not
+# `json`: the plutil of macOS 26 refuses a scalar as JSON, so every key read back absent. Every key checked here is a
+# text, or absent
+task plist-key
+  take plist, like text
+  take key, like text
+  like text
+
+  save ran, run(<plutil>, make list(<-extract>, key, <raw>, <-o>, <->, plist))
+  fork test, is-unequal(ran/code, 0)
+    hold
+      back <absent>
+  fork test, ends-with(ran/output, <\n>)
+    hold
+      back substring(ran/output, 0, subtract(char-count(ran/output), 1))
+  back ran/output
+
+# whether a built plist's key reads as its row wants: `expected` an exact text, <text> any non-empty text, or <absent>
+task key-reads
+  take built, like beat-term-built
+  take key, like text
+  take expected, like text
+  like boolean
+
+  save value, plist-key(beat-build-path/join(built/app, <Info.plist>), key)
+  fork test, is-equal(expected, <absent>)
+    hold
+      back is-equal(value, <absent>)
+  fork test, is-equal(expected, <text>)
+    hold
+      back and(is-unequal(value, <absent>), is-unequal(trim(value), <>))
+  back is-equal(value, expected)
+
+# whether main.swift starts the boot task: a line that is its start line calling boot()
+task starts-boot
+  take source, like text
+  like boolean
+
+  walk text-split(source, <\n>)
+    take line, like text
+    fork test, matches(make(pattern, <<^(_ = )?(try )?(await )?boot\(\)$>>), trim(line))
+      hold
+        back true
+  back false
+
+test <simulator: the shipped build is surf.term.beatterm>
+  save state, the-builds()
+  save why, build-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, and(is-equal(state/simulator/failed, <>), is-equal(state/simulator/identifier, <surf.term.beatterm>))
+
+test <simulator: main.swift starts the boot task (its start line calls boot())>
+  save state, the-builds()
+  save why, built-skip(state, state/simulator)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, starts-boot(state/main)
+
+test <simulator: the .app holds an Info.plist>
+  save state, the-builds()
+  save why, built-skip(state, state/simulator)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, file-exists(beat-build-path/join(state/simulator/app, <Info.plist>))
+
+test <simulator: CFBundleIdentifier is surf.term.beatterm>
+  save state, the-builds()
+  save why, built-skip(state, state/simulator)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, key-reads(state/simulator, <CFBundleIdentifier>, <surf.term.beatterm>)
+
+test <simulator: NSMicrophoneUsageDescription is a non-empty text>
+  save state, the-builds()
+  save why, built-skip(state, state/simulator)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, key-reads(state/simulator, <NSMicrophoneUsageDescription>, <text>)
+
+test <simulator: NSLocalNetworkUsageDescription is a non-empty text>
+  save state, the-builds()
+  save why, built-skip(state, state/simulator)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, key-reads(state/simulator, <NSLocalNetworkUsageDescription>, <text>)
+
+test <simulator: NSAllowsArbitraryLoads is absent>
+  save state, the-builds()
+  save why, built-skip(state, state/simulator)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, key-reads(state/simulator, <NSAllowsArbitraryLoads>, <absent>)
+
+test <device: xcodebuild builds the app unsigned, and the .app holds an Info.plist>
+  save state, the-builds()
+  save why, build-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, and(is-equal(state/device/failed, <>), file-exists(beat-build-path/join(state/device/app, <Info.plist>)))
+
+test <device: CFBundleIdentifier is surf.term.beatterm>
+  save state, the-builds()
+  save why, built-skip(state, state/device)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, key-reads(state/device, <CFBundleIdentifier>, <surf.term.beatterm>)
+
+test <device: NSMicrophoneUsageDescription is a non-empty text>
+  save state, the-builds()
+  save why, built-skip(state, state/device)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, key-reads(state/device, <NSMicrophoneUsageDescription>, <text>)
+
+test <device: NSLocalNetworkUsageDescription is a non-empty text>
+  save state, the-builds()
+  save why, built-skip(state, state/device)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, key-reads(state/device, <NSLocalNetworkUsageDescription>, <text>)
+
+test <device: NSAllowsArbitraryLoads is absent>
+  save state, the-builds()
+  save why, built-skip(state, state/device)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, key-reads(state/device, <NSAllowsArbitraryLoads>, <absent>)

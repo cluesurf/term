@@ -1,0 +1,512 @@
+note <a page answers with its own status and its own title, and an API route's headers and query reach the wire>
+
+# Ported from page-status.ts by statement (item term-self-host-001-0651), one test per `ok` in its order. Until
+# 2026-10-04 every path answered 200, an unknown one with an empty page, and a page's title broke its client bundle.
+# Each case boots a real server with the CLI and asks it over HTTP.
+#
+# Each server is the `term` under test (self-command, decision 111), kept running beside the test
+# (test/support/children): `sh` says its own pid, then becomes the CLI with both streams on one, as the original read
+# them together. Its log is every line up to `✓ start`, then what it printed until it was stopped. A request that
+# finds nothing listening is status 0, as the original's catch made it. Playwright is borrowed as test/borrow.ts
+# borrows it (`borrowed-file`, as test/view/cells.tree has it), and Chromium is launched with TMPDIR at a temporary
+# folder of this test's own, as `launchOwned` did. The page runs the original's two closures as expressions: Playwright
+# sends a closure to the page as its text either way. Each part runs once, by the first test that asks.
+
+load @term/test/self
+  find self-command
+
+load ../support/children
+  find start-child
+  find held-child
+  find wait-for-line
+  find next-line
+  find stop-child
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+  find set-variable
+  find remove-variable
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/path
+  find directory
+  find resolve-path
+
+load @term/base/network/http
+  find fetch
+
+load @term/base/clock
+  find sleep
+
+load @term/base/hash
+  find get, name hash-get
+
+load @term/base/maybe
+  find unwrap-or
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+# host native: createRequire is node's resolver, and the entry depends on each package's exports
+bind package-entry
+  take place, like text
+  take name, like text
+  like text
+  case node
+    text <process.getBuiltinModule('node:module').createRequire($place + '/package.json').resolve($name)>
+
+# host native: the borrowed package itself, loaded by node from its entry
+bind required
+  take file, like text
+  like dynamic
+  case node
+    text <process.getBuiltinModule('node:module').createRequire($file)($file)>
+
+# host value: Chromium's launch options
+bind headless
+  like dynamic
+  case node
+    text <(\{ headless: true \})>
+
+# host value: waitForFunction's options
+bind ten-seconds
+  like dynamic
+  case node
+    text <(\{ timeout: 10000 \})>
+
+# host value: no value yet, of the host's any, for a handle a guarded block fills
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+host hooks-text, <load @term/site/dom/dom\n  find view\n\nload @term/site/view/native/\{platform\}/host\n  find host\n\nview home\n  take host, like view\n  view h1, \<Shelf\>\n\nhook /\n  seed title, \<Shelf\>\n  view home\n>
+
+host routed-text, <load @term/site/dom/dom\n  find view\n\nload @term/site/dom/page\n  find set-title\n  find set-status\n\nload @term/site/view/native/\{platform\}/host\n  find host\n\nload @term/site/http/http\n  find request\n  find response\n\nload @term/base/maybe\n  find maybe\n\nview home\n  take host, like view\n  view h1, \<Shelf\>\n\nview missing\n  take host, like view\n  take path, like text\n  view p\n    \<Nothing at \>\n    path\n\ntask route\n  take host, like view\n  take request, like request\n  like maybe, like response\n\n  save path, read request/path\n  fork test, is-equal path, \</\>\n    hold\n      set-title \<Shelf\>\n      home host\n    miss\n      set-status 404\n      missing host, path\n  send back, make none\n\ntask boot\n  take url, like text\n  take port, like u16\n\n  host(route, port)\n>
+
+host async-text, <load @term/site/dom/dom\n  find view\n\nload @term/site/view/native/\{platform\}/host\n  find host\n\nload @term/base/clock\n  find sleep\n\nload @term/site/http/http\n  find request\n  find response\n\nload @term/base/maybe\n  find maybe\n\nview home\n  take host, like view\n  view h1, \<Shelf\>\n\ntask load-books\n  mark async\n  sleep(20)\n\ntask route\n  take host, like view\n  take request, like request\n  like maybe, like response\n\n  load-books()\n  home host\n  send back, make none\n\ntask boot\n  take url, like text\n  take port, like u16\n\n  host(route, port)\n>
+
+host api-text, <load @term/site/http/http\n  find request\n  find response\n  find route\n  find route-server\n\nload @term/site/http/serve\n  find serve\n\nload @term/base/list\n  find list\n  find push\n\nload @term/base/hash\n  find hash\n  find get, name hash-get\n  find set\n\nload @term/base/maybe\n  find unwrap-or\n\ntask show-book\n  take request, like request\n  take params, like hash, like text, like text\n\n  like response\n\n  save id, unwrap-or(hash-get(params, \<id\>), \<\>)\n  save fields, unwrap-or(hash-get(request/query, \<fields\>), \<all\>)\n  save agent, unwrap-or(hash-get(request/headers, \<user-agent\>), \<nobody\>)\n  save headers, make hash\n  set headers, \<content-type\>, \<application/json\>\n\n  back\n    make response\n      bind status, 200\n      bind body, \<\{"id":"\{id\}","fields":"\{fields\}","agent":"\{agent\}"\}\>\n      bind headers, headers\n\ntask boot\n  take url, like text\n  take port, like u16\n\n  save routes, make list\n\n  push routes\n    make route\n      bind method, \<GET\>\n      bind path, \</books/:id\>\n      bind handle, show-book\n  serve route-server(routes), port\n>
+
+# the first request's page in a browser: `drawn` what it drew, `reason` why there was no browser (<> when it ran)
+form visit-seen
+  mark shared
+  link drawn, like text
+  link reason, like text
+
+form answer
+  link status, like number
+  link body, like text
+
+# a part's server, asked: each path's answer, its log, whether the request on `✓ start` was answered, and the visit
+form served
+  mark shared
+  link answers, like list, like answer
+  link log, like text
+  link answered-at-start, like boolean
+  link seen, like visit-seen
+
+form status-state
+  mark shared
+  link hooks, like dynamic
+  link hooks-dir, like text
+  link routed, like dynamic
+  link waited, like dynamic
+  link api-made, like boolean
+  link api-status, like number
+  link api-type, like text
+  link api-body, like text
+
+host status-now, make(status-state, bind(hooks, 0), bind(hooks-dir, <>), bind(routed, 0), bind(waited, 0), bind(api-made, false), bind(api-status, 0), bind(api-type, <>), bind(api-body, <>))
+
+# ---- the borrowed package ----
+
+# the folders a package is looked for in, in order: the Term root, then the folder TERM_TEST_MODULES names
+task borrow-places
+  like list, like text
+
+  save places, make list(term-root())
+  save given, trim(variable(<TERM_TEST_MODULES>))
+  fork test, is-unequal(given, <>)
+    hold
+      places/push(resolve-path(term-root(), given))
+  back places
+
+# whether the package sits in a node_modules of the place or a folder above it
+task installed-in
+  take place, like text
+  take name, like text
+  like boolean
+  mark async
+
+  fork test, file-exists(<{place}/node_modules/{name}/package.json>)
+    hold
+      back true
+  save up, directory(place)
+  fork test, is-equal(up, place)
+    hold
+      back false
+  back installed-in(up, name)
+
+# the package's entry file, <> when it is not installed where it is looked for
+task borrowed-file
+  take name, like text
+  like text
+  mark async
+
+  walk borrow-places()
+    take place, like text
+    fork test, installed-in(place, name)
+      hold
+        save file, <>
+        fork
+          mark unsafe
+          save file, package-entry(place, name)
+        halt take
+          take problem
+          save ignored, 0
+        fork test, is-unequal(file, <>)
+          hold
+            back file
+  back <>
+
+# ---- a browser ----
+
+# Chromium launched with TMPDIR at a temporary folder of this test's own, put back after, or `nothing` with the reason
+# in `seen`
+task launch-owned
+  mark async
+  take seen, like visit-seen
+  like dynamic
+
+  save file, borrowed-file(<@playwright/test>)
+  fork test, is-equal(file, <>)
+    hold
+      save seen/reason, <@playwright/test is not installed>
+      back nothing()
+  save chromium, required(file)/chromium
+  save before, variable(<TMPDIR>)
+  set-variable(<TMPDIR>, temp-folder(<term-page-status-browser->))
+  save launched, nothing()
+  save seen/reason, <Chromium did not launch>
+  fork
+    mark unsafe
+    save launched
+      call chromium/launch
+        call headless
+        wait true
+    save seen/reason, <>
+  halt take
+    take problem
+    save ignored, 0
+  fork test, is-equal(before, <>)
+    hold
+      remove-variable(<TMPDIR>)
+    miss
+      set-variable(<TMPDIR>, before)
+  back launched
+
+# open `url` in the browser, run `action` on the page, wait up to ten seconds for `ready`, then answer what `drawing`
+# reads, with every page error after a `|`
+task visit
+  mark async
+  take seen, like visit-seen
+  take url, like text
+  take action, like text
+  take ready, like text
+  take drawing, like text
+  like void
+
+  save launched, launch-owned(seen)
+  fork test, is-unequal(seen/reason, <>)
+    hold
+      back
+  save errors, make list
+  save failed
+    task
+      take error, like dynamic
+      like void
+      errors/push(<{error}>)
+  save tab
+    call launched/new-page
+      wait true
+  tab/on(<pageerror>, failed)
+  call tab/goto
+    read url
+    wait true
+  call tab/evaluate
+    read action
+    wait true
+  fork
+    mark unsafe
+    call tab/wait-for-function
+      read ready
+      call nothing
+      call ten-seconds
+      wait true
+  halt take
+    take problem
+    save ignored, 0
+  save drawn
+    call tab/evaluate
+      read drawing
+      wait true
+  save seen/drawn, <{drawn}|{errors/join(< ; >)}>
+  call launched/close
+    wait true
+
+# ---- the server ----
+
+# a project of its own: `deck.tree` and `entry`
+task project
+  take name, like text
+  take entry, like text
+  take text, like text
+  like text
+
+  save dir, temp-folder(<term-{name}->)
+  make-folder(<{dir}/code>)
+  write-file(<{dir}/deck.tree>, <deck {name}\n  mark \<0.0.1\>\n>)
+  write-file(<{dir}/{entry}>, text)
+  back dir
+
+# the answer at `url`: status 0 and the reason when nothing answers
+task ask
+  mark async
+  take url, like text
+  like answer
+
+  save got, make(answer, bind(status, 0), bind(body, <>))
+  fork
+    mark unsafe
+    save response, fetch(url)
+    save got, make(answer, bind(status, response/status), bind(body, response/body))
+  halt take
+    take problem
+    save got/body, <{problem}>
+  back got
+
+# boot `arguments` in `dir` as the `term` under test, as a child whose first line is its pid, both streams on one, read
+# up to `✓ start` (or a minute, or its end)
+task booted
+  mark async
+  take arguments, like list, like text
+  take dir, like text
+  like held-child
+
+  save argument-list, make(list, <sh>, <-c>, <echo $$; exec "$@" 2\>&1>, <sh>)
+  walk self-command()
+    take part, like text
+    argument-list/push(part)
+  walk arguments
+    take part, like text
+    argument-list/push(part)
+  save environment
+    make hash
+      save <NO_COLOR>, <1>
+  save held, start-child(argument-list, bind(directory, dir), bind(environment, environment))
+  save pid, next-line(held, 10000)
+  save start, wait-for-line(held, <✓ start>, 60000)
+  back held
+
+# every line of the server after its pid line, then what it printed until it was stopped
+task log-of
+  take held, like held-child
+  take rest, like text
+  like text
+
+  save lines, make list
+  save at, 0
+  walk held/heard
+    take line, like text
+    fork test, is-above(at, 0)
+      hold
+        lines/push(line)
+    save at, add(at, 1)
+  back <{lines/join(<\n>)}\n{rest}>
+
+# boot `entry` in `dir` on `port`, ask each path once the server is up, visit it in a browser when `url` is not <>, then
+# stop it
+task serve
+  mark async
+  take dir, like text
+  take entry, like text
+  take port, like number
+  take paths, like list, like text
+  take url, like text, fall <>
+  take action, like text, fall <>
+  take ready, like text, fall <>
+  take drawing, like text, fall <>
+  like served
+
+  save held, booted(make(list, <boot>, entry, <--port>, <{port}>), dir)
+  # `start` is printed once the server takes connections, so the first request on that line is answered
+  save first, ask(<http://127.0.0.1:{port}/base/__id>)
+  save answered-at-start, is-above(first/status, 0)
+  save up, answered-at-start
+  save tries, 0
+  walk test
+    hook test, and(not(up), and(not(held/ended), is-below(tries, 600)))
+    hook hold
+      save again, ask(<http://127.0.0.1:{port}/base/__id>)
+      save up, is-above(again/status, 0)
+      save tries, add(tries, 1)
+      fork test, not(up)
+        hold
+          sleep(100)
+  save answers, make list
+  walk paths
+    take path, like text
+    answers/push(ask(<http://127.0.0.1:{port}{path}>))
+  save seen, make(visit-seen, bind(drawn, <>), bind(reason, <no visit>))
+  fork test, is-unequal(url, <>)
+    hold
+      visit(seen, url, action, ready, drawing)
+  save ended, stop-child(held)
+  back make(served, bind(answers, answers), bind(log, log-of(held, ended/output)), bind(answered-at-start, answered-at-start), bind(seen, seen))
+
+# ---- a hook table: an unknown path is 404, and the status does not reach the next request ----
+
+# the bundle `term boot` wrote, in a real browser: a popstate to `/` can only redraw and retitle the page if the client
+# took over, which no titled page could while `setTitle` was declared twice, and the page loads no CDN module it does
+# not use
+task hooks
+  mark async
+  like served
+
+  fork test, is-unequal(status-now/hooks-dir, <>)
+    hold
+      back status-now/hooks
+  save dir, project(<hooks>, <code/route.tree>, hooks-text)
+  save status-now/hooks-dir, dir
+  save status-now/hooks, serve(dir, <code/route.tree>, 4971, make(list, </nope>, </>), <http://127.0.0.1:4971/books/dune>, <history.pushState(\{\}, '', '/'); dispatchEvent(new PopStateEvent('popstate'))>, <document.title === 'Shelf'>, <document.title + '|' + (document.querySelector('h1')?.textContent ?? '') + '|' + (document.querySelector('script[type=importmap]') ? 'map' : 'no map')>)
+  back status-now/hooks
+
+test <`✓ start` prints once the server answers: a request sent on that line is answered>
+  want hold, hooks()/answered-at-start
+
+test <in a browser, the client redraws and retitles the page on a popstate, with no error>
+  save seen, hooks()/seen
+  fork test, is-unequal(seen/reason, <>)
+    hold
+      skip <the client in a browser ({seen/reason})>
+  want hold, is-equal(seen/drawn, <Shelf|Shelf|no map|>)
+
+test <a path no hook matches answers 404>
+  want hold, is-equal(hooks()/answers/0/status, 404)
+
+test <and the next request, a page that is there, answers 200>
+  want hold, is-equal(hooks()/answers/1/status, 200)
+
+test <with the title its hook names>
+  want hold, text-contains(hooks()/answers/1/body, <\<title\>Shelf\</title\>>)
+
+test <and its client bundle built>
+  save log, hooks()/log
+  want hold, and(matches(make(pattern, <<✓ build\s+client bundle>>), log), not(text-contains(log, <already been declared>)))
+
+test <and sets the title in the browser too>
+  save served, hooks()
+  save bundle, <{status-now/hooks-dir}/build/boot.js>
+  want hold, and(file-exists(bundle), text-contains(read-file(bundle), <setTitle("Shelf")>))
+
+# ---- a route task: `set-status` in its own arm ----
+# a hand-written `boot` is called by the bundle's entry: before 2026-10-04 it was defined and never run, so nothing took
+# the page over in the browser
+
+task routed
+  mark async
+  like served
+
+  fork test, is-unequal(status-now/routed, 0)
+    hold
+      back status-now/routed
+  save dir, project(<routed>, <code/boot.tree>, routed-text)
+  save status-now/routed, serve(dir, <code/boot.tree>, 4972, make(list, </nope>, </>), <http://127.0.0.1:4972/>, <history.pushState(\{\}, '', '/elsewhere'); dispatchEvent(new PopStateEvent('popstate'))>, <document.body.textContent.includes('Nothing at /elsewhere')>, <document.body.textContent?.replace(/\\s+/g, ' ').trim() ?? ''>)
+  back status-now/routed
+
+test <in a browser, a hand-written boot takes the page over and draws the new path>
+  save seen, routed()/seen
+  fork test, is-unequal(seen/reason, <>)
+    hold
+      skip <the client in a browser ({seen/reason})>
+  want hold, is-equal(seen/drawn, <Nothing at /elsewhere|>)
+
+test <`set-status 404` in a route task answers 404>
+  save missing, routed()/answers/0
+  want hold, and(is-equal(missing/status, 404), text-contains(missing/body, <Nothing at /nope>))
+
+test <and the page after it answers 200, titled>
+  save home, routed()/answers/1
+  want hold, and(is-equal(home/status, 200), text-contains(home/body, <\<title\>Shelf\</title\>>))
+
+# ---- a route that loads first: an async `route` is awaited, so the page holds what it placed after the wait ----
+
+task waited
+  mark async
+  like served
+
+  fork test, is-unequal(status-now/waited, 0)
+    hold
+      back status-now/waited
+  save dir, project(<route-async>, <code/boot.tree>, async-text)
+  save status-now/waited, serve(dir, <code/boot.tree>, 4973, make(list, </>))
+  back status-now/waited
+
+test <an async `route` is awaited: `/` holds the page it placed after its wait>
+  want hold, text-contains(waited()/answers/0/body, <\<h1\>Shelf\</h1\>>)
+
+# ---- an API route: the response's headers reach the wire, and the request carries its headers and query ----
+
+task api
+  mark async
+  like status-state
+
+  fork test, status-now/api-made
+    hold
+      back status-now
+  save status-now/api-made, true
+  save dir, project(<api>, <code/boot.tree>, api-text)
+  write-file(<{dir}/deck.tree>, <deck api\n  mark \<0.0.1\>\n  boot ./code/boot\n>)
+  save held, booted(make(list, <boot>, <--port>, <4973>), dir)
+  save header
+    make hash
+      save <user-agent>, <page-status>
+  fork
+    mark unsafe
+    save answer, fetch(<http://127.0.0.1:4973/books/7?fields=title>, bind(header, header))
+    save status-now/api-status, answer/status
+    save status-now/api-type, unwrap-or(hash-get(answer/headers, <content-type>), <>)
+    save status-now/api-body, answer/body
+  halt take
+    take problem
+    save ignored, 0
+  save ended, stop-child(held)
+  back status-now
+
+test <a response's `content-type` header reaches the wire>
+  want hold, is-equal(api()/api-type, <application/json>)
+
+test <and the handler read the query and a request header>
+  want hold, is-equal(api()/api-body, <\{"id":"7","fields":"title","agent":"page-status"\}>)

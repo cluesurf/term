@@ -1,0 +1,82 @@
+note <an empty list or hash bound with host learns its element from use, as one bound with save does>
+
+# Ported from host-list.ts by statement (item 0652). An empty list or map bound with `host` (the immutable binding)
+# learns its element from use, as one bound with `save` does. The lean `make list` arrives as an empty ARRAY literal, and
+# check/scheme.ts counted an array literal a syntactic value, so the binding was generalized: each use got a fresh element
+# and the binding's own was never solved. Rust held `Vec<Rc<dyn Any>>` and Swift and Kotlin `[Any]`, which refused the
+# program, while TypeScript's `any` hid it. Found by the time/profile port (self-hosting, 2026-10-04). The program is
+# built for Rust, compiled with rustc and RUN.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+load ../support/running
+  find run-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find trim
+
+host source, <load @term/base/list\n  find list\n\nload @term/base/hash\n  find hash\n\ntask by-member\n  take items, like list, like text\n  like number\n\n  host seen, make list\n  walk items\n    take item\n    seen/push(item)\n\n  back seen/length\n\ntask by-call\n  take items, like list, like text\n  like number\n\n  host seen, make list\n  walk items\n    take item\n    push(seen, item)\n\n  back seen/length\n\ntask counted\n  take items, like list, like text\n  like number\n\n  host counts, make hash\n  walk items\n    take item\n    counts/set(item, add(get-or-default(counts, item, 0), 1))\n\n  back counts/size\n\ntask total\n  like number\n\n  host words, make list\n  words/push(\<a\>)\n  words/push(\<bc\>)\n\n  back add(add(by-member(words), by-call(words)), counted(words))\n>
+
+host built, compile-text(source, make(compile-choice, bind(file, <host-list.tree>), bind(stdlib, <rust>), bind(env, <rust>), bind(entry, <total>)))
+
+host emitted, emit-text(built, <rust>)
+
+# the emitted Rust with a main that prints what `total` answers
+host rust, <{emitted}\nfn main() \{\n    println!("\{\}", total());\n\}\n>
+
+host unknown-local, make pattern, <<let (mut )?(seen|counts|words)\b.*dyn std::any::Any>>
+
+host seen-text, make pattern, <<let (mut )?seen: Vec<String[>]>>
+
+# rustc's errors building the program into `folder` as `main`, <> when it built
+task rustc-errors
+  take folder, like text
+  like text
+
+  write-file(<{folder}/main.rs>, rust)
+  back run-tool(make list(<rustc>, <--edition>, <2021>, <-A>, <warnings>, <-o>, <{folder}/main>, <{folder}/main.rs>))
+
+# the original's one FAIL when the program does not build stands in each test, as each needs the built program
+test <no host-bound collection holds an unknown element>
+  want hold, built/ok
+  want hold, not(matches(unknown-local, rust))
+
+test <the walked list holds text>
+  want hold, built/ok
+  want hold, matches(seen-text, rust)
+
+test <rustc compiles it>
+  want hold, built/ok
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  want hold, is-equal(rustc-errors(temp-folder(<term-host-list->)), <>)
+
+test <it answers 2 + 2 + 2>
+  want hold, built/ok
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  host folder, temp-folder(<term-host-list->)
+  want hold, is-equal(rustc-errors(folder), <>)
+  host ran, run(<{folder}/main>, make list)
+  want hold, is-equal(trim(ran/output), <6>)

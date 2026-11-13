@@ -1,0 +1,343 @@
+note <an integer overflow is a stop no guard catches, a zero divisor a defect a guard catches>
+
+# Ported from arithmetic-stop.ts by statement (item term-self-host-001-0612), one test per `ok` in its order. An integer
+# overflow is a STOP no guard catches, and a zero divisor is a `defect` a guard catches (D15,
+# note/project/term/decisions-2026-10/divisor/spec.md section 2). Each case is its own process, because a stop ends one.
+#
+# TypeScript: the program's emitted module with a line of calls after it, run under tsx, one child per case as the
+# original ran it. Kotlin (divisor-0007): the program with `quotient` beside it, compiled for kotlin with the five tasks
+# as its entries, its native prelude in front, its imports hoisted by compile/kotlin (the emitter is the subject with the
+# stop, decision 106), built once by kotlinc into a jar the cases run with java. The original's Kotlin front end ran the
+# driver's steps by hand (collect, parse, mill, bind, resolve, check, resolve-async, simplify over the five roots): here
+# the driver runs them, through test/support/compiling. No kotlinc or java is each Kotlin test's skip, where the original
+# printed one skip line for them all. The original stopped with one FAIL line when the program was refused: here the
+# refused program leaves each TypeScript case an empty module, and every TypeScript test fails. A child a signal ended reads as 128 plus the signal here, null in the original:
+# both are "not 0 and not null".
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+
+load ../support/running
+  find running-node
+  find run-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+
+host program, <task share\n  take total, like number\n  take parts, like number\n  like text\n  fork\n    mark unsafe\n    save got\n      call divide\n        read total\n        read parts\n    send back, text \<\{got\}\>\n  halt take\n    take problem\n    send back, text \<caught \{problem/form\}\>\n\ntask grow\n  take a, like number\n  take b, like number\n  like text\n  fork\n    mark unsafe\n    save got\n      call add\n        read a\n        read b\n    send back, text \<\{got\}\>\n  halt take\n    take problem\n    send back, text \<caught \{problem/form\}\>\n\ntask shrink\n  take a, like number\n  take b, like number\n  like text\n  fork\n    mark unsafe\n    save got\n      call subtract\n        read a\n        read b\n    send back, text \<\{got\}\>\n  halt take\n    take problem\n    send back, text \<caught \{problem/form\}\>\n\ntask nested\n  take a, like number\n  take b, like number\n  like text\n  fork\n    mark unsafe\n    fork\n      mark unsafe\n      save got\n        call add\n          read a\n          read b\n      send back, text \<\{got\}\>\n    halt take\n      take inner\n      send back, text \<inner caught \{inner/form\}\>\n  halt take\n    take problem\n    send back, text \<outer caught \{problem/form\}\>\n>
+
+host quotient, <task quotient\n  take a, like number\n  take b, like number\n  like text\n  fork\n    mark unsafe\n    save got\n      call divide\n        read a\n        read b\n    send back, text \<\{got\}\>\n  halt take\n    take problem\n    send back, text \<caught \{problem/form\}\>\n>
+
+host max, <9223372036854775807>
+host min, <-9223372036854775808>
+
+host caught, make pattern, <<caught>>
+host excess, make pattern, <<excess>>
+host shortage, make pattern, <<shortage>>
+host stop-class, make pattern, <<class __TermStop extends Error>>
+host stop-exception, make pattern, <<__TermStop.*TermException>>
+host kotlin-stop-class, make pattern, <<class TermStop\(message: String\) : Error\(message\)>>
+
+host built, compile-text(program, make(compile-choice, bind(file, <main.tree>)))
+
+# the line of the program's output at `at`, <> past its end
+task line-of
+  take said, like run-result
+  take at, like number
+  like text
+
+  host lines, text-split(said/output, <\n>)
+  fork test, is-above(lines/length, at)
+    hold
+      back lines/{at}
+  back <>
+
+# whether a child ended on its own with an exit code that is not 0
+task ended-badly
+  take said, like run-result
+  like boolean
+
+  back is-unequal(said/code, 0)
+
+# ---- TypeScript ----
+
+# the emitted module with `tail` after it, run under tsx as its own process
+task run-case
+  take tail, like text
+  like run-result
+
+  host folder, temp-folder(<term-arithmetic-stop->)
+  host file, <{folder}/case.ts>
+  write-file(file, <{built/emitted}\n{tail}\n>)
+  back run(running-node(0), make list(<--import>, <tsx>, file))
+
+task divided
+  like run-result
+
+  back run-case(<console.log(share(6, 3)); console.log(share(6, 0))>)
+
+task grown
+  like run-result
+
+  back run-case(<console.log(grow(1, 2)); console.log(grow({max}, 1))>)
+
+task shrunk
+  like run-result
+
+  back run-case(<console.log(shrink({min}, 1))>)
+
+task nested-run
+  like run-result
+
+  back run-case(<console.log(nested(1, 2)); console.log(nested({max}, 1))>)
+
+# (a) a zero divisor is a defect, and the guard catches it
+test <a guarded share(6, 3) answers 2>
+  want hold, is-equal(line-of(divided(), 0), <2>)
+
+test <a guarded share(6, 0) prints caught defect>
+  host said, divided()
+  want hold, is-equal(line-of(said, 1), <caught defect>)
+  want hold, is-equal(said/code, 0)
+
+# (b) an overflow past the top is a stop: the handler does not run, the process ends non-zero, stderr names excess
+test <a guarded grow(1, 2) answers 3>
+  want hold, is-equal(line-of(grown(), 0), <3>)
+
+test <a guarded overflow does not reach the handler>
+  host said, grown()
+  want hold, not(matches(caught, said/output))
+
+test <a guarded overflow ends the process non-zero>
+  want hold, ended-badly(grown())
+
+test <a guarded overflow names excess on stderr>
+  host said, grown()
+  want hold, matches(excess, said/error)
+
+# (c) the same past the bottom, naming shortage
+test <a guarded underflow does not reach the handler>
+  host said, shrunk()
+  want hold, not(matches(caught, said/output))
+
+test <a guarded underflow ends the process non-zero>
+  want hold, ended-badly(shrunk())
+
+test <a guarded underflow names shortage on stderr>
+  host said, shrunk()
+  want hold, matches(shortage, said/error)
+
+# (d) a guard inside a guard rethrows at each level
+test <a nested guard answers a plain sum>
+  want hold, is-equal(line-of(nested-run(), 0), <3>)
+
+test <neither handler of a nested guard runs on an overflow>
+  host said, nested-run()
+  want hold, not(matches(caught, said/output))
+
+test <a nested overflow ends the process non-zero naming excess>
+  host said, nested-run()
+  want hold, ended-badly(said)
+  want hold, matches(excess, said/error)
+
+# the stop is not a Term exception: no TermException class or hive hook is involved
+test <the stop is its own class>
+  want hold, matches(stop-class, built/emitted)
+  want hold, not(matches(stop-exception, built/emitted))
+
+# ---- Kotlin (divisor-0007): the same cases on the real toolchain ----
+
+# the Kotlin program, built once by the first test that asks: its source, and kotlinc's errors (<> when it built)
+form kotlin-build
+  link source, like text
+  link jar, like text
+  link errors, like text
+
+form kotlin-builds
+  mark shared
+  link held, like hash, like text, like kotlin-build
+
+host kotlin-held, make(kotlin-builds, bind(held, make hash))
+
+host kotlin-main, <fun main(args: Array\<String\>) \{\n    when (args[0]) \{\n        "share" -\> \{ println(share(6L, 3L)); println(share(6L, 0L)) \}\n        "grow" -\> \{ println(grow(1L, 2L)); println(grow(9223372036854775807L, 1L)) \}\n        "shrink" -\> \{ println(shrink(-9223372036854775807L - 1L, 1L)) \}\n        "nested" -\> \{ println(nested(1L, 2L)); println(nested(9223372036854775807L, 1L)) \}\n        "quotient" -\> \{ println(quotient(-9223372036854775807L - 1L, -1L)) \}\n    \}\n\}>
+
+task kotlin-made
+  like kotlin-build
+
+  host out, compile-text(<{program}\n{quotient}>, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <kotlin>), bind(env, <kotlin>), bind(entries, make list(<share>, <grow>, <shrink>, <nested>, <quotient>))))
+  fork test, not(out/ok)
+    hold
+      back make(kotlin-build, bind(source, <>), bind(jar, <>), bind(errors, <the program was refused: {join(out/messages, < | >)}>))
+  host source, kotlin-module/hoist-kotlin-imports(<{prelude-text(out, <kotlin>)}\n{emit-text(out, <kotlin>)}\n{kotlin-main}\n>)
+  host folder, temp-folder(<term-arithmetic-stop-kotlin->)
+  host file, <{folder}/main.kt>
+  host jar, <{folder}/main.jar>
+  write-file(file, source)
+  back make(kotlin-build, bind(source, source), bind(jar, jar), bind(errors, run-tool(make list(<kotlinc>, file, <-include-runtime>, <-d>, jar))))
+
+task kotlin-built
+  like kotlin-build
+
+  save key, <one>
+  fork test, kotlin-held/held/has(key)
+    hold
+      back kotlin-held/held/{key}
+  save made, kotlin-made()
+  save kotlin-held/held/{key}, made
+  back made
+
+# whether kotlinc and java are both there
+task has-kotlin
+  like boolean
+
+  back and(is-unequal(find-tool(<kotlinc>), <>), is-unequal(find-tool(<java>), <>))
+
+# one case of the built jar, by its name
+task kotlin-run
+  take which, like text
+  like run-result
+
+  host build, kotlin-built()
+  back run(<java>, make list(<-jar>, build/jar, which))
+
+test <kotlin: the program builds>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-built()
+  want hold, is-equal(said/errors, <>)
+
+# (a) a zero divisor is a defect, and the guard catches it
+test <kotlin: a guarded share(6, 3) answers 2>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  want hold, is-equal(line-of(kotlin-run(<share>), 0), <2>)
+
+test <kotlin: a guarded share(6, 0) prints caught defect>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-run(<share>)
+  want hold, is-equal(line-of(said, 1), <caught defect>)
+  want hold, is-equal(said/code, 0)
+
+# (b) an overflow past the top is a stop
+test <kotlin: a guarded grow(1, 2) answers 3>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  want hold, is-equal(line-of(kotlin-run(<grow>), 0), <3>)
+
+test <kotlin: a guarded overflow does not reach the handler>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-run(<grow>)
+  want hold, not(matches(caught, said/output))
+
+test <kotlin: a guarded overflow ends the process non-zero>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  want hold, ended-badly(kotlin-run(<grow>))
+
+test <kotlin: a guarded overflow names excess on stderr>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-run(<grow>)
+  want hold, matches(excess, said/error)
+
+# (c) past the bottom, naming shortage
+test <kotlin: a guarded underflow does not reach the handler>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-run(<shrink>)
+  want hold, not(matches(caught, said/output))
+
+test <kotlin: a guarded underflow ends the process non-zero>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  want hold, ended-badly(kotlin-run(<shrink>))
+
+test <kotlin: a guarded underflow names shortage on stderr>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-run(<shrink>)
+  want hold, matches(shortage, said/error)
+
+# (d) a guard inside a guard rethrows at each level
+test <kotlin: a nested guard answers a plain sum>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  want hold, is-equal(line-of(kotlin-run(<nested>), 0), <3>)
+
+test <kotlin: neither handler of a nested guard runs on an overflow>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-run(<nested>)
+  want hold, not(matches(caught, said/output))
+
+test <kotlin: a nested overflow ends the process non-zero naming excess>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-run(<nested>)
+  want hold, ended-badly(said)
+  want hold, matches(excess, said/error)
+
+# (e) min / -1 is an overflow, not a defect
+test <kotlin: a guarded divide(min, -1) does not reach the handler>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-run(<quotient>)
+  want hold, not(matches(caught, said/output))
+
+test <kotlin: a guarded divide(min, -1) ends the process non-zero naming excess>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-run(<quotient>)
+  want hold, ended-badly(said)
+  want hold, matches(excess, said/error)
+
+test <kotlin: the stop is its own class, not a TermException>
+  fork test, not(has-kotlin())
+    hold
+      skip <kotlinc or java is not installed>
+  host said, kotlin-built()
+  want hold, matches(kotlin-stop-class, said/source)

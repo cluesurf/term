@@ -1,0 +1,96 @@
+note <A unit shared between projects imports what each of them has>
+
+# Ported from unit-imports.ts by statement (item term-self-host-001-0623), one test per `ok` in its order.
+# note/project/term/incremental-best-in-class.md, steps 1 and 13: the standard library's units are built once for the
+# machine, and their emitted imports name the modules they load. Those names were relative to the project root, so a
+# unit one project built named files a project at another depth never wrote. Two projects at different depths share one
+# store here, and every relative import either one emits must name a module beside it. call/code/make, call/cache-store
+# and compile/cache are the subject (decision 106).
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load @term/base/pattern
+  find pattern
+  find find-matches
+  find match-group
+
+dock load
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/make>, name project-module
+  load <node:fs>, name imports-file
+  load <node:path>, name imports-path
+
+bind new-cache
+  take module, like dynamic
+  take store, like dynamic
+  take label, like text
+  like dynamic
+  case node
+    text <new $module.CompileCache($store, $label)>
+
+host base, imports-file/realpath-sync(temp-folder(<unit-imports->))
+host shared, imports-path/join(base, <shared>)
+
+# the same program, under `at`
+task project
+  take name, like text
+  take at, like text
+  like text
+
+  host root, imports-path/join(base, at)
+  imports-file/mkdir-sync(imports-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  imports-file/write-file-sync(imports-path/join(root, <deck.tree>), <deck @probe/{name}\n  mark \<0.0.1\>\n>)
+  imports-file/write-file-sync(imports-path/join(root, <code>, <base.tree>), <load @term/base/text\n  find trim\n\nload @term/base/list\n  find sort\n\ntask {name}\n  like text\n  back trim(\< {name} \>)\n>)
+  back root
+
+task build
+  take root, like text
+  like dynamic
+
+  host cache, new-cache(cache-module, cache-store/shared-cache-store(imports-path/join(root, <.base/cache>), shared, <probe>), <probe>)
+  back project-module/compile-project-separate(root, cache, <node>, project-module/build-session(root))
+
+# every `from "./x"` in host/.unit that names no file there
+task dangling
+  take root, like text
+  like list, like text
+
+  host folder, imports-path/join(root, <host>, <.unit>)
+  host relative, make(pattern, <<from ["']\./([^"']+)["']>>)
+  save out, make list
+  walk imports-file/readdir-sync(folder)
+    take name, like text
+    host text, imports-file/read-file-sync(imports-path/join(folder, name), <utf8>)
+    walk find-matches(relative, text)
+      take found, like pattern-match
+      save group, match-group(found, 1)
+      host target, group/unwrap-or(<>)
+      fork test, not(imports-file/exists-sync(imports-path/join(folder, <{target}.ts>)))
+        hold
+          out/push(<{name} -\> {target}>)
+  back out
+
+host shallow, project(<shallow>, <one>)
+host deep, project(<deep>, <one/two/three>)
+host first, build(shallow)
+host second, build(deep)
+
+test <the shallow project builds>
+  want hold, is-equal(first/failed, 0)
+
+test <the deep project builds>
+  want hold, is-equal(second/failed, 0)
+
+test <reading the standard library units the shallow one built>
+  want hold, is-equal(second/built, 1)
+
+test <every import the shallow project emits names a module it has>
+  want hold, is-equal(dangling(shallow)/length, 0)
+
+test <every import the deep project emits names a module it has>
+  want hold, is-equal(dangling(deep)/length, 0)

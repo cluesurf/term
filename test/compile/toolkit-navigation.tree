@@ -1,0 +1,212 @@
+note <a routed app on each toolkit host, moved by the contract and by the platform's own back>
+
+# Ported from toolkit-navigation.ts by statement (item term-self-host-001-0696). The routed app on the toolkit hosts
+# (native-navigation-0007): a route table mounted by the toolkit `host` (deck/site/code/view/native/toolkit/host.tree)
+# on AppKit (macOS), UIKit (the iPhone simulator), Android views (the emulator), Compose on the desktop JVM and Jetpack
+# Compose (the emulator), drawn from the navigation contract, and moved by the platform's own back. The program goes to
+# /a and /b through the contract, then back twice the way a person does (`press-back`), and says what the WINDOW draws
+# after each step, read off the platform views (on Compose, its semantics). Built and run on each leg by
+# test/support/device/toolkit-run (item 0548), which skips a leg whose toolchain or device is not here.
+# NAVIGATION_ONLY=macos (or ios, android, compose, compose-android) runs one leg.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way are one walked test, a
+# case each, labeled by the check's name. Each `ok` of the original's judge is one walked test over the legs, a leg a
+# case of it, skipped where the leg was or where it stopped before the original would have judged it.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find index-of
+  find substring
+  find trim
+  find char-count
+
+# the original's program, its PNG path filled in
+task navigation-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  back <load @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/toolkit/dom\n  find after-launch\n  find run-app\n  find exit-app\n  find create-element\n  find create-text\n  find append\n  find serialize\n  find press-back\n  find later\n  find snapshot\n  find say\n\nload @term/site/code/view/native/toolkit/host\n  find mount-app\n\nload @term/site/code/view/navigation\n  find navigate\n  find current-path\n\nload @term/site/code/http/http\n  find request\n  find response\n\nload @term/site/code/view/route-answer\n  find answer-nothing\n\nload @term/base/maybe\n  find maybe\n\n# a place drawn: its path, in a span. A route takes the request and answers nothing when it drew the page\ntask draw\n  take host, like view\n  take request, like request\n  like maybe, like response\n  save here\n    call create-element\n      text \<span\>\n  call append\n    read here\n    call create-text\n      read request/path\n  call append\n    read host\n    read here\n  send back\n    call answer-nothing\n\ntask main\n  save root\n    call mount-app\n      read draw\n      text \<Term navigation\>\n  call after-launch\n    task check\n      save start\n        call serialize\n          read root\n      call say\n        text \<step start \{\{start\}\}\>\n      call navigate\n        text \</a\>\n      call navigate\n        text \</b\>\n      save at-b\n        call serialize\n          read root\n      call say\n        text \<step b \{\{at-b\}\}\>\n      call press-back\n      call later\n        task after-first\n          save first\n            call serialize\n              read root\n          save first-path\n            call current-path\n          call say\n            text \<step back \{\{first-path\}\} \{\{first\}\}\>\n          call press-back\n          call later\n            task after-second\n              save second\n                call serialize\n                  read root\n              save second-path\n                call current-path\n              call say\n                text \<step root \{\{second-path\}\} \{\{second\}\}\>\n              call snapshot\n                text \<{shot}\>\n              call exit-app\n                code 0\n  call run-app\n>
+
+form navigation-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host navigation-now, make(navigation-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# the app and the legs NAVIGATION_ONLY allows, made once
+task the-app
+  like navigation-state
+
+  fork test, navigation-now/made
+    hold
+      back navigation-now
+  save navigation-now/made, true
+  save navigation-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-toolkit-navigation->)), bind(name, <Navigation>), bind(who, <toolkit-navigation>), bind(ios-identifier, <surf.term.toolkit-navigation-test>), bind(android-identifier, <surf.term.toolkitnavigation>), bind(compose, true), bind(compose-android, true))
+  save navigation-now/legs, legs-of(navigation-now/app, variable(<NAVIGATION_ONLY>))
+  back navigation-now
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, navigation-program, prepare-no-device)
+  save navigation-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# the text after `step <name> ` on the first line holding it
+task step
+  take output, like text
+  take name, like text
+  like text
+
+  save mark, <step {name} >
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        save from, add(index-of(line, mark), char-count(mark))
+        back trim(substring(line, from, char-count(line)))
+  back <>
+
+test <the app mounts at / and the window draws it>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(step(ran/output, <start>), <\<span\>/\</span\>>)
+
+test <navigating to /a then /b draws /b>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save at-b, step(ran/output, <b>)
+  want hold, and(text-contains(at-b, <\<span\>/b\</span\>>), not(text-contains(at-b, <\<span\>/a\</span\>>)))
+
+test <the platform's back takes the app to /a and the window draws it>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save back-at, step(ran/output, <back>)
+  want hold, and(starts-with(back-at, </a >), text-contains(back-at, <\<span\>/a\</span\>>))
+
+test <back again is the start>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save start, step(ran/output, <root>)
+  want hold, and(starts-with(start, </ >), text-contains(start, <\<span\>/\</span\>>))

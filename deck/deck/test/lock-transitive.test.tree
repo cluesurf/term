@@ -1,0 +1,392 @@
+note <a second load keeps what a lockfile locked, ranges and bands alike, and the graph resolves in declared order whatever order the registry answers in>
+
+# Ported from lock-transitive.test.ts by statement (item term-self-host-001-0626), one test per vitest `it`, in its
+# order, the loop over two orders written out as two tests. code/package/resolve, the face the original imported, is
+# the subject, docked (decision 157), with code/package/fetch and code/code beside it. The original swapped the host's
+# global fetch for a registry answering at a fake host: here each test starts a node:http registry of its own on a
+# free port, routed to by the two scopes, which answers what the test published, each deck's metadata after its delay,
+# and an unpublished deck as a 404 whose status text names it. The resolution port keeps its metadata cache (5 minutes,
+# keyed by the deck's name) in its own copy, which no caller reaches to clear, so each test first moves the clock 10
+# minutes past the one before, as the original's beforeEach did, and never reads another test's registry.
+
+load @term/base/clock
+  find read-nanoseconds
+  find sleep
+
+dock load
+  load <global:Date>, name host-date
+  load <node:http>, name registry-http
+  load <node:events>, name registry-events
+  load <@term/deck/code/package/resolve>, name resolve-face
+  load <@term/deck/code/package/fetch>, name fetch-face
+  load <@term/deck/code/code>, name code-face
+
+# the host's clock, answered by a Term task from now on
+bind set-clock
+  take clock, like dynamic
+  like void
+  case node
+    text <(Date.now = $clock)>
+
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# the message of what a call raised
+bind cause-message
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+# the resolved decks, in the map's order
+bind deck-list
+  take resolution, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$resolution.decks.values()]>
+
+# host reflect: the scope routes the fetch config holds, an object keyed by scope
+bind scope-routes
+  take registry, like text
+  like dynamic
+  case node
+    text <<({ "@a": $registry, "@x": $registry })>>
+
+# one published version of a deck: its links are the members of a JSON object, the empty text when it has none
+form release
+  link deck, like text
+  link version, like text
+  link links, like text
+
+form registry
+  link server, like dynamic
+  link releases, like list, like release
+  link delay, like dynamic
+  link base, like text
+
+form fetch-config
+  link registry, like text
+  link scope-registries, like dynamic
+  link concurrency, like number
+  link offline, like boolean
+
+form probe-link
+  link name, like text
+  link mark, like dynamic
+
+form probe-manifest
+  link name, like text
+  link mark, like dynamic
+  link link, like list, like probe-link
+
+form resolve-ask
+  link manifest, like probe-manifest
+  link config, like fetch-config
+
+form resolve-again
+  link manifest, like probe-manifest
+  link config, like fetch-config
+  link lockfile, like dynamic
+
+form lockfile-ask
+  link resolution, like dynamic
+
+form lock-link
+  link name, like text
+  link code, like text
+
+form lock-deck
+  link name, like text
+  link code, like dynamic
+  link hash, like text
+  link site, like text
+  link link, like list, like lock-link
+
+form lock-book
+  link version, like number
+  link decks, like list, like lock-deck
+
+# the host's clock (`Date.now`, which the port's cache reads, not the monotonic clock of @term/base) read 10 minutes
+# later than it reads now, and running on from there
+task shift-clock
+  like void
+
+  host from, host-date/now()
+  host from-ns, read-nanoseconds()
+  set-clock
+    task
+      like number
+      back add(add(from, 600000), divide(subtract(read-nanoseconds(), from-ns), 1000000))
+
+task release-of
+  take deck, like text
+  take version, like text
+  take links, like text
+  like release
+
+  back make(release, bind(deck, deck), bind(version, version), bind(links, links))
+
+task without-slashes
+  take path, like text
+  like text
+
+  fork test, path/starts-with(</>)
+    hold
+      back without-slashes(path/slice(1))
+  back path
+
+# a deck's metadata: every version published, with its links and where its tarball is
+task meta-text
+  take name, like text
+  take releases, like list, like release
+  like text
+
+  save entries, <>
+  walk releases
+    take one, like release
+    fork test, is-equal(one/deck, name)
+      hold
+        save entry, <"{one/version}":\{"name":"{name}","version":"{one/version}","dependencies":\{{one/links}\},"dist":\{"tarball":"https://fake/{name}/{one/version}","integrity":"sha-{one/version}","shasum":""\}\}>
+        fork test, is-equal(entries, <>)
+          hold
+            save entries, entry
+          miss
+            save entries, <{entries},{entry}>
+  back <\{"name":"{name}","versions":\{{entries}\}\}>
+
+task is-published
+  take name, like text
+  take releases, like list, like release
+  like boolean
+
+  walk releases
+    take one, like release
+    fork test, is-equal(one/deck, name)
+      hold
+        back true
+  back false
+
+# a deck's metadata after its delay, or a 404 whose status text names it
+task answer-registry
+  take releases, like list, like release
+  take delay, like dynamic
+  take request, like dynamic
+  take response, like dynamic
+  like void
+  mark async
+
+  host name, without-slashes(request/url)
+  save wait-ms, 0
+  fork test, delay/has(name)
+    hold
+      save wait-ms, delay/get(name)
+  sleep(wait-ms)
+  fork test, not(is-published(name, releases))
+    hold
+      response/write-head(404, <{name} is not published>)
+      response/end(<>)
+      back
+  response/write-head(200)
+  response/end(meta-text(name, releases))
+
+# a registry answering the releases and delays the test gives, at a free port, the clock moved on first
+task open-registry
+  take releases, like list, like release
+  take delay, like dynamic
+  like registry
+  mark async
+
+  shift-clock()
+  save server
+    registry-http/create-server
+      task
+        take request, like dynamic
+        take response, like dynamic
+        like void
+        mark async
+        answer-registry(releases, delay, request, response)
+  server/listen(0, <127.0.0.1>)
+  save heard, wait registry-events/once(server, <listening>)
+  host port, server/address()/port
+  back make(registry, bind(server, server), bind(releases, releases), bind(delay, delay), bind(base, <http://127.0.0.1:{port}/>))
+
+task close-registry
+  take open, like registry
+  like void
+  mark async
+
+  open/server/close-all-connections()
+  open/server/close()
+  save closed, wait registry-events/once(open/server, <close>)
+
+# a plain registry for the test's scopes: an unmapped scope is an OCI registry's
+task config-of
+  take open, like registry
+  like fetch-config
+
+  host base, fetch-face/make-default-fetch-config()
+  back make(fetch-config, bind(registry, base/registry), bind(scope-registries, scope-routes(open/base)), bind(concurrency, base/concurrency), bind(offline, base/offline))
+
+task project
+  take links, like list, like probe-link
+  like probe-manifest
+
+  back make(probe-manifest, bind(name, <@probe/app>), bind(mark, code-face/parse-code(<0.0.1>)), bind(link, links))
+
+task link-of
+  take name, like text
+  take hold, like text
+  like probe-link
+
+  back make(probe-link, bind(name, name), bind(mark, code-face/parse-code-hold(hold)))
+
+task resolved
+  take manifest, like probe-manifest
+  take config, like fetch-config
+  like dynamic
+  mark async
+
+  back wait resolve-face/resolve(make(resolve-ask, bind(manifest, manifest), bind(config, config)))
+
+task resolved-over
+  take manifest, like probe-manifest
+  take config, like fetch-config
+  take lockfile, like dynamic
+  like dynamic
+  mark async
+
+  back wait resolve-face/resolve(make(resolve-again, bind(manifest, manifest), bind(config, config), bind(lockfile, lockfile)))
+
+task lockfile-of
+  take resolution, like dynamic
+  like dynamic
+
+  back resolve-face/build-lockfile(make(lockfile-ask, bind(resolution, resolution)))
+
+# the version a resolution holds of a deck, the empty text when it holds none
+task version-of
+  take resolution, like dynamic
+  take name, like text
+  like text
+
+  walk deck-list(resolution)
+    take deck, like dynamic
+    fork test, is-equal(deck/name, name)
+      hold
+        back code-face/show-code(deck/code)
+  back <>
+
+# what resolving raised, the empty text when it resolved
+task resolve-refusal
+  take manifest, like probe-manifest
+  take config, like fetch-config
+  like text
+  mark async
+
+  save message, <>
+  fork
+    mark unsafe
+    save resolution, wait resolve-face/resolve(make(resolve-ask, bind(manifest, manifest), bind(config, config)))
+  halt take
+    take cause
+    save message, cause-message(cause)
+  back message
+
+# `@x/strict` wants the leaf at exactly 0.1.0, `@x/loose` takes any 0.1. The first link to the leaf picks it, and the
+# other is held to the pick: strict first is 0.1.0 and both are content, loose first is 0.1.3 and strict refuses.
+# Declared order says strict, however slowly its registry answers
+task order-releases
+  like list, like release
+
+  host out, make list
+  out/push(release-of(<@x/strict>, <1.0.0>, <"@x/leaf":"0.1.0">))
+  out/push(release-of(<@x/loose>, <1.0.0>, <"@x/leaf":"0.1.x">))
+  out/push(release-of(<@x/leaf>, <0.1.0>, <>))
+  out/push(release-of(<@x/leaf>, <0.1.3>, <>))
+  back out
+
+task order-manifest
+  like probe-manifest
+
+  back project(make list(link-of(<@x/strict>, <1.x.x>), link-of(<@x/loose>, <1.x.x>)))
+
+test <a second load over a lockfile: keeps a transitive deck where the first load locked it, under a wild range>
+  host releases, make list
+  releases/push(release-of(<@a/top>, <1.0.0>, <"@a/leaf":"0.1.x">))
+  releases/push(release-of(<@a/leaf>, <0.1.0>, <>))
+  releases/push(release-of(<@a/leaf>, <0.1.3>, <>))
+  host open, open-registry(releases, make hash)
+  host manifest, project(make list(link-of(<@a/top>, <1.x.x>)))
+  host first, resolved(manifest, config-of(open))
+  host first-leaf, version-of(first, <@a/leaf>)
+  # newer versions are published, and the lock still decides
+  releases/push(release-of(<@a/leaf>, <0.1.4>, <>))
+  host lockfile, lockfile-of(first)
+  host second, resolved-over(manifest, config-of(open), lockfile)
+  close-registry(open)
+  want hold, is-equal(first-leaf, <0.1.3>)
+  want hold, is-equal(version-of(second, <@a/leaf>), <0.1.3>)
+  want hold, is-equal(json-text(lockfile-of(second)), json-text(lockfile))
+
+test <a second load over a lockfile: keeps one under a band range, which used to throw>
+  host releases, make list
+  releases/push(release-of(<@a/top>, <1.0.0>, <"@a/leaf":"1.2.0..2.0.0">))
+  releases/push(release-of(<@a/leaf>, <1.2.0>, <>))
+  releases/push(release-of(<@a/leaf>, <1.5.0>, <>))
+  host open, open-registry(releases, make hash)
+  host manifest, project(make list(link-of(<@a/top>, <1.x.x>)))
+  host first, resolved(manifest, config-of(open))
+  host first-leaf, version-of(first, <@a/leaf>)
+  releases/push(release-of(<@a/leaf>, <1.9.0>, <>))
+  host second, resolved-over(manifest, config-of(open), lockfile-of(first))
+  close-registry(open)
+  want hold, is-equal(first-leaf, <1.5.0>)
+  want hold, is-equal(version-of(second, <@a/leaf>), <1.5.0>)
+
+test <a second load over a lockfile: reads a workspace link written as * before links carried their ranges>
+  host releases, make list
+  releases/push(release-of(<@a/top>, <1.0.0>, <>))
+  releases/push(release-of(<@a/leaf>, <0.1.3>, <>))
+  releases/push(release-of(<@a/leaf>, <0.2.0>, <>))
+  host open, open-registry(releases, make hash)
+  host top-links, make list(make(lock-link, bind(name, <@a/leaf>), bind(code, <*>)))
+  host leaf-links, make list
+  host decks, make list
+  decks/push(make(lock-deck, bind(name, <@a/top>), bind(code, code-face/parse-code(<1.0.0>)), bind(hash, <h>), bind(site, <s>), bind(link, top-links)))
+  decks/push(make(lock-deck, bind(name, <@a/leaf>), bind(code, code-face/parse-code(<0.1.3>)), bind(hash, <h>), bind(site, <s>), bind(link, leaf-links)))
+  host lockfile, make(lock-book, bind(version, 1), bind(decks, decks))
+  host resolution, resolved-over(project(make list(link-of(<@a/top>, <1.x.x>))), config-of(open), lockfile)
+  close-registry(open)
+  want hold, is-equal(version-of(resolution, <@a/leaf>), <0.1.3>)
+
+test <the order of resolution: is the declared order when @x/strict answers last>
+  host delay, make hash
+  delay/set(<@x/strict>, 40)
+  delay/set(<@x/loose>, 0)
+  host open, open-registry(order-releases(), delay)
+  host resolution, resolved(order-manifest(), config-of(open))
+  close-registry(open)
+  want hold, is-equal(version-of(resolution, <@x/leaf>), <0.1.0>)
+
+test <the order of resolution: is the declared order when @x/loose answers last>
+  host delay, make hash
+  delay/set(<@x/loose>, 40)
+  delay/set(<@x/strict>, 0)
+  host open, open-registry(order-releases(), delay)
+  host resolution, resolved(order-manifest(), config-of(open))
+  close-registry(open)
+  want hold, is-equal(version-of(resolution, <@x/leaf>), <0.1.0>)
+
+test <the order of resolution: reports the first failure in declared order, not the first to arrive>
+  host releases, make list
+  releases/push(release-of(<@x/late>, <1.0.0>, <>))
+  releases/push(release-of(<@x/early>, <1.0.0>, <>))
+  host delay, make hash
+  delay/set(<@x/missing-a>, 40)
+  host open, open-registry(releases, delay)
+  host message, resolve-refusal(project(make list(link-of(<@x/missing-a>, <1.x.x>), link-of(<@x/missing-b>, <1.x.x>))), config-of(open))
+  close-registry(open)
+  want hold, message/includes(<@x/missing-a is not published>)

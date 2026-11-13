@@ -1,0 +1,418 @@
+note <a console in the hook dialect lowers to route data a dispatcher and a help renderer read>
+
+# Ported from hook-route.ts by statement (item term-self-host-001-0571), one test per `ok` in its order. A console in
+# the hook dialect lowers to route data (decision term/003 parts 1 and 2, term-cli-in-term-0140): a `slot` under a hook
+# is a positional (`positional`, and `variadic` too when list-typed), a take's long aliases are its `name` lines in
+# order (`aliases`), and both reach the JSON compile/node-json writes, the suite's subject with the compiler (decision
+# 106). A list-typed `take` under a command is a repeatable option (decision cli-in-term/010), a slot with a line the
+# hook-slot rule does not read (`code`) is refused instead of dropped, a task's own `slot` parameter means what it
+# meant, `mark pass` (cli-in-term/008 and 012) and maybe takes (cli-in-term/008 part 1) are held both ways. zone's own
+# console is read only from TERM_PARENT_ROOT, as the original read it, and its two tests skip without one.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find file-text
+  find project-path
+
+load ../support/judging
+  find read-field
+  find read-at
+  find truth
+
+load @term/base/text/util
+  find join
+
+load ../support/reading
+  find any-holding
+
+load ../support/walking
+  find kind-of
+
+load @term/base/text
+  find index-of
+  find substring
+  find split, name text-split
+  find contains, name text-contains
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/make/code/compile/node-json>, name node-json
+
+host skip-fields, make list(<span>, <type>)
+
+# the console compiled in the call role, under the name a console's base file has
+task as-call
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, </gate/code/line/base.tree>), bind(role, <call>)))
+
+# the messages of a refused compile, none for one that compiled
+task refusals
+  take text, like text
+  like list, like text
+
+  host out, as-call(text)
+  fork test, out/ok
+    hold
+      back make list
+  back out/messages
+
+# the first dock statement whose route has `path`, any route when `path` is <>, void when there is none
+task dock-of
+  take out, like compile-outcome
+  take path, like text
+  like dynamic
+
+  fork test, not(out/ok)
+    hold
+      back void
+  walk out/program
+    take one, like dynamic
+    fork test, is-equal(<{read-field(one, <form>)}>, <dock>)
+      hold
+        fork test, or(is-equal(path, <>), is-equal(<{read-field(read-field(one, <route>), <path>)}>, path))
+          hold
+            back one
+  back void
+
+# the child route of a dock whose path is `path`, void when there is none
+task child-of
+  take dock, like dynamic
+  take path, like text
+  like dynamic
+
+  fork test, is-equal(kind-of(dock), <undefined>)
+    hold
+      back void
+  walk read-field(read-field(dock, <route>), <children>)
+    take child, like dynamic
+    fork test, is-equal(<{read-field(child, <path>)}>, path)
+      hold
+        back child
+  back void
+
+# the take of a route named `name`, void when there is none
+task take-of
+  take route, like dynamic
+  take name, like text
+  like dynamic
+
+  fork test, is-equal(kind-of(route), <undefined>)
+    hold
+      back void
+  walk read-field(route, <takes>)
+    take held, like dynamic
+    fork test, is-equal(<{read-field(held, <name>)}>, name)
+      hold
+        back held
+  back void
+
+# whether a field is set true: absent and false read alike (decision 034 section 2, decision 071)
+task is-set
+  take value, like dynamic
+  take field, like text
+  like boolean
+
+  back truth(read-field(value, field))
+
+task is-present
+  take value, like dynamic
+  like boolean
+
+  back is-unequal(kind-of(value), <undefined>)
+
+# the JSON of a dock statement without its places and types, <> for none
+task json-of-dock
+  take dock, like dynamic
+  like text
+
+  fork test, not(is-present(dock))
+    hold
+      back <>
+  back node-json/statementJson(skip-fields, dock)
+
+# the takes of the route whose path is `path`, as they stand in the dock's JSON: from `"takes":` to the route's methods
+task takes-of
+  take json, like text
+  take path, like text
+  like text
+
+  host at, index-of(json, <"path":"{path}">)
+  host start, index-of(json, <"takes":[>, at)
+  fork test, or(is-below(at, 0), is-below(start, 0))
+    hold
+      back <>
+  back substring(json, add(start, 8), index-of(json, <,"methods":>, start))
+
+# how many times `word` stands in `text`
+task count-of
+  take text, like text
+  take word, like text
+  like number
+
+  back subtract(text-split(text, word)/length, 1)
+
+host console, <# The tool\nhook tool\n  # Print less\n  take quiet\n    like boolean\n    code q\n\n  # Build one file\n  hook make\n    # the file to build\n    slot file\n      like text\n    # Watch files\n    take ride, name watch\n      like boolean\n    # Show help\n    take hint\n      name help\n      name assist\n      like boolean\n      code h\n    take back\n      like text\n      pick json\n      pick line\n      bind \<line\>\n    task build\n\n  # Gather paths\n  hook gather\n    slot root\n      like text\n      need true\n    slot paths, like list, like text\n    task gather\n\ntask build\n  take file, like text\n  take ride, like boolean\n  take hint, like boolean\n  take back, like text\n  like text\n\n  send back, read file\n\ntask gather\n  take root, like text\n  take paths, like list, like text\n  like text\n\n  send back, read root\n>
+
+host out, as-call(console)
+host tool-dock, dock-of(out, <tool>)
+host tool-json, json-of-dock(tool-dock)
+
+test <the console compiles>
+  want hold, out/ok
+
+test <the program hook is one route>
+  want hold, is-present(tool-dock)
+
+test <the program keeps its own take>
+  want hold, is-equal(takes-of(tool-json, <tool>), <[\{"name":"quiet","required":false,"short":"q","note":"Print less"\}]>)
+
+test <a slot is positional, aliases come in order, short, choices and fallback, all in source order>
+  want hold, is-equal(takes-of(tool-json, <make>), <[\{"name":"file","required":false,"note":"the file to build","positional":true\},\{"name":"ride","required":false,"aliases":["watch"],"note":"Watch files"\},\{"name":"hint","required":false,"short":"h","aliases":["help","assist"],"note":"Show help"\},\{"name":"back","required":false,"fallback":\{"form":"text","value":"line"\},"choices":["json","line"]\}]>)
+
+test <a need-true slot is required, a list slot is variadic too>
+  want hold, is-equal(takes-of(tool-json, <gather>), <[\{"name":"root","required":true,"positional":true\},\{"name":"paths","required":false,"variadic":true,"positional":true\}]>)
+
+test <the commands are the program route's children, in order>
+  want hold, is-present(tool-dock)
+  host paths, make list
+  walk read-field(read-field(tool-dock, <route>), <children>)
+    take child, like dynamic
+    paths/push(<{read-field(child, <path>)}>)
+  want hold, is-equal(join(paths, <,>), <make,gather>)
+
+# a list-typed take under a command is a REPEATABLE option (decision cli-in-term/010, superseding that point of 003
+# part 1): its type is the list, and it is neither positional nor variadic, which stay a list slot's
+host list-take, as-call(<hook tool\n  hook one\n    take law, like list, like text\n    task one\n\ntask one\n  take law, like list, like text\n  like text\n\n  send back, \<one\>\n>)
+
+test <a list-typed take under a command compiles>
+  want hold, list-take/ok
+
+test <a list take is a repeatable option: list-typed, not positional, not variadic>
+  host one-route, child-of(dock-of(list-take, <>), <one>)
+  want hold, is-present(one-route)
+  host law, read-at(read-field(one-route, <takes>), 0)
+  want hold, is-equal(<{read-field(read-field(law, <type>), <kind>)}>, <array>)
+  want hold, not(is-set(law, <positional>))
+  want hold, not(is-set(law, <variadic>))
+
+test <a slot with a code line is refused, not dropped>
+  host coded, refusals(<hook tool\n  hook one\n    slot x\n      like text\n      code s\n    task one\n\ntask one\n  take x, like text\n  like text\n\n  send back, read x\n>)
+  want hold, any-holding(coded, <slot>)
+
+test <a task's slot parameter still compiles>
+  host task-slot, compile-text(<task echo\n  slot p, like text\n  like text\n\n  send back, read p\n>, make(compile-choice, bind(file, </gate/code/echo.tree>)))
+  want hold, task-slot/ok
+
+# `mark pass` under a command (decision cli-in-term/008 part 2): the route says `passes`, in the JSON too, and the
+# mark is not the command's help
+host passing, as-call(<hook tool\n  # Run another console\n  hook zone\n    mark pass\n    # its words\n    slot rest, like list, like text\n    task zone\n  hook other\n    slot rest, like list, like text\n    task zone\n\ntask zone\n  take rest, like list, like text\n  like text\n\n  send back, \<z\>\n>)
+host passing-dock, dock-of(passing, <>)
+host zone-route, child-of(passing-dock, <zone>)
+host other-route, child-of(passing-dock, <other>)
+
+test <a passing console compiles>
+  want hold, passing/ok
+
+test <mark pass sets passes on the route>
+  want hold, is-equal(json-of-passes(zone-route), <true>)
+
+test <a hook without the mark does not pass>
+  want hold, is-present(other-route)
+  want hold, not(is-set(other-route, <passes>))
+
+test <the mark is not the help>
+  want hold, is-equal(<{read-field(zone-route, <note>)}>, <Run another console>)
+
+test <passes reaches the route JSON once>
+  want hold, is-equal(count-of(json-of-dock(passing-dock), <"passes":true>), 1)
+
+# `passes` exactly as the original compared it: true, and nothing else that reads as true
+task json-of-passes
+  take route, like dynamic
+  like text
+
+  fork test, not(is-present(route))
+    hold
+      back <none>
+  back <{read-field(route, <passes>)}>
+
+# a passing hook `zone` holding `body`
+task pass-console
+  take body, like text
+  like text
+
+  back <hook tool\n  hook zone\n    mark pass\n{body}\n    task zone\n\ntask zone\n  take rest, like list, like text\n  like text\n\n  send back, \<z\>\n>
+
+test <a passing hook with a take is refused>
+  want hold, any-holding(refusals(pass-console(<    slot rest, like list, like text\n    take quiet, like boolean>)), <mark pass>)
+
+test <a passing hook whose slot is not a list of text is refused>
+  want hold, any-holding(refusals(pass-console(<    slot rest, like text>)), <mark pass>)
+
+test <a passing hook with two slots is refused>
+  want hold, any-holding(refusals(pass-console(<    slot rest, like list, like text\n    slot more, like list, like text>)), <mark pass>)
+
+test <a passing hook with a nested hook is refused>
+  want hold, any-holding(refusals(pass-console(<    slot rest, like list, like text\n    hook inner\n      task zone>)), <mark pass>)
+
+test <another mark word under a command is refused>
+  host other-mark, refusals(<hook tool\n  hook zone\n    mark async\n    slot rest, like list, like text\n    task zone\n\ntask zone\n  take rest, like list, like text\n  like text\n\n  send back, \<z\>\n>)
+  want hold, any-holding(other-mark, <mark async>)
+
+test <mark pass under a task is refused>
+  host task-pass, refusals(<task zone\n  mark pass\n  like text\n\n  send back, \<z\>\n>)
+  want hold, any-holding(task-pass, <mark pass>)
+
+test <mark pass under a URL route is refused>
+  host route-pass, compile-text(<hook /users\n  mark pass\n  task get\n    send ok, \<users\>\n>, make(compile-choice, bind(file, </gate/code/site.tree>), bind(role, <site>)))
+  want hold, not(route-pass/ok)
+  want hold, any-holding(route-pass/messages, <mark pass>)
+
+# A LAST LIST SLOT MARKED `mark pass` (decision cli-in-term/012 part 2): the take says `passes`, in the JSON too, the
+# mark is not the slot's help, and a list slot without it does not pass
+host slot-passing, as-call(<hook zone\n  hook call\n    take sort\n      code t\n      like text\n      bind \<\>\n    slot name\n      like text\n      need true\n    # the command's own arguments\n    slot list\n      mark pass\n      like list, like text\n    task call\n  hook form\n    slot paths\n      like list, like text\n    task call\n\ntask call\n  take sort, like text\n  take name, like text\n  take list, like list, like text\n  like text\n\n  send back, read name\n>)
+host slot-dock, dock-of(slot-passing, <>)
+host call-route, child-of(slot-dock, <call>)
+host list-slot, take-of(call-route, <list>)
+
+test <a console with a passing slot compiles>
+  want hold, slot-passing/ok
+
+test <mark pass on the last slot sets passes on that take>
+  want hold, is-equal(json-of-passes(list-slot), <true>)
+  want hold, is-equal(<{read-field(list-slot, <positional>)}>, <true>)
+
+test <the other takes do not pass>
+  want hold, is-present(call-route)
+  save passing-takes, 0
+  walk read-field(call-route, <takes>)
+    take held, like dynamic
+    fork test, is-set(held, <passes>)
+      hold
+        save passing-takes, add(passing-takes, 1)
+  want hold, is-equal(passing-takes, 1)
+
+test <the slot mark is not the slot's help>
+  want hold, is-equal(<{read-field(list-slot, <note>)}>, <the command's own arguments>)
+
+test <the hook itself does not pass>
+  want hold, is-present(call-route)
+  want hold, not(is-set(call-route, <passes>))
+
+test <a list slot without the mark does not pass>
+  host form-route, child-of(slot-dock, <form>)
+  want hold, is-present(form-route)
+  host form-slot, read-at(read-field(form-route, <takes>), 0)
+  want hold, is-present(form-slot)
+  want hold, not(is-set(form-slot, <passes>))
+
+test <passes reaches the take JSON once>
+  host slot-json, json-of-dock(slot-dock)
+  want hold, text-contains(slot-json, <\{"name":"list","required":false,"note":"the command's own arguments","variadic":true,"positional":true,"passes":true\}>)
+  want hold, is-equal(count-of(slot-json, <"passes":true>), 1)
+
+# a hook `call` holding `lines`, under `hook-mark`
+task slot-console
+  take lines, like text
+  take hook-mark, like text
+  like text
+
+  back <hook tool\n  hook call\n{hook-mark}{lines}\n    task call\n\ntask call\n  take rest, like list, like text\n  like text\n\n  send back, \<z\>\n>
+
+test <mark pass on a slot that is not the last is refused>
+  want hold, any-holding(refusals(slot-console(<    slot rest\n      mark pass\n      like list, like text\n    slot last, like text>, <>)), <not the hook's last>)
+
+test <mark pass on a slot that is not a list of text is refused>
+  want hold, any-holding(refusals(slot-console(<    slot rest\n      mark pass\n      like text>, <>)), <not `like list, like text`>)
+
+test <mark pass on a list of numbers is refused>
+  want hold, any-holding(refusals(slot-console(<    slot rest\n      mark pass\n      like list, like number>, <>)), <not `like list, like text`>)
+
+test <mark pass on two slots is refused>
+  want hold, any-holding(refusals(slot-console(<    slot first\n      mark pass\n      like list, like text\n    slot rest\n      mark pass\n      like list, like text>, <>)), <only one slot>)
+
+test <mark pass on a slot under a passing hook is refused>
+  want hold, any-holding(refusals(slot-console(<    slot rest\n      mark pass\n      like list, like text>, <    mark pass\n>)), <itself `mark pass`>)
+
+test <another mark word on a slot is refused>
+  want hold, any-holding(refusals(slot-console(<    slot rest\n      mark async\n      like list, like text>, <>)), <`mark async` is not read under a slot>)
+
+test <mark pass under a take is refused>
+  want hold, any-holding(refusals(slot-console(<    take rest\n      mark pass\n      like list, like text>, <>)), <mark pass>)
+
+# zone's own console marks `call`'s and `load`'s last slot (decision cli-in-term/012 part 2). @term/zone is its own
+# repository (deck/zone in the parent), so it is read only from TERM_PARENT_ROOT, and skipped without one: the Term
+# repository reads nothing outside its root (decision term/004)
+task zone-built
+  like compile-outcome
+
+  host zone-root, <{variable(<TERM_PARENT_ROOT>)}/deck/zone>
+  host zone-file, <{zone-root}/code/line/base.tree>
+  back compile-text(file-text(zone-file), make(compile-choice, bind(file, zone-file), bind(role, <call>), bind(project, zone-root)))
+
+test <zone's console compiles>
+  fork test, not(has-variable(<TERM_PARENT_ROOT>))
+    hold
+      skip <TERM_PARENT_ROOT is unset, and @term/zone is not in this repository>
+  host zone, zone-built()
+  want hold, zone/ok
+
+test <zone call and zone load pass at their list slot, and nothing else does>
+  fork test, not(has-variable(<TERM_PARENT_ROOT>))
+    hold
+      skip <TERM_PARENT_ROOT is unset, and @term/zone is not in this repository>
+  host zone-dock, dock-of(zone-built(), <>)
+  want hold, is-present(zone-dock)
+  host passing-slots, make list
+  walk read-field(read-field(zone-dock, <route>), <children>)
+    take route, like dynamic
+    walk read-field(route, <takes>)
+      take held, like dynamic
+      fork test, is-set(held, <passes>)
+        hold
+          passing-slots/push(<{read-field(route, <path>)} {read-field(held, <name>)}>)
+  want hold, is-equal(join(passing-slots, <,>), <call list,load list>)
+
+# A MAYBE TAKE OR SLOT CAN BE ABSENT (decision cli-in-term/008 part 1): its route keeps the whole `maybe` type with its
+# item, and `need true`, a `bind` default or a maybe of a list is refused, naming the take
+task maybe-console
+  take lines, like text
+  take param, like text
+  like text
+
+  back <load @term/base/maybe\n  find maybe\n\nhook tool\n  hook hunt\n{lines}\n    task hunt\n\ntask hunt\n  take {param}\n  like text\n\n  send back, \<z\>\n>
+
+host maybe-ok, compile-text(maybe-console(<    take runs\n      like maybe, like number\n    slot glob\n      like maybe, like text>, <runs, like maybe, like number\n  take glob, like maybe, like text>), make(compile-choice, bind(file, project-path(<.>, <test/compile/maybe-line.tree>)), bind(role, <call>), bind(project, <.>)))
+host maybe-route, read-at(read-field(read-field(dock-of(maybe-ok, <>), <route>), <children>), 0)
+
+test <a console of maybe takes compiles>
+  want hold, maybe-ok/ok
+
+# node-json, which writes a `need false` field at its default as absent (decision 034 section 2, decision 071)
+test <a maybe take keeps the maybe type with its item>
+  host runs, take-of(maybe-route, <runs>)
+  want hold, is-present(runs)
+  host no-skip, make list
+  want hold, is-equal(node-json/typeJson(no-skip, read-field(runs, <type>)), <\{"kind":"named","name":"maybe","args":[\{"kind":"number"\}]\}>)
+
+test <a maybe slot stays positional>
+  want hold, is-equal(<{read-field(take-of(maybe-route, <glob>), <positional>)}>, <true>)
+
+test <a maybe take with need true is refused>
+  want hold, any-holding(refusals(maybe-console(<    take runs\n      like maybe, like number\n      need true>, <runs, like maybe, like number>)), <`runs` is a maybe>)
+
+test <a maybe take with a default is refused>
+  want hold, any-holding(refusals(maybe-console(<    take runs\n      like maybe, like number\n      bind code 3>, <runs, like maybe, like number>)), <`runs` is a maybe>)
+
+test <a maybe list slot is refused>
+  want hold, any-holding(refusals(maybe-console(<    slot globs\n      like maybe, like list, like text>, <globs, like maybe, like list, like text>)), <`globs` is a maybe of a list>)

@@ -1691,6 +1691,18 @@ task heard-windows
     hook test
       call is-equal
         read form
+        text <waiting>
+    hook hold
+      call report
+        make plain-item
+          bind glyph, text <info>
+          bind verb, text <pack>
+          bind subject, text <the Windows machine built bin\\term.exe and waits for windows-x64 to be staged>
+      send back
+  fork test
+    hook test
+      call is-equal
+        read form
         text <smoke>
     hook hold
       save fields
@@ -1741,17 +1753,48 @@ task heard-windows
 # tarball there, and destroys the machine. The child says each step as a JSON line on stdout, drawn here as the
 # release's own items. `--windows-cross` packs windows-x64 here instead, cross built and not run anywhere, for a dry
 # run with no EC2 key or network
-task windows-step
-  mark async
+#
+# THE EARLY START (term-self-host-001-1263): the child is started at the release's first step (windows-start, before
+# the port build) with `--early`, so the machine boots and builds term.exe while the release builds and packs the
+# other platforms, and it waits. Once windows-x64 is staged, windows-finish writes `go` on its stdin and waits for
+# it to pack and smoke-run. A release that ends first closes that stdin, and the child destroys the machine
+
+# a child of this release, like follow-child, whose stdin stays open for one `go`. Answers the child and its end:
+# its exit code, or none when a signal ended it, once every line is read
+bind follow-child-held
+  take command, like text
+  take arguments, like dynamic
+  take cwd, like text
+  take heard, like dynamic
+  take state, like dynamic
+  like dynamic
+  case node
+    text <<(() => { const child_ = require("node:child_process").spawn($command, $arguments, { cwd: $cwd, stdio: ["pipe", "pipe", "inherit"] }); child_.stdin.on("error", () => {}); const reading_ = (async () => { for await (const line_ of require("node:readline").createInterface({ input: child_.stdout })) { $heard(line_, $state) } })(); const done_ = new Promise((resolve_) => child_.on("close", (code_) => resolve_(code_))).then(async (status_) => { await reading_; return status_ ?? undefined }); return { child: child_, done: done_ } })()>>
+
+bind child-go
+  take started, like dynamic
+  like void
+  case node
+    text <<$started.child.stdin.end("go\n")>>
+
+bind child-done
+  take started, like dynamic
+  like dynamic
+  case node
+    text <$started.done>
+
+# the `windows` child, started with --early before the stage exists
+task windows-start
   take term, like text
   take stage, like text
   take file, like text
+  take heard, like windows-heard
   like dynamic
   call report
     make plain-item
       bind glyph, text <info>
       bind verb, text <pack>
-      bind subject, text <windows-x64 on an EC2 Windows machine>
+      bind subject, text <windows-x64 on an EC2 Windows machine, rented now, while the release builds>
   save arguments
     make list
   call arguments/push
@@ -1761,18 +1804,31 @@ task windows-step
   call arguments/push, read stage
   call arguments/push, text <--out>
   call arguments/push, read file
-  save heard
-    make windows-heard
-      bind built
-        call no-value
-      bind failed, text <>
-  save status
-    call follow-child
+  call arguments/push, text <--early>
+  send back
+    call follow-child-held
       call node-program
       read arguments
       read term
       read heard-windows
       read heard
+
+# windows-x64 is staged: the child started by windows-start takes it, packs it and smoke-runs it there
+task windows-finish
+  mark async
+  take started, like dynamic
+  take heard, like windows-heard
+  like dynamic
+  call report
+    make plain-item
+      bind glyph, text <info>
+      bind verb, text <pack>
+      bind subject, text <windows-x64 staged, handed to the Windows machine>
+  call child-go
+    read started
+  save status
+    call child-done
+      read started
       wait true
   fork test
     hook test
@@ -1797,6 +1853,7 @@ task windows-command
   take out, like text
   take hours, like number
   take fail-at, like text
+  take early, like boolean
   like void
   call release-on-windows
     call term-root
@@ -1804,6 +1861,7 @@ task windows-command
     read out
     read hours
     read fail-at
+    read early
 
 # ---- the registry ----
 
@@ -2613,6 +2671,25 @@ task build-and-release
     read cache
     call recursive-options
 
+  # THE EARLY START (windows-start): the Windows machine is rented now, before the port build, whenever windows-x64
+  # is built on Windows, and the pack loop below hands it the stage
+  save windows-heard-state
+    make windows-heard
+      bind built
+        call no-value
+      bind failed, text <>
+  save early-windows
+    call and
+      call not
+        read windows-cross
+      call or
+        call is-equal
+          read platform
+          text <>
+        call is-equal
+          read platform
+          text <windows-x64>
+
   # the run opens BEFORE the port build, so its two and a half minutes show as a running step (section 10)
   save facts
     make list
@@ -2628,6 +2705,23 @@ task build-and-release
       bind root, read term
       bind facts, read facts
       bind started, read started
+  # after the run opens, so its items draw as the release's own
+  save early
+    call no-value
+  fork test
+    hook test
+      read early-windows
+    hook hold
+      save early
+        call windows-start
+          read term
+          call node-path/join
+            read out-dir
+            text <windows-x64>
+          call node-path/join
+            read out-dir
+            text <term-windows-x64.tar.gz>
+          read windows-heard-state
   call progress
     make step-item
       bind verb, text <port>
@@ -2929,10 +3023,9 @@ task build-and-release
           read on-windows
         hook hold
           save heard
-            call windows-step
-              read term
-              read stage
-              read file
+            call windows-finish
+              read early
+              read windows-heard-state
           save made
             make built-payload
               bind platform
@@ -3139,4 +3232,8 @@ hook windows
   take fail-at
     like text
     bind <>
+  # started before the stage exists: build term.exe there, then wait for `go` on stdin (the release's early start)
+  take early
+    like boolean
+    bind code false
   task windows-command

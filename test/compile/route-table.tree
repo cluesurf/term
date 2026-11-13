@@ -1,0 +1,330 @@
+note <one route table on every target: a typed dispatcher on TypeScript, and boot moving to /users/42 on each toolkit host>
+
+# Ported from route-table.ts by statement (item term-self-host-001-0695). One route table on every target
+# (native-navigation-0002). The table is lowered before checking, so every backend gets a typed `route(host, request)`
+# and `boot(url, port)`, and the route runtime it calls is injected. The table:
+#
+#   hook /                 the home page
+#   hook /users/:id        a parameter, read by the page's prop, and `seed load` giving the page its data
+#
+# TypeScript: `route` called straight onto the in-memory dom for each path, compiled with the dom's platform slot read
+# as the memory host's and run through test/support/running. The toolkits (AppKit, UIKit, Android views, Compose on the
+# desktop JVM, Jetpack Compose): an app whose `main` is only `boot`, moved to /users/42 through the navigation contract,
+# the window read back, each leg built and run by test/support/device/toolkit-run, which skips a leg whose toolchain or
+# device is not here. ROUTE_ONLY=typescript (or macos, ios, android, compose, compose-android) runs one leg.
+#
+# The TypeScript leg's five `ok`s are five tests. The original made the last four only once the table compiled: here
+# they skip when it did not, and all five skip when ROUTE_ONLY names a toolkit leg. Each toolkit leg is run once, by the
+# first test that asks, and kept. Its checks are one walked test, a case each, and each of the judge's two `ok`s is one
+# walked test over the legs, skipped where the leg was or where it stopped before the original would have judged it.
+# With ROUTE_ONLY=typescript the toolkit legs are one case, `none`, that skips.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/running
+  find run-text
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find index-of
+  find substring
+  find trim
+  find char-count
+
+# the TypeScript leg's program: the table, `run` routing / and then /users/42 onto the in-memory dom
+host memory-program, <load @term/site/code/dom/native/memory/dom\n  find view\n  find create-element\n  find serialize\n  find clear\n\nload @term/face/code/component/text\n  find text\n\nview home\n  take host, like view\n  view span\n    text \<home\>\n\n# a page's own values drawn as text: the vocabulary's text word, since a view's static text does not interpolate\nview user\n  take host, like view\n  take id, like text\n  take name, like text\n  view text\n    bind content, read id\n  view text\n    bind content, read name\n\n# the route's data: what a page at this path shows, from wherever the data layer keeps it\ntask load-user\n  take path, like text\n  like text\n  send back, text \<Ada\>\n\nhook /\n  view home\n\nhook /users/:id\n  take path\n    take id\n      like text\n  seed load, read load-user\n  view user\n    bind id, read id\n    bind name, read data\n\ntask run\n  like text\n  save root\n    call create-element\n      text \<main\>\n  call route\n    read root\n    call make-page-request\n      text \</\>\n  save at-home\n    call serialize\n      read root\n  call clear\n    read root\n  call route\n    read root\n    call make-page-request\n      text \</users/42\>\n  save at-user\n    call serialize\n      read root\n  send back, text \<\{\{at-home\}\}|\{\{at-user\}\}\>\n>
+
+# the dom's platform slot read as the in-memory host's, as the original's resolver rewrote it, from this project on node
+host memory-choice, make(compile-choice, bind(file, <app.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <<dom/native/\{platform\}/(dom|view)$>>), bind(into, <dom/native/memory/$1>)))))
+
+form route-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host route-now, make(route-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# the app and the legs ROUTE_ONLY allows, made once: none of them when it names the TypeScript leg
+task the-app
+  like route-state
+
+  fork test, route-now/made
+    hold
+      back route-now
+  save route-now/made, true
+  save route-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-route-table-native->)), bind(name, <Routes>), bind(who, <route-table>), bind(ios-identifier, <surf.term.route-table-test>), bind(android-identifier, <surf.term.routetable>), bind(compose, true), bind(compose-android, true))
+  save only, variable(<ROUTE_ONLY>)
+  fork test, is-equal(only, <typescript>)
+    hold
+      save route-now/legs, make list(<none>)
+    miss
+      save route-now/legs, legs-of(route-now/app, only)
+  back route-now
+
+# the original's toolkit program, its PNG path filled in
+task route-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  back <load @term/site/code/dom/dom\n  find view\n  find page-body\n\nload @term/site/code/dom/native/toolkit/dom\n  find after-launch\n  find exit-app\n  find serialize\n  find later\n  find snapshot\n  find say\n\nload @term/site/code/view/navigation\n  find navigate\n\nload @term/face/code/component/text\n  find text\n\nview home\n  take host, like view\n  view span\n    text \<home\>\n\n# a page's own values drawn as text: the vocabulary's text word, since a view's static text does not interpolate\nview user\n  take host, like view\n  take id, like text\n  take name, like text\n  view text\n    bind content, read id\n  view text\n    bind content, read name\n\n# the route's data: what a page at this path shows, from wherever the data layer keeps it\ntask load-user\n  take path, like text\n  like text\n  send back, text \<Ada\>\n\nhook /\n  view home\n\nhook /users/:id\n  take path\n    take id\n      like text\n  seed load, read load-user\n  view user\n    bind id, read id\n    bind name, read data\n\ntask main\n  call after-launch\n    task check\n      save root\n        call page-body\n      save start\n        call serialize\n          read root\n      call say\n        text \<step home \{\{start\}\}\>\n      call navigate\n        text \</users/42\>\n      call later\n        task moved\n          save moved-tree\n            call serialize\n              call page-body\n          call say\n            text \<step user \{\{moved-tree\}\}\>\n          call snapshot\n            text \<{shot}\>\n          call exit-app\n            code 0\n  call boot\n    text \<\>\n    code 0\n>
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, route-program, prepare-no-device)
+  save route-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# ---- the TypeScript leg ----
+
+form memory-run
+  mark shared
+  link done, like boolean
+  link compiled, like boolean
+  link emitted, like text
+  link ran, like boolean
+  link output, like text
+
+host memory-held, make(memory-run, bind(done, false), bind(compiled, false), bind(emitted, <>), bind(ran, false), bind(output, <>))
+
+host dispatcher-shape, make pattern, <<function route\(host: View(?:In\d+)?, request: Request\)>>
+host id-drawn, make pattern, <<>42<>>
+host data-drawn, make pattern, <<>Ada<>>
+
+# the TypeScript leg, compiled and run once: under the project's own tmp/ the original wrote it, so the node host's
+# `hono` resolves from the emitted module
+task memory-leg
+  like memory-run
+
+  fork test, memory-held/done
+    hold
+      back memory-held
+  save memory-held/done, true
+  save out, compile-text(memory-program, memory-choice)
+  save memory-held/compiled, out/ok
+  fork test, out/ok
+    hold
+      save memory-held/emitted, out/emitted
+      save folder, temp-folder(<term-route-table->)
+      save ran, run-text(memory-program, <typescript>, folder, <app>, memory-choice)
+      save memory-held/ran, is-equal(ran/state, <ran>)
+      save memory-held/output, ran/output
+  back memory-held
+
+# why a TypeScript test skips, <> when it runs
+task memory-skip
+  take after-compile, like boolean
+  like text
+
+  save only, variable(<ROUTE_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, <typescript>))
+    hold
+      back <ROUTE_ONLY names a toolkit leg>
+  fork test, and(after-compile, not(memory-leg()/compiled))
+    hold
+      back <the route table did not compile>
+  back <>
+
+# what `run` returned for / and for /users/42, the two halves of its last line
+task memory-drawn
+  take half, like number
+  like text
+
+  save lines, lines-of(trim(memory-leg()/output))
+  fork test, is-equal(lines/length, 0)
+    hold
+      back <>
+  save last, subtract(lines/length, 1)
+  save parts, text-split(lines/{last}, <|>)
+  fork test, is-maximum(parts/length, half)
+    hold
+      back <>
+  back parts/{half}
+
+# the user page drawn: its id from the path's parameter and its name from the route's load, as two texts
+task draws-user
+  take tree, like text
+  like boolean
+
+  back and(matches(id-drawn, tree), matches(data-drawn, tree))
+
+test <typescript: the route table compiles, the route runtime injected>
+  save why, memory-skip(false)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, memory-leg()/compiled
+
+# its host is the `view` the routes' file imports: on node the page module bears node's own `view` too, so the build
+# splits the name by file and the dispatcher reads the one its file reached, `ViewIn<g><k>` (item 1192)
+test <typescript: the dispatcher is typed, not inferred>
+  save why, memory-skip(true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, matches(dispatcher-shape, memory-leg()/emitted)
+
+test <typescript: it runs>
+  save why, memory-skip(true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, memory-leg()/ran
+
+test <typescript: / draws the home page>
+  save why, memory-skip(true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(memory-drawn(0), <\<span\>home\</span\>>)
+
+test <typescript: /users/42 matches /users/:id, reads id 42, and the load gives the page its data>
+  save why, memory-skip(true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, draws-user(memory-drawn(1))
+
+# ---- the toolkit legs ----
+
+# the text after `step <name> ` on the first line holding it
+task step
+  take output, like text
+  take name, like text
+  like text
+
+  save mark, <step {name} >
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        save from, add(index-of(line, mark), char-count(mark))
+        back trim(substring(line, from, char-count(line)))
+  back <>
+
+test <boot mounts the table on the window and draws />
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(step(ran/output, <home>), <\<span\>home\</span\>>)
+
+test <users/42 through the contract draws the user page with its id and its loaded data>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, draws-user(step(ran/output, <user>))

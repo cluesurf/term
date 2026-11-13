@@ -34,9 +34,6 @@ load @term/base/list
 load @term/base/maybe
   find maybe
 
-load @term/base/ordering
-  find ordering
-
 load @term/base/text
   find split
   find starts-with
@@ -3270,6 +3267,7 @@ form definition-memo
   link ranked, like list, like text
   link rank, like hash, like text, like number
   link pairs, like hash, like text, like text
+  link closure, like hash, like text, like text
 
 task definition-memo-of
   take program, like list, like statement
@@ -3314,6 +3312,7 @@ task definition-memo-of
       bind ranked, ranked
       bind rank, rank
       bind pairs, pair-table()
+      bind closure, pair-table()
   back memo
 
 task statement-lists
@@ -3333,24 +3332,6 @@ task pair-table
   mark private
 
   back make hash
-
-task places
-  like list, like number
-  mark private
-
-  back make list
-
-# two places of `ranked`, which are never equal, in their order
-task place-order
-  take left, like number
-  take right, like number
-  like ordering
-  mark private
-
-  fork test, is-below(left, right)
-    hold
-      back make less
-  back make greater
 
 task key-found-table
   like hash, like text, like key-found
@@ -3384,7 +3365,15 @@ task definition-found
   save defs/written/{name}, found
   back found
 
-# the definitions a task's names reach, each name with the hash of its definitions' text, sorted by name
+# the definitions a task's names reach, as the closure key of each name it starts from, sorted
+#
+# THE CLOSURE KEY, ONE PER DEFINITION (speed, item term-self-host-001-1329). Until it, every task walked its whole
+# reached closure again, sorted it and joined one pair per reached definition into the text hashed for its key: the
+# merged console (line/base) spent 40% of a 1,153 s compile in reached-definitions and 19% more collecting its texts
+# (M3 run/speeda, 2026-11-12). Now each definition's closure key is the hash of its strongly connected component's
+# pairs and of the closure keys of the components it reaches, made once per program (closure-key). Equal keys mean
+# equal start closures, so equal reached sets: two tasks the old text kept apart are never joined, and a memo hit
+# stays sound. The key is only ever compared, never read back as a list
 task reached-definitions
   take defs, like definition-memo
   take names, like list, like text
@@ -3392,43 +3381,150 @@ task reached-definitions
   mark private
 
   save seen, flags()
-  save queue, texts()
+  save keys, texts()
   walk names
     take name
     fork test, and(defs/statements/has(name), not(seen/has(name)))
       hold
         save seen/{name}, true
-        push(queue, name)
-  save at, 0
-  walk test
-    hook test, is-below(at, queue/length)
-    hook hold
-      save found, definition-found(defs, get(queue, at))
-      walk found/names
-        take name
-        fork test, and(defs/statements/has(name), not(seen/has(name)))
-          hold
-            save seen/{name}, true
-            push(queue, name)
-      save at, add(at, 1)
-  # by place in `ranked`, which is the utf16 order of the names, each pair written once per program
-  save reached, places()
-  walk queue
-    take name
-    push(reached, defs/rank/get(name))
-  save pairs, texts()
-  walk sort(reached, place-order)
-    take place
-    save name, get(defs/ranked, place)
-    fork test, not(defs/pairs/has(name))
+        push(keys, json-text(closure-key(defs, name)))
+  back json-list(sort(keys, utf16-order))
+
+# one definition's pair, the text the key held for it: its name with the files of the stubs that carry anything, and
+# the hash of its definitions' text. Written once per program
+task definition-pair
+  take defs, like definition-memo
+  take name, like text
+  like text
+  mark private
+
+  fork test, not(defs/pairs/has(name))
+    hold
+      save files, <>
+      walk defs/statements/get(name)
+        take one
+        save files, <{files}@{carried-file(one)}>
+      save defs/pairs/{name}, json-list(two-texts(json-text(<{name}{files}>), json-text(definition-found(defs, name)/text)))
+  back defs/pairs/get(name)
+
+# the names a definition mentions that are definitions of the program, the edges of the closure
+task definition-edges
+  take defs, like definition-memo
+  take name, like text
+  like list, like text
+  mark private
+
+  save out, texts()
+  walk definition-found(defs, name)/names
+    take n
+    fork test, defs/statements/has(n)
       hold
-        save files, <>
-        walk defs/statements/get(name)
-          take one
-          save files, <{files}@{carried-file(one)}>
-        save defs/pairs/{name}, json-list(two-texts(json-text(<{name}{files}>), json-text(definition-found(defs, name)/text)))
-    push(pairs, defs/pairs/get(name))
-  back json-list(pairs)
+        push(out, n)
+  back out
+
+# a definition's closure key, and every key of a component met on the way (Tarjan's walk, kept on lists so a deep
+# chain of calls never deepens the host's stack). A component's key is the hash of its members' pairs, sorted, and
+# the keys of the components it reaches, sorted, so it is known once every component after it is
+task closure-key
+  take defs, like definition-memo
+  take root, like text
+  like text
+  mark private
+
+  fork test, defs/closure/has(root)
+    hold
+      back defs/closure/get(root)
+  save index, rank-table()
+  save low, rank-table()
+  save next, rank-table()
+  save on-stack, flags()
+  save edges, edge-table()
+  save stack, texts()
+  save work, texts()
+  save counter, 0
+  save index/{root}, counter
+  save low/{root}, counter
+  save next/{root}, 0
+  save edges/{root}, definition-edges(defs, root)
+  save counter, add(counter, 1)
+  push(stack, root)
+  save on-stack/{root}, true
+  push(work, root)
+  walk test
+    hook test, is-above(work/length, 0)
+    hook hold
+      save v, get(work, subtract(work/length, 1))
+      save out, edges/get(v)
+      save i, next/get(v)
+      fork test, is-below(i, out/length)
+        hold
+          save next/{v}, add(i, 1)
+          save w, get(out, i)
+          fork test, not(index/has(w))
+            hold
+              fork test, not(defs/closure/has(w))
+                hold
+                  save index/{w}, counter
+                  save low/{w}, counter
+                  save next/{w}, 0
+                  save edges/{w}, definition-edges(defs, w)
+                  save counter, add(counter, 1)
+                  push(stack, w)
+                  save on-stack/{w}, true
+                  push(work, w)
+            miss
+              fork test, and(on-stack/has(w), on-stack/get(w))
+                hold
+                  fork test, is-below(index/get(w), low/get(v))
+                    hold
+                      save low/{v}, index/get(w)
+          turn next
+      work/pop()
+      fork test, is-above(work/length, 0)
+        hold
+          save parent, get(work, subtract(work/length, 1))
+          fork test, is-below(low/get(v), low/get(parent))
+            hold
+              save low/{parent}, low/get(v)
+      fork test, is-equal(low/get(v), index/get(v))
+        hold
+          save members, texts()
+          save inside, flags()
+          save more, true
+          walk test
+            hook test, more
+            hook hold
+              save m, stack/pop()
+              save on-stack/{m}, false
+              push(members, m)
+              save inside/{m}, true
+              save more, is-unequal(m, v)
+          save pairs, texts()
+          save outside, flags()
+          save reached, texts()
+          walk members
+            take m
+            push(pairs, definition-pair(defs, m))
+            walk edges/get(m)
+              take n
+              fork test, not(inside/has(n))
+                hold
+                  save k, defs/closure/get(n)
+                  fork test, not(outside/has(k))
+                    hold
+                      save outside/{k}, true
+                      push(reached, json-text(k))
+          save key, hash-key(json-list(two-texts(json-list(sort(pairs, utf16-order)), json-list(sort(reached, utf16-order)))))
+          walk members
+            take m
+            save defs/closure/{m}, key
+  back defs/closure/get(root)
+
+task edge-table
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
 
 # THE FILE OF A STUB THAT CARRIES ANYTHING, `<>` for any other definition: a key leaves places out, but a kept walk's
 # trace names where each consulted stub stands (decision 103 item 3), so two stubs of one text in two files, or two

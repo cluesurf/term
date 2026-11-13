@@ -1,73 +1,208 @@
-# node structural comparison, through the compare runtime shim (runtime/compare.ts). Internal: the test modules reach it through `@term/base/native/{platform}/compare` and call its tasks by name.
+# node structural comparison in Term over host binds (decision 132 points 1 and 4, item term-self-host-001-1068). The
+# host questions (is this the same value, is it a host list, a number, a text, how true is it) are binds, one host
+# expression each. The decisions are Term. Two values are deep-equal when they are the same value, or both are lists of
+# one size whose items are deep-equal. Identity is the host's `===`, never `is-equal`, which is structural on a dynamic
+# value. Internal: the test modules reach it through `@term/base/native/{platform}/compare` and call its tasks by name.
 
-dock load
-  load <global:compare>, name compare-runtime
+bind is-same
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+  case node
+    text <($a === $b)>
 
-# Each task below is one call to the shim it keeps, so a caller finds the task by name and never the dock alias
-# (decision 146 point 1). A later item swaps a body for Term and keeps the name and parameters.
+bind is-host-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind is-host-number
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "number")>
+
+bind is-host-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+bind host-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
 
 # a and b equal structurally: scalars by value, lists element by element
 task deep-equal
   take a, like unknown
   take b, like unknown
   like boolean
-  send back
-    call compare-runtime/deep-equal
-      read a
-      read b
+  fork test
+    hook test
+      call is-same
+        read a
+        read b
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call and
+        call is-host-list
+          read a
+        call is-host-list
+          read b
+    hook hold
+      fork test
+        hook test
+          call is-unequal
+            read a/length
+            read b/length
+        hook hold
+          send back, false
+      save at, code 0
+      walk test
+        hook test
+          call is-below
+            read at
+            read a/length
+        hook hold
+          fork test
+            hook test
+              call not
+                call deep-equal
+                  read a/{at}
+                  read b/{at}
+            hook hold
+              send back, false
+          save at
+            call add
+              read at
+              code 1
+      send back, true
+  send back, false
 
 # whether a value counts as true
 task is-truthy
   take value, like unknown
   like boolean
   send back
-    call compare-runtime/is-truthy
+    call host-truth
       read value
 
 # the value when it is text, else empty text
 task as-text
   take value, like unknown
   like text
-  send back
-    call compare-runtime/as-text
-      read value
+  fork test
+    hook test
+      call is-host-text
+        read value
+    hook hold
+      send back, read value
+  send back, text <>
 
 # whether the list holds an item deep-equal to the value
 task contains
   take list, like unknown
   take value, like unknown
   like boolean
-  send back
-    call compare-runtime/contains
-      read list
-      read value
+  fork test
+    hook test
+      call not
+        call is-host-list
+          read list
+    hook hold
+      send back, false
+  save at, code 0
+  walk test
+    hook test
+      call is-below
+        read at
+        read list/length
+    hook hold
+      fork test
+        hook test
+          call deep-equal
+            read list/{at}
+            read value
+        hook hold
+          send back, true
+      save at
+        call add
+          read at
+          code 1
+  send back, false
 
 # whether a is a number above b
 task above
   take a, like unknown
   take b, like unknown
   like boolean
-  send back
-    call compare-runtime/above
-      read a
-      read b
+  fork test
+    hook test
+      call and
+        call is-host-number
+          read a
+        call is-host-number
+          read b
+    hook hold
+      send back
+        call is-above
+          read a
+          read b
+  send back, false
 
 # whether a is a number below b
 task below
   take a, like unknown
   take b, like unknown
   like boolean
-  send back
-    call compare-runtime/below
-      read a
-      read b
+  fork test
+    hook test
+      call and
+        call is-host-number
+          read a
+        call is-host-number
+          read b
+    hook hold
+      send back
+        call is-below
+          read a
+          read b
+  send back, false
 
-# the distance between two numbers
+# the distance between two numbers, NaN when either is not one
 task gap
   take a, like unknown
   take b, like unknown
   like float
+  fork test
+    hook test
+      call and
+        call is-host-number
+          read a
+        call is-host-number
+          read b
+    hook hold
+      save d
+        call subtract
+          read a
+          read b
+      fork test
+        hook test
+          call is-below
+            read d
+            code 0
+        hook hold
+          send back
+            call subtract
+              code 0
+              read d
+      send back, read d
   send back
-    call compare-runtime/gap
-      read a
-      read b
+    call divide
+      code 0.0
+      code 0.0

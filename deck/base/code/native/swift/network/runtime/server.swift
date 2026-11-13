@@ -22,10 +22,11 @@ import NIOPosix
 import NIOSSL
 
 enum runtime {
-  // a running server: how to stop it and wait until it has (item 1206), and the port it bound
+  // a running server: how to stop it and wait until it has (item 1206), and the port it bound (the OS's choice when
+  // port 0 was asked, item 1326)
   final class Running: @unchecked Sendable {
     var stop: (() async -> Void)?
-    let port: Int
+    var port: Int
     init(stop: (() async -> Void)?, port: Int) {
       self.stop = stop
       self.port = port
@@ -38,6 +39,8 @@ enum runtime {
     private let lock = NSLock()
     private var waiting: CheckedContinuation<Void, Never>?
     private var done = false
+    // the port the listener is bound to, once it is (item 1326)
+    var port: Int?
 
     func wait() async {
       await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -70,7 +73,7 @@ enum runtime {
   // source, and a form's name there is not its own: loaded beside network/http, the server's `response` is
   // `Response__in0_1`. The handler is the native module's `answer-plain` over the program's (network/server/plain):
   // the request goes in as its parts (method, url, path, query, headers, body, dock), the response comes back as
-  // `[status, body, name, value, ...]`.
+  // `[status, body, hex, name, value, ...]`, `hex` a bytes body (item 1326).
   typealias Handler = (String, String, String, String, SeedMap<String, String>, String, Any) -> SeedList<String>
 
   // The handler a Term program hands in is a plain closure and Hummingbird runs requests on a concurrent
@@ -131,8 +134,16 @@ enum runtime {
     // answer once the listener is bound, so the port is taken by the time this answers. A fixed 50 ms sleep stood
     // here, which answered before the bind on a loaded machine and waited for nothing on an idle one
     await bound.wait()
+    if let port = bound.port {
+      running.port = port
+    }
 
     return running
+  }
+
+  // the port a started server is bound to: the OS's choice when `start` asked for port 0 (item 1326)
+  static func port(_ server: Running) -> Int {
+    return server.port
   }
 
   static func stop(_ server: Running) async {
@@ -227,7 +238,10 @@ enum runtime {
       configuration: ApplicationConfiguration(
         address: .hostname(host, port: port)
       ),
-      onServerRunning: { _ in bound?.signal() }
+      onServerRunning: { channel in
+        bound?.port = channel.localAddress?.port
+        bound?.signal()
+      }
     )
 
     do {
@@ -268,19 +282,21 @@ enum runtime {
       0
     ).data
 
-    // `[status, body, name, value, ...]`; a status that does not read as one is a 500
+    // `[status, body, hex, name, value, ...]`; a status that does not read as one is a 500
     var status = 500
     if let first = said.first, let read = Double(first.trimmingCharacters(in: .whitespaces)),
       read >= 100, read <= 999
     {
       status = Int(read)
     }
-    let body = said.count > 1 ? said[1] : ""
+    // a bytes body comes as hex, two digits a byte, and is sent as those bytes; a text body as its utf8 (item 1326)
+    let hex = said.count > 2 ? said[2] : ""
+    let body = hex.isEmpty ? ByteBuffer(string: said.count > 1 ? said[1] : "") : ByteBuffer(bytes: unhex(hex))
     var out = HTTPFields()
 
     // appended, not set, so repeats survive: several set-cookie headers is the ordinary case and the reason the
     // Term response holds a LIST of headers rather than a map
-    var at = 2
+    var at = 3
     while at + 1 < said.count {
       if let name = HTTPField.Name(said[at]) {
         out.append(HTTPField(name: name, value: said[at + 1]))
@@ -291,7 +307,29 @@ enum runtime {
     return Hummingbird.Response(
       status: HTTPResponse.Status(code: status),
       headers: out,
-      body: ResponseBody(byteBuffer: ByteBuffer(string: body))
+      body: ResponseBody(byteBuffer: body)
     )
+  }
+
+  // bytes from their hex, two digits a byte, as network/server/plain writes a bytes body
+  private static func unhex(_ text: String) -> [UInt8] {
+    func digit(_ at: UInt8) -> UInt8 {
+      switch at {
+      case 48...57: return at - 48
+      case 97...102: return at - 87
+      case 65...70: return at - 55
+      default: return 0
+      }
+    }
+    let raw = Array(text.utf8)
+    var out = [UInt8]()
+    out.reserveCapacity(raw.count / 2)
+    var at = 0
+    while at + 1 < raw.count {
+      out.append((digit(raw[at]) << 4) | digit(raw[at + 1]))
+      at += 2
+    }
+
+    return out
   }
 }

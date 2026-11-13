@@ -29,17 +29,38 @@
         reply: tokio::sync::oneshot::Sender<Answer>,
     }
 
+    // the body as the bytes that go out: a text body's utf8, or a bytes body as it is (item 1326)
     struct Answer {
         status: u16,
         headers: Vec<(String, String)>,
-        body: String,
+        body: Vec<u8>,
     }
 
-    // what the server thread hands back once its port is bound
+    // what the server thread hands back once its port is bound, with the port it is bound to (the OS's choice when
+    // port 0 was asked, item 1326)
     struct Bound {
         halt: tokio::sync::oneshot::Sender<()>,
         closed: std::sync::mpsc::Receiver<()>,
         asked: std::sync::mpsc::Receiver<Asked>,
+        port: i64,
+    }
+
+    // a bytes body from its hex, two digits a byte, as network/server/plain writes it
+    fn unhex(text: &str) -> Vec<u8> {
+        fn digit(at: u8) -> u8 {
+            match at {
+                b'0'..=b'9' => at - b'0',
+                b'a'..=b'f' => at - b'a' + 10,
+                b'A'..=b'F' => at - b'A' + 10,
+                _ => 0,
+            }
+        }
+
+        text.as_bytes()
+            .chunks(2)
+            .filter(|pair| pair.len() == 2)
+            .map(|pair| (digit(pair[0]) << 4) | digit(pair[1]))
+            .collect()
     }
 
     // one request answered by the program's handler, on the program's thread
@@ -66,9 +87,15 @@
             .filter(|status| *status >= 100.0 && *status <= 999.0)
             .map(|status| status as u16)
             .unwrap_or(500);
-        let body = said.get(1).cloned().unwrap_or_default();
+        // `[status, body, hex, name, value, ...]`: a bytes body comes as hex, and a text body as its utf8
+        let hex = said.get(2).cloned().unwrap_or_default();
+        let body = if hex.is_empty() {
+            said.get(1).cloned().unwrap_or_default().into_bytes()
+        } else {
+            unhex(&hex)
+        };
         let mut pairs = Vec::new();
-        let mut at = 2;
+        let mut at = 3;
 
         while at + 1 < said.len() {
             pairs.push((said[at].clone(), said[at + 1].clone()));
@@ -99,7 +126,7 @@
             None
         };
 
-        let (ready, readied) = std::sync::mpsc::channel::<Result<(), String>>();
+        let (ready, readied) = std::sync::mpsc::channel::<Result<i64, String>>();
         let (halt, halted) = tokio::sync::oneshot::channel::<()>();
         let (close, closed) = std::sync::mpsc::channel::<()>();
         let (ask, asked) = std::sync::mpsc::channel::<Asked>();
@@ -136,7 +163,12 @@
                                     return;
                                 }
                             };
-                        let _ = ready.send(Ok(()));
+                        // the port it is bound to, which is the OS's choice when port 0 was asked
+                        let bound = listener
+                            .local_addr()
+                            .map(|address| address.port() as i64)
+                            .unwrap_or(port);
+                        let _ = ready.send(Ok(bound));
 
                         accept(listener, tls, ask, halted).await;
                     });
@@ -153,10 +185,11 @@
         }
 
         match readied.recv() {
-            Ok(Ok(())) => Ok(Bound {
+            Ok(Ok(port)) => Ok(Bound {
                 halt,
                 closed,
                 asked,
+                port,
             }),
             Ok(Err(error)) => Err(error),
             Err(_) => Err("server thread ended before it bound".to_string()),

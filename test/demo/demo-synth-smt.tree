@@ -1,0 +1,127 @@
+note <synthesis with the solver in the loop: proven for every integer, then emitted as Term and compiled>
+
+# Ported from demo-synth-smt.ts by statement (item term-self-host-001-0629, decision 116). The original drove
+# deck/test/code/synth-smt.ts with Z3's JavaScript API, two closures per case (a point check and a Z3 formula), then
+# emitted the body as Term and compiled it on the project. Its synthesis is Term now: smt-synthesis.tree, whose specs
+# are two tasks of the same two shapes, over smt-query.tree's formulas and its one binding, a `z3 -in` child. So the
+# solver here is the z3 program where the original's was the z3-solver package, and a machine without it skips, as the
+# original skipped without its package. deck/test/test/smt-synthesis.tree holds the synthesis alone; this keeps the
+# demo's whole loop, spec in and compiled Term out. One test per `ok` of the original, both cases, in its order.
+
+load @term/test/smt-synthesis
+  find smt-synthesis
+  find synthesize-smt
+
+load @term/test/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find related
+  find both
+  find either
+
+load @term/test/source-emit
+  find seed-task
+  find emit-seed
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/list
+  find list
+
+task max-point
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task max-formula
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  back both(both(related(<\>=>, output, a), related(<\>=>, output, b)), either(related(<=>, output, a), related(<=>, output, b)))
+
+task abs-point
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  back and(is-minimum(output, 0), or(is-equal(output, a), is-equal(output, subtract(0, a))))
+
+task abs-formula
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host a, get(inputs, 0)
+  host minus-a
+    make opposite
+      bind inner, a
+  back both(related(<\>=>, output, value-term(0)), either(related(<=>, output, a), related(<=>, output, minus-a)))
+
+# the original's search bound: synth-smt.ts enumerates bodies of up to 6 nodes when it is given none
+host max-size, 6
+
+task max-found
+  like smt-synthesis
+
+  back synthesize-smt(2, max-point, max-formula, max-size)
+
+task abs-found
+  like smt-synthesis
+
+  back synthesize-smt(1, abs-point, abs-formula, max-size)
+
+# the body emitted as a task of this name over these parameters, then compiled as the original compiled it:
+# projectResolver(ROOT, 'node', ROOT), the project the suite runs in, on node
+task emitted-compiles
+  take name, like text
+  take params, like list, like text
+  take found, like smt-synthesis
+  like boolean
+
+  host source, emit-seed(make(seed-task, bind(name, name), bind(params, params), bind(body, found/expr)))
+  host out, compile-text(source, make(compile-choice, bind(file, <{name}.tree>), bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>)))
+  back out/ok
+
+test <find-max: synthesized and proven unbounded via Z3>
+  fork test, is-equal(find-tool(<z3>), <>)
+    hold
+      skip <no z3>
+  host found, max-found()
+  want hold, found/ok
+
+test <find-max: emitted Term compiles>
+  fork test, is-equal(find-tool(<z3>), <>)
+    hold
+      skip <no z3>
+  host found, max-found()
+  want hold, found/ok
+  want hold, emitted-compiles(<find-max>, make(list, <a>, <b>), found)
+
+test <find-abs: synthesized and proven unbounded via Z3>
+  fork test, is-equal(find-tool(<z3>), <>)
+    hold
+      skip <no z3>
+  host found, abs-found()
+  want hold, found/ok
+
+test <find-abs: emitted Term compiles>
+  fork test, is-equal(find-tool(<z3>), <>)
+    hold
+      skip <no z3>
+  host found, abs-found()
+  want hold, found/ok
+  want hold, emitted-compiles(<find-abs>, make(list, <a>), found)

@@ -1,0 +1,365 @@
+note <the project lifecycle verbs, each on a real project, each held to what it actually did>
+
+# Ported from lifecycle.ts by statement (item term-self-host-001-0604), one test per `ok` in its order. `term make` is
+# exercised by every other gate and most of the rest of the CLI by nothing (task/term/cli-coverage.ts counts it). This
+# is the happy path: `wake` a project in a temporary folder, then run the verbs that operate on one and check the
+# OUTCOME rather than the exit code: a file that appeared, a file that went away, a name in the output. A verb that
+# printed a cheerful message and did nothing fails here. Each verb is the `term` under test (@term/test/self), both
+# streams read. The steps build on one another, so they run once, in the original's order, by the first test, and
+# each test reads what its step left. `boot` does not exit on its own: its limit ends it, and what it printed before is
+# read from the `command-timeout` that limit raises.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find command-timeout
+  find command-absence
+
+load @term/base/exception
+  find absence
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find trim
+
+dock load
+  load <@term/call/code/manifest-name>, name lifecycle-manifest
+
+# host value: a manifest value as text, `undefined` when the manifest has none
+bind field-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+form lifecycle-state
+  mark shared
+  link made, like boolean
+  link root, like text
+  link woke, like text
+  link has-manifest, like boolean
+  link has-boot, like boolean
+  link deck-name, like text
+  link checked-form, like text
+  link shown-code, like text
+  link built, like text
+  link host-boot, like boolean
+  link host-deck, like boolean
+  link timed, like text
+  link shown, like text
+  link looked, like text
+  link rolled, like text
+  link has-roll, like boolean
+  link formatted-once, like text
+  link formatted-twice, like text
+  link clean-lint, like text
+  link linted, like text
+  link recalled, like text
+  link molded, like text
+  link inited, like text
+  link has-base, like boolean
+  link base-checked, like text
+  link halted, like text
+  link noted, like text
+  link held, like text
+  link filled, like text
+  link viewed, like text
+  link unviewed, like text
+  link tested, like text
+  link hunted, like text
+  link hunted-empty-code, like number
+  link hunted-empty, like text
+  link sought, like text
+  link booted, like text
+  link washed-boot, like boolean
+  link absolute-viewed, like text
+
+host lifecycle-now, make(lifecycle-state, bind(made, false), bind(root, <>), bind(woke, <>), bind(has-manifest, false), bind(has-boot, false), bind(deck-name, <>), bind(checked-form, <>), bind(shown-code, <>), bind(built, <>), bind(host-boot, false), bind(host-deck, true), bind(timed, <>), bind(shown, <>), bind(looked, <>), bind(rolled, <>), bind(has-roll, false), bind(formatted-once, <>), bind(formatted-twice, <>), bind(clean-lint, <>), bind(linted, <>), bind(recalled, <>), bind(molded, <>), bind(inited, <>), bind(has-base, false), bind(base-checked, <>), bind(halted, <>), bind(noted, <>), bind(held, <>), bind(filled, <>), bind(viewed, <>), bind(unviewed, <>), bind(tested, <>), bind(hunted, <>), bind(hunted-empty-code, -1), bind(hunted-empty, <>), bind(sought, <>), bind(booted, <>), bind(washed-boot, true), bind(absolute-viewed, <>))
+
+host ugly-text, <task a\n  call b\n    code 1\n    code 2\n>
+
+host lintable-text, <task a\n  save y\n    call add\n      read x\n      code 0\n>
+
+host data-text, <host name, \<ada\>\nhost age, 36\n>
+
+# written in the real dialect (`test <name>` with a `want hold`), so `test` exercises the test preprocessor as well as
+# the runner
+host test-text, <\nload @term/base/code/number\n  find number\n\ntest one-plus-one\n  want hold\n    call is-equal\n      call add\n        code 1\n        code 1\n      code 2\n>
+
+host document-text, <view page\n  view text\n    text \<hi\>\n>
+
+# both streams, on success as well as failure: `term lint` prints its findings on stderr and its summary on stdout
+task term-in
+  take dir, like text
+  take arguments, like list, like text
+  like text
+  mark async
+
+  save ran, run-self(arguments, dir, 120000)
+  back <{ran/output}{ran/error}>
+
+# a verb that does not exit on its own, ended by its limit: what it printed up to then
+task term-for
+  take dir, like text
+  take limit, like number
+  take arguments, like list, like text
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    save ran, run-self(arguments, dir, limit)
+    back <{ran/output}{ran/error}>
+  halt take
+    take problem
+    sift problem
+      case command-timeout
+        back <{output}{error}>
+      case command-absence
+        back <>
+      case absence
+        back <>
+      case failure
+        back <>
+
+task the-steps
+  like lifecycle-state
+  mark async
+
+  fork test, lifecycle-now/made
+    hold
+      back lifecycle-now
+  save lifecycle-now/made, true
+  save box, temp-folder(<term-lifecycle->)
+  # `wake`: scaffolds a project
+  save lifecycle-now/woke, term-in(box, make list(<wake>, <demo>))
+  save root, <{box}/demo>
+  save lifecycle-now/root, root
+  save lifecycle-now/has-manifest, file-exists(<{root}/deck.tree>)
+  save lifecycle-now/has-boot, file-exists(<{root}/code/boot.tree>)
+  fork test, not(lifecycle-now/has-manifest)
+    hold
+      back lifecycle-now
+  save lifecycle-now/deck-name, field-text(lifecycle-manifest/manifest-value-of(<{root}/deck.tree>, <deck>))
+  save lifecycle-now/checked-form, term-in(root, make list(<form>, <--check>))
+  save lifecycle-now/shown-code, trim(term-in(root, make list(<show>, <code>)))
+  # `make`: compiles the .tree it scaffolded into host/
+  save lifecycle-now/built, term-in(root, make list(<make>))
+  save lifecycle-now/host-boot, file-exists(<{root}/host/code/boot.ts>)
+  save lifecycle-now/host-deck, file-exists(<{root}/host/deck.ts>)
+  save lifecycle-now/timed, term-in(root, make list(<time>))
+  save lifecycle-now/shown, term-in(root, make list(<show>))
+  save lifecycle-now/looked, term-in(root, make list(<look>, <code/boot.tree>))
+  save lifecycle-now/rolled, term-in(root, make list(<roll>, <exception>))
+  save lifecycle-now/has-roll, file-exists(<{root}/host/roll.json>)
+  # `form`: formats a file in place, and is idempotent on its own output
+  write-file(<{root}/code/ugly.tree>, ugly-text)
+  term-in(root, make list(<form>, <code/ugly.tree>))
+  save lifecycle-now/formatted-once, read-file(<{root}/code/ugly.tree>)
+  term-in(root, make list(<form>, <code/ugly.tree>))
+  save lifecycle-now/formatted-twice, read-file(<{root}/code/ugly.tree>)
+  save lifecycle-now/clean-lint, term-in(root, make list(<lint>))
+  write-file(<{root}/code/lintable.tree>, lintable-text)
+  save lifecycle-now/linted, term-in(root, make list(<lint>))
+  term-in(root, make list(<mind>, <the demo is a scaffold>))
+  save lifecycle-now/recalled, term-in(root, make list(<mind>))
+  write-file(<{root}/data.tree>, data-text)
+  save lifecycle-now/molded, term-in(root, make list(<mold>, <data.tree>, <--json>))
+  save repo, temp-folder(<term-base->)
+  save lifecycle-now/inited, term-in(repo, make list(<base>, <init>))
+  save lifecycle-now/has-base, file-exists(<{repo}/.base>)
+  save lifecycle-now/base-checked, term-in(repo, make list(<base>, <check>))
+  save lifecycle-now/halted, term-in(root, make list(<halt>))
+  save lifecycle-now/noted, term-in(root, make list(<note>))
+  save lifecycle-now/held, term-in(root, make list(<hold>))
+  save lifecycle-now/filled, term-in(root, make list(<fill>))
+  save lifecycle-now/viewed, term-in(root, make list(<view>, <code/boot.tree>))
+  save lifecycle-now/unviewed, term-in(root, make list(<view>))
+  make-folder(<{root}/test>)
+  write-file(<{root}/test/base.tree>, test-text)
+  save lifecycle-now/tested, term-in(root, make list(<test>))
+  save hunt, run-self(make(list, <hunt>, <--runs>, <20>, <--seeds>, <1>), root, 300000)
+  save lifecycle-now/hunted, <{hunt/output}{hunt/error}>
+  make-folder(<{root}/empty>)
+  save empty, run-self(make(list, <hunt>, <empty>, <--runs>, <20>, <--seeds>, <1>), root, 300000)
+  save lifecycle-now/hunted-empty-code, empty/code
+  save lifecycle-now/hunted-empty, <{empty/output}{empty/error}>
+  save lifecycle-now/sought, term-in(root, make list(<seek>))
+  save lifecycle-now/booted, term-for(root, 25000, make list(<boot>))
+  term-in(root, make list(<wash>))
+  save lifecycle-now/washed-boot, file-exists(<{root}/host/code/boot.ts>)
+  # `term view` takes an absolute path: it joined its argument onto the project root, so a temp file read as missing
+  save absolute, temp-folder(<term-view-abs->)
+  write-file(<{absolute}/doc.tree>, document-text)
+  save lifecycle-now/absolute-viewed, term-in(absolute, make list(<view>, <{absolute}/doc.tree>))
+  back lifecycle-now
+
+task said
+  take text, like text
+  take pattern-text, like text
+  like boolean
+
+  back matches(make(pattern, pattern-text), text)
+
+test <`wake` writes a manifest and an entry>
+  save state, the-steps()
+  want hold, and(state/has-manifest, state/has-boot)
+
+# read with the package manager's own reader, the same function the resolver uses, so this cannot disagree with the
+# build about what the manifest declares
+test <`wake` names the package in the manifest it wrote>
+  want hold, is-equal(the-steps()/deck-name, <demo>)
+
+# the scaffold is already in `term form`'s canonical layout. It was not: the formatter collapsed the manifest onto one
+# line and rewrote the entry, so `form --check` failed on a project nobody had touched (2026-10-02)
+test <`form --check` passes on a freshly scaffolded project>
+  want hold, said(the-steps()/checked-form, <already formatted>)
+
+# read through `show code`, which is the package manager's own reading of the manifest
+test <`wake` starts the version at 0.0.1>
+  want hold, is-equal(the-steps()/shown-code, <0.0.1>)
+
+test <`make` emits host/ from the scaffolded source>
+  want hold, the-steps()/host-boot
+
+# `wake` writes an unscoped `deck demo`, and `make` once compiled deck.tree as code into host/deck.ts
+test <`make` does not compile the unscoped manifest as code>
+  want miss, the-steps()/host-deck
+
+# the closing item of the terminal output standard: `✓ make 1 file built`
+test <`make` counts one compiled file>
+  want hold, said(the-steps()/built, <<\b1 file built\b>>)
+
+# `time` compiles the project the way the build does: with no resolver every imported name read as undefined
+test <`time` finds no benchmarks rather than failing to resolve>
+  want hold, said(the-steps()/timed, <There is no benchmark to run>)
+
+test <`time` does not report an imported name as undefined>
+  want miss, said(the-steps()/timed, <unknown-name>)
+
+test <`show` prints a version>
+  want hold, said(the-steps()/shown, <<\d+\.\d+\.\d+>>)
+
+test <`show` names the toolchain `term`, not `seed`>
+  save state, the-steps()
+  want hold, said(state/shown, <term>)
+  want miss, said(state/shown, <seed>)
+
+test <`look` names something the module defines>
+  save state, the-steps()
+  want hold, is-unequal(trim(state/looked), <>)
+  want miss, said(state/looked, <<(?i)not found>>)
+
+test <`roll` writes host/roll.json>
+  want hold, the-steps()/has-roll
+
+test <`form` rewrites the file>
+  want hold, is-unequal(the-steps()/formatted-once, <>)
+
+test <`form` is idempotent on its own output>
+  save state, the-steps()
+  want hold, is-equal(state/formatted-twice, state/formatted-once)
+
+# `term wake` once wrote a comment 87 characters long, so a brand new project failed its own linter
+test <`lint` finds nothing wrong with a freshly scaffolded project>
+  want miss, said(the-steps()/clean-lint, <<warning\[>>)
+
+# a ▲ Problem item whose facts line reads `prefer-host-for-constant L004`, the name and the code `# lint off` takes
+test <`lint` reports a finding by rule name and code>
+  want hold, said(the-steps()/linted, <<▲ check[\s\S]*?\b[a-z]+(-[a-z]+)+ L\d{3}\b>>)
+
+test <`mind` recalls the fact it was given>
+  want hold, said(the-steps()/recalled, <scaffold>)
+
+test <`mold` converts a data file to JSON, keeping the types>
+  save state, the-steps()
+  want hold, said(state/molded, <<"name"\s*:\s*"ada">>)
+  want hold, said(state/molded, <<"age"\s*:\s*36>>)
+
+test <`base init` creates a repository>
+  want hold, the-steps()/has-base
+
+test <`base check` reports a fresh repository coherent>
+  want hold, said(the-steps()/base-checked, <No missing chunks>)
+
+# in a project it asks only about that project's boots (guides: commands/halt, 2026-10-04)
+test <`halt` reports when nothing is running>
+  want hold, said(the-steps()/halted, <No term boot of this project is running>)
+
+test <`halt` says `term`, not `seed`>
+  want miss, said(the-steps()/halted, <<\bseed [a-z]>>)
+
+# the scaffold starts at 0.0.1 (deck/call/code/wake.ts, 2026-10-03)
+test <`note` names the package and version>
+  save state, the-steps()
+  want hold, said(state/noted, <demo>)
+  want hold, said(state/noted, <<0\.0\.1>>)
+
+# the closing item's facts: `0/0 obligations proven · 0 in the baseline`
+test <`hold` counts what it checked>
+  want hold, said(the-steps()/held, <<\b\d+/\d+ obligations? proven\b>>)
+
+test <`fill` emits a completion script naming the binary>
+  save state, the-steps()
+  want hold, said(state/filled, <term>)
+  want hold, said(state/filled, <<[\s\S]{41}>>)
+
+# the item's subject wraps at the body column, so the words may stand on two lines
+test <`view` refuses a `task` in a document, and says why>
+  want hold, said(the-steps()/viewed, <<document\s+cannot\s+declare\s+a\s+function>>)
+
+# with no path it checks only the files `role.tree` gives the view role, of which the scaffold has none
+test <`view` with no path leaves the code alone>
+  save state, the-steps()
+  want hold, said(state/unviewed, <No document here>)
+  want miss, said(state/unviewed, <<cannot\s+declare>>)
+
+# the closing item, `✓ test Tests passed`, its facts `1 test · 1 passed`
+test <`test` runs a test file and counts it>
+  want hold, said(the-steps()/tested, <<Tests passed[\s\S]*?\b1 test\b[\s\S]*?\b1 passed\b>>)
+
+# `hunt` once defaulted to the compiler's own stdlib, which a user project does not have, and said CLEAN
+test <`hunt` reads the project's own files by default>
+  want hold, said(the-steps()/hunted, <<Corpus oracles[\s\S]*?\b[1-9]\d* files?\b>>)
+
+# its fuzzing half once spawned a file that exists only in source, so from the built CLI no fuzz input ever ran
+test <`hunt` runs the fuzz campaign from the built CLI>
+  want hold, said(the-steps()/hunted, <<Structure-aware fuzzing under a watchdog[\s\S]*?\b20 runs\b[\s\S]*?\b1/1 seeds?\b>>)
+
+test <`hunt` over no files exits non-zero>
+  want hold, is-equal(the-steps()/hunted-empty-code, 1)
+
+test <`hunt` over no files never says CLEAN>
+  save state, the-steps()
+  want miss, said(state/hunted-empty, <CLEAN>)
+  want hold, said(state/hunted-empty, <<(?i)no files read>>)
+
+test <`seek` reports a missing dependency by name>
+  want hold, said(the-steps()/sought, <<(?i)missing|not found>>)
+
+# a limit ending it is the expected end: what is checked is that the app ran at all
+test <`boot` compiles and runs the entry>
+  want hold, said(the-steps()/booted, <hello from term>)
+
+test <`wash` removes host/>
+  want miss, the-steps()/washed-boot
+
+test <`term view \</absolute/path\>` reads the file>
+  save state, the-steps()
+  want hold, said(state/absolute-viewed, <<view\s+text>>)
+  want miss, said(state/absolute-viewed, <no such path>)

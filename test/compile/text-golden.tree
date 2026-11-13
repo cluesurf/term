@@ -1,0 +1,511 @@
+note <a page of every script the font registry sets, drawn on each toolkit host, never draws more boxes than its baseline>
+
+# Ported from text-golden.ts by statement (item term-self-host-001-0695). The text golden (native-text-0004): a page of
+# every script the web font registry sets, on AppKit (macOS), UIKit (the iPhone simulator), Android views (the
+# emulator), Compose on the desktop JVM and Jetpack Compose (the emulator), and how many of each script's characters the
+# platform draws as a box. The characters are not chosen by hand: they are read from Unicode itself
+# (`\p{Script=...}`, every character of a small script and 64 spread evenly over a large one), and the answer is read
+# from what the platform drew. Each row is set in the family the font contract picks for its script (`resolve-font`).
+# The gate is a BASELINE that may only shrink: text-golden.baseline.json holds the boxes per platform per script, a
+# count over it fails, and TEXT_GOLDEN_COMMIT=1 rewrites it for the legs that ran. Five slugs name no Unicode script
+# (code, emoji, tone and the two Siyaq number sets) and are not measured. SNAPSHOT_GOLDEN (and _IOS, _ANDROID, _COMPOSE,
+# _COMPOSE_ANDROID) name where each PNG goes. GOLDEN_ONLY=macos (or ios, android, compose, compose-android) runs one leg.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way are one walked test, a
+# case each. Each of the judge's two `ok`s is one walked test over the legs, skipped where the leg was or where it
+# stopped before the original would have judged it. The rewrite under TEXT_GOLDEN_COMMIT=1 is a last test, which skips
+# without it. The characters are read by Term's pattern engine, whose Unicode tables may name a script's characters a
+# version apart from the node that ran the original.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/compiling
+  find file-text
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/json
+  find parse, name json-read
+  find get-field, name json-field
+  find field-number, name json-number
+  find object-keys, name json-keys
+
+load @term/base/file
+  find exists, name file-exists
+  find write, name write-file
+
+load @term/base/list
+  find sort
+  find contains, name list-contains
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/pattern
+  find pattern
+  find find-matches
+  find replace-matches
+  find pattern-match
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find to-upper-case
+  find substring
+  find char-count
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+  find rune-to-text
+
+load @term/base/text/util
+  find join
+
+load @term/base/math
+  find minimum
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+
+host probe-size, 64
+
+# the slugs whose Unicode name is not the slug written in title case, and the scripts each covers
+# (each a line: the slug, then its scripts)
+host unicode-name, make list(<anatolian Anatolian_Hieroglyphs>, <lontara Buginese>, <canadian Canadian_Aboriginal>, <egyptian Egyptian_Hieroglyphs>, <geez Ethiopic>, <hk Han>, <parthian Inscriptional_Parthian>, <japanese Hiragana Katakana>, <korean Hangul>, <meroitic Meroitic_Hieroglyphs Meroitic_Cursive>, <burmese Myanmar>, <n-ko Nko>, <khitan Khitan_Small_Script>, <chinese Han>, <arabic-nastaliq Arabic>, <sign-writing SignWriting>, <syriac-eastern Syriac>)
+
+# the slugs that name no Unicode script: measured by nothing here, and said so
+host unmeasured, make list(<code>, <emoji>, <tone>, <indic-siyaq-numbers>, <ottoman-siyaq>)
+
+# what a Term text literal cannot carry, and what is not a glyph
+host uncarriable, make pattern, <<[<>{}\\\s\p{Cc}\p{Cf}]>>
+
+# every script slug the web font registry sets: the keys of belt's script table, written outside this repository, so
+# held as test/fixture/scripts.json
+host slugs, json-read(file-text(<test/fixture/scripts.json>))
+
+# a slug's Unicode script names
+task unicode-names
+  take slug, like text
+  like list, like text
+
+  walk unicode-name
+    take line, like text
+    save words, text-split(line, < >)
+    fork test, is-equal(words/0, slug)
+      hold
+        save names, make list
+        save index, 1
+        walk test
+          hook test, is-below(index, words/length)
+          hook hold
+            names/push(words/{index})
+            save index, add(index, 1)
+        back names
+  save parts, make list
+  walk text-split(slug, <->)
+    take part, like text
+    parts/push(<{to-upper-case(substring(part, 0, 1))}{substring(part, 1, char-count(part))}>)
+  back make list(join(parts, <_>))
+
+# one row of the page: the slug, its probe characters, and how many characters its scripts hold
+form golden-row
+  link slug, like text
+  link probe, like text
+  link size, like number
+
+form golden-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link rows-made, like boolean
+  link rows, like list, like golden-row
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host golden-now, make(golden-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(rows-made, false), bind(rows, make list), bind(legs, make list), bind(ran, make hash))
+
+# every assigned code point from U+0021 to U+323AF, once, surrogates left out, as one text the per-script patterns scan
+task every-character
+  like text
+
+  save runes, make list
+  save code, 33
+  walk test
+    hook test, is-maximum(code, 205743)
+    hook hold
+      fork test, or(is-below(code, 55296), is-above(code, 57343))
+        hold
+          runes/push(code)
+      save code, add(code, 1)
+  back from-runes(runes)
+
+# a script's characters, each one a text, uncarriable ones left out
+task script-characters
+  take every, like text
+  take name, like text
+  like list, like text
+
+  save shape, make pattern, <\\p\{Script={name}\}+>
+  save out, make list
+  walk find-matches(shape, every)
+    take found, like pattern-match
+    save kept, replace-matches(uncarriable, found/text, <>)
+    walk to-runes(kept)
+      take rune, like number
+      out/push(rune-to-text(rune))
+  back out
+
+# the rows, in slug order, made once
+task golden-rows
+  like list, like golden-row
+
+  fork test, golden-now/rows-made
+    hold
+      back golden-now/rows
+  save every, every-character()
+  save rows, make list
+  walk sort(slugs, from-texts)
+    take slug, like text
+    fork test, list-contains(unmeasured, slug)
+      hold
+        turn next
+    save characters, make list
+    walk unicode-names(slug)
+      take name, like text
+      walk script-characters(every, name)
+        take one, like text
+        characters/push(one)
+    save count, characters/length
+    save step, 1.0
+    fork test, is-above(count, probe-size)
+      hold
+        save step, divide(to-decimal(count), to-decimal(probe-size))
+    save probe, make list
+    save index, 0
+    save taken, minimum(probe-size, count)
+    walk test
+      hook test, is-below(index, taken)
+      hook hold
+        save at, to-number(round-down(multiply(to-decimal(index), step)))
+        probe/push(characters/{at})
+        save index, add(index, 1)
+    rows/push(make(golden-row, bind(slug, slug), bind(probe, join(probe, <>)), bind(size, count)))
+  save golden-now/rows, rows
+  save golden-now/rows-made, true
+  back rows
+
+# where a leg's PNG goes, by leg, when the run names one
+task shots
+  like hash, like text, like text
+
+  save named, make hash
+  save value, variable(<SNAPSHOT_GOLDEN>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/macos, value
+  save value, variable(<SNAPSHOT_GOLDEN_IOS>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/ios, value
+  save value, variable(<SNAPSHOT_GOLDEN_ANDROID>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/android, value
+  save value, variable(<SNAPSHOT_GOLDEN_COMPOSE>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/compose, value
+  save value, variable(<SNAPSHOT_GOLDEN_COMPOSE_ANDROID>)
+  fork test, is-unequal(value, <>)
+    hold
+      save key, <compose-android>
+      save named/{key}, value
+  back named
+
+# the app and the legs GOLDEN_ONLY allows, made once, the rows first
+task the-app
+  like golden-state
+
+  fork test, not(golden-now/made)
+    hold
+      save rows, golden-rows()
+      save golden-now/made, true
+      save golden-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-text-golden->)), bind(name, <Golden>), bind(who, <text-golden>), bind(ios-identifier, <surf.term.text-golden-test>), bind(android-identifier, <surf.term.textgolden>), bind(shots, shots()), bind(compose, true), bind(compose-android, true))
+      save golden-now/legs, legs-of(golden-now/app, variable(<GOLDEN_ONLY>))
+  back golden-now
+
+# the row calls of the program, one per row
+task row-calls-of
+  take rows, like list, like golden-row
+  like text
+
+  save calls, make list
+  walk rows
+    take row, like golden-row
+    calls/push(<  call add-row\n    read root\n    text \<{row/slug}\>\n    text \<{row/probe}\>>)
+  back join(calls, <\n>)
+
+# the original's program, its rows and PNG path filled in
+task golden-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  save row-calls, row-calls-of(golden-rows())
+  back <load @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find show-window\n  find run-app\n  find exit-app\n  find create-element\n  find create-text\n  find append\n  find set-style\n  find child-at\n  find child-count\n  find missing-glyphs\n  find snapshot\n  find say\n\nload @term/face/code/font/font\n  find resolve-font\n\nload @term/base/list\n  find list\n\n# one row: the script's probe text, set in the family the font contract picks for it\ntask add-row\n  take root, like view\n  take script, like text\n  take probe, like text\n  save face\n    call resolve-font\n      bind script, read script\n  save row\n    call create-element\n      text \<span\>\n  call set-style\n    read row\n    text \<font-family\>\n    read face/family\n  call append\n    read row\n    call create-text\n      read probe\n  call append\n    read root\n    read row\n\n# what the platform drew as a box, row by row\ntask report\n  take root, like view\n  save rows\n    call child-count\n      read root\n  walk size\n    bind base, code 0\n    bind head, read rows\n    hook next\n      take site, name index\n      save missing\n        call missing-glyphs\n          call child-at\n            call child-at\n              read root\n              read index\n            code 0\n      call say\n        text \<gap \{\{index\}\}|\{\{missing\}\}|\>\n\ntask main\n  save root\n    call open-root\n      text \<Term text golden\>\n      code 900\n      code 1200\n{row-calls}\n  call after-launch\n    task check\n      call show-window\n      call report\n        read root\n      call snapshot\n        text \<{shot}\>\n      call exit-app\n        code 0\n  call run-app\n>
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, golden-program, prepare-no-device)
+  save golden-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+host gap-shape, make pattern, <<gap (\d+)\|([^|]*)\|>>
+host baseline-file, <test/compile/text-golden.baseline.json>
+
+# the boxes each row reported, by slug: the characters a person sees as a box
+task gaps-of
+  take output, like text
+  like hash, like text, like text
+
+  save rows, golden-rows()
+  save gaps, make hash
+  walk lines-of(output)
+    take line, like text
+    walk find-matches(gap-shape, line)
+      take found, like pattern-match
+      save index, -1
+      save at, 0
+      walk rows
+        take row, like golden-row
+        fork test, is-equal(<{at}>, found/groups/0)
+          hold
+            save index, at
+        save at, add(at, 1)
+      fork test, is-minimum(index, 0)
+        hold
+          save slug, rows/{index}/slug
+          save gaps/{slug}, found/groups/1
+      halt
+  back gaps
+
+# the baseline's count per slug on a leg, an empty hash when the file or the leg is not there
+task baseline-of
+  take leg, like text
+  like hash, like text, like number
+
+  save counts, make hash
+  fork test, not(file-exists(baseline-file))
+    hold
+      back counts
+  save whole, json-read(file-text(baseline-file))
+  fork test, not(list-contains(json-keys(whole), leg))
+    hold
+      back counts
+  save inner, json-field(whole, leg)
+  walk json-keys(inner)
+    take slug, like text
+    save counts/{slug}, to-number(json-number(inner, slug))
+  back counts
+
+# the boxes a leg drew per slug, every row counted, 0 where it reported none
+task measured-of
+  take leg, like text
+  like hash, like text, like number
+
+  save gaps, gaps-of(leg-run(leg)/output)
+  save counts, make hash
+  walk golden-rows()
+    take row, like golden-row
+    save slug, row/slug
+    save counts/{slug}, 0
+    fork test, gaps/has(slug)
+      hold
+        save boxes, gaps/{slug}
+        save counts/{slug}, to-runes(boxes)/length
+  back counts
+
+test <every one of the rows reported>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(gaps-of(ran/output)/size, golden-rows()/length)
+
+test <no script draws more boxes than its baseline>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save baseline, baseline-of(leg)
+  save measured, measured-of(leg)
+  save worse, make list
+  walk golden-rows()
+    take row, like golden-row
+    save slug, row/slug
+    save allowed, 0
+    fork test, baseline/has(slug)
+      hold
+        save allowed, baseline/{slug}
+    save drawn, measured/{slug}
+    fork test, is-above(drawn, allowed)
+      hold
+        worse/push(<{slug} {allowed} -\> {drawn}>)
+  want hold, is-equal(join(worse, <, >), <>)
+
+# a leg's counts as the baseline file writes them, in row order
+task counts-text
+  take slugs, like list, like text
+  take counts, like hash, like text, like number
+  like text
+
+  save lines, make list
+  walk slugs
+    take slug, like text
+    save count, counts/{slug}
+    lines/push(<    "{slug}": {count}>)
+  back join(lines, <,\n>)
+
+# TEXT_GOLDEN_COMMIT=1 rewrites the baseline for the legs that ran past their app, keeping the rest
+test <the baseline is rewritten for the legs that ran, under TEXT_GOLDEN_COMMIT=1>
+  fork test, is-unequal(variable(<TEXT_GOLDEN_COMMIT>), <1>)
+    hold
+      skip <TEXT_GOLDEN_COMMIT is not 1>
+  save measured, make list
+  walk leg-names()
+    take leg, like text
+    fork test, is-equal(skip-reason(leg-run(leg)), <>)
+      hold
+        measured/push(leg)
+  save order, make list
+  fork test, file-exists(baseline-file)
+    hold
+      walk json-keys(json-read(file-text(baseline-file)))
+        take leg, like text
+        order/push(leg)
+  walk measured
+    take leg, like text
+    fork test, not(list-contains(order, leg))
+      hold
+        order/push(leg)
+  save slugs, make list
+  walk golden-rows()
+    take row, like golden-row
+    slugs/push(row/slug)
+  save blocks, make list
+  walk order
+    take leg, like text
+    fork test, list-contains(measured, leg)
+      hold
+        blocks/push(<  "{leg}": \{\n{counts-text(slugs, measured-of(leg))}\n  \}>)
+      miss
+        save kept, baseline-of(leg)
+        save kept-slugs, make list
+        walk json-keys(json-field(json-read(file-text(baseline-file)), leg))
+          take slug, like text
+          kept-slugs/push(slug)
+        blocks/push(<  "{leg}": \{\n{counts-text(kept-slugs, kept)}\n  \}>)
+  write-file(baseline-file, <\{\n{join(blocks, <,\n>)}\n\}\n>)
+  want hold, file-exists(baseline-file)

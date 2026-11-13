@@ -1,0 +1,856 @@
+note <`term self check | update | back` and the version dispatch end to end, against a loopback registry and a fresh HOME>
+
+# Ported from self-release.ts by statement (item 0648), one test per `ok` in its order (note/project/term/
+# term-load-install.md, P3). This machine's payload, as `pnpm run release --dry` wrote it, is published twice, as the
+# version and the version two patches on, each its own payload with term/package.json rewritten to that version (one
+# set of bytes under both tags would say it is the older release, and no handoff could be told apart), signed by a
+# throwaway key that founds the key set, on a loopback registry in this process (@term/deck's oci-server). THE LOADER
+# term.surf serves at /load installs the first into a fresh HOME, then the INSTALLED term runs: check, update, back,
+# the dispatch (the front outside a project, `+range`, a project's need and its lock.tree pin, TERM_VERSION, the loop
+# guard and the handshake, TERM_NEED=local, an install on first use, `self list | find | pick | show | toss | wash`),
+# and a tampered install.tree that check refuses.
+#
+# The loader lives in the parent checkout, so with no TERM_PARENT_ROOT every test skips, as the original printed one
+# skip. With no payload every test fails naming it, as the original failed. The steps are one sequence, each on what
+# the last left on disk, so it runs once, from the first test that asks, and records each check's verdict as it was
+# then: <held>, or what the step printed. Test n reads verdict n. A raise ends the sequence where it stood, and the
+# tests after it fail naming the raise. Every child runs through `env` (decision 111) and asynchronously, since the
+# registry answers in this process. object/sign, oci/keys, oci/release, oci/transport of @term/deck and need-load's
+# file list of @term/call are docked as the original imported them (decision 106).
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+  find to-lower-case
+  find split, name text-split
+  find trim
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find escape-pattern
+  find replace-matches
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/deck/test/oci-server
+  find start-oci-server
+  find close-oci-server
+
+load ../support/cli
+  find term-root
+
+load ../support/running
+  find running-node
+
+load ../support/judging
+  find make-record
+
+dock load
+  load <@term/deck/code/object/sign>, name sign-face
+  load <@term/deck/code/oci/keys>, name keys-face
+  load <@term/deck/code/oci/release>, name release-face
+  load <@term/deck/code/oci/transport>, name transport-face
+  load <@term/call/code/need-load>, name need-face
+  load <node:crypto>, name self-crypto
+  load <node:fs>, name self-file
+  load <node:path>, name self-path
+
+# host value: the platform a release is built for here, <> when none is (currentPlatform answers undefined)
+bind platform-text
+  take value, like dynamic
+  like text
+  case node
+    text <($value ?? "")>
+
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+bind as-number
+  take text, like text
+  like number
+  case node
+    text <Number($text)>
+
+# host value: a time `count` days before now, as utimesSync takes it
+bind days-back
+  take count, like number
+  like dynamic
+  case node
+    text <new Date(Date.now() - $count * 24 * 60 * 60 * 1000)>
+
+bind raised-words
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause instanceof Error ? $cause.message : $cause).slice(0, 1600)>
+
+host parent, variable(<TERM_PARENT_ROOT>)
+
+host version, parsed-json(self-file/read-file-sync(self-path/join(term-root(), <package.json>), <utf8>))/version
+
+# the version two patches on
+task next-of
+  take given, like text
+  like text
+
+  save parts, text-split(given, <.>)
+  back <{parts/0}.{parts/1}.{add(as-number(parts/2), 2)}>
+
+host next, next-of(version)
+
+# the range of the next version's minor line, as `self load` takes it
+task range-of
+  take given, like text
+  like text
+
+  save parts, text-split(given, <.>)
+  back <{parts/0}.{parts/1}.x>
+
+# the run, made once: each check's verdict in order, why the sequence ended early, and the paths it made
+form release-run
+  mark shared
+  link done, like boolean
+  link said, like list, like text
+  link raised, like text
+  link server, like dynamic
+  link served, like boolean
+  link home, like text
+  link base, like text
+  link bin, like text
+  link host, like text
+
+host now, make(release-run, bind(done, false), bind(said, make list), bind(raised, <>), bind(server, 0), bind(served, false), bind(home, <>), bind(base, <>), bind(bin, <>), bind(host, <>))
+
+form tester-credential
+  link kind, like text
+  link username, like text
+  link password, like text
+
+task tester-credentials
+  like tester-credential
+  mark async
+
+  back make(tester-credential, bind(kind, <basic>), bind(username, <tester>), bind(password, <secret>))
+
+# one verdict: <held>, or what the step printed
+task check
+  take held, like boolean
+  take info, like text
+  like void
+
+  fork test, held
+    hold
+      now/said/push(<held>)
+    miss
+      now/said/push(<failed: {info}>)
+
+task quoted
+  take value, like text
+  like text
+
+  back escape-pattern(value)/text
+
+task file-or-empty
+  take file, like text
+  like text
+
+  fork test, self-file/exists-sync(file)
+    hold
+      back self-file/read-file-sync(file, <utf8>)
+  back <>
+
+# where a link points, <> when nothing is there
+task link-of
+  take place, like text
+  like text
+
+  fork
+    mark unsafe
+    back <{self-file/readlink-sync(place)}>
+  halt take
+    take cause
+    back <>
+
+task is-there
+  take place, like text
+  like boolean
+
+  back self-file/exists-sync(place)
+
+# how often `part` occurs in `text`
+task count-of
+  take text, like text
+  take part, like text
+  like number
+
+  back subtract(text-split(text, part)/length, 1)
+
+task joined-output
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+# one payload per version, the version written into its package.json, and its file list written again over it
+task payload-of
+  take payload-file, like text
+  take wanted, like text
+  like dynamic
+  mark async
+
+  save dir, temp-folder(<term-payload-{wanted}->)
+  save manifest, self-path/join(dir, <term>, <package.json>)
+  save unpacked, run(<tar>, make(list, <-xzf>, payload-file, <-C>, dir))
+  fork test, is-unequal(unpacked/code, 0)
+    hold
+      halt <tar could not unpack {payload-file}: {unpacked/error}>
+  save text, self-file/read-file-sync(manifest, <utf8>)
+  self-file/write-file-sync(manifest, replace-matches(make(pattern, <"version": "[^"]+">), text, <"version": "{wanted}">))
+  need-face/write-file-list(self-path/join(dir, <term>))
+  save environment
+    make hash
+      save <COPYFILE_DISABLE>, <1>
+  save packed, run(<tar>, make(list, <-czf>, self-path/join(dir, <term.tar.gz>), <-C>, dir, <term>), bind(environment, environment))
+  fork test, is-unequal(packed/code, 0)
+    hold
+      halt <tar could not pack {dir}: {packed/error}>
+  back self-file/read-file-sync(self-path/join(dir, <term.tar.gz>))
+
+# the arguments of `env` that make a fresh machine: its own HOME, trust pins and store, pointed at the registry
+task machine
+  like list, like text
+
+  save out, make list
+  out/push(<HOME={now/home}>)
+  out/push(<TERM_RELEASE_REGISTRY=oci://{now/host}/cluesurf/term>)
+  out/push(<TERM_OCI_HOST={now/host}>)
+  out/push(<TERM_OCI_USERNAME=tester>)
+  out/push(<TERM_OCI_TOKEN=secret>)
+  out/push(<TERM_TRUST_DIR={now/home}/trust>)
+  out/push(<TERM_STORE={now/home}/store>)
+  back out
+
+# THE REAL LOADER, the script term.surf serves at /load, pointed at the loopback registry. The profile it writes is the
+# scratch home's, never the real one: one shell, and ZDOTDIR the home it installs into
+task run-loader
+  take into, like text
+  take extra, like list, like text
+  like run-result
+  mark async
+
+  save argument-list, machine()
+  argument-list/push(<TERM_LOAD_REGISTRY=http://{now/host}>)
+  argument-list/push(<TERM_LOAD_MODULE={loader-file()}.mjs>)
+  argument-list/push(<SHELL=/bin/zsh>)
+  argument-list/push(<ZDOTDIR={into}>)
+  walk extra
+    take one, like text
+    argument-list/push(one)
+  # TERM_LOAD_SHELL=dash runs it under Debian and Ubuntu's /bin/sh, which forgives no bashism
+  save shell, variable(<TERM_LOAD_SHELL>)
+  fork test, is-equal(shell, <>)
+    hold
+      save shell, <sh>
+  argument-list/push(shell)
+  argument-list/push(loader-file())
+  back run(<env>, argument-list, bind(limit, 120000))
+
+task loader-file
+  like text
+
+  back self-path/join(parent, <mesh>, <site>, <term.surf>, <home>, <public>, <load>)
+
+# the INSTALLED term, with the machine's environment and `extra` over it
+task run-term
+  take arguments, like list, like text
+  take directory, like text, fall <>
+  take extra
+    like list, like text
+    fall make list
+  like run-result
+  mark async
+
+  save argument-list, machine()
+  walk extra
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(now/bin)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(<--plain>)
+  argument-list/push(<--color>)
+  argument-list/push(<never>)
+  back run(<env>, argument-list, bind(directory, directory), bind(limit, 120000))
+
+# whether every line of the loader's output is an item, under one, the PATH line or empty
+task in-standard
+  take text, like text
+  like boolean
+
+  save item, make(pattern, <^[✓✗▲●○◐?+−~] [a-zA-Z]+ \S>)
+  save held, true
+  walk text-split(text, <\n>)
+    take line, like text
+    fork test, not(or(is-equal(line, <>), or(matches(item, line), or(starts-with(line, <  >), starts-with(line, <export PATH=>)))))
+      hold
+        save held, false
+  back held
+
+task kilobytes
+  take dir, like text
+  like number
+  mark async
+
+  save ran, run(<du>, make(list, <-sk>, dir))
+  back as-number(text-split(trim(ran/output), <\t>)/0)
+
+task run-steps
+  like void
+  mark async
+
+  save platform, platform-text(release-face/current-platform())
+  save payload-file, self-path/join(term-root(), <tmp>, <release>, version, <term-{platform}.tar.gz>)
+  fork test, or(is-equal(platform, <>), not(is-there(payload-file)))
+    hold
+      halt <self-release: no payload at {payload-file}: run `pnpm run release --dry` first>
+  # built before the registry starts, as the original built them
+  save first-bytes, payload-of(payload-file, version)
+  save next-bytes, payload-of(payload-file, next)
+  save hasher, self-crypto/create-hash(<sha256>)
+  hasher/update(first-bytes)
+  save hex, hasher/digest(<hex>)
+  save digest, <sha256:{hex}>
+  save now/server, start-oci-server()
+  save now/served, true
+  save now/host, now/server/host
+  save transport, transport-face/http-transport(make-record(make(list, <host>, now/host, <credentials>, tester-credentials, <retries>, 0)))
+  save keypair, sign-face/generate-keypair()
+  wait keys-face/ensure-publisher(make-record(make(list, <transport>, transport, <repository>, <cluesurf/term/name>, <scope>, <@term>, <keypair>, keypair)))
+  walk make(list, version, next)
+    take one, like text
+    save bytes, first-bytes
+    fork test, is-equal(one, next)
+      hold
+        save bytes, next-bytes
+    save payloads, make list
+    payloads/push(make-record(make(list, <platform>, platform, <bytes>, bytes)))
+    wait release-face/publish-release(make-record(make(list, <transport>, transport, <repository>, <cluesurf/term/code>, <package>, <@term/code>, <version>, one, <payloads>, payloads, <keypair>, keypair)))
+  # a fresh machine: its own HOME, trust pins and store, pointed at the loopback registry
+  save home, temp-folder(<term-self->)
+  save now/home, home
+  save base, self-path/join(home, <.base>, <@term>, <code>)
+  save now/base, base
+  save bin, self-path/join(base, <call>, <term>)
+  save now/bin, bin
+  save first, self-path/join(base, <code>, version)
+  save zshrc, self-path/join(home, <.zshrc>)
+
+  save loaded, run-loader(home, make(list, <TERM_LOAD_VERSION={version}>))
+  save loaded-out, joined-output(loaded)
+  check(and(is-equal(loaded/code, 0), text-contains(link-of(bin), </code/{version}/>)), loaded-out)
+  check(text-contains(file-or-empty(self-path/join(first, <install.tree>)), digest), file-or-empty(self-path/join(first, <install.tree>)))
+  check(text-contains(loaded-out, <export PATH=>), loaded-out)
+  save profile, file-or-empty(zshrc)
+  check(and(is-equal(count-of(profile, <.base/@term/code/call>), 1), and(text-contains(profile, <# term (https://term.surf/load)\nexport PATH="$HOME/.base/@term/code/call:$PATH">), text-contains(loaded-out, <+ path ~/.zshrc>))), <{profile}\n{loaded-out}>)
+
+  save reloaded, run-loader(home, make(list, <TERM_LOAD_VERSION={version}>))
+  save reloaded-out, joined-output(reloaded)
+  save profile, file-or-empty(zshrc)
+  check(and(is-equal(reloaded/code, 0), and(is-equal(count-of(profile, <.base/@term/code/call>), 1), text-contains(reloaded-out, <○ path ~/.zshrc>))), <{profile}\n{reloaded-out}>)
+
+  # eval "$(curl … | sh)": the one line on stdout puts term on THIS shell's PATH, so the same shell runs it next
+  save stdout-file, self-path/join(home, <stdout.txt>)
+  save argument-list, machine()
+  argument-list/push(<LOADER={loader-file()}>)
+  argument-list/push(<TERM_LOAD_REGISTRY=http://{now/host}>)
+  argument-list/push(<TERM_LOAD_MODULE={loader-file()}.mjs>)
+  argument-list/push(<SHELL=/bin/zsh>)
+  argument-list/push(<ZDOTDIR={home}>)
+  argument-list/push(<TERM_LOAD_VERSION={version}>)
+  save node-folder, self-path/dirname(running-node(0))
+  argument-list/push(<PATH=/usr/bin:/bin:{node-folder}>)
+  argument-list/push(<sh>)
+  argument-list/push(<-c>)
+  argument-list/push(<line="$(sh "$LOADER")" || exit 1; printf "%s\\n" "$line" \> "$HOME/stdout.txt"; eval "$line"; term --version>)
+  save evaluated, run(<env>, argument-list, bind(limit, 120000))
+  save evaluated-out, joined-output(evaluated)
+  save stdout, file-or-empty(stdout-file)
+  check(and(is-equal(evaluated/code, 0), and(text-contains(evaluated-out, <{version}\n>), matches(make(pattern, <^export PATH="[^"]+/[.]base/@term/code/call:[$]PATH"; hash -r 2\>/dev/null [|][|] true\n$>), stdout))), <{stdout}\n{evaluated-out}>)
+
+  save kept, temp-folder(<term-kept->)
+  save off, run-loader(kept, make(list, <HOME={kept}>, <TERM_TRUST_DIR={kept}/trust>, <TERM_STORE={kept}/store>, <TERM_LOAD_VERSION={version}>, <TERM_LOAD_PATH=0>))
+  save off-out, joined-output(off)
+  check(and(is-equal(off/code, 0), and(not(is-there(self-path/join(kept, <.zshrc>))), text-contains(off-out, <no profile was edited>))), off-out)
+  # v3 (note/project/term/output/standard.md): `glyph verb subject` at column 0, every child line two cells in, and the
+  # opening's clock only in a service (section 2), which an install is not. ▲ when this machine has another `term` on
+  # PATH (an npm global), which the loader names: the worst glyph closes
+  save opening, make(pattern, <(^|\n)● load ~/[.]base/@term/code\n \{2\}([0-9][0-9]:[0-9][0-9]:[0-9][0-9][.][0-9]\{3\} · )?term[.]surf/load\n>)
+  save closing, make(pattern, <[✓▲] load term {quoted(version)} is installed>)
+  check(and(matches(opening, loaded-out), and(matches(closing, loaded-out), in-standard(loaded-out))), loaded-out)
+
+  save checked, run-term(make(list, <self>, <check>))
+  check(and(is-equal(checked/code, 0), text-contains(joined-output(checked), <signed release>)), joined-output(checked))
+
+  save updated, run-term(make(list, <self>, <update>))
+  check(and(is-equal(updated/code, 0), is-there(self-path/join(base, <code>, next, <install.tree>))), joined-output(updated))
+  check(text-contains(link-of(bin), </code/{next}/>), link-of(bin))
+
+  save again, run-term(make(list, <self>, <check>))
+  check(and(is-equal(again/code, 0), text-contains(joined-output(again), next)), joined-output(again))
+
+  save newest, run-term(make(list, <self>, <update>))
+  check(and(is-equal(newest/code, 0), text-contains(to-lower-case(joined-output(newest)), <up to date>)), joined-output(newest))
+
+  # `term update` is `term self update` (line.ts), answered by the front as `self` is (need-run.ts)
+  save alias, run-term(make(list, <update>))
+  check(and(is-equal(alias/code, 0), and(text-contains(to-lower-case(joined-output(alias)), <up to date>), text-contains(link-of(bin), </code/{next}/>))), joined-output(alias))
+
+  save backed, run-term(make(list, <self>, <back>))
+  check(and(is-equal(backed/code, 0), text-contains(link-of(bin), </code/{version}/>)), joined-output(backed))
+
+  # ---- dispatch ----
+  save outside, temp-folder(<term-outside->)
+  save project, temp-folder(<term-project->)
+  save manifest-file, self-path/join(project, <deck.tree>)
+  save lock-file, self-path/join(project, <lock.tree>)
+  self-file/write-file-sync(manifest-file, <deck @alice/app\n  mark \<1.0.0\>\n>)
+
+  save front, run-term(make(list, <--version>), outside)
+  save front-out, joined-output(front)
+  check(and(is-equal(front/code, 0), and(text-contains(front-out, version), not(text-contains(front-out, next)))), front-out)
+
+  save plus, run-term(make(list, <+{next}>, <--version>), outside)
+  check(and(is-equal(plus/code, 0), text-contains(joined-output(plus), next)), joined-output(plus))
+
+  save needed, run-term(make(list, <self>, <need>, next), project)
+  save manifest, file-or-empty(manifest-file)
+  save lock, file-or-empty(lock-file)
+  check(and(is-equal(needed/code, 0), text-contains(manifest, <need @term/code, mark \<{next}\>>)), <{joined-output(needed)}\n{manifest}>)
+  check(and(text-contains(lock, <need @term/code>), and(text-contains(lock, <code \<{next}\>>), matches(make(pattern, <hash \<sha256:[0-9a-f]\{64\}\>>), lock))), lock)
+
+  save inside, run-term(make(list, <--version>), project)
+  check(and(is-equal(inside/code, 0), text-contains(joined-output(inside), next)), joined-output(inside))
+
+  self-file/mkdir-sync(self-path/join(project, <code>, <deep>), make-record(make(list, <recursive>, true)))
+  save deep, run-term(make(list, <--version>), self-path/join(project, <code>, <deep>))
+  check(text-contains(joined-output(deep), next), joined-output(deep))
+
+  save shown, run-term(make(list, <self>, <show>), project)
+  save shown-out, joined-output(shown)
+  check(and(is-equal(shown/code, 0), and(text-contains(shown-out, <project>), and(text-contains(shown-out, <deck.tree>), and(text-contains(shown-out, <{next} runs here>), text-contains(shown-out, <pinned in lock.tree>))))), shown-out)
+
+  save overridden, run-term(make(list, <--version>), project, make(list, <TERM_VERSION={version}>))
+  save overridden-out, joined-output(overridden)
+  check(and(text-contains(overridden-out, version), not(text-contains(overridden-out, next))), overridden-out)
+
+  save looped, run-term(make(list, <--version>), project, make(list, <TERM_NEED_DEPTH=3>))
+  check(and(is-unequal(looped/code, 0), text-contains(joined-output(looped), <handed over 4 times>)), joined-output(looped))
+
+  save handshake, run-term(make(list, <--version>), outside, make(list, <TERM_NEED_SWITCH=9.9.9>))
+  check(and(is-unequal(handshake/code, 0), text-contains(joined-output(handshake), <asked to run as term 9.9.9>)), joined-output(handshake))
+
+  save listed, run-term(make(list, <self>, <list>), outside)
+  save listed-out, joined-output(listed)
+  check(and(is-equal(listed/code, 0), and(text-contains(listed-out, version), and(text-contains(listed-out, next), text-contains(listed-out, <front>)))), listed-out)
+
+  save found, run-term(make(list, <self>, <find>), outside)
+  save found-out, joined-output(found)
+  save at-next, found-out/index-of(next)
+  check(and(is-equal(found/code, 0), and(not(is-below(at-next, 0)), is-below(at-next, found-out/last-index-of(version)))), found-out)
+
+  save front-toss, run-term(make(list, <self>, <toss>, version), outside)
+  check(and(is-unequal(front-toss/code, 0), text-contains(joined-output(front-toss), <is the front>)), joined-output(front-toss))
+
+  save tossed, run-term(make(list, <self>, <toss>, next), outside)
+  check(and(is-equal(tossed/code, 0), not(is-there(self-path/join(base, <code>, next)))), joined-output(tossed))
+
+  save local, run-term(make(list, <--version>), project, make(list, <TERM_NEED=local>))
+  save local-out, joined-output(local)
+  check(and(is-unequal(local/code, 0), and(text-contains(local-out, <TERM_NEED=local>), text-contains(local-out, <term self load>))), local-out)
+
+  save auto, run-term(make(list, <--version>), project)
+  save auto-out, joined-output(auto)
+  check(and(is-equal(auto/code, 0), and(is-there(self-path/join(base, <code>, next, <install.tree>)), and(text-contains(auto-out, <load>), text-contains(auto-out, next)))), auto-out)
+
+  save picked, run-term(make(list, <self>, <pick>, next), outside)
+  save by-default, run-term(make(list, <--version>), outside)
+  check(and(is-equal(picked/code, 0), text-contains(joined-output(by-default), next)), <{joined-output(picked)}\n{joined-output(by-default)}>)
+  run-term(make(list, <self>, <pick>, version), outside)
+
+  # wash: both versions last used 100 days ago, past the 90-day window. The front is kept whatever its age, and the
+  # project's pin is kept from inside the project
+  save old, days-back(100)
+  walk make(list, version, next)
+    take one, like text
+    walk make(list, <used>, <install.tree>)
+      take file, like text
+      save at, self-path/join(base, <code>, one, file)
+      fork test, is-there(at)
+        hold
+          self-file/utimes-sync(at, old, old)
+
+  save wash-plan, run-term(make(list, <self>, <wash>), outside)
+  save wash-out, joined-output(wash-plan)
+  check(and(is-equal(wash-plan/code, 0), and(matches(make(pattern, <term {quoted(next)}[\s\S]*would be removed>), wash-out), is-there(self-path/join(base, <code>, next)))), wash-out)
+  check(matches(make(pattern, <keep[\s\S]*term {quoted(version)}[\s\S]*the front>), wash-out), wash-out)
+
+  save wash-here, run-term(make(list, <self>, <wash>), project)
+  save here-out, joined-output(wash-here)
+  check(and(text-contains(here-out, <pinned here>), text-contains(here-out, <Nothing unused>)), here-out)
+
+  save washed, run-term(make(list, <self>, <wash>, <--commit>), outside)
+  check(and(is-equal(washed/code, 0), and(not(is-there(self-path/join(base, <code>, next))), is-there(self-path/join(base, <code>, version)))), joined-output(washed))
+
+  save loaded-again, run-term(make(list, <self>, <load>, next), outside)
+  save again-out, joined-output(loaded-again)
+  check(and(is-equal(loaded-again/code, 0), and(is-there(self-path/join(base, <code>, next, <install.tree>)), and(text-contains(again-out, <signed>), text-contains(link-of(bin), </code/{version}/>)))), again-out)
+
+  # two versions share every file they hold alike: `du` counts a hard-linked file once
+  save one, kilobytes(self-path/join(base, <code>, version))
+  save both, kilobytes(self-path/join(base, <code>))
+  check(and(is-below(multiply(both, 5), multiply(one, 6)), text-contains(again-out, <files shared>)), <{both} of {one}\n{again-out}>)
+
+  save loaded-twice, run-term(make(list, <self>, <load>, range-of(next)), outside)
+  check(and(is-equal(loaded-twice/code, 0), text-contains(joined-output(loaded-twice), <installed already>)), joined-output(loaded-twice))
+
+  save still-front, run-term(make(list, <--version>), outside)
+  save still-out, joined-output(still-front)
+  check(ends-with(trim(still-out), version), still-out)
+
+  save removed, run-term(make(list, <self>, <need>, <--none>), project)
+  check(and(is-equal(removed/code, 0), and(not(text-contains(file-or-empty(manifest-file), <need>)), not(text-contains(file-or-empty(lock-file), <need>)))), joined-output(removed))
+
+  save tree, self-path/join(first, <install.tree>)
+  self-file/write-file-sync(tree, replace-matches(make(pattern, bind(text, quoted(digest))), file-or-empty(tree), <sha256:0000000000000000000000000000000000000000000000000000000000000000>))
+  save tampered, run-term(make(list, <self>, <check>))
+  check(and(is-unequal(tampered/code, 0), text-contains(joined-output(tampered), <not the release>)), joined-output(tampered))
+
+  # with no version named, the loader takes the newest, into a second machine
+  save fresh, temp-folder(<term-load->)
+  save latest, run-loader(fresh, make(list, <HOME={fresh}>, <TERM_TRUST_DIR={fresh}/trust>, <TERM_STORE={fresh}/store>))
+  check(and(is-equal(latest/code, 0), is-there(self-path/join(fresh, <.base>, <@term>, <code>, <code>, next, <install.tree>))), joined-output(latest))
+
+  # a version the release does not carry is named, and nothing is installed
+  save absent, run-loader(fresh, make(list, <HOME={fresh}>, <TERM_LOAD_VERSION=9.9.9>))
+  save absent-out, joined-output(absent)
+  check(and(is-unequal(absent/code, 0), and(text-contains(absent-out, <9.9.9 is not released>), text-contains(absent-out, <Nothing was installed>))), absent-out)
+
+  # every blob GET above was redirected to the registry's separate storage host, which records any token it is sent
+  save leaked, now/server/leaked-auth
+  check(is-equal(leaked/length, 0), <{leaked/length} tokens reached it>)
+
+# the sequence, made once, the registry closed whatever ran
+task sequence
+  like release-run
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save now/done, true
+  fork
+    mark unsafe
+    run-steps()
+  halt take
+    take cause
+    save now/raised, raised-words(cause)
+  fork test, now/served
+    hold
+      close-oci-server(now/server)
+  back now
+
+# verdict n, or why the sequence never reached it
+task verdict
+  take n, like number
+  like text
+  mark async
+
+  save ran, sequence()
+  fork test, is-below(n, ran/said/length)
+    hold
+      back ran/said/{n}
+  back <never reached: {ran/raised}>
+
+test <the loader installs the version, checked and linked>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(0), <held>)
+
+test <the loader wrote install.tree with the layer digest>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(1), <held>)
+
+test <the loader names the PATH line for this terminal>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(2), <held>)
+
+test <the loader puts call/ on PATH for new shells, one marked line in ~/.zshrc>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(3), <held>)
+
+test <and a second install leaves it as it is>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(4), <held>)
+
+test <eval "$(… | sh)" puts term on the PATH of the shell that ran it, and stdout holds that one line alone>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(5), <held>)
+
+test <and TERM_LOAD_PATH=0 edits no profile>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(6), <held>)
+
+test <the loader prints one run in the output standard: opening and closing `load` items, every other line an item or under one>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(7), <held>)
+
+test <check passes on the loader's install of the version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(8), <held>)
+
+test <update installs the next version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(9), <held>)
+
+test <update moves bin/term to the next version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(10), <held>)
+
+test <check passes on the next version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(11), <held>)
+
+test <a second update finds nothing newer>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(12), <held>)
+
+test <and `term update` is the same verb: it finds nothing newer>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(13), <held>)
+
+test <back returns bin/term to the version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(14), <held>)
+
+test <outside a project the front runs, the version, though the next is installed>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(15), <held>)
+
+test <+next hands this one command to the next version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(16), <held>)
+
+test <self need writes the request into deck.tree>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(17), <held>)
+
+test <and pins the release, with its index digest, in lock.tree>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(18), <held>)
+
+test <in the project, the next version runs, from the same front>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(19), <held>)
+
+test <and from a folder under it>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(20), <held>)
+
+test <self show names the project rule, the file, and the pin>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(21), <held>)
+
+test <TERM_VERSION of the version wins over the project>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(22), <held>)
+
+test <a fourth handoff is refused as a loop, and nothing runs>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(23), <held>)
+
+test <the handshake refuses a term asked to be another version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(24), <held>)
+
+test <self list shows both versions and marks the front>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(25), <held>)
+
+test <self find lists the releases, newest first>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(26), <held>)
+
+test <self toss refuses the front>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(27), <held>)
+
+test <self toss removes the next version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(28), <held>)
+
+test <TERM_NEED=local refuses a pinned version that is not installed, naming the fix>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(29), <held>)
+
+test <on first use the pin is installed, verified, and run>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(30), <held>)
+
+test <self pick of the next version makes it the default outside a project>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(31), <held>)
+
+test <self wash lists the next version, unused for 100 days, and removes nothing>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(32), <held>)
+
+test <and keeps the version, as old, because it is the front>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(33), <held>)
+
+test <inside the project, the next version is kept as its pin>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(34), <held>)
+
+test <self wash --commit removes the next version, and the front stays>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(35), <held>)
+
+test <self load of the next version installs it, verified, and switches nothing>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(36), <held>)
+
+test <and shares its files with the version: code/ for two versions is under 1.2 times one>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(37), <held>)
+
+test <a range already satisfied installs nothing more>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(38), <held>)
+
+test <and outside a project the front, the version, still runs>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(39), <held>)
+
+test <self need --none removes the request and the pin>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(40), <held>)
+
+test <check refuses an install whose digest is not the signed release>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(41), <held>)
+
+test <the loader with no version installs the newest, the next version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(42), <held>)
+
+test <the loader refuses a version that was never released>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(43), <held>)
+
+test <no pull token ever reached the storage host>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load>
+  want hold, is-equal(verdict(44), <held>)

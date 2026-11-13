@@ -298,15 +298,18 @@ task build-browser
       call node-path/join
         read here
         text <absent.ts>
-      # the package manager's barrel re-exports its registry, OCI and signing code, all Node. The compile path reads
-      # only the role reader from it, so the barrel is narrowed to that one module
+      # the package manager's barrel re-exports its registry, OCI and signing code, all Node, so it is narrowed to the
+      # role reader. That is the port, never its TypeScript face (decision 153): Term code reads the port's shapes,
+      # and no module of the compile path imports the barrel today (item 1277, the metafile read 2026-11-12)
       call node-path/join
         read term
         text <deck>
         text <deck>
+        text <host>
+        text <port>
         text <code>
         text <package>
-        text <role.ts>
+        text <role-reading.ts>
       # only what the closure imports today. Any other builtin is left unaliased, so under the browser platform the
       # build cannot resolve it and fails naming the importer, which is the point
       make list

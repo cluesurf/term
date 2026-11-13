@@ -1,0 +1,290 @@
+note <a real macOS app taking an over-the-air update>
+
+# Ported from update-app.ts by statement (item 0648). deck/call/code/cask.ts and update.ts are the subjects (decision
+# 106). The update app (deck/cask/test/update) is built the way the cask builds every macOS app, its runtime version and
+# update key stamped in, launched, updated, launched again (native-dom-0024):
+#
+#   1. the app ships page.tree, which leaves with status 11
+#   2. page-next.tree (status 12) is published as a signed update for the runtime version the build stamped
+#   3. the first launch runs the shipped page (11) and, before it does, fetches the update for the next launch
+#   4. the second launch runs the update (12)
+#
+# Twice: with the window opened at boot, and with it opened late inside the check's callback, where the window lives
+# only because the cask holds every open window (native-dom-0028). The exit status is the witness: it is decided by
+# which page's code ran inside the WebView, so 12 means the downloaded page was loaded and executed. macOS only: every
+# test skips elsewhere, where the original printed one skip. Each scenario runs once, from the first test that asks, and
+# each test reads the step it names. A raise in a build step ends that scenario where it stood, and the steps after it
+# fail. A launch that raises (its limit ended it) is status -1 and the next launch still runs, as the original's did.
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/cli
+  find term-root
+
+load @term/base/environment
+  find variable
+
+load @term/base/process/run
+  find run
+
+dock load
+  load <@term/call/code/cask>, name update-cask
+  load <@term/call/code/update>, name update-publish
+  load <node:path>, name update-path
+  load <global:process>, name update-process
+
+form update-bundle-input
+  link out, like text
+  link name, like text
+  link identifier, like text
+  link version, like text
+
+form update-page-input
+  link root, like text
+  link page, like text
+  link entry, like text
+  link into, like text
+  link title, like text
+  link work, like text
+
+form update-program-input
+  link root, like text
+  link entry, like text
+  link driver, like text
+  link exe, like text
+  link work, like text
+
+form update-stamp-input
+  link target, like text
+  link native, like text
+  link into, like text
+
+form update-key-input
+  link identifier, like text
+  link into, like text
+  link key-file, like text
+
+form update-sign-input
+  link app, like text
+
+form update-publish-input
+  link page, like text
+  link out, like text
+  link identifier, like text
+  link platform, like text
+  link runtime-version, like text
+  link channel, like text
+  link key-file, like text
+
+# one scenario's run: what each step left, -1 for a launch that did not end on its own
+form update-run
+  mark shared
+  link done, like boolean
+  link hex, like text
+  link published, like text
+  link first, like number
+  link second, like number
+  link third, like number
+  link raised, like text
+
+task fresh-run
+  like update-run
+
+  back make(update-run, bind(done, false), bind(hex, <>), bind(published, <>), bind(first, -1), bind(second, -1), bind(third, -1), bind(raised, <>))
+
+host identifier, <surf.term.update-app-test>
+host entry, <import \{ boot \} from './app'\nboot()\n>
+host at-boot, fresh-run()
+host opened-late, fresh-run()
+
+# the one folder both scenarios build in, and the key they share
+form update-place
+  mark shared
+  link dir, like text
+
+host place, make(update-place, bind(dir, <>))
+
+# host value: a JSON text of a text, as the Swift driver is labeled (compile/swift.ts)
+bind quoted
+  take value, like text
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# host value: UPDATE_APP_TIMEOUT as milliseconds, 60000 when it is not set
+bind launch-limit
+  take value, like text
+  like number
+  case node
+    text <Number($value || 60000)>
+
+# host value: the runtime version the published manifest names
+bind manifest-version
+  take published, like dynamic
+  like text
+  case node
+    text <String($published?.manifest?.runtimeVersion ?? "")>
+
+# host reflect: the message a raise carries, as text
+bind raised-words
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause instanceof Error ? $cause.message : $cause).slice(0, 1600)>
+
+# a value, never a zero-argument boolean task, which term test would run as a test (T-0978)
+host on-mac, is-equal(update-process/platform, <darwin>)
+
+task folder
+  like text
+
+  fork test, is-equal(place/dir, <>)
+    hold
+      save place/dir, temp-folder(<term-update-app->)
+  back place/dir
+
+# one launch of the app: its exit status, -1 when it raised (its limit ended it)
+task launch
+  take exe, like text
+  like number
+  mark async
+
+  save status, -1
+  fork
+    mark unsafe
+    save ran, run(exe, make(list), bind(limit, launch-limit(variable(<UPDATE_APP_TIMEOUT>))))
+    save status, ran/code
+  halt take
+    take cause
+    save status, -1
+  back status
+
+# one app, shipped, updated, launched three times. `cask` is the cask entry: ./main.tree opens its window at boot,
+# ./main-late.tree inside the update check's callback, where only the cask holding open windows keeps it alive
+task run-steps
+  take now, like update-run
+  take label, like text
+  take cask, like text
+  like void
+  mark async
+
+  save root, term-root()
+  save cask-root, update-path/join(root, <deck/cask>)
+  save app, update-path/join(cask-root, <test/update>)
+  save dir, folder()
+  save key-file, update-path/join(dir, <key.pem>)
+  save at, update-path/join(dir, label)
+  save served, update-path/join(at, <served>)
+  save bundle, update-cask/assemble-bundle(make(update-bundle-input, bind(out, update-path/join(at, <app>)), bind(name, <TermUpdate>), bind(identifier, identifier), bind(version, <0.0.2>)))
+  wait update-cask/build-page(make(update-page-input, bind(root, root), bind(page, update-path/join(app, <page.tree>)), bind(entry, entry), bind(into, update-path/join(bundle/resources, <webview>)), bind(title, <Term update>), bind(work, update-path/join(at, <work/page>))))
+  # the resources directory and the update server, the way an app carries its own address. Swift, so by label: a
+  # task's inputs are labeled by name (compile/swift.ts)
+  save driver, <boot(resources: {quoted(bundle/resources)}, base: {quoted(<file://{served}>)})>
+  save program, update-cask/build-program(make(update-program-input, bind(root, cask-root), bind(entry, update-path/join(app, cask)), bind(driver, driver), bind(exe, bundle/exe), bind(work, update-path/join(at, <work>))))
+  save version, update-cask/stamp-runtime-version(make(update-stamp-input, bind(target, <macos>), bind(native, program/native), bind(into, bundle/resources)))
+  update-publish/stamp-update-key(make(update-key-input, bind(identifier, identifier), bind(into, bundle/resources), bind(key-file, key-file)))
+  update-cask/sign-bundle(make(update-sign-input, bind(app, bundle/app)))
+  save now/hex, version/hex
+  # the update: the other page, built the same way, published for exactly this runtime version
+  save next, update-path/join(at, <next>)
+  wait update-cask/build-page(make(update-page-input, bind(root, root), bind(page, update-path/join(app, <page-next.tree>)), bind(entry, entry), bind(into, next), bind(title, <Term update>), bind(work, update-path/join(at, <work/next>))))
+  save published, update-publish/publish-update(make(update-publish-input, bind(page, next), bind(out, served), bind(identifier, identifier), bind(platform, <macos>), bind(runtime-version, version/hex), bind(channel, <main>), bind(key-file, key-file)))
+  save now/published, manifest-version(published)
+  save now/first, launch(bundle/exe)
+  save now/second, launch(bundle/exe)
+  save now/third, launch(bundle/exe)
+
+# a scenario's run, made once
+task the-run
+  take now, like update-run
+  take label, like text
+  take cask, like text
+  like update-run
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save now/done, true
+  fork
+    mark unsafe
+    run-steps(now, label, cask)
+  halt take
+    take cause
+    save now/raised, raised-words(cause)
+  back now
+
+task boot-run
+  like update-run
+  mark async
+
+  back the-run(at-boot, <window at boot>, <main.tree>)
+
+task late-run
+  like update-run
+  mark async
+
+  back the-run(opened-late, <window opened late>, <main-late.tree>)
+
+test <window at boot: the app builds with its runtime version and update key>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  want hold, is-equal(boot-run()/hex/length, 64)
+
+test <window at boot: the update is published>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  save ran, boot-run()
+  want hold, and(is-unequal(ran/hex, <>), is-equal(ran/published, ran/hex))
+
+test <window at boot: the first launch runs the shipped page>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  want hold, is-equal(boot-run()/first, 11)
+
+test <window at boot: the second launch runs the update>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  want hold, is-equal(boot-run()/second, 12)
+
+test <window at boot: and keeps running it>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  want hold, is-equal(boot-run()/third, 12)
+
+test <window opened late: the app builds with its runtime version and update key>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  want hold, is-equal(late-run()/hex/length, 64)
+
+test <window opened late: the update is published>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  save ran, late-run()
+  want hold, and(is-unequal(ran/hex, <>), is-equal(ran/published, ran/hex))
+
+test <window opened late: the first launch runs the shipped page>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  want hold, is-equal(late-run()/first, 11)
+
+test <window opened late: the second launch runs the update>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  want hold, is-equal(late-run()/second, 12)
+
+test <window opened late: and keeps running it>
+  fork test, not(on-mac)
+    hold
+      skip <the update tasks are the Swift cask's, and this builds a macOS app>
+  want hold, is-equal(late-run()/third, 12)

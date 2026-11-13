@@ -1,0 +1,401 @@
+note <term make --target uikit: an archive built for iPhone devices, the same project run on the simulator, and signed where a team can sign>
+
+# Ported from uikit-make.ts by statement (item term-self-host-001-0694). `term make --target uikit`
+# (swiftui-target-0004), through the CLI's own function, `makeUikit` in deck/call/code/uikit.ts, docked as the subject:
+# an app folder holding an `app.tree` becomes an Xcode project under `host/uikit/`, archived for an iPhone. Three
+# things are held, and the third only where a team can sign:
+#
+#   1. the archive's executable is arm64 code built for iOS DEVICES, not the simulator (`vtool -show-build`)
+#   2. the SAME generated project, built for the simulator by xcodebuild, runs: it presses a button twice, reads it
+#      back from UIKit, and exits 0. So the project is a working app, not only a file Xcode accepts
+#   3. with a signing identity in the keychain, the ad hoc .ipa is exported and its signature verifies
+#
+# A phone is not needed for any of the three. The app folder is under this package's tmp/ (gitignored). Every step runs
+# once, by the first test that asks. Skips on a machine without macOS and Xcode.
+
+load ../support/cli
+  find term-root
+
+load ../support/judging
+  find make-record
+
+load ../support/device/simulator
+  find booted-simulator
+
+load ../support/device/hold
+  find hold-device
+  find release-device
+
+load ../support/device/host-fields
+  find host-field-text
+  find host-cause-text
+
+load @term/base/process/run
+  find run
+
+load @term/base/process
+  find platform
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find trim
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/call/code/uikit>, name uikit-cli
+  load <node:path>, name uikit-path
+  load <node:fs>, name uikit-file
+
+bind uikit-recursive
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+bind uikit-wipe
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true, force: true \})>
+
+# host value: the one team whose signing identity the keychain holds, else the empty text
+bind uikit-team
+  take module, like dynamic
+  like text
+  case node
+    text <($module.signingTeam() ?? "")>
+
+host uikit-name, <uikitmake>
+host uikit-identifier, <surf.term.uikitmake>
+
+# the line the program must print, read back from UIKit after two presses
+host uikit-want, <\<main\>\<button\>2\</button\>\</main\>>
+
+host uikit-app-tree, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find run-app\n  find exit-app\n  find press\n  find child-at\n  find serialize\n  find say\n\ntask shown\n  take count, like signal number\n  like text\n  save value\n    call read-signal\n      bind self, read count\n  send back, text \<\{value\}\>\n\nview tally\n  take host, like view\n  save count\n    call make-signal\n      bind value, code 0\n  view button\n    seed click\n      call write-signal\n        bind self, read count\n        bind value\n          call add\n            call read-signal\n              bind self, read count\n            code 1\n    read\n      call shown\n        read count\n\ntask main\n  save root\n    call open-root\n      text \<UIKit make\>\n      code 400\n      code 300\n  call tally\n    read root\n  call after-launch\n    task check\n      call press\n        call child-at\n          read root\n          code 0\n      call press\n        call child-at\n          read root\n          code 0\n      call say\n        call serialize\n          read root\n      call exit-app\n        code 0\n  call run-app\n>
+
+# the arguments for makeUikit
+form uikit-input
+  link root, like text
+  link team, like text
+
+# what each step found. `xcode` is false where there is no macOS with Xcode. The device build: `device-raised` its
+# message when makeUikit raised, `project` whether the project file is there, `build` and `archs` what vtool and lipo
+# read. The simulator: `simulator` <ran>, <skipped> (`simulator-reason`) or <none> (no project to build), whether the
+# build exits 0 with its app, its errors, and what the launch printed. The signed export: `team` <> when none,
+# `signed-raised`, and each witness
+form uikit-state
+  mark shared
+  link made, like boolean
+  link xcode, like boolean
+  link app, like text
+  link device-raised, like text
+  link project, like boolean
+  link build, like text
+  link archs, like text
+  link simulator, like text
+  link simulator-reason, like text
+  link simulator-built, like boolean
+  link simulator-app, like boolean
+  link simulator-errors, like text
+  link launched, like text
+  link team, like text
+  link signed-raised, like text
+  link ipa, like boolean
+  link verified, like boolean
+  link profile, like boolean
+  link install-page, like boolean
+
+host uikit-now, make(uikit-state, bind(made, false), bind(xcode, false), bind(app, <>), bind(device-raised, <>), bind(project, false), bind(build, <>), bind(archs, <>), bind(simulator, <none>), bind(simulator-reason, <>), bind(simulator-built, false), bind(simulator-app, false), bind(simulator-errors, <>), bind(launched, <>), bind(team, <>), bind(signed-raised, <>), bind(ipa, false), bind(verified, false), bind(profile, false), bind(install-page, false))
+
+# whether xcodebuild answers `-version` with 0
+task xcode-answers
+  take tool, like text
+  like boolean
+
+  save got, -1
+  fork
+    mark unsafe
+    save version, run(tool, make list(<-version>))
+    save got, version/code
+  halt take
+    take cause
+    save got, -1
+  back is-equal(got, 0)
+
+# the lines of a text that name an error
+task error-lines
+  take said, like text
+  like text
+
+  save found, make list
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, text-contains(line, <error>)
+      hold
+        found/push(line)
+  back found/join(<\n>)
+
+# whether one trimmed line of a text is `line`
+task has-trimmed-line
+  take said, like text
+  take line, like text
+  like boolean
+
+  walk text-split(said, <\n>)
+    take one, like text
+    fork test, is-equal(trim(one), line)
+      hold
+        back true
+  back false
+
+# 1. the device build: unsigned whatever the keychain holds, so this half never waits on an identity
+task build-device
+  take state, like uikit-state
+  take out, like text
+  like void
+
+  fork
+    mark unsafe
+    wait uikit-cli/make-uikit(make(uikit-input, bind(root, state/app), bind(team, <>)))
+  halt take
+    take cause
+    save state/device-raised, host-cause-text(cause)
+  fork test, is-unequal(state/device-raised, <>)
+    hold
+      back
+  save state/project, file-exists(uikit-path/join(out, <{uikit-name}.xcodeproj>, <project.pbxproj>))
+  save exe, uikit-path/join(out, <{uikit-name}.xcarchive>, <Products>, <Applications>, <{uikit-name}.app>, uikit-name)
+  save build, run(<vtool>, make list(<-show-build>, exe))
+  save arch, run(<lipo>, make list(<-archs>, exe))
+  save state/build, <{build/output}{build/error}>
+  save state/archs, arch/output
+
+# 2. the same project for the simulator, run, and read back
+task build-simulator
+  take state, like uikit-state
+  take out, like text
+  like void
+
+  save project, uikit-path/join(out, <{uikit-name}.xcodeproj>)
+  save found, booted-simulator()
+  fork test, is-unequal(found/missing, <>)
+    hold
+      save state/simulator, <skipped>
+      save state/simulator-reason, found/missing
+      back
+  fork test, not(file-exists(project))
+    hold
+      back
+  save state/simulator, <ran>
+  save derived, uikit-path/join(out, <derived-simulator>)
+  save built, run(<xcodebuild>, make list(<build>, <-project>, project, <-scheme>, uikit-name, <-configuration>, <Release>, <-destination>, <generic/platform=iOS Simulator>, <-derivedDataPath>, derived, <CODE_SIGNING_ALLOWED=NO>, <-quiet>))
+  save app, uikit-path/join(derived, <Build>, <Products>, <Release-iphonesimulator>, <{uikit-name}.app>)
+  save state/simulator-app, file-exists(app)
+  save state/simulator-built, and(is-equal(built/code, 0), state/simulator-app)
+  save state/simulator-errors, error-lines(<{built/output}{built/error}>)
+  fork test, not(state/simulator-app)
+    hold
+      back
+  # the simulator is one device the whole machine shares: held from the first simctl call to the last (D017)
+  save held, hold-device(<simulator>, <uikit-make ios>)
+  fork
+    mark unsafe
+    run(<xcrun>, make list(<simctl>, <terminate>, found/udid, uikit-identifier))
+    run(<xcrun>, make list(<simctl>, <uninstall>, found/udid, uikit-identifier))
+    run(<xcrun>, make list(<simctl>, <install>, found/udid, app))
+    save arguments, make list(<simctl>, <launch>, <--console>, <--terminate-running-process>, found/udid, uikit-identifier)
+    save ran, run(<xcrun>, arguments, bind(limit, 120000))
+    save state/launched, <{ran/output}{ran/error}>
+  halt take
+    take cause
+    save state/launched, host-cause-text(cause)
+  release-device(held)
+
+# 3. signed, where the keychain holds one team's identity
+task build-signed
+  take state, like uikit-state
+  take out, like text
+  like void
+
+  save state/team, uikit-team(uikit-cli)
+  fork test, is-equal(state/team, <>)
+    hold
+      back
+  save ipa, <>
+  fork
+    mark unsafe
+    save answer, wait uikit-cli/make-uikit(make-record(make(list, <root>, state/app, <team>, state/team, <link>, <https://example.invalid/uikit>)))
+    save ipa, host-field-text(answer, <app>)
+  halt take
+    take cause
+    save state/signed-raised, host-cause-text(cause)
+  fork test, is-unequal(state/signed-raised, <>)
+    hold
+      back
+  save state/ipa, file-exists(ipa)
+  save unpacked, uikit-path/join(out, <unpacked>)
+  uikit-file/rm-sync(unpacked, uikit-wipe(0))
+  run(<ditto>, make list(<-x>, <-k>, ipa, unpacked))
+  save verified, run(<codesign>, make list(<--verify>, <--deep>, <--strict>, uikit-path/join(unpacked, <Payload>, <{uikit-name}.app>)))
+  save state/verified, is-equal(verified/code, 0)
+  save state/profile, file-exists(uikit-path/join(unpacked, <Payload>, <{uikit-name}.app>, <embedded.mobileprovision>))
+  save state/install-page, and(file-exists(uikit-path/join(out, <export>, <index.html>)), file-exists(uikit-path/join(out, <export>, <manifest.plist>)))
+
+# every step, once
+task the-uikit
+  like uikit-state
+
+  fork test, uikit-now/made
+    hold
+      back uikit-now
+  save state, uikit-now
+  save state/made, true
+  save state/xcode, and(is-equal(platform(), <darwin>), xcode-answers(<xcodebuild>))
+  fork test, not(state/xcode)
+    hold
+      back state
+  save state/app, uikit-path/join(term-root(), <tmp>, <uikit-make>, uikit-name)
+  uikit-file/rm-sync(state/app, uikit-wipe(0))
+  uikit-file/mkdir-sync(state/app, uikit-recursive(0))
+  write-file(uikit-path/join(state/app, <app.tree>), uikit-app-tree)
+  save out, uikit-path/join(state/app, <host>, <uikit>)
+  build-device(state, out)
+  build-simulator(state, out)
+  build-signed(state, out)
+  back state
+
+# why the device build's checks skip: no macOS with Xcode
+task device-skip
+  take state, like uikit-state
+  like text
+
+  fork test, not(state/xcode)
+    hold
+      back <needs macOS with Xcode>
+  back <>
+
+# why the simulator's checks skip: no Xcode, no booted simulator, no project to build, or (for a check of the run) no
+# app built
+task simulator-skip
+  take state, like uikit-state
+  take of-run, like boolean
+  like text
+
+  save why, device-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      back why
+  fork test, is-equal(state/simulator, <skipped>)
+    hold
+      back <the project on the simulator ({state/simulator-reason})>
+  fork test, is-equal(state/simulator, <none>)
+    hold
+      back <no project was written to build>
+  fork test, and(of-run, not(state/simulator-app))
+    hold
+      back <no app was built to run>
+  back <>
+
+# why the signed checks skip: no Xcode, or no Apple signing identity in the keychain, or (past the export) it raised
+task signed-skip
+  take state, like uikit-state
+  take past-export, like boolean
+  like text
+
+  save why, device-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      back why
+  fork test, is-equal(state/team, <>)
+    hold
+      back <the ad hoc .ipa (no Apple signing identity in the keychain: Xcode, Settings, Accounts)>
+  fork test, and(past-export, is-unequal(state/signed-raised, <>))
+    hold
+      back <signing raised: {state/signed-raised}>
+  back <>
+
+test <uikit: `term make --target uikit` builds for a device and writes an Xcode project>
+  save state, the-uikit()
+  save why, device-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, and(is-equal(state/device-raised, <>), state/project)
+
+test <uikit: the archive holds arm64 code built for iOS devices, not the simulator>
+  save state, the-uikit()
+  save why, device-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  fork test, is-unequal(state/device-raised, <>)
+    hold
+      skip <the device build raised>
+  want hold, and(matches(make(pattern, <<platform IOS\b>>), state/build), and(not(text-contains(state/build, <IOSSIMULATOR>)), is-equal(trim(state/archs), <arm64>)))
+
+test <uikit: the generated project builds for the simulator too>
+  save state, the-uikit()
+  save why, simulator-skip(state, false)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, state/simulator-built
+
+test <uikit: that app presses twice and reads it back from UIKit>
+  save state, the-uikit()
+  save why, simulator-skip(state, true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, has-trimmed-line(state/launched, uikit-want)
+
+test <uikit: it exits 0>
+  save state, the-uikit()
+  save why, simulator-skip(state, true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(state/launched, <native-view exit 0>)
+
+test <uikit: signed ad hoc for the keychain's team, exported as an .ipa>
+  save state, the-uikit()
+  save why, signed-skip(state, false)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, and(is-equal(state/signed-raised, <>), state/ipa)
+
+test <uikit: its signature verifies>
+  save state, the-uikit()
+  save why, signed-skip(state, true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, state/verified
+
+test <uikit: it carries the ad hoc profile>
+  save state, the-uikit()
+  save why, signed-skip(state, true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, state/profile
+
+test <uikit: the install page and manifest are written beside it>
+  save state, the-uikit()
+  save why, signed-skip(state, true)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, state/install-page

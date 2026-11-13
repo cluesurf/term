@@ -1,0 +1,61 @@
+{
+  "env": "kotlin",
+  "shim": "compare",
+  "line_sha256": "8879b98622b3c8c1ceb462f9674a005015554d0e1befc9bedf7b5896bcaeea84",
+  "candidate": "task/term/shim-bench/kotlin/compare.candidate.tree",
+  "candidate_sha256": "d48c38801c7e40930ed0e3fb64dcd23abae3f2634e995eb1127ef6740ec0786b",
+  "runtime": "deck/base/code/native/kotlin/runtime/compare.kt",
+  "runtime_sha256": "98bd09c29cfe333acaa2806c0023fd03f3b75669994229a7ff72b1918290e327",
+  "measured": "2026-11-13T06:56",
+  "host": "openjdk version \"25.0.2\" 2026-01-20, info: kotlinc-jvm 2.3.10 (JRE 25.0.2)",
+  "machine": "Apple M3 Pro cores 12",
+  "load": 19.45,
+  "trials": 7,
+  "rounds": 50,
+  "cases_per_op": 2048,
+  "rule": "best of 7, an op over 1.2 gross in two runs, or with any differ, is kept",
+  "ops": [
+    {
+      "op": "above-float",
+      "shim_ns": 1.5,
+      "term_ns": 1.5,
+      "loop_ns": 1.2,
+      "gross_ratio": 0.99,
+      "net_ratio": null,
+      "cases": 2048,
+      "equal": 2048,
+      "differ": 0,
+      "past_safe_range": 0,
+      "rerun_gross_ratio": null,
+      "state": "ported"
+    },
+    {
+      "op": "above-integer",
+      "shim_ns": 2.8,
+      "term_ns": 2.4,
+      "loop_ns": 1.4,
+      "gross_ratio": 0.85,
+      "net_ratio": 0.71,
+      "cases": 2048,
+      "equal": 2048,
+      "differ": 0,
+      "past_safe_range": 0,
+      "rerun_gross_ratio": null,
+      "state": "ported"
+    },
+    {
+      "op": "as-text",
+      "shim_ns": 1.2,
+      "term_ns": 1.4,
+      "loop_ns": 3,
+      "gross_ratio": 1.16,
+      "net_ratio": null,
+      "cases": 2048,
+      "equal": 2048,
+      "differ": 0,
+      "past_safe_range": 0,
+      "rerun_gross_ratio": null,
+      "state": "ported"
+    }
+  ]
+}

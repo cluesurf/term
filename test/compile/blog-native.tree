@@ -1,0 +1,268 @@
+note <the blog app's own page entry run with no WebView on each toolkit host: a post typed and pressed natively is drawn>
+
+# Ported from blog-native.ts by statement (item term-self-host-001-0695). The blog with no WebView (native-dom-0014):
+# the blog app's own page entry (deck/site/test/site/face/base.tree, the same `boot` its cask runs inside a WebView)
+# compiled with the toolkit host, so its views are AppKit views on macOS, UIKit views on the iOS simulator and Android
+# views on the emulator, and its database is SQLite in the same process. The program launches `boot`, types a post into
+# the platform's own text fields, presses the platform's own button, and prints the tree as read back FROM THE VIEWS
+# before and after, then writes a PNG of the screen. The same program runs as Compose on the desktop JVM and as Jetpack
+# Compose on the emulator. Built and run on each leg by test/support/device/toolkit-run, which skips a leg whose
+# toolchain or device is not here. SNAPSHOT_BLOG (and _IOS, _ANDROID, _COMPOSE, _COMPOSE_ANDROID, _COMPOSE_LINUX,
+# _COMPOSE_WINDOWS) name where each PNG goes. BLOG_ONLY=macos (or ios, android, compose, compose-android) runs one leg.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way are one walked test, a
+# case each. Each of the original judge's `ok`s is one walked test over the legs, a leg a case of it, skipped where the
+# leg was or where it stopped before the original would have judged it.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/time
+  find now
+
+load @term/base/file
+  find exists, name file-exists
+  find read-bytes
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+  find trim
+  find char-count
+
+form blog-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link run, like text
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host blog-now, make(blog-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(run, <>), bind(legs, make list), bind(ran, make hash))
+
+# where a leg's PNG goes, by leg, when the run names one
+task shots
+  like hash, like text, like text
+
+  save named, make hash
+  walk make list(<macos>, <ios>, <android>, <compose-android>, <compose>, <compose-linux>, <compose-windows>)
+    take leg, like text
+    save value, variable(shot-variable(leg))
+    fork test, is-unequal(value, <>)
+      hold
+        save named/{leg}, value
+  back named
+
+# the variable naming a leg's PNG
+task shot-variable
+  take leg, like text
+  like text
+
+  fork test, is-equal(leg, <macos>)
+    hold
+      back <SNAPSHOT_BLOG>
+  fork test, is-equal(leg, <ios>)
+    hold
+      back <SNAPSHOT_BLOG_IOS>
+  fork test, is-equal(leg, <android>)
+    hold
+      back <SNAPSHOT_BLOG_ANDROID>
+  fork test, is-equal(leg, <compose-android>)
+    hold
+      back <SNAPSHOT_BLOG_COMPOSE_ANDROID>
+  fork test, is-equal(leg, <compose>)
+    hold
+      back <SNAPSHOT_BLOG_COMPOSE>
+  fork test, is-equal(leg, <compose-linux>)
+    hold
+      back <SNAPSHOT_BLOG_COMPOSE_LINUX>
+  back <SNAPSHOT_BLOG_COMPOSE_WINDOWS>
+
+# the app and the legs BLOG_ONLY allows, made once, with the run's stamp
+task the-app
+  like blog-state
+
+  fork test, blog-now/made
+    hold
+      back blog-now
+  save blog-now/made, true
+  # a title no earlier run wrote: the database persists in the app's data directory between runs
+  save blog-now/run, <{now()}>
+  save blog-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-blog-native->)), bind(name, <Blog>), bind(who, <blog-native>), bind(ios-identifier, <surf.term.blog-native-test>), bind(android-identifier, <surf.term.blognative>), bind(shots, shots()), bind(compose, true), bind(compose-android, true))
+  save blog-now/legs, legs-of(blog-now/app, variable(<BLOG_ONLY>))
+  back blog-now
+
+# the post's title on a leg
+task blog-title
+  take leg, like text
+  like text
+
+  back <Native post {leg} {the-app()/run}>
+
+# the original's program, its post title and PNG path filled in
+task blog-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  save title, blog-title(leg)
+  back <load @term/site/test/site/face/base\n  find boot\n\nload @term/site/code/dom/dom\n  find view\n  find page-body\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find launch\n  find run-app\n  find exit-app\n  find show-window\n  find serialize\n  find child-at\n  find type-text\n  find press\n  find later\n  find snapshot\n  find say\n\ntask check\n  note async\n  like void\n  call boot\n    wait true\n  save root\n    call page-body\n  call show-window\n  call say\n    text \<before \{\{serialize(read root)\}\}\>\n  save blog\n    call child-at\n      read root\n      code 0\n  call type-text\n    call child-at\n      read blog\n      code 0\n    text \<{title}\>\n  call type-text\n    call child-at\n      read blog\n      code 1\n    text \<Written natively, kept in SQLite\>\n  call press\n    call child-at\n      read blog\n      code 2\n  # the store is asynchronous: the post is drawn once it is kept, so the tree is read on a later turn\n  call later\n    task after\n      save shown\n        call serialize\n          read root\n      call say\n        text \<after \{\{shown\}\}\>\n      call snapshot\n        text \<{shot}\>\n      call exit-app\n        code 0\n\ntask main\n  call open-root\n    text \<Term blog\>\n    code 640\n    code 480\n  call launch\n    read check\n  call run-app\n>
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, blog-program, prepare-no-device)
+  save blog-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# the blog's own line `<word> <tree>`, from `<word> <` to its end: a log shared with another app on the device (the
+# toolkit suite's `turn before compact`) must not pass for one
+task tree-said
+  take output, like text
+  take word, like text
+  like text
+
+  save mark, <{word} \<>
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        back trim(substring(line, index-of(line, mark), char-count(line)))
+  back <>
+
+test <the blog mounted on the window, inputs and a button read back from the toolkit>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save before, tree-said(ran/output, <before>)
+  want hold, and(text-contains(before, <\<input>), text-contains(before, <\<button>))
+
+test <the new post was not there before>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, not(text-contains(tree-said(ran/output, <before>), blog-title(leg)))
+
+test <the post typed into the native fields and added by the native button is drawn>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-contains(tree-said(ran/output, <after>), blog-title(leg))
+
+test <a PNG of the screen was written>
+  take leg, like text
+    walk leg-names()
+  save ran, leg-run(leg)
+  save why, skip-reason(ran)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, file-exists(ran/shot)
+  save bytes, read-bytes(ran/shot)
+  want hold, and(is-equal(bytes/1, 80), and(is-equal(bytes/2, 78), is-equal(bytes/3, 71)))

@@ -1,6 +1,6 @@
 {
   "shim": "compare",
-  "candidate": "task/term/shim-bench/browser/compare.tree",
+  "candidate": "deck/base/code/native/browser/compare.tree",
   "rounds": 40,
   "ops": [
     {

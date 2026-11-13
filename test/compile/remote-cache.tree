@@ -1,0 +1,155 @@
+note <A remote cache warms a second project from the first one's push>
+
+# Ported from remote-cache.ts by statement (item term-self-host-001-0623), one test per `ok` in its order. The real
+# remote cache server stands up, one project's local cache is pushed to it, a second empty cache pulls, and a cold
+# compile in the second project then reads the pulled entries. call/remote-cache, call/cache-store and compile/cache are
+# the subject (decision 106). The story runs once, and each test reads one of its facts.
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+dock load
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/remote-cache>, name remote-module
+  load <node:fs>, name remote-file
+  load <node:path>, name remote-path
+  load <node:timers/promises>, name remote-timers
+
+bind new-cache
+  take module, like dynamic
+  take store, like dynamic
+  take label, like text
+  like dynamic
+  case node
+    text <new $module.CompileCache($store, $label)>
+
+bind pushed-count
+  take module, like dynamic
+  take from, like text
+  take endpoint, like text
+  take token, like text
+  like number
+  mark async
+  case node
+    text <(await $module.pushRemoteCache($from, $endpoint, $token))>
+
+bind pulled-count
+  take module, like dynamic
+  take into, like text
+  take endpoint, like text
+  take token, like text
+  like number
+  mark async
+  case node
+    text <(await $module.pullRemoteCache($into, $endpoint, $token))>
+
+# host native: the status of a GET of `url` sent with a bearer `token`
+bind status-with
+  take url, like text
+  take token, like text
+  like number
+  mark async
+  case node
+    text <(await fetch($url, \{ headers: \{ authorization: "Bearer " + $token \} \})).status>
+
+host source, <task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 3\n>
+host port, 39623
+host token, <secret>
+
+form remote-story
+  link built-ok, like boolean
+  link a-mills, like number
+  link pushed, like number
+  link pushed-again, like number
+  link pulled, like number
+  link misses, like number
+  link disk-hits, like number
+  link cold-ok, like boolean
+  link same-output, like boolean
+  link unauthorized, like number
+
+form remote-told
+  mark shared
+  link held, like list, like remote-story
+
+host told, make(remote-told, bind(held, make list))
+
+task story
+  like remote-story
+  mark async
+
+  fork test, is-above(told/held/length, 0)
+    hold
+      back told/held/0
+  host made, run-story()
+  told/held/push(made)
+  back made
+
+task run-story
+  like remote-story
+  mark async
+
+  host root, temp-folder(<seed-remote->)
+  host store, remote-path/join(root, <store>)
+  host project-a, remote-path/join(root, <a>, <.seed>, <cache>)
+  host project-b, remote-path/join(root, <b>, <.seed>, <cache>)
+  remote-file/mkdir-sync(project-a, make-record(make(list, <recursive>, true)))
+  remote-file/mkdir-sync(project-b, make-record(make(list, <recursive>, true)))
+  host server, remote-module/start-remote-cache-server(make-record(make(list, <storeDir>, store, <port>, port, <token>, token)))
+  host endpoint, <http://localhost:{port}>
+  wait remote-timers/set-timeout(200)
+  # project A: compile, which fills A's local disk cache, then push to the remote
+  host cache-a, new-cache(cache-module, cache-store/disk-cache-store(project-a, <v1>), <v1>)
+  host built, compile-text(source, make(compile-choice, bind(file, <a.tree>), bind(cache, cache-a)))
+  host a-mills, remote-file/readdir-sync(remote-path/join(project-a, <mill>))/length
+  host pushed, pushed-count(remote-module, project-a, endpoint, token)
+  host pushed-again, pushed-count(remote-module, project-a, endpoint, token)
+  # project B: an empty cache, pulled from the remote to warm it
+  host pulled, pulled-count(remote-module, project-b, endpoint, token)
+  # a cold compile in B, a fresh cache in memory over the same folder, reads the pulled entries and rebuilds nothing
+  host cache-b, new-cache(cache-module, cache-store/disk-cache-store(project-b, <v1>), <v1>)
+  host cold, compile-text(source, make(compile-choice, bind(file, <a.tree>), bind(cache, cache-b)))
+  host same, and(and(cold/ok, built/ok), is-equal(cold/emitted, built/emitted))
+  # a wrong token is refused
+  host unauthorized, status-with(<{endpoint}/index>, <wrong>)
+  server/close()
+  back make(remote-story, bind(built-ok, built/ok), bind(a-mills, a-mills), bind(pushed, pushed), bind(pushed-again, pushed-again), bind(pulled, pulled), bind(misses, cache-b/misses), bind(disk-hits, cache-b/disk-hits), bind(cold-ok, cold/ok), bind(same-output, same), bind(unauthorized, unauthorized))
+
+test <project A compiles + writes its local cache>
+  host seen, story()
+  want hold, seen/built-ok
+  want hold, is-above(seen/a-mills, 0)
+
+test <push uploads A local artifacts to the remote>
+  host seen, story()
+  want hold, is-above(seen/pushed, 0)
+
+test <a second push is a no-op (remote already has them)>
+  host seen, story()
+  want hold, is-equal(seen/pushed-again, 0)
+
+test <pull downloads the artifacts into B>
+  host seen, story()
+  want hold, is-above(seen/pulled, 0)
+  want hold, is-equal(seen/pulled, seen/pushed)
+
+test <B cold compile hits the warmed remote cache>
+  host seen, story()
+  want hold, is-equal(seen/misses, 0)
+  want hold, is-above(seen/disk-hits, 0)
+
+test <B output equals A output>
+  host seen, story()
+  want hold, seen/same-output
+
+test <the remote rejects a bad token>
+  host seen, story()
+  want hold, is-equal(seen/unauthorized, 401)

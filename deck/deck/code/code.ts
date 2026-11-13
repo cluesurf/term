@@ -1,7 +1,8 @@
 // Versions and holds, for the package manager's TypeScript callers. The logic is Term: deck/deck/code/version.tree
 // (self-hosting, 2026-10-05, paired against this file's original by tmp/pair-version.ts). This face keeps the shapes
 // the callers know: a field the port writes as nothing (`""`, `-1`) is left out here, as the original left it out, and
-// a refusal is an `Error` with the original's message.
+// a refusal is an `Error` with the original's message. It decides nothing (decision 153): every choice is the port's,
+// and the face stays while its TypeScript importers ship.
 
 import { Code, CodeHold, MarkWild } from './form'
 import * as version from '@term/deck/code/version'
@@ -143,25 +144,18 @@ export function codeMatch(code: Code, hold: CodeHold): boolean {
   )
 }
 
-// the original answered one of the codes it was given, so the face hands back that very object
+// the original answered one of the codes it was given, so the face hands back that very object: the port answers its
+// place, -1 for none
 export function pickBestCode(input: {
   versions: Code[]
   hold: CodeHold
 }): Code | undefined {
-  const best = version.pickBestCode(
+  const at = version.pickBestAt(
     input.versions.map(toPort) as never,
     toPortHold(input.hold) as never,
-  ) as { found: boolean; code: PortCode }
+  ) as number
 
-  if (!best.found) {
-    return undefined
-  }
-
-  return input.versions.find(
-    v =>
-      compareCode(v, best.code as Code) === 0 &&
-      (v.build ?? '') === best.code.build,
-  )
+  return at < 0 ? undefined : input.versions[at]
 }
 
 export function bumpCode(input: {

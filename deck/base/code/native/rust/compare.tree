@@ -1,12 +1,39 @@
-# rust structural comparison, through the compare runtime shim (runtime/compare.rs). Internal: the test modules reach it through `@term/base/native/{platform}/compare` and call its tasks by name.
+# rust structural comparison. above, below, gap and as-text on a text are Term over host binds (decision 161, item
+# term-self-host-001-1069): a host question (this value as a float, is it a text) is a bind, one host expression, and
+# the decisions are Term. deep-equal, contains, is-truthy and as-text over any other value forward to the compare
+# runtime shim (runtime/compare.rs): reflection, no typed bench. compare.rs stays linked for good, because emitted ==
+# over an unknown value reaches its equal_held. Internal: the test modules reach it through
+# `@term/base/native/{platform}/compare` and call its tasks by name.
 
 dock load
   load <global:compare>, name compare-runtime
 
-# Each task below is one call to the shim it keeps, so a caller finds the task by name and never the dock alias
-# (decision 146 point 1). A later item swaps a body for Term and keeps the name and parameters.
+# the value as a host float: an i64, an i32 or an f64 by its value, anything else NaN
+bind host-float
+  take value, like unknown
+  like float
+  case rust
+    text <(|v: &dyn std::any::Any| v.downcast_ref::\<i64\>().map(|n| *n as f64).or_else(|| v.downcast_ref::\<i32\>().map(|n| *n as f64)).or_else(|| v.downcast_ref::\<f64\>().copied()).unwrap_or(f64::NAN))($value.as_ref())>
 
-# a and b equal structurally: scalars by value, lists element by element
+bind is-host-text
+  take value, like unknown
+  like boolean
+  case rust
+    text <$value.is::\<String\>()>
+
+bind host-text
+  take value, like unknown
+  like text
+  case rust
+    text <$value.downcast_ref::\<String\>().cloned().unwrap_or_default()>
+
+bind float-magnitude
+  take value, like float
+  like float
+  case rust
+    text <($value).abs()>
+
+# a and b equal structurally: scalars by value, lists element by element. Reflection, no typed bench
 task deep-equal
   take a, like unknown
   take b, like unknown
@@ -16,7 +43,7 @@ task deep-equal
       read a
       read b
 
-# whether a value counts as true
+# whether a value counts as true. Reflection, no typed bench
 task is-truthy
   take value, like unknown
   like boolean
@@ -24,15 +51,23 @@ task is-truthy
     call compare-runtime/is-truthy
       read value
 
-# the value when it is text, else empty text
+# the value when it is text, else empty text. A text is Term, any other value is reflection, no typed bench
 task as-text
   take value, like unknown
   like text
+  fork test
+    hook test
+      call is-host-text
+        read value
+    hook hold
+      send back
+        call host-text
+          read value
   send back
     call compare-runtime/as-text
       read value
 
-# whether the list holds an item deep-equal to the value
+# whether the list holds an item deep-equal to the value. Reflection, no typed bench
 task contains
   take list, like unknown
   take value, like unknown
@@ -42,32 +77,39 @@ task contains
       read list
       read value
 
-# whether a is a number above b
+# whether a is a number above b: false when either is not a number (NaN compares false)
 task above
   take a, like unknown
   take b, like unknown
   like boolean
   send back
-    call compare-runtime/above
-      read a
-      read b
+    call is-above
+      call host-float
+        read a
+      call host-float
+        read b
 
-# whether a is a number below b
+# whether a is a number below b: false when either is not a number
 task below
   take a, like unknown
   take b, like unknown
   like boolean
   send back
-    call compare-runtime/below
-      read a
-      read b
+    call is-below
+      call host-float
+        read a
+      call host-float
+        read b
 
-# the distance between two numbers
+# the distance between two numbers, NaN when either is not one
 task gap
   take a, like unknown
   take b, like unknown
   like float
   send back
-    call compare-runtime/gap
-      read a
-      read b
+    call float-magnitude
+      call subtract
+        call host-float
+          read a
+        call host-float
+          read b

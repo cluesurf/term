@@ -1,0 +1,431 @@
+note <text composed through each platform's input method reaches a field as the web's composition events, in order>
+
+# Ported from toolkit-compose.ts by statement (item term-self-host-001-0695). Composed input on the toolkit hosts
+# (native-text-0003): a field taking text from an input method, on AppKit (macOS), UIKit (the iPhone simulator),
+# Android views (the emulator), Compose on the desktop JVM and Jetpack Compose (the emulator). Three scripts word.surf
+# edits, each typed the way its keyboard types it, in stages of MARKED text and then a commit, through the platform's
+# own input method entry points:
+#
+#   korean     ㅎ  하  한        committed 한     Hangul: a syllable builds from its jamo
+#   japanese   か  かん  かんじ   committed 漢字   kana, then the conversion
+#   chinese    z  zh  zhong     committed 中     pinyin, then the character
+#
+# Every composition event and every `input` the field fires says what it saw: the event, the composing text and the
+# field's value. The judge reads the web's order back out of that. Built and run on each leg by
+# test/support/device/toolkit-run, which skips a leg whose toolchain or device is not here. SNAPSHOT_COMPOSE (and _IOS,
+# _ANDROID, _DESKTOP, _JETPACK) name where each PNG goes. COMPOSE_ONLY=macos (or ios, android, compose,
+# compose-android) runs one leg.
+#
+# Each leg is run once, by the first test that asks, and kept. The checks a leg makes on its way are one walked test, a
+# case each. Each of the original judge's five `ok`s per script is one walked test over every leg and script, labeled
+# `<leg> <script>`, skipped where the leg was or where it stopped before the original would have judged it.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find legs-of
+  find run-leg
+  find prepare-no-device
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/environment
+  find variable
+
+load @term/base/pattern
+  find pattern
+  find find-matches
+  find pattern-match
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find starts-with
+
+# one script: its marked stages and what it commits
+form script-case
+  link name, like text
+  link stages, like list, like text
+  link commit, like text
+
+host scripts, make list(make(script-case, bind(name, <korean>), bind(stages, make list(<ㅎ>, <하>, <한>)), bind(commit, <한>)), make(script-case, bind(name, <japanese>), bind(stages, make list(<か>, <かん>, <かんじ>)), bind(commit, <漢字>)), make(script-case, bind(name, <chinese>), bind(stages, make list(<z>, <zh>, <zhong>)), bind(commit, <中>)))
+
+form compose-state
+  mark shared
+  link app, like toolkit-app
+  link made, like boolean
+  link legs, like list, like text
+  link ran, like hash, like text, like toolkit-leg
+
+host compose-now, make(compose-state, bind(app, make(toolkit-app, bind(root, <>), bind(folder, <>), bind(name, <>), bind(who, <>), bind(ios-identifier, <>), bind(android-identifier, <>))), bind(made, false), bind(legs, make list), bind(ran, make hash))
+
+# where a leg's PNG goes, by leg, when the run names one
+task shots
+  like hash, like text, like text
+
+  save named, make hash
+  save value, variable(<SNAPSHOT_COMPOSE>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/macos, value
+  save value, variable(<SNAPSHOT_COMPOSE_IOS>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/ios, value
+  save value, variable(<SNAPSHOT_COMPOSE_ANDROID>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/android, value
+  save value, variable(<SNAPSHOT_COMPOSE_DESKTOP>)
+  fork test, is-unequal(value, <>)
+    hold
+      save named/compose, value
+  save value, variable(<SNAPSHOT_COMPOSE_JETPACK>)
+  fork test, is-unequal(value, <>)
+    hold
+      save key, <compose-android>
+      save named/{key}, value
+  back named
+
+# the app and the legs COMPOSE_ONLY allows, made once
+task the-app
+  like compose-state
+
+  fork test, compose-now/made
+    hold
+      back compose-now
+  save compose-now/made, true
+  save compose-now/app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-toolkit-compose->)), bind(name, <Compose>), bind(who, <toolkit-compose>), bind(ios-identifier, <surf.term.toolkit-compose-test>), bind(android-identifier, <surf.term.toolkitcompose>), bind(shots, shots()), bind(compose, true), bind(compose-android, true))
+  save compose-now/legs, legs-of(compose-now/app, variable(<COMPOSE_ONLY>))
+  back compose-now
+
+# the original's program, its PNG path filled in
+task compose-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  back <load @term/site/code/dom/dom\n  find view\n\nload @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find after-launch\n  find show-window\n  find run-app\n  find exit-app\n  find create-element\n  find append\n  find listen\n  find get-value\n  find composing-text\n  find compose\n  find commit-composition\n  find snapshot\n  find say\n\ntask main\n  save root\n    call open-root\n      text \<Term compose\>\n      code 420\n      code 200\n  save field\n    call create-element\n      text \<input\>\n  call append\n    read root\n    read field\n  call listen\n    read field\n    text \<compositionstart\>\n    task on-compositionstart\n      save marked\n        call composing-text\n          read field\n      save value\n        call get-value\n          read field\n      call say\n        text \<event compositionstart|\{\{marked\}\}|\{\{value\}\}|\>\n  call listen\n    read field\n    text \<compositionupdate\>\n    task on-compositionupdate\n      save marked\n        call composing-text\n          read field\n      save value\n        call get-value\n          read field\n      call say\n        text \<event compositionupdate|\{\{marked\}\}|\{\{value\}\}|\>\n  call listen\n    read field\n    text \<compositionend\>\n    task on-compositionend\n      save marked\n        call composing-text\n          read field\n      save value\n        call get-value\n          read field\n      call say\n        text \<event compositionend|\{\{marked\}\}|\{\{value\}\}|\>\n  call listen\n    read field\n    text \<input\>\n    task on-input\n      save marked\n        call composing-text\n          read field\n      save value\n        call get-value\n          read field\n      call say\n        text \<event input|\{\{marked\}\}|\{\{value\}\}|\>\n  call after-launch\n    task check\n      call show-window\n      call say\n        text \<script korean\>\n      call compose\n        read field\n        text \<ㅎ\>\n      call compose\n        read field\n        text \<하\>\n      call compose\n        read field\n        text \<한\>\n      call commit-composition\n        read field\n        text \<한\>\n      call say\n        text \<script japanese\>\n      call compose\n        read field\n        text \<か\>\n      call compose\n        read field\n        text \<かん\>\n      call compose\n        read field\n        text \<かんじ\>\n      call commit-composition\n        read field\n        text \<漢字\>\n      call say\n        text \<script chinese\>\n      call compose\n        read field\n        text \<z\>\n      call compose\n        read field\n        text \<zh\>\n      call compose\n        read field\n        text \<zhong\>\n      call commit-composition\n        read field\n        text \<中\>\n      call say\n        text \<script done\>\n      call snapshot\n        text \<{shot}\>\n      call exit-app\n        code 0\n  call run-app\n>
+
+# one leg, run by the first test that asks
+task leg-run
+  take leg, like text
+  like toolkit-leg
+
+  save state, the-app()
+  fork test, state/ran/has(leg)
+    hold
+      back state/ran/{leg}
+  save made, run-leg(state/app, leg, compose-program, prepare-no-device)
+  save compose-now/ran/{leg}, made
+  back made
+
+task leg-names
+  like list, like text
+
+  back the-app()/legs
+
+# every check every leg made, by name, and `<leg>: skipped` for a leg that was
+task check-names
+  like list, like text
+
+  save names, make list
+  walk leg-names()
+    take leg, like text
+    save ran, leg-run(leg)
+    fork test, is-equal(ran/state, <skipped>)
+      hold
+        names/push(<{leg}: skipped, {ran/reason}>)
+    walk ran/checks
+      take one, like toolkit-check
+      names/push(one/name)
+  back names
+
+# the check of that name, on the leg its name starts with
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk leg-names()
+    take leg, like text
+    walk leg-run(leg)/checks
+      take one, like toolkit-check
+      fork test, is-equal(one/name, name)
+        hold
+          save found, one
+  back found
+
+test <each leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+# the original judged a leg once it ran the app, whether or not it exited 0: a leg that stopped at its build or install
+# is judged on nothing
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, or(text-contains(one/name, <the app exits 0>), text-contains(one/name, <said it exits 0>))
+      hold
+        back true
+  back false
+
+# why a leg's judge case skips, <> when it is judged
+task skip-reason
+  take ran, like toolkit-leg
+  like text
+
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back ran/reason
+  fork test, not(reached-judge(ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# what the field said: the event, the composing text and the value
+form said-event
+  link event, like text
+  link marked, like text
+  link value, like text
+
+host event-shape, make pattern, <<event (\w+)\|([^|]*)\|([^|]*)\|>>
+
+# the events said between one script's marker and the next
+task events-of
+  take output, like text
+  take name, like text
+  like list, like said-event
+
+  save lines, lines-of(output)
+  save start, -1
+  save index, 0
+  walk lines
+    take line, like text
+    fork test, and(is-equal(start, -1), text-contains(line, <script {name}>))
+      hold
+        save start, index
+    save index, add(index, 1)
+  save events, make list
+  save index, 0
+  save open, true
+  walk lines
+    take line, like text
+    fork test, and(open, is-above(index, start))
+      hold
+        fork test, text-contains(line, <script >)
+          hold
+            save open, false
+          miss
+            walk find-matches(event-shape, line)
+              take found, like pattern-match
+              save groups, found/groups
+              events/push(make(said-event, bind(event, groups/0), bind(marked, groups/1), bind(value, groups/2)))
+              halt
+    save index, add(index, 1)
+  back events
+
+# the composition events of a script, the inputs left out
+task composing-of
+  take events, like list, like said-event
+  like list, like said-event
+
+  save out, make list
+  walk events
+    take one, like said-event
+    fork test, starts-with(one/event, <composition>)
+      hold
+        out/push(one)
+  back out
+
+# the events of a script named `event`
+task named-events
+  take events, like list, like said-event
+  take event, like text
+  like list, like said-event
+
+  save out, make list
+  walk events
+    take one, like said-event
+    fork test, is-equal(one/event, event)
+      hold
+        out/push(one)
+  back out
+
+# every leg and script, `<leg> <script>`, the cases of each judge test
+task leg-scripts
+  like list, like text
+
+  save out, make list
+  walk leg-names()
+    take leg, like text
+    walk scripts
+      take one, like script-case
+      out/push(<{leg} {one/name}>)
+  back out
+
+task script-named
+  take name, like text
+  like script-case
+
+  save found, make(script-case, bind(name, name), bind(stages, make list), bind(commit, <>))
+  walk scripts
+    take one, like script-case
+    fork test, is-equal(one/name, name)
+      hold
+        save found, one
+  back found
+
+# what the scripts before this one committed, the field's value before it is typed
+task before-of
+  take name, like text
+  like text
+
+  save before, <>
+  walk scripts
+    take one, like script-case
+    fork test, is-equal(one/name, name)
+      hold
+        back before
+    save before, <{before}{one/commit}>
+  back before
+
+# a case's leg, `<leg> <script>`
+task case-leg
+  take case, like text
+  like text
+
+  back text-split(case, < >)/0
+
+task case-script
+  take case, like text
+  like script-case
+
+  back script-named(text-split(case, < >)/1)
+
+# the case's events, <> as the reason when its leg is judged
+task case-skip
+  take case, like text
+  like text
+
+  back skip-reason(leg-run(case-leg(case)))
+
+task case-events
+  take case, like text
+  like list, like said-event
+
+  back events-of(leg-run(case-leg(case))/output, case-script(case)/name)
+
+test <each script composes in the web's order, start, an update per stage, end>
+  take case, like text
+    walk leg-scripts()
+  save why, case-skip(case)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save composing, composing-of(case-events(case))
+  want hold, is-above(composing/length, 0)
+  want hold, is-equal(composing/0/event, <compositionstart>)
+  save last, subtract(composing/length, 1)
+  want hold, is-equal(composing/{last}/event, <compositionend>)
+  want hold, is-equal(named-events(composing, <compositionstart>)/length, 1)
+  want hold, is-equal(named-events(composing, <compositionend>)/length, 1)
+
+# each update's marked text is its stage's
+task updates-marked
+  take updates, like list, like said-event
+  take stages, like list, like text
+  like boolean
+
+  fork test, is-unequal(updates/length, stages/length)
+    hold
+      back false
+  save index, 0
+  walk updates
+    take one, like said-event
+    fork test, is-unequal(one/marked, stages/{index})
+      hold
+        back false
+    save index, add(index, 1)
+  back true
+
+# while composing, each update's value is the marked stage after what came before
+task updates-valued
+  take updates, like list, like said-event
+  take stages, like list, like text
+  take before, like text
+  like boolean
+
+  fork test, is-unequal(updates/length, stages/length)
+    hold
+      back false
+  save index, 0
+  walk updates
+    take one, like said-event
+    save stage, stages/{index}
+    fork test, is-unequal(one/value, <{before}{stage}>)
+      hold
+        back false
+    save index, add(index, 1)
+  back true
+
+test <each update carries its stage's marked text>
+  take case, like text
+    walk leg-scripts()
+  save why, case-skip(case)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save updates, named-events(composing-of(case-events(case)), <compositionupdate>)
+  want hold, updates-marked(updates, case-script(case)/stages)
+
+test <while composing, the value holds the marked text after what came before>
+  take case, like text
+    walk leg-scripts()
+  save why, case-skip(case)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save one, case-script(case)
+  save updates, named-events(composing-of(case-events(case)), <compositionupdate>)
+  # an update per stage first: with none, every one holding is true of nothing, which passed a host that saw no
+  # composition
+  want hold, updates-valued(updates, one/stages, before-of(one/name))
+
+test <an input follows each edit>
+  take case, like text
+    walk leg-scripts()
+  save why, case-skip(case)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save inputs, named-events(case-events(case), <input>)
+  want hold, is-minimum(inputs/length, add(case-script(case)/stages/length, 1))
+
+test <at the commit nothing is marked and the value is everything committed so far>
+  take case, like text
+    walk leg-scripts()
+  save why, case-skip(case)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save one, case-script(case)
+  save ends, named-events(composing-of(case-events(case)), <compositionend>)
+  want hold, is-above(ends/length, 0)
+  want hold, is-equal(ends/0/marked, <>)
+  want hold, is-equal(ends/0/value, <{before-of(one/name)}{one/commit}>)

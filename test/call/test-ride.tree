@@ -1,0 +1,179 @@
+note <term test --ride runs the tests, then on every edit only the test files whose closure holds the edited file>
+
+# Ported from test-ride.ts by statement (item term-self-host-001-0651), one test per `ok` in its order. A project of two
+# modules, each with a test file of its own, is watched, and one module is edited into a failing test and back. The CLI
+# is the `term` under test (self-command, decision 111), run as a person runs it, and stopped with ctrl-c (INT to its
+# own process), which closes the run.
+#
+# It runs as a child kept beside the test (test/support/children): `sh` says its own pid, then becomes the CLI with both
+# streams on one, as the original read them together. A round is read line by line from where the last one ended, up to
+# the line holding what the round waits for, then on to the round's closing line (`passed` or `failed`), so a round's
+# text holds what the original's chunk held. The project, the child and its rounds are made once, by the first test
+# that asks, and each test reads its own round.
+
+load @term/test/self
+  find self-command
+
+load ../support/children
+  find start-child
+  find held-child
+  find wait-for-line
+  find next-line
+  find wait-child
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <node:fs>, name ride-fs
+
+# the rounds, made once. `first`, `second` and `third` are what each round printed, `code` the CLI's exit, `output`
+# everything it printed
+form ride-state
+  mark shared
+  link made, like boolean
+  link first, like text
+  link second, like text
+  link third, like text
+  link output, like text
+  link code, like number
+
+host ride-now, make(ride-state, bind(made, false), bind(first, <>), bind(second, <>), bind(third, <>), bind(output, <>), bind(code, 0))
+
+task module-text
+  take name, like text
+  take value, like number
+  like text
+
+  back <task {name}\n  like number\n  send back, code {value}\n>
+
+task test-text
+  take name, like text
+  take value, like number
+  like text
+
+  back <load ../code/{name}\n  find {name}\n\ntest \<{name} is {value}\>\n  want hold, is-equal {name}(), {value}\n>
+
+# the lines heard from `from` on, joined
+task heard-from
+  take held, like held-child
+  take from, like number
+  like text
+
+  save out, make list
+  save at, 0
+  walk held/heard
+    take line, like text
+    fork test, not(is-below(at, from))
+      hold
+        out/push(line)
+    save at, add(at, 1)
+  back out/join(<\n>)
+
+# the round from the line after `from`: up to a line holding `text`, then on to the round's closing line, or a minute.
+# A round whose wait line closes it reads no further
+task round
+  mark async
+  take held, like held-child
+  take from, like number
+  take text, like text
+  like text
+
+  save line, wait-for-line(held, text, 60000)
+  walk test
+    hook test, and(is-unequal(line, <>), not(is-closing(line)))
+    hook hold
+      save line, next-line(held, 60000)
+  back heard-from(held, from)
+
+# whether a line closes a round
+task is-closing
+  take line, like text
+  like boolean
+
+  back or(text-contains(line, <passed>), text-contains(line, <failed>))
+
+task prepared
+  mark async
+  like ride-state
+
+  fork test, ride-now/made
+    hold
+      back ride-now
+  save ride-now/made, true
+  save root, ride-fs/realpath-sync(temp-folder(<test-ride->))
+  make-folder(<{root}/code>)
+  make-folder(<{root}/test>)
+  write-file(<{root}/deck.tree>, <deck @probe/ride\n  mark \<0.0.1\>\n>)
+  write-file(<{root}/code/one.tree>, module-text(<one>, 1))
+  write-file(<{root}/code/two.tree>, module-text(<two>, 2))
+  write-file(<{root}/test/one.tree>, test-text(<one>, 1))
+  write-file(<{root}/test/two.tree>, test-text(<two>, 2))
+  save words, make(list, <-c>, <echo $$; exec "$@" 2\>&1>, <sh>)
+  walk self-command()
+    take part, like text
+    words/push(part)
+  words/push(<test>)
+  words/push(<--ride>)
+  words/push(<--color>)
+  words/push(<never>)
+  save argument-list, make(list, <sh>)
+  walk words
+    take part, like text
+    argument-list/push(part)
+  save held, start-child(argument-list, bind(directory, root))
+  save pid, next-line(held, 10000)
+  save ride-now/first, round(held, 1, <every file>)
+  # an edit to the first module, which only test/one.tree reaches, into a value its test does not want
+  save mark, held/heard/length
+  write-file(<{root}/code/one.tree>, module-text(<one>, 5))
+  save ride-now/second, round(held, mark, <1 of 2 files>)
+  save mark, held/heard/length
+  write-file(<{root}/code/one.tree>, module-text(<one>, 1))
+  save ride-now/third, round(held, mark, <1 of 2 files>)
+  save stopped, run(<kill>, make(list, <-INT>, pid))
+  save ended, wait-child(held)
+  save ride-now/code, ended/code
+  save ride-now/output, <{heard-from(held, 0)}\n{ended/output}>
+  back ride-now
+
+test <the first round runs every test file>
+  save first, prepared()/first
+  want hold, and(text-contains(first, <test/one.tree>), text-contains(first, <test/two.tree>))
+
+test <and both pass>
+  want hold, text-contains(prepared()/first, <2 passed>)
+
+test <an edit runs the one test file that reaches it>
+  save second, prepared()/second
+  want hold, and(text-contains(second, <1 of 2 files>), text-contains(second, <test/one.tree>))
+
+test <and not the other>
+  want hold, not(text-contains(prepared()/second, <test/two.tree>))
+
+test <and it fails, as the edit made it>
+  want hold, text-contains(prepared()/second, <One is 1>)
+
+test <put back, it runs again and passes>
+  save third, prepared()/third
+  want hold, and(text-contains(third, <1 passed>), not(text-contains(third, <failed>)))
+
+test <ctrl-c closes the run>
+  save state, prepared()
+  want hold, and(text-contains(state/output, <Stopped>), is-unequal(state/code, 0))

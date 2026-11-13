@@ -1,0 +1,320 @@
+note <the photo library read on iOS through the platform's own prompt: the newest photo by its size, and its copy a JPEG of that size>
+
+# Ported from photos-prompt.ts by statement (item term-self-host-001-0694). The photo library read on iOS
+# (device-layer-0025), through the platform's own prompt. On the iOS 26 simulator `simctl privacy grant photos` writes
+# its row to TCC.db and PhotoKit does not read it, so the grant is given the way a person gives it: the app asks, and a
+# UI test (test/support/device/springboard-taps) taps Allow Full Access on the alert SpringBoard puts up.
+#
+# The witnesses are the platform's: a photo of a size no camera makes (test/support/device/photo-sample) put in the
+# library with `simctl addmedia` must come back as the newest by its size, and its copy, which the app writes into its
+# own folder on the Mac's disk, must be a JPEG of that size, read here from the file.
+#
+# It runs on the iOS leg alone (test/support/device/toolkit-run), once, by the first test that asks. The leg's own
+# checks are one walked test, a case each, and each of the original judge's `ok`s is one test, skipped where the leg was
+# or where it stopped before its app ran. Skips, with the reason, without xcodebuild or a simulator.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find run-leg
+
+load ../support/device/springboard-taps
+  find taps
+  find taps-finished
+  find build-taps
+  find start-taps
+  find finish-taps
+
+load ../support/device/photo-sample
+  find photo-width
+  find photo-height
+  find photo-size
+  find make-photo
+  find jpeg-size
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find exists, name file-exists
+  find read-bytes
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+  find char-count
+  find trim
+  find split, name text-split
+  find starts-with
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# host value: this run's process id, so the photo's file name is this run's own
+bind photos-pid
+  take seed, like number
+  like text
+  case node
+    text <String(process.pid)>
+
+host photos-identifier, <surf.term.photos-prompt-test>
+
+form photos-state
+  mark shared
+  link made, like boolean
+  link xcode, like boolean
+  link folder, like text
+  link taps, like taps
+  link ran, like toolkit-leg
+  link tapped, like taps-finished
+
+host photos-now, make(photos-state, bind(made, false), bind(xcode, false), bind(folder, <>), bind(taps, make(taps, bind(built, false), bind(errors, <>), bind(project, <>), bind(derived, <>), bind(log, <>))), bind(ran, make(toolkit-leg, bind(leg, <ios>), bind(toolkit, <UIKit>))), bind(tapped, make(taps-finished, bind(started, false))))
+
+# whether xcodebuild answers `-version` with 0
+task xcode-answers
+  take tool, like text
+  like boolean
+
+  save got, -1
+  fork
+    mark unsafe
+    save version, run(tool, make list(<-version>))
+    save got, version/code
+  halt take
+    take cause
+    save got, -1
+  back is-equal(got, 0)
+
+# the original's program
+task photos-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  back <load @term/site/code/dom/native/toolkit/dom\n  find open-root\n  find launch\n  find run-app\n  find exit-app\n  find say\n\nload @term/site/code/view/permission\n  find permission-status\n  find request-permission\n\nload @term/site/code/view/photos\n  find find-photos\n  find copy-photo\n\nload @term/base/text\n  find substring\n  find index-of\n  find replace-all\n\ntask main\n  save root\n    call open-root\n      text \<Term photos\>\n      code 320\n      code 200\n  call launch\n    task check\n      mark async\n      save before\n        call permission-status\n          text \<photos\>\n      call say\n        text \<step before \{before\}\>\n      save asked\n        call request-permission\n          text \<photos\>\n      call say\n        text \<step asked \{asked\}\>\n      save newest\n        call find-photos\n          code 1\n      save id\n        call substring\n          read newest\n          code 0\n          call index-of\n            read newest\n            text \<\\t\>\n      save shown\n        call replace-all\n          read newest\n          text \<\\t\>\n          text \< ~ \>\n      call say\n        text \<step newest \{shown\}\>\n      save copied\n        call copy-photo\n          read id\n      call say\n        text \<step copied \{copied\}\>\n      call exit-app\n        code 0\n  call run-app\n>
+
+# once the app is installed and before it launches: the photo in the library, the grant forgotten so the request
+# prompts, and the UI test waiting for that prompt
+task photos-prepare
+  take leg, like text
+  take udid, like text
+  take serial, like text
+  take identifier, like text
+  like void
+
+  fork test, or(is-unequal(leg, <ios>), is-equal(udid, <>))
+    hold
+      back
+  fork
+    mark unsafe
+    prepare-photos(udid, identifier)
+  halt take
+    take cause
+    save photos-now/taps/started, false
+
+# the harness's before-launch raises nothing, so a raise here is held by photos-prepare: a test that never started is
+# read by its own test, and a photo not added fails the judge
+task prepare-photos
+  take udid, like text
+  take identifier, like text
+  like void
+
+  run(<xcrun>, make list(<simctl>, <addmedia>, udid, make-photo(<term-photos-prompt-{photos-pid(0)}.jpg>)))
+  run(<xcrun>, make list(<simctl>, <privacy>, udid, <reset>, <photos>, identifier))
+  fork test, photos-now/taps/built
+    hold
+      start-taps(photos-now/taps, udid)
+
+# the UI test built, then the iOS leg run, then the UI test's end read, once
+task the-photos
+  like photos-state
+
+  fork test, photos-now/made
+    hold
+      back photos-now
+  save state, photos-now
+  save state/made, true
+  save state/xcode, xcode-answers(<xcodebuild>)
+  fork test, not(state/xcode)
+    hold
+      back state
+  save state/folder, temp-folder(<term-photos->)
+  # the full-access button: `Allow Full Access` since iOS 17, `Allow Access to All Photos` before
+  save body, <        let full = springboard.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "Full Access", "All Photos")).firstMatch\n        XCTAssertTrue(full.waitForExistence(timeout: 120), "no photo library prompt came up")\n        full.tap()\n        print("taps: full access allowed")>
+  save state/taps, build-taps(state/folder, body)
+  save app, make(toolkit-app, bind(root, term-root()), bind(folder, state/folder), bind(name, <Photos>), bind(who, <photos-prompt>), bind(ios-identifier, photos-identifier), bind(android-identifier, <surf.term.photos>))
+  save state/ran, run-leg(app, <ios>, photos-program, photos-prepare)
+  save state/tapped, finish-taps(state/taps)
+  back state
+
+# what the app said at `step <name> `, the rest of that line trimmed
+task step
+  take output, like text
+  take name, like text
+  like text
+
+  save mark, <step {name} >
+  walk lines-of(output)
+    take line, like text
+    fork test, text-contains(line, mark)
+      hold
+        back trim(substring(line, add(index-of(line, mark), char-count(mark)), char-count(line)))
+  back <>
+
+# whether the leg ran its app, as the original judged it once it did
+task reached-judge
+  take ran, like toolkit-leg
+  like boolean
+
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, text-contains(one/name, <said it exits 0>)
+      hold
+        back true
+  back false
+
+# why a judge check skips, <> when it is judged
+task judge-skip
+  take state, like photos-state
+  like text
+
+  fork test, not(state/xcode)
+    hold
+      back <photos-prompt (no xcodebuild)>
+  fork test, is-equal(state/ran/state, <skipped>)
+    hold
+      back <ios: {state/ran/reason}>
+  fork test, not(reached-judge(state/ran))
+    hold
+      back <the leg stopped before its app ran>
+  back <>
+
+# every check the leg made, by name, and `ios: skipped, <why>` when it was
+task check-names
+  like list, like text
+
+  save state, the-photos()
+  save names, make list
+  fork test, not(state/xcode)
+    hold
+      names/push(<ios: skipped, no xcodebuild>)
+      back names
+  fork test, is-equal(state/ran/state, <skipped>)
+    hold
+      names/push(<ios: skipped, {state/ran/reason}>)
+  walk state/ran/checks
+    take one, like toolkit-check
+    names/push(one/name)
+  back names
+
+# the check of that name
+task check-named
+  take name, like text
+  like toolkit-check
+
+  save state, the-photos()
+  save found, make(toolkit-check, bind(name, name), bind(passed, false), bind(info, <no such check>))
+  walk state/ran/checks
+    take one, like toolkit-check
+    fork test, is-equal(one/name, name)
+      hold
+        save found, one
+  back found
+
+# the newest photo as the app said it: its id, a UTC time and the size, each field present
+task newest-holds
+  take said, like text
+  like boolean
+
+  save fields, text-split(said, < ~ >)
+  fork test, is-unequal(fields/length, 3)
+    hold
+      back false
+  back and(is-unequal(fields/0, <>), and(matches(make(pattern, <<^[0-9]{4}-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$>>), fields/1), is-equal(fields/2, <{photo-width}x{photo-height}>)))
+
+# the size of the copy the app wrote, read where it wrote it: the simulator's files are the Mac's
+task copy-size
+  take said, like text
+  like photo-size
+
+  fork test, not(starts-with(said, <photo >))
+    hold
+      back make(photo-size, bind(found, false))
+  save where, substring(said, 6, char-count(said))
+  fork test, not(file-exists(where))
+    hold
+      back make(photo-size, bind(found, false))
+  back jpeg-size(read-bytes(where))
+
+test <the UI test that taps the prompt builds>
+  save state, the-photos()
+  fork test, not(state/xcode)
+    hold
+      skip <photos-prompt (no xcodebuild)>
+  want hold, state/taps/built
+
+test <the ios leg compiles, builds and runs>
+  take name, like text
+    walk check-names()
+  fork test, text-contains(name, <: skipped, >)
+    hold
+      skip name
+  want hold, check-named(name)/passed
+
+test <ios (UIKit): before asking, the grant is not-determined>
+  save state, the-photos()
+  save why, judge-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(step(state/ran/output, <before>), <not-determined>)
+
+test <ios (UIKit): the prompt was tapped, and the request answers granted>
+  save state, the-photos()
+  save why, judge-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(step(state/ran/output, <asked>), <granted>)
+
+test <ios (UIKit): the newest photo is the one simctl put in the library, by its size, with a UTC time>
+  save state, the-photos()
+  save why, judge-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, newest-holds(step(state/ran/output, <newest>))
+
+test <ios (UIKit): and its copy is a JPEG of that size, PhotoKit's data made one by ImageIO>
+  save state, the-photos()
+  save why, judge-skip(state)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save size, copy-size(step(state/ran/output, <copied>))
+  want hold, and(size/found, and(is-equal(size/width, photo-width), is-equal(size/height, photo-height)))
+
+test <ios: SpringBoard showed the photo library prompt and took the tap>
+  save state, the-photos()
+  fork test, not(state/xcode)
+    hold
+      skip <photos-prompt (no xcodebuild)>
+  fork test, not(state/tapped/started)
+    hold
+      skip <the UI test never started: no app launched on a simulator>
+  want hold, and(is-equal(state/tapped/status, 0), text-contains(state/tapped/log, <taps: full access allowed>))

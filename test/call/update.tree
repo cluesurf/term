@@ -1,0 +1,375 @@
+note <over-the-air page updates, end to end on Apple's runtime>
+
+# Ported from update.ts by statement (item 0648). deck/call/code/update.ts is the subject (decision 106). The publisher
+# writes real signed updates into a folder served as file://, and the client (deck/cask/code/native/swift/runtime/
+# cask-update.swift, built as is with a small driver) launches, checks, and is ready, one step per process the way an
+# app's launches are separate processes. Between steps this test publishes, tampers, or crashes.
+#
+# What must hold:
+#   - the first launch runs the page shipped in the app
+#   - a published update is fetched, verified and staged, and runs from the NEXT launch, never under a running page
+#   - a forged signature, a manifest for another runtime version, and an asset whose bytes do not match the signed
+#     hash are each refused, and nothing they carry is ever launched
+#   - a launch that crashes before its first render rolls back to the shipped page at the next launch, and that
+#     update is never run again
+#
+# macOS only (swiftc and the Security framework): every test skips elsewhere, where the original printed one skip. The
+# steps are one sequence, each depending on the last, so it runs once, from the first test that asks, and keeps what
+# each checked step printed beside what it should have. Test n reads step n. A raise ends the sequence where it stood,
+# and the steps after it fail.
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/cli
+  find term-root
+
+load @term/base/process/run
+  find run
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+
+load @term/base/text
+  find trim
+  find substring
+
+load @term/base/text/string
+  find repeat
+
+dock load
+  load <@term/call/code/update>, name update-publish
+  load <node:fs>, name update-fs
+  load <node:path>, name update-path
+  load <global:process>, name update-process
+
+form update-key-input
+  link identifier, like text
+  link into, like text
+  link key-file, like text
+
+form update-publish-input
+  link page, like text
+  link out, like text
+  link identifier, like text
+  link platform, like text
+  link runtime-version, like text
+  link channel, like text
+  link key-file, like text
+
+# the sequence, run once: what each checked step printed and what it should have, in order
+form update-sequence
+  mark shared
+  link done, like boolean
+  link said, like list, like text
+  link wanted, like list, like text
+  link raised, like text
+  link dir, like text
+  link exe, like text
+
+host now, make(update-sequence, bind(done, false), bind(said, make list), bind(wanted, make list), bind(raised, <>), bind(dir, <>), bind(exe, <>))
+
+host identifier, <surf.term.update-test>
+
+# host value: a JSON text of a text, as the Swift driver writes its literals
+bind quoted
+  take value, like text
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# host value: a manifest's bytes as publishUpdate wrote them
+bind manifest-bytes
+  take manifest, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from(JSON.stringify($manifest, null, 2))>
+
+# host value: the field of a published update, as text
+bind manifest-id
+  take published, like dynamic
+  like text
+  case node
+    text <String($published.manifest.id)>
+
+bind private-pem
+  take key, like dynamic
+  like text
+  case node
+    text <String($key.privatePem)>
+
+bind launch-url
+  take published, like dynamic
+  like text
+  case node
+    text <String($published.manifest.launchAsset.url)>
+
+bind raised-words
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause instanceof Error ? $cause.message : $cause).slice(0, 1600)>
+
+# a value, never a zero-argument boolean task, which term test would run as a test (T-0978)
+host on-mac, is-equal(update-process/platform, <darwin>)
+
+task version
+  like text
+
+  back repeat(<a>, 64)
+
+# a page folder with this text as its index
+task page
+  take name, like text
+  take text, like text
+  like text
+
+  save at, update-path/join(now/dir, <pages>, name)
+  make-folder(at)
+  write-file(update-path/join(at, <index.html>), text)
+  write-file(update-path/join(at, <app.js>), <console.log({quoted(text)})>)
+  back at
+
+task publish
+  take name, like text
+  take text, like text
+  take runtime-version, like text, fall <>
+  like dynamic
+
+  save wanted-version, runtime-version
+  fork test, is-equal(wanted-version, <>)
+    hold
+      save wanted-version, version()
+  back update-publish/publish-update(make(update-publish-input, bind(page, page(name, text)), bind(out, update-path/join(now/dir, <served>)), bind(identifier, identifier), bind(platform, <macos>), bind(runtime-version, wanted-version), bind(channel, <main>), bind(key-file, update-path/join(now/dir, <key.pem>))))
+
+# what the step printed, or, when it printed nothing, how it ended, so a crash reads as one
+task step
+  take name, like text
+  like text
+  mark async
+
+  save ran, run(now/exe, make(list, name))
+  save out, trim(ran/output)
+  fork test, is-unequal(out, <>)
+    hold
+      back out
+  back <(nothing printed: exit {ran/code} {ran/signal} {substring-of(trim(ran/error), 300)})>
+
+task substring-of
+  take value, like text
+  take size, like number
+  like text
+
+  fork test, is-above(value/length, size)
+    hold
+      back substring(value, 0, size)
+  back value
+
+# one checked step: what it printed, and what it should have
+task check
+  take name, like text
+  take wanted, like text
+  like void
+  mark async
+
+  now/said/push(step(name))
+  now/wanted/push(wanted)
+
+# the driver: the real client file, plus a `main` that runs one step and prints what it answered
+task driver-text
+  take resources, like text
+  take data, like text
+  take served, like text
+  like text
+
+  save client, read-file(update-path/join(term-root(), <deck/cask/code/native/swift/runtime/cask-update.swift>))
+  save main, <let step = CommandLine.arguments[1]\nlet resources = {quoted(resources)}\nlet data = {quoted(data)}\nswitch step \{\ncase "launch":\n  let path = caskUpdate.launchPath(resources, "webview", data)\n  print((try? String(contentsOfFile: path + "/index.html", encoding: .utf8)) ?? "missing")\ncase "check":\n  // `done` arrives on the main thread, so the main queue must be running to hear it\n  caskUpdate.check(resources, data, {quoted(<file://{served}>)}, "main") \{ status in\n    print(status)\n    exit(0)\n  \}\n  dispatchMain()\ncase "ready":\n  caskUpdate.ready(data)\n  print("ready")\ndefault:\n  print("no step \\(step)")\n\}\n>
+  back <{client}\n{main}>
+
+task run-steps
+  like void
+  mark async
+
+  save dir, temp-folder(<term-update->)
+  save now/dir, dir
+  save key-file, update-path/join(dir, <key.pem>)
+  # the app as built: a shipped page, its runtime version, and the public half of the update key
+  save resources, update-path/join(dir, <app>)
+  make-folder(update-path/join(resources, <webview>))
+  write-file(update-path/join(resources, <webview>, <index.html>), <shipped>)
+  write-file(update-path/join(resources, <runtime-version>), <{version()}\n>)
+  update-publish/stamp-update-key(make(update-key-input, bind(identifier, identifier), bind(into, resources), bind(key-file, key-file)))
+  save data, update-path/join(dir, <data>)
+  save served, update-path/join(dir, <served>)
+  save driver, update-path/join(dir, <driver.swift>)
+  write-file(driver, driver-text(resources, data, served))
+  save now/exe, update-path/join(dir, <driver>)
+  save built, run(<swiftc>, make(list, <-o>, now/exe, driver))
+  fork test, is-unequal(built/code, 0)
+    hold
+      halt <swiftc exited {built/code}: {built/error}>
+  # 1. nothing published: the shipped page
+  check(<launch>, <shipped>)
+  check(<ready>, <ready>)
+  check(<check>, <none>)
+  # 2. a good update: fetched now, run next launch
+  save second, publish(<second>, <second>)
+  check(<check>, <applied {manifest-id(second)}>)
+  check(<launch>, <second>)
+  check(<ready>, <ready>)
+  check(<check>, <current>)
+  # 3. a forged signature: the third update's manifest under the second's signature
+  save third, publish(<third>, <third>)
+  save second-signature, update-publish/sign-manifest(manifest-bytes(second/manifest), private-pem(update-publish/update-key(identifier, key-file)))
+  update-fs/write-file-sync(<{third/file}.sig>, second-signature)
+  check(<check>, <refused: the signature does not verify>)
+  check(<launch>, <second>)
+  step(<ready>)
+  # 4. a manifest built for another runtime version, put where this binary looks and signed with the real key
+  save other, publish(<other>, <other>, repeat(<b>, 64))
+  update-fs/copy-file-sync(other/file, third/file)
+  update-fs/copy-file-sync(<{other/file}.sig>, <{third/file}.sig>)
+  check(<check>, <refused: built for another runtime version>)
+  # 5. an asset whose bytes are not the ones the signed manifest names
+  save fourth, publish(<fourth>, <fourth>)
+  write-file(update-path/join(served, launch-url(fourth)), <tampered>)
+  check(<check>, <refused: index.html does not match its hash>)
+  check(<launch>, <second>)
+  step(<ready>)
+  # 6. a crash before the first render: launch, never ready, launch again
+  save fifth, publish(<fifth>, <fifth>)
+  check(<check>, <applied {manifest-id(fifth)}>)
+  check(<launch>, <fifth>)
+  # no `ready`: this launch crashed before it drew anything
+  check(<launch>, <shipped>)
+  step(<ready>)
+  check(<check>, <refused: {manifest-id(fifth)} failed a launch>)
+
+# the sequence, made once
+task sequence
+  like update-sequence
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save now/done, true
+  fork
+    mark unsafe
+    run-steps()
+  halt take
+    take cause
+    save now/raised, raised-words(cause)
+  back now
+
+# whether step n printed what it should have: false when the sequence ended before it
+task step-held
+  take n, like number
+  like boolean
+  mark async
+
+  save ran, sequence()
+  fork test, not(is-below(n, ran/said/length))
+    hold
+      back false
+  back is-equal(ran/said/{n}, ran/wanted/{n})
+
+test <the first launch runs the shipped page>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(0)
+
+test <ready after a good launch>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(1)
+
+test <nothing published reads none>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(2)
+
+test <a signed update is applied>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(3)
+
+test <the next launch runs it>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(4)
+
+test <ready>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(5)
+
+test <checking again reads current>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(6)
+
+test <a forged signature is refused>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(7)
+
+test <and the running update is untouched>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(8)
+
+test <another runtime version is refused>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(9)
+
+test <a tampered asset is refused>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(10)
+
+test <and nothing it carried runs>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(11)
+
+test <a fifth update is applied>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(12)
+
+test <the next launch runs it, the fifth>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(13)
+
+test <the launch after a crash rolls back to the shipped page>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(14)
+
+test <the failed update is never offered again>
+  fork test, not(on-mac)
+    hold
+      skip <the Apple client needs swiftc and the Security framework>
+  want hold, step-held(15)

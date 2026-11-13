@@ -1,0 +1,127 @@
+note <The view reader and the view grammar agree>
+
+# Ported from view-grammar.ts by statement (item term-self-host-001-0623), one test per `ok` in its order: a loop over a
+# computed list or over the heads table is one walked test, each word a case. deck/mill/code/tree/view/ says what the
+# dialect is, declaratively, and deck/make/code/compile/view is what reads a file today. Two statements of one grammar
+# drift, and the drift is silent, so this keeps them together until the mill executor makes them one. compile/view is
+# the subject (decision 106).
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+  find match-group
+
+load @term/base/text
+  find split
+  find ends-with
+
+load @term/base/list
+  find contains, name list-contains
+
+load ../support/judging
+  find make-record
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-module
+  load <@term/make/code/compile/view>, name view-module
+  load <node:fs>, name view-file
+  load <node:path>, name view-path
+
+# host value: the words the reader refuses in statement position, the keys of its table
+bind refused-heads
+  take module, like dynamic
+  like list, like text
+  case node
+    text <[...$module.VIEW_REFUSED_HEAD.keys()]>
+
+host mill-folder, <deck/mill/code/tree/view>
+host comment, make pattern, <<^\s*#>>
+
+# the grammar with its prose removed, so a word named in a comment is never mistaken for a rule
+task rules
+  like text
+
+  save kept, make list
+  save found, view-file/readdir-sync(mill-folder, make-record(make(list, <recursive>, true)))
+  walk found/sort()
+    take file, like text
+    fork test, is-equal(view-path/basename(file), <mine.tree>)
+      hold
+        walk split(view-file/read-file-sync(view-path/join(mill-folder, file), <utf8>), <\n>)
+          take line, like text
+          fork test, not(matches(comment, line))
+            hold
+              kept/push(line)
+  back kept/join(<\n>)
+
+# the first group of every match of `found` in `text`, each once, in the order met
+task groups-of
+  take found, like pattern
+  take text, like text
+  like list, like text
+
+  save out, make list
+  walk find-matches(found, text)
+    take one, like pattern-match
+    save group, match-group(one, 1)
+    host word, group/unwrap-or(<>)
+    fork test, not(list-contains(out, word))
+      hold
+        out/push(word)
+  back out
+
+host declared, groups-of(make(pattern, <<mine term, term ([a-z-]+)>>), rules())
+
+# every word the grammar matches. A rule added to the grammar without a word here fails the gate, which is the point
+host heads, make list(<load>, <host>, <find>, <view>, <name>, <like>, <task>, <meet>, <hold>, <sort>, <size>, <slot>, <take>, <text>, <code>, <true>, <false>, <read>, <call>, <bind>, <walk>, <list>, <hook>, <next>, <site>, <fork>, <test>, <miss>)
+
+test <the grammar's word is accounted for>
+  take word, like text
+    walk declared
+  want hold, list-contains(heads, word)
+
+test <the word is still in the grammar>
+  take word, like text
+    walk heads
+  want hold, list-contains(declared, word)
+
+# the four statement heads, read off the file-level rule rather than assumed
+task statement-heads
+  like list, like text
+
+  save out, make list
+  walk groups-of(make(pattern, <<mine form, like view-(\w+)>>), view-file/read-file-sync(view-path/join(mill-folder, <mine.tree>), <utf8>))
+    take part, like text
+    fork test, is-equal(part, <def>)
+      hold
+        out/push(<view>)
+      miss
+        out/push(part)
+  back out
+
+host statements, statement-heads()
+
+test <the grammar has exactly four statement heads>
+  save sorted, statements/sort()
+  want hold, is-equal(sorted/join(< >), <find host load view>)
+
+# every word the reader refuses in statement position is not one of them. Several are legal deeper in a file (`task`
+# inside a find, `hook` inside a walk), so this is checked against the statement heads, not the whole grammar
+test <the refused word is not a statement head>
+  take word, like text
+    walk refused-heads(view-module)
+  want hold, not(list-contains(statements, word))
+
+# the reader accepts a document built only from the declared heads
+host document, <\nload @view/text\n  find heading\n  find item, name row\n\nhost slug, like text\nhost title, text \<Vowels\>\nhost loud, true\nhost cap, 20\n\nfind vowel\n  task \<filter:phoneme\>\n  meet and\n    hold is-equal\n      read self/kind\n      text \<vowel\>\n    meet not\n      hold is-below\n        read self/rank\n        read cap\n  sort fall, read self/rank\n  size 50\n  slot 0\n\nview page\n  take theme, like text\n  text \<Vowels\>\n  view text/heading\n    bind text\n      call titlecase\n        read title\n  walk list, read vowel\n    hook next\n      take site, name one\n      view text/row\n        bind term, read one/symbol\n  fork test\n    hook test\n      read loud\n    hook hold\n      text \<loud\>\n    hook miss\n      text \<quiet\>\n>
+
+host parsed, parser-module/parse(make-record(make(list, <file>, <page.tree>, <text>, document)))
+
+test <the fixture parses>
+  want hold, parsed/ok
+
+test <the reader accepts a document using every declared head>
+  want hold, parsed/ok
+  host read-back, view-module/read-view(parsed/tree, <page.tree>)
+  want hold, read-back/ok

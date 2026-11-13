@@ -1,0 +1,80 @@
+note <The mill level is shared between projects, the output level is not>
+
+# Ported from shared-cache.ts by statement (item term-self-host-001-0623), one test per `ok` in its order. The per-module
+# `mill` level lives in a machine-wide shared folder, so two projects that compile the same module (a linked stdlib file
+# with one real path) reuse each other's mill work. The whole-graph `output` level stays with the project. compile/cache
+# and call/cache-store are the subject (decision 106).
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+
+dock load
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <node:fs>, name shared-file
+  load <node:path>, name shared-path
+
+bind new-cache
+  take module, like dynamic
+  take store, like dynamic
+  take label, like text
+  like dynamic
+  case node
+    text <new $module.CompileCache($store, $label)>
+
+# a library both projects load: its file path is the same in each, like a linked stdlib file
+host library, make(compiling-source, bind(file, <@shared/lib>), bind(text, <task lib-value\n  like number\n  send back\n    code 7\n>), bind(answer, </shared/lib.tree>))
+
+task entry
+  take n, like number
+  like text
+
+  back <load @shared/lib\n  find lib-value\n\ntask run\n  like number\n  send back\n    call add\n      call lib-value\n      code {n}\n>
+
+host root, temp-folder(<seed-shared->)
+host shared, shared-path/join(root, <shared-store>)
+host local-a, shared-path/join(root, <a>)
+host local-b, shared-path/join(root, <b>)
+
+task compile-in
+  take file, like text
+  take n, like number
+  take cache, like dynamic
+  like dynamic
+
+  back compile-text(entry(n), make(compile-choice, bind(file, file), bind(files, make list(library)), bind(cache, cache)))
+
+# project A compiles its app: the library's mill goes to the SHARED store, the output to A's own folder
+host cache-a, new-cache(cache-module, cache-store/shared-cache-store(local-a, shared, <v1>), <v1>)
+host a, compile-in(<a.tree>, 1, cache-a)
+
+# project B, another entry, a fresh cache in memory and its own folder, reuses the library's shared mill
+host cache-b, new-cache(cache-module, cache-store/shared-cache-store(local-b, shared, <v1>), <v1>)
+host b, compile-in(<b.tree>, 2, cache-b)
+
+test <project A compiles>
+  want hold, a/ok
+
+test <the shared store now holds the mill entries>
+  host mill, shared-path/join(shared, <mill>)
+  want hold, shared-file/exists-sync(mill)
+  want hold, is-above(shared-file/readdir-sync(mill)/length, 0)
+
+test <A output is project-local, not shared>
+  want hold, shared-file/exists-sync(shared-path/join(local-a, <output>))
+
+test <project B compiles>
+  want hold, b/ok
+
+test <project B reuses the shared lib mill (cross-project)>
+  want hold, is-above(cache-b/disk-hits, 0)
+
+test <project B output differs from A (different entry)>
+  want hold, a/ok
+  want hold, b/ok
+  want hold, is-unequal(a/emitted, b/emitted)

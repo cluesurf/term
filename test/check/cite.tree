@@ -1,0 +1,172 @@
+note <`cite \<rule\>`: a theorem uses a rule proven above it>
+
+# Ported from the TypeScript original by task/term/suite-port.ts and by statement (item term-self-host-001-0610), one
+# test per expect call or counted block in its order. The cited rule's hypotheses are proved at the citing goal, then
+# its conclusion is a fact there (check/holds.ts `citedFacts`). The instance is chosen by NAME: the cited rule's marks
+# are the citing rule's names of the same spelling, and a `find` names any other value. Each refusal is built so that
+# skipping the check it holds would prove a FALSE statement, and every refusal sits beside a citation that must still be
+# proven, so the suite cannot pass by refusing everything. Every source compiles as c.tree, and a refusal is matched in
+# `<name>: <message>` of each diagnostic, as the original's were. check/holds is docked for its measure of a proven rule
+# (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compile-note
+  find compiling-source
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/check/holds>, name holds-module
+
+task built
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <c.tree>)))
+
+# the build is refused, and a diagnostic's `<name>: <message>` holds the text
+task refused-holding
+  take out, like compile-outcome
+  take want, like text
+  like boolean
+
+  fork test, out/ok
+    hold
+      back false
+  walk out/notes
+    take one, like compile-note
+    fork test, text-contains(<{one/name}: {one/message}>, want)
+      hold
+        back true
+  back false
+
+# x(0) = 0 and x(t + 1) = x(t) + 2 for every t: then x(n) = 2 n for every count n. It needs induction
+host recurrence, <  seat x\n    like task\n      take t, like integer\n      like integer\n  seat n, like integer\n  have starts-at-zero\n    call is-equal\n      call x\n        code 0\n      code 0\n  have steps-by-two\n    seat t, like integer\n    call is-equal\n      call x\n        call add\n          read t\n          code 1\n      call add\n        call x\n          read t\n        code 2\n>
+
+# the same with its one `code 2` made `code 3`: a step of three
+host recurrence-by-three, <  seat x\n    like task\n      take t, like integer\n      like integer\n  seat n, like integer\n  have starts-at-zero\n    call is-equal\n      call x\n        code 0\n      code 0\n  have steps-by-two\n    seat t, like integer\n    call is-equal\n      call x\n        call add\n          read t\n          code 1\n      call add\n        call x\n          read t\n        code 3\n>
+
+host count, <  have n-is-a-count\n    call is-minimum\n      read n\n      code 0\n>
+
+host doubles, <\nrule doubles\n{recurrence}{count}  show hold\n    call is-equal\n      call x\n        read n\n      call multiply\n        code 2\n        read n\n  fold n\n>
+
+host at-least-n, <  show hold\n    call is-minimum\n      call x\n        read n\n      read n\n>
+
+# a cited rule's hypotheses must be PROVED where it is cited. a >= 2 gives a * a >= 2 a, which is false at a = 1, so a
+# citation that skipped the hypothesis would prove a false statement from a >= 1
+host square, <\nrule square-bound\n  seat a, like integer\n  have a-is-at-least-two\n    call is-minimum\n      read a\n      code 2\n  show hold\n    call is-minimum\n      call multiply\n        read a\n        read a\n      call multiply\n        code 2\n        read a\n>
+
+# the square's rule with every `read a` made `read p` and its seat `p`
+host square-over-p, <\nrule square-bound\n  seat p, like integer\n  have a-is-at-least-two\n    call is-minimum\n      read p\n      code 2\n  show hold\n    call is-minimum\n      call multiply\n        read p\n        read p\n      call multiply\n        code 2\n        read p\n>
+
+host square-show, <  show hold\n    call is-minimum\n      call multiply\n        read a\n        read a\n      call multiply\n        code 2\n        read a\n>
+
+host square-goal, <{square-show}  cite square-bound\n>
+
+# a theorem with universal hypotheses is decided over an ordered field, and may not rest on integer reasoning. `a > 0`
+# gives `a >= 1` only over the integers (a = 1/2 is a rational counterexample), so that rule is `integer`
+host tighten, <\nrule positive-is-one\n  seat a, like integer\n  have a-is-positive\n    call is-above\n      read a\n      code 0\n  show hold\n    call is-minimum\n      read a\n      code 1\n>
+
+host field-head, <\nrule field-rule\n  seat a, like integer\n  seat x\n    like task\n      take t, like integer\n      like integer\n  have flat\n    seat t, like integer\n    call is-equal\n      call x\n        read t\n      code 0\n  have a-is-at-least-three\n    call is-minimum\n      read a\n      code 3\n>
+
+task field-rule-text
+  take cited, like text
+  take goal, like text
+  like text
+
+  back <{field-head}{goal}  cite {cited}\n>
+
+# a disjunction is field-valid by the case split: u v < 0 and w w > 0 give u w < 0 or v w < 0, since their product is
+# u v w w < 0. Classified `integer` it would be refused here
+host pasch, <\nrule pasch\n  seat u, like integer\n  seat v, like integer\n  seat w, like integer\n  have crosses\n    call is-below\n      call multiply\n        read u\n        read v\n      code 0\n  have off-the-line\n    call is-above\n      call multiply\n        read w\n        read w\n      code 0\n  show hold\n    meet or\n      call is-below\n        call multiply\n          read u\n          read w\n        code 0\n      call is-below\n        call multiply\n          read v\n          read w\n        code 0\n>
+
+test <the cited rule is proven by induction>
+  want hold, built(doubles)/ok
+
+test <citing it closes a goal that needs the induction: x(n) \>= n>
+  want hold, built(<{doubles}\nrule at-least-n\n{recurrence}{count}{at-least-n}  cite doubles\n>)/ok
+
+test <control: without the citation the same goal is not proven>
+  want hold, refused-holding(built(<{doubles}\nrule at-least-n\n{recurrence}{count}{at-least-n}>), <unproven>)
+
+test <a hypothesis that does not hold here refuses the citation (a \>= 1 does not give a * a \>= 2 a)>
+  want hold, refused-holding(built(<{square}\nrule false-square\n  seat a, like integer\n  have a-is-at-least-one\n    call is-minimum\n      read a\n      code 1\n{square-goal}>), <cite square-bound: its hypothesis a \>= 2 does not follow>)
+
+test <control: where the hypothesis holds the citation is accepted (a \>= 3)>
+  want hold, built(<{square}\nrule true-square\n  seat a, like integer\n  have a-is-at-least-three\n    call is-minimum\n      read a\n      code 3\n{square-goal}>)/ok
+
+test <a rule proven BELOW cannot be cited, so no rule can rest on itself>
+  want hold, refused-holding(built(<\nrule true-square\n  seat a, like integer\n  have a-is-at-least-three\n    call is-minimum\n      read a\n      code 3\n{square-goal}{square}>), <cite square-bound: it is not a rule proven above>)
+
+test <a rule that FAILED cannot be cited>
+  want hold, refused-holding(built(<\nrule square-bound\n  seat a, like integer\n  show hold\n    call is-minimum\n      call multiply\n        read a\n        read a\n      call multiply\n        code 2\n        read a\n\nrule uses-it\n  seat a, like integer\n{square-goal}>), <cite square-bound: it is not a rule proven above>)
+
+test <the cited rule's marks are read by name: a rule without an `a` cannot cite it>
+  want hold, refused-holding(built(<{square}\nrule other-name\n  seat b, like integer\n  have b-is-at-least-three\n    call is-minimum\n      read b\n      code 3\n  show hold\n    call is-minimum\n      read b\n      code 3\n  cite square-bound\n>), <its seat a names nothing in this rule>)
+
+test <a find names the instance: p = a + 1 with a \>= 1, so p \>= 2 and p * p \>= 2 p>
+  want hold, built(<{square-over-p}\nrule shifted\n  seat a, like integer\n  have a-is-at-least-one\n    call is-minimum\n      read a\n      code 1\n  find p\n    call add\n      read a\n      code 1\n  show hold\n    call is-minimum\n      call multiply\n        read p\n        read p\n      call multiply\n        code 2\n        read p\n  cite square-bound\n>)/ok
+
+test <a rule decided over a field cannot cite one proven only with integer reasoning>
+  want hold, refused-holding(built(<{tighten}{field-rule-text(<positive-is-one>, <  show hold\n    call is-minimum\n      read a\n      code 1\n>)}>), <it was proven with integer reasoning>)
+
+test <control: it may cite a rule the field-only provers also prove (a \>= 2 gives a * a \>= 2 a over any field)>
+  want hold, built(<{square}{field-rule-text(<square-bound>, square-show)}>)/ok
+
+test <a disjunction proven by a case split is measured field-valid>
+  host result, built(pasch)
+  want hold, result/ok
+  host rules, holds-module/proven-rules()
+  want hold, is-equal(rules/get(<pasch>), <field>)
+
+test <a disjunction proven by a case split is field-valid, and a rule with universal hypotheses proves a disjunction too>
+  want hold, built(<{pasch}\nrule field-pasch\n  seat u, like integer\n  seat v, like integer\n  seat w, like integer\n  seat x\n    like task\n      take t, like integer\n      like integer\n  have flat\n    seat t, like integer\n    call is-equal\n      call x\n        read t\n      code 0\n  have crosses\n    call is-below\n      call multiply\n        read u\n        read v\n      code 0\n  have off-the-line\n    call is-above\n      call multiply\n        read w\n        read w\n      code 0\n  show hold\n    meet or\n      call is-below\n        call multiply\n          read u\n          read w\n        code 0\n      call is-below\n        call multiply\n          read v\n          read w\n        code 0\n  cite pasch\n>)/ok
+
+# the field rule without its cite line, the square after it
+test <and a FALSE disjunction is still refused there: a \>= 3 does not give a \< 0 or a \> 5 (a = 4)>
+  want hold, refused-holding(built(<{field-head}  show hold\n    meet or\n      call is-below\n        read a\n        code 0\n      call is-above\n        read a\n        code 5\n{square}>), <unproven>)
+
+# a cited rule's universal hypothesis must be one the citing rule states, word for word
+test <a universal hypothesis the citing rule lacks refuses the citation>
+  want hold, refused-holding(built(<{doubles}\nrule at-least-n\n{recurrence-by-three}{count}{at-least-n}  cite doubles\n>), <its universal hypothesis steps-by-two is not one of this rule>)
+
+# a cite of a name that is no rule, under a goal that is not an equality: the kernel pass reads steps only under an
+# equality, so here nothing else would refuse it, and a step that did nothing would read as a proof that used it
+test <a cite of a name that is no rule is refused, under an inequality too>
+  want hold, refused-holding(built(<\nrule shifted\n  seat a, like integer\n  have a-is-at-least-two\n    call is-minimum\n      read a\n      code 2\n  show hold\n    call is-minimum\n      call add\n        read a\n        code 1\n      code 3\n  cite no-such-rule\n>), <cite no-such-rule: there is no rule of that name in this build>)
+
+# ACROSS FILES: the cited rule is in another file, loaded with `find`. The merged build's tree-shaking pruned a rule
+# that was only cited (no call reaches a rule), so the citation found nothing and was skipped in silence until
+# 2026-10-05 (check/cite-roots.ts). The square answers ./square from memory, and nothing else resolves
+task across
+  take least, like number
+  like compile-outcome
+
+  save square-file, make(compiling-source, bind(file, <./square>), bind(text, square), bind(answer, </memory/code/square.tree>))
+  back compile-text(<load ./square\n  find square-bound\n\nrule uses-the-square\n  seat a, like integer\n  have a-is-at-least\n    call is-minimum\n      read a\n      code {least}\n{square-goal}>, make(compile-choice, bind(file, </memory/code/base.tree>), bind(files, make list(square-file)), bind(closed, true)))
+
+# the citing rule knows a >= 1, so the cited a >= 2 must be refused by name (the original matched the message alone)
+task message-holding
+  take out, like compile-outcome
+  take want, like text
+  like boolean
+
+  fork test, out/ok
+    hold
+      back false
+  walk out/messages
+    take message, like text
+    fork test, text-contains(message, want)
+      hold
+        back true
+  back false
+
+test <a rule in another file is cited: its hypothesis is checked here (a \>= 1 is refused)>
+  want hold, message-holding(across(1), <cite square-bound: its hypothesis a \>= 2 does not follow>)
+
+test <control: and where it holds the citation is accepted (a \>= 3)>
+  want hold, across(3)/ok

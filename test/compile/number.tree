@@ -1,0 +1,158 @@
+note <What `number` means on every backend: an integer whose quotient truncates toward zero>
+
+# Ported from number.ts by statement (item term-self-host-001-0618), one test per `check` in its order. Measured on
+# 2026-10-02, TypeScript emitted JavaScript's float `/`, so `7 / 2` was 3.5 in a browser and 3 on Rust, Swift and
+# Kotlin. This suite RUNS the emitted TypeScript (run-text, decision 111), and reads the native emitters' operator, which
+# is the integer one by type. note/project/term/proof/numbers.md. Each answer the original read from one loaded module is
+# a word of one run's output here, and each raise is a run of its own that stops: a STOP (D15 d) leaves the process
+# with its message led by the side it went past, a division by zero raises `defect`, read from the failed run's reason.
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+load ../support/running
+  find run-text
+
+load @term/base/text
+  find split
+  find contains, name text-contains
+
+host tasks, <task quotient\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call divide\n      read a\n      read b\n\ntask remainder\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call modulo\n      read a\n      read b\n\ntask grow\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call multiply\n      read a\n      read b\n\ntask ratio\n  take a, like float\n  take b, like float\n  like float\n  send back\n    call divide\n      read a\n      read b\n>
+
+host choice, make(compile-choice, bind(optimize, false))
+
+# the tasks with a `run` that answers `answer`
+task program-of
+  take answer, like text
+  like text
+
+  back <{tasks}\ntask run\n  like text\n  send back, text \<{answer}\>\n>
+
+host folder, temp-folder(<term-number->)
+
+form number-told
+  mark shared
+  link held, like list, like dynamic
+
+host told, make(number-told, bind(held, make list))
+
+# every answer that returns, in one run made once: five quotients, three remainders, a float ratio and a product
+task answered
+  like dynamic
+  mark async
+
+  fork test, is-above(told/held/length, 0)
+    hold
+      back told/held/0
+  host ran, run-text(program-of(<\{quotient(7, 2)\} \{quotient(-7, 2)\} \{quotient(7, -2)\} \{quotient(-7, -2)\} \{quotient(6, 3)\} \{remainder(7, 2)\} \{remainder(-7, 2)\} \{remainder(7, -2)\} \{ratio(7.0, 2.0)\} \{grow(67108864, 67108864)\}>), <typescript>, folder, <answers>, choice)
+  told/held/push(ran)
+  back ran
+
+task answer-at
+  take at, like number
+  like text
+  mark async
+
+  host ran, answered()
+  host words, split(ran/output, < >)
+  fork test, is-below(at, words/length)
+    hold
+      back get(words, at)
+  back <none: {ran/state} {ran/reason}>
+
+# a run whose `run` raises: it fails at the run, its reason the process's error text
+task raised
+  take call, like text
+  take name, like text
+  like text
+  mark async
+
+  host ran, run-text(program-of(<\{{call}\}>), <typescript>, folder, name, choice)
+  fork test, and(is-equal(ran/state, <failed>), is-equal(ran/stage, <run>))
+    hold
+      back ran/reason
+  back <answered: {ran/state} {ran/output}>
+
+# each title also says its signs in words, since a test's name is its title with the signs dropped
+test <typescript: 7 / 2 is 3 (both positive)>
+  want hold, is-equal(answer-at(0), <3>)
+
+test <typescript: -7 / 2 is -3 (a negative dividend)>
+  want hold, is-equal(answer-at(1), <-3>)
+
+test <typescript: 7 / -2 is -3 (a negative divisor)>
+  want hold, is-equal(answer-at(2), <-3>)
+
+test <typescript: -7 / -2 is 3 (both negative)>
+  want hold, is-equal(answer-at(3), <3>)
+
+test <typescript: 6 / 3 is 2>
+  want hold, is-equal(answer-at(4), <2>)
+
+test <typescript: 7 % 2 is 1, the sign of the dividend (both positive)>
+  want hold, is-equal(answer-at(5), <1>)
+
+test <typescript: -7 % 2 is -1, the sign of the dividend (a negative dividend)>
+  want hold, is-equal(answer-at(6), <-1>)
+
+test <typescript: 7 % -2 is 1, the sign of the dividend (a negative divisor)>
+  want hold, is-equal(answer-at(7), <1>)
+
+test <typescript: a float quotient stays a float>
+  want hold, is-equal(answer-at(8), <3.5>)
+
+# past the safe integers a double is a DIFFERENT integer: 2^30 * 2^30 would come back as 2^60 rounded
+test <typescript: a product inside the safe integers is exact>
+  want hold, is-equal(answer-at(9), <4503599627370496>)
+
+test <typescript: a product past the safe integers stops with excess (D15), not a rounded integer>
+  want hold, text-contains(raised(<grow(1073741824, 1073741824)>, <excess>), <excess:>)
+
+test <typescript: and below them stops with shortage>
+  want hold, text-contains(raised(<grow(-1073741824, 1073741824)>, <shortage>), <shortage:>)
+
+test <typescript: a division by zero raises defect, not Infinity>
+  want hold, text-contains(raised(<quotient(7, 0)>, <quotient-zero>), <defect>)
+
+test <typescript: a remainder by zero raises defect, not NaN>
+  want hold, text-contains(raised(<remainder(7, 0)>, <remainder-zero>), <defect>)
+
+# the native backends divide by type: i64, Int and Long all truncate toward zero
+host compiled, compile-text(tasks, make(compile-choice, bind(file, <number.tree>), bind(optimize, false)))
+
+# the first line of a backend's text that names the quotient task
+task signature
+  take target, like text
+  like text
+
+  walk split(emit-text(compiled, target), <\n>)
+    take line, like text
+    fork test, text-contains(line, <quotient>)
+      hold
+        back line
+  back <>
+
+test <rust: number is i64, whose / truncates>
+  want hold, text-contains(signature(<rust>), <i64>)
+
+# and its product stops past the edge rather than wrapping: Rust's release `*` and Kotlin's `*` wrap, and Swift's traps
+# (a signal), so each goes through a check that stops naming excess (D15, term-stdlib-parity-0015)
+test <rust: a product past i64 stops rather than wrapping (i64::checked_mul)>
+  want hold, text-contains(emit-text(compiled, <rust>), <i64::checked_mul>)
+
+test <swift: number is Int, whose / truncates>
+  want hold, text-contains(signature(<swift>), <Int>)
+
+test <swift: a product past Int stops rather than wrapping (termMultiply(a, b))>
+  want hold, text-contains(emit-text(compiled, <swift>), <termMultiply(a, b)>)
+
+test <kotlin: number is Long, whose / truncates>
+  want hold, text-contains(signature(<kotlin>), <Long>)
+
+test <kotlin: a product past Long stops rather than wrapping (Math.multiplyExact)>
+  want hold, text-contains(emit-text(compiled, <kotlin>), <Math.multiplyExact>)

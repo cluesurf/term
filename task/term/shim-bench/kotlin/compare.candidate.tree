@@ -1,0 +1,52 @@
+# The kotlin compare bench candidate (item term-self-host-001-1069, decision 161): the binds and ported tasks of
+# deck/base/code/native/kotlin/compare.tree, cut from it with no dock (task/term/shim-bench.ts refuses a candidate
+# that docks the shim it times). as-text answers empty text off its text branch, where the module forwards to the
+# shim: the bench times it on texts only.
+# KEPT: below and gap stay forwarders in the module and are not timed here: their readings at load 13 to 124
+# swung from 0.16 to 5.20, so no verdict is recorded until item term-self-host-001-1349 times them at a quiet
+# load (their Term bodies: tmp/self-host/1069/port/kotlin-compare.tree).
+
+# the value as a host float: a Long, an Int or a Double by its value, anything else NaN
+bind host-float
+  take value, like unknown
+  like float
+  case kotlin
+    text <(when (val v: Any? = $value) \{ is Long -\> v.toDouble(); is Int -\> v.toDouble(); is Double -\> v; else -\> Double.NaN \})>
+
+bind is-host-text
+  take value, like unknown
+  like boolean
+  case kotlin
+    text <($value is String)>
+
+bind host-text
+  take value, like unknown
+  like text
+  case kotlin
+    text <(($value as? String) ?: "")>
+
+# the value when it is text, else empty text. A text is Term, any other value is reflection, no typed bench
+task as-text
+  take value, like unknown
+  like text
+  fork test
+    hook test
+      call is-host-text
+        read value
+    hook hold
+      send back
+        call host-text
+          read value
+  send back, text <>
+
+# whether a is a number above b: false when either is not a number (NaN compares false)
+task above
+  take a, like unknown
+  take b, like unknown
+  like boolean
+  send back
+    call is-above
+      call host-float
+        read a
+      call host-float
+        read b
