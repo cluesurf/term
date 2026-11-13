@@ -5,9 +5,9 @@ note <what `term wake` writes holds against the formatter, the build's manifest 
 # reader to run, which is the only order a new user ever meets them in. The subjects are docked as the original imported
 # them: the formatter, the manifest face (code/package/manifest.ts, which hands the grammars to the Term manifest modules)
 # and the version face (code/code.ts). The original's wake-text and manifest-name faces only renamed deck/call's
-# wake-files.tree and manifest-read.tree, so those two are loaded: a name the manifest does not declare is their `none`,
-# where the face answered undefined. The suite lives at the root test/ because @term/deck links no @term/call, and the
-# root reaches every deck (decision item term-self-host-001-1189).
+# wake-files.tree and make's manifest-read.tree (deck/call's until decision 155), so those two are loaded: a name the
+# manifest does not declare is their `none`, where the face answered undefined. The suite lives at the root test/
+# because @term/deck links no @term/call, and the root reaches every deck (decision item term-self-host-001-1189).
 
 load @term/base/text
   find contains, name text-contains
@@ -20,7 +20,7 @@ load ../../deck/call/code/wake-files
   find deck-tree
   find boot-tree
 
-load ../../deck/call/code/manifest-read
+load @term/make/manifest-read
   find manifest-name
 
 dock load

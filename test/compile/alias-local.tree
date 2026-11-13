@@ -1,0 +1,55 @@
+note <A local named like an aliased import's own name never captures a call of the alias written as an argument>
+
+# Item 1299. `find split, name text-split`, then `save split, count-of(text-split(line, <,>))`: free-alias-targets
+# renames a local named like an alias's target only where its scope reads the alias, and it read only variables. A
+# call-shaped argument of a lean call is milled as a LABEL over an array (`text-split` over `line, <,>`), which
+# check/lean-nest.tree makes a call of the import after apply-aliases, so the local kept its name and the call reached
+# it: TypeScript emitted `const split = countOf(split(line, ","))`, "Cannot access before initialization"
+# (test/call/deck-verbs.tree's `save read, parse-manifest(read-file(...), grammars)`, M3 l1277c). Each case below
+# compiled to a call of the local before compile/node-rewrite.tree's reads-alias read lean labels. Every backend runs it.
+
+load @term/base/text
+  find split, name text-split
+
+task count-of
+  take items, like list, like text
+  like number
+
+  back items/length
+
+# the local saved from a call whose argument calls the alias
+task saved
+  take line, like text
+  like number
+
+  save split, count-of(text-split(line, <,>))
+  back split
+
+# the local saved first, the alias called in an argument after it
+task later
+  take line, like text
+  like number
+
+  save split, 10
+  save other, count-of(text-split(line, <,>))
+  back add(split, other)
+
+# a walk's item named like the target, its body calling the alias in an argument
+task walked
+  take lines, like list, like text
+  like number
+
+  save total, 0
+  walk lines
+    take split
+    save total, add(total, count-of(text-split(split, <,>)))
+  back total
+
+test <a local saved from an argument that calls the alias holds the import's answer>
+  want hold, is-equal saved(<a,b,c>), 3
+
+test <an alias called in an argument after a local of the imported name is still the import>
+  want hold, is-equal later(<a,b>), 12
+
+test <a walk item named like the target leaves the alias the import>
+  want hold, is-equal walked(make(list, <a,b>, <c>)), 3

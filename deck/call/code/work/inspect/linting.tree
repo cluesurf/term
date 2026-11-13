@@ -48,7 +48,7 @@ load @term/call/work/build/host-faces
   find face-lean-reader
   find face-project-resolver
 
-load @term/call/manifest-read
+load @term/make/manifest-read
   find manifest-name
 
 load @term/call/work/output/printer

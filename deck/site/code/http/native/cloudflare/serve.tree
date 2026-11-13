@@ -44,6 +44,15 @@ bind cloud-fetch-handler
   case cloudflare
     text <((run: (request: Request, bindings: unknown) =\> Promise\<Response\>) =\> (\{ fetch: (request: Request, bindings: unknown, _context: unknown): Promise\<Response\> =\> run(request, bindings) \}))($run)>
 
+# the router's answer, settled: `handle-request` is not async, but the handler it calls may be (a page route's is),
+# and then what it hands back is a promise of the response. A plain response settles to itself
+bind cloud-settle
+  mark async
+  take answer, like response
+  like response
+  case cloudflare
+    text <Promise.resolve($answer)>
+
 bind cloud-request-url
   take request, like dynamic
   like dynamic
@@ -390,17 +399,21 @@ task answer-fetch
           save body
             call cloud-request-text
               read incoming
+  # settled first: a page route's handler is async (view/native/cloudflare/host.tree's `handle` waits on `route`), and
+  # `handle-request` hands its answer back as it got it, so unsettled the answer was a promise and every page raised
+  # (term-self-host-001-1301). hono awaited it the same way
   save answer
-    call handle-request
-      read server
-      make request
-        bind method, read method
-        bind path, read path
-        bind body, read body
-        bind headers, read headers
-        bind query
-          call cloud-url-query
-            read url
+    call cloud-settle
+      call handle-request
+        read server
+        make request
+          bind method, read method
+          bind path, read path
+          bind body, read body
+          bind headers, read headers
+          bind query
+            call cloud-url-query
+              read url
   send back
     call web-answer
       read path

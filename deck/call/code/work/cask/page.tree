@@ -1,6 +1,6 @@
 # The cask's page: compiled in the `webview` env so every native goes over the bridge, bundled by esbuild, started by
 # its entry line, and written beside an index.html. Part of the port of deck/call/code/cask.ts (cli-in-term-0032): its
-# `buildPage` and the esbuild plugin `stubMissingPackages`.
+# `buildPage` and the esbuild plugin `stubMissingPackages`, now an `alias` to a stub file (decision 152, item 1285).
 
 load @term/base/list
   find list
@@ -10,7 +10,6 @@ load @term/call/cask-plan
   find page-html
 
 load ./host-value
-  find nothing
   find is-truthy
   find json-text
   find refuse
@@ -66,36 +65,7 @@ form bundle-options
   link format, like text
   link platform, like text
   link write, like boolean
-  link plugins, like list, like esbuild-plugin
-
-form resolve-filter
-  link filter, like dynamic
-
-form resolve-ask
-  link kind, like dynamic
-  link resolve-dir, like dynamic
-  link plugin-data, like dynamic
-
-form stub-data
-  link stubbing, like boolean
-
-form resolved-path
-  link path, like dynamic
-
-form stubbed-path
-  link path, like dynamic
-  link namespace, like text
-
-form loaded-stub
-  link contents, like text
-  link loader, like text
-
-form esbuild-plugin
-  link name, like text
-  link setup
-    like task
-      take api, like dynamic
-      like void
+  link alias, like dynamic
 
 # esbuild, loaded when a page is built and not before, so `term make` without a target never pays for it
 bind load-esbuild
@@ -103,92 +73,75 @@ bind load-esbuild
   case node
     text <(await import("esbuild"))>
 
-# the one package the stub stands in for
-bind floating-pattern
+# esbuild's `alias` sending the package to the stub file
+bind stub-alias
+  take stub, like text
   like dynamic
   case node
-    text <new RegExp("^@floating-ui/dom$")>
+    text <(\{ "@floating-ui/dom": $stub \})>
 
-# every path, in the stub's own namespace
-bind any-pattern
+# no alias: esbuild resolves the package itself
+bind no-alias
   like dynamic
   case node
-    text <new RegExp(".*")>
-
-# whether a resolve is the stub's own, asked again to see whether esbuild finds the package itself
-bind is-stubbing
-  take args, like dynamic
-  like boolean
-  case node
-    text <Boolean($args.pluginData?.stubbing)>
-
-# `await api.resolve(path, ask)`
-bind resolve-again
-  take api, like dynamic
-  take path, like dynamic
-  take ask, like resolve-ask
-  like dynamic
-  case node
-    text <(await $api.resolve($path, $ask))>
+    text <(\{\})>
 
 # The browser DOM runtime's anchor shim imports @floating-ui/dom, and a page that never anchors a panel still carries
 # that import because the prelude keeps a shim whose name appears anywhere in the emitted code. When the package is not
-# installed beside the page, the bundle gets a stub whose members raise on first use, so the app loads and a page that
-# does anchor fails at the call rather than at module load. A page that has the package installed resolves it as
-# usual: the stub only steps in when esbuild's own resolution finds nothing.
-task stub-missing-packages
-  like esbuild-plugin
+# installed where the page's modules are, the bundle gets a stub whose members raise on first use, so the app loads and
+# a page that does anchor fails at the call rather than at module load. A page that has the package installed resolves
+# it as usual. Options only, no onResolve plugin, so the command line says them too (decision 152, item 1285): Term
+# looks for the package as Node does, and when it is not there, esbuild's `alias` sends it to the stub file.
 
-  back
-    make esbuild-plugin
-      bind name, <stub-missing-packages>
-      bind setup
-        task
-          take api, like dynamic
-          like void
-          api/on-resolve
-            make(resolve-filter, bind(filter, floating-pattern()))
-            task
-              take args, like dynamic
-              like dynamic
-              mark async
-              fork test, is-stubbing(args)
-                hold
-                  back nothing()
-              save asked
-                make resolve-ask
-                  bind kind, args/kind
-                  bind resolve-dir, args/resolve-dir
-                  bind plugin-data, make(stub-data, bind(stubbing, true))
-              save found, resolve-again(api, args/path, asked)
-              fork test, and(is-equal(found/errors/length, 0), is-truthy(found/path))
-                hold
-                  back make(resolved-path, bind(path, found/path))
-              back
-                make stubbed-path
-                  bind path, args/path
-                  bind namespace, <stub>
-          api/on-load
-            make(stub-filter, bind(filter, any-pattern()), bind(namespace, <stub>))
-            task
-              take args, like dynamic
-              like loaded-stub
-              save lines, make list
-              save said, json-text(<{args/path} is not in this bundle>)
-              lines/push(<const missing = () =\> \{ throw new Error({said}) \}>)
-              lines/push(<export const computePosition = missing>)
-              lines/push(<export const offset = missing>)
-              lines/push(<export const flip = missing>)
-              lines/push(<export const shift = missing>)
-              lines/push(<export const autoUpdate = missing>)
-              back
-                make loaded-stub
-                  bind contents, join(lines, <\n>)
-                  bind loader, <js>
+# whether @floating-ui/dom is installed where a module in `dir` finds it: a node_modules/@floating-ui/dom folder in
+# `dir` or a folder above it, as Node resolves a bare package
+task floating-installed
+  take dir, like text
+  like boolean
 
-form stub-filter
-  link filter, like dynamic
-  link namespace, like text
+  save at, dir
+  walk test
+    hook test, true
+    hook hold
+      fork test, node-fs/exists-sync(node-path/join(at, <node_modules>, <@floating-ui>, <dom>))
+        hold
+          back true
+      save up, node-path/dirname(at)
+      fork test, is-equal(up, at)
+        hold
+          back false
+      save at, up
+  back false
+
+# the stub module's text: every member the anchor shim reads raises on first use, naming the package
+task stub-text
+  like text
+
+  save lines, make list
+  save said, json-text(<@floating-ui/dom is not in this bundle>)
+  lines/push(<const missing = () =\> \{ throw new Error({said}) \}>)
+  lines/push(<export const computePosition = missing>)
+  lines/push(<export const offset = missing>)
+  lines/push(<export const flip = missing>)
+  lines/push(<export const shift = missing>)
+  lines/push(<export const autoUpdate = missing>)
+  back join(lines, <\n>)
+
+# the alias a page in `work` is bundled with: none when the package is installed, else the stub, written into `work`.
+# The stub file is named `dom.js`, the package's own last part, so esbuild names its module `dom_exports` as it named
+# the plugin's `stub:@floating-ui/dom`, and the bundle differs from the plugin's only in that module's path comment
+task page-alias
+  take work, like text
+  like dynamic
+
+  fork test, floating-installed(work)
+    hold
+      back no-alias()
+  save folder, node-path/join(work, <floating-ui-stub>)
+  node-fs/mkdir-sync(folder, make(folder-options, bind(recursive, true)))
+  save stub, node-path/join(folder, <dom.js>)
+  node-fs/write-file-sync(stub, stub-text())
+  back stub-alias(stub)
 
 # the first three diagnostics' messages, as the refusal names them
 task diagnostics-said
@@ -237,8 +190,6 @@ task build-page
   save esbuild, load-esbuild()
   save entries, make list
   entries/push(node-path/join(work, <entry.ts>))
-  save plugins, make list
-  plugins/push(stub-missing-packages())
   save bundling
     make bundle-options
       bind entry-points, entries
@@ -246,7 +197,7 @@ task build-page
       bind format, <esm>
       bind platform, <browser>
       bind write, false
-      bind plugins, plugins
+      bind alias, page-alias(work)
   save bundled, wait esbuild/build(bundling)
 
   # `write: false` answers the bundle in memory, one file for one entry

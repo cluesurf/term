@@ -1179,7 +1179,11 @@ task reach-skip
   push(skip, <type>)
   back skip
 
-# do these expressions read a variable written with an alias of `target`
+# do these expressions read a variable written with an alias of `target`, or hold a lean call with a label written
+# with one. A call-shaped argument of a lean call, `parse(read-file(path))`, is milled as the label `read-file` over an
+# array, and check/lean-nest.tree makes it a call of the import after apply-aliases: it reads the target as surely as a
+# variable does. Missed, a local `read` kept its name and `save read, parse(read-file(path))` emitted
+# `const read = parse(read(path))`, a TDZ ReferenceError (term-self-host-001-1299)
 task reads-alias
   take reached, like list, like expression
   take aliases, like hash, like text, like text
@@ -1196,6 +1200,16 @@ task reads-alias
             fork test, is-equal(get-or-default(aliases, name, <>), target)
               hold
                 back true
+      case call
+        fork test, lean
+          hold
+            walk names
+              take label
+              fork test, and(is-unequal(label, <>), aliases/has(label))
+                hold
+                  fork test, is-equal(get-or-default(aliases, label, <>), target)
+                    hold
+                      back true
       miss
         save nothing, 0
   back false

@@ -140,6 +140,15 @@ bind node-zstd-pack
   case node
     text <(process.getBuiltinModule('node:zlib') as unknown as \{ zstdCompressSync: (plain: Buffer) =\> Buffer \}).zstdCompressSync($bytes as Buffer)>
 
+# the router's answer, settled: `handle-request` is not async, but the handler it calls may be (a page route's is),
+# and then what it hands back is a promise of the response. A plain response settles to itself
+bind node-settle
+  mark async
+  take answer, like response
+  like response
+  case node
+    text <Promise.resolve($answer)>
+
 bind node-is-absent
   take value, like dynamic
   like boolean
@@ -378,19 +387,23 @@ task answer-request
         call node-text-body
           text <>
     hook miss
+      # settled first: a page route's handler is async (view/native/node/host.tree's `handle` waits on `route`), and
+      # `handle-request` hands its answer back as it got it, so unsettled the answer was a promise and every page
+      # answered 500 (term-self-host-001-1301). hono awaited it the same way
       save answer
-        call handle-request
-          read server
-          make request
-            bind method, read method
-            bind path
-              call node-url-path
-                read url
-            bind body, read body
-            bind headers, read headers
-            bind query
-              call node-url-query
-                read url
+        call node-settle
+          call handle-request
+            read server
+            make request
+              bind method, read method
+              bind path
+                call node-url-path
+                  read url
+              bind body, read body
+              bind headers, read headers
+              bind query
+                call node-url-query
+                  read url
       call write-answer
         read outgoing
         call node-url-path

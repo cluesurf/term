@@ -6,6 +6,10 @@
 # the file that changed as its subject, and the run never closes until ctrl-c, which ends it with exit 130 (section 18).
 # A project whose package.json carries a `make` script is built by that script instead, on every change.
 #
+# The watch is a PUMP LOOP over @term/base/file/watch (decision 065 section 3, decision 150): one `next` is outstanding
+# at a time and none is ever cancelled, so no change is lost, and the build runs inside the loop, awaited, so builds
+# never overlap.
+#
 # The output library (call/code/output.ts) holds the run, and is docked so this shares the run the console opened.
 
 load @term/base/list
@@ -13,6 +17,34 @@ load @term/base/list
 
 load @term/base/text
   find ends-with
+
+load @term/base/task
+  find handle
+
+load @term/base/clock
+  find sleep
+
+load @term/base/path
+  find join, name path-join
+  find directory, name path-directory
+  find relative-path
+
+load @term/base/file
+  find write, name write-file
+  find remove, name remove-file
+  find test, name file-test
+
+load @term/base/file/directory
+  find make, name make-directory
+
+load @term/base/file/watch
+  find watch, name open-watch
+  find next, name next-change
+  find close, name close-watch
+
+load @term/base/process/current
+  find exit, name exit-process
+  find listen, name listen-signal
 
 # the build graph and its one entry (decision 077 section 3, decision 094): every rebuild goes through `build-request`
 load ./build-graph
@@ -48,24 +80,15 @@ load @term/call/work/item/event
   find tally
 
 dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
-  # an inherited method (once) is reached only through the global (traps.md)
-  load <global:process>, name host-process
   load <global:global>, name host-global
 
-# a watch's debounce and its one build at a time
+# a watch's one pump and how it is stopped
 form watch-state
   mark shared
-  # the debounce timer, while a change waits out its 30 ms
-  link timer, like dynamic
-  # a change is being handled
-  link running, like boolean
-  # a change came while one was handled, and is handled next
-  link pending, like boolean
-
-form watch-options
-  link recursive, like boolean
+  # `close` was called: the pump stops at once, or closes the watch the moment it opens
+  link closed, like boolean
+  # what closes the open watch, once the pump has opened it
+  link stop, like dynamic
 
 # what `watch-tree-files` hands back: `close()` stops the watch
 form watch-stop
@@ -103,13 +126,6 @@ bind now-ms
   case node
     text <Date.now()>
 
-# a host value that is a text, or the empty text: `typeof value === 'string' ? value : ''`
-bind text-or-empty
-  take value, like dynamic
-  like text
-  case node
-    text <(typeof $value === "string" ? $value : "")>
-
 # `text.includes(part)`, by UTF-16 unit
 bind text-includes
   take text, like text
@@ -126,16 +142,10 @@ bind hand-change
   case node
     text <(await $handler($name))>
 
-bind raise-again
-  take problem, like dynamic
-  like void
-  case node
-    text <(() =\> \{ throw $problem \})()>
-
 # Watch every `.tree` file under `root`, recursively, and call `on-change` with the changed file's name, debounced, so
 # a burst of saves triggers one call. While a call that answered a promise is in flight a further change is coalesced
 # into the next (no overlapping builds). `ignore` names path segments to skip (generated and dependency folders),
-# `host/` when left out. Answers a handle whose `close()` stops the watch
+# `host/` when left out. Answers a handle whose `close()` stops the watch, at once: the pump runs on its own
 task watch-tree-files
   take root, like text
   take on-change, like dynamic
@@ -143,32 +153,108 @@ task watch-tree-files
   like watch-stop
 
   save ignore, ignore-or-host(ignore-given)
-  save state, make(watch-state, bind(timer, void), bind(running, false), bind(pending, false))
-  save watcher
-    node-file/watch
-      root
-      make(watch-options, bind(recursive, true))
-      task
-        take event, like dynamic
-        take filename, like dynamic
-        like void
-        save name, text-or-empty(filename)
-        fork test, is-watched(name, ignore)
-          hold
-            fork test, is-unequal(state/timer, void)
-              hold
-                host-global/clearTimeout(state/timer)
-            save state/timer
-              host-global/setTimeout
-                task
-                  like void
-                  tick fire(state, on-change, name)
-                30
+  save state, make(watch-state, bind(closed, false), bind(stop, void))
+  tick pump(state, root, on-change, ignore)
   save close
     task
       like void
-      watcher/close()
+      save state/closed, true
+      fork test, is-unequal(state/stop, void)
+        hold
+          state/stop()
   back make(watch-stop, bind(close, close))
+
+# The pump of decision 150. `ask` is the one outstanding `next`, never cancelled: on node a cancelled `next` still takes
+# the event after it, so a change would be lost (traps.md). It is carried across the build, so a change made while the
+# build runs is the next turn's first event, and the rest wait in the watch's own queue.
+#
+#   outer turn  a plain wait on `ask`. A change that is not a watched file is dropped, a fresh `ask` is started, and the
+#               turn repeats, so the build's own host/ writes go by at full speed. A watched one opens the window
+#   window      sleep the debounce, then `ask` still alive means nothing came: the burst is over and the build runs. A
+#               change that came is waited, and the queue behind it drained: a fresh `ask`, sleep(1), and while it has
+#               already settled, wait it and repeat. Then the window again. Any change in the window restarts it, and
+#               the build's subject is the last watched one, as the original's timer kept the last name
+#   coalesce    a watched change that came while an awaited build ran (a build that never yields sees none here, its
+#               changes come to the outer turn) builds again with the same subject, as the original's `pending` flag
+#               handed the in-flight name on
+#
+# The drain's sleep(1) is latency, never correctness: a `next` that answers from the queue settles before any timer.
+# `close` answers `ask` with the empty event wherever the loop is, and the loop ends
+task pump
+  take state, like watch-state
+  take root, like text
+  take on-change, like dynamic
+  take ignore, like list, like text
+  mark async
+  mark private
+
+  save eye, open-watch(root, true)
+  fork test, state/closed
+    hold
+      close-watch(eye)
+      back
+  save state/stop
+    task
+      like void
+      tick close-watch(eye)
+  save ask, tick next-change(eye)
+  save name, <>
+  save again, false
+  walk test
+    hook test, true
+    hook hold
+      fork test, not(again)
+        hold
+          save change, wait(ask)
+          fork test, is-equal(change/kind, <>)
+            hold
+              back
+          save ask, tick next-change(eye)
+          save seen, watched-name(root, change/path, ignore)
+          fork test, is-equal(seen, <>)
+            hold
+              turn next
+          save name, seen
+      save again, false
+      save quiet, false
+      walk test
+        hook test, not(quiet)
+        hook hold
+          sleep(30)
+          fork test, alive(ask)
+            hold
+              save quiet, true
+            miss
+              save more, true
+              walk test
+                hook test, more
+                hook hold
+                  save change, wait(ask)
+                  fork test, is-equal(change/kind, <>)
+                    hold
+                      back
+                  save seen, watched-name(root, change/path, ignore)
+                  fork test, is-unequal(seen, <>)
+                    hold
+                      save name, seen
+                  save ask, tick next-change(eye)
+                  sleep(1)
+                  save more, not(alive(ask))
+      hand-change(on-change, name)
+      save after, not(alive(ask))
+      walk test
+        hook test, after
+        hook hold
+          save change, wait(ask)
+          fork test, is-equal(change/kind, <>)
+            hold
+              back
+          fork test, is-unequal(watched-name(root, change/path, ignore), <>)
+            hold
+              save again, true
+          save ask, tick next-change(eye)
+          sleep(1)
+          save after, not(alive(ask))
 
 task ignore-or-host
   take given, like dynamic
@@ -181,6 +267,21 @@ task ignore-or-host
       folders/push(<host/>)
       back folders
   back given
+
+# the changed file's name from the root when it is a watched `.tree` file, else the empty text: a watch event's path
+# is the root joined with the name the platform gave
+task watched-name
+  take root, like text
+  take path, like text
+  take ignore, like list, like text
+  like text
+  mark private
+
+  save name, relative-path(root, path)
+  fork test, is-watched(name, ignore)
+    hold
+      back name
+  back <>
 
 # a `.tree` file outside every ignored folder
 task is-watched
@@ -199,50 +300,22 @@ task is-watched
         back false
   back true
 
-# Hand one change on, unless one is in flight: then it is handled once that one ends
-task fire
-  take state, like watch-state
-  take on-change, like dynamic
-  take name, like text
-  mark async
-  mark private
-
-  fork test, state/running
-    hold
-      save state/pending, true
-    miss
-      save state/running, true
-      fork
-        mark unsafe
-        hand-change(on-change, name)
-      halt take
-        take problem
-        settle(state, on-change, name)
-        raise-again(problem)
-      settle(state, on-change, name)
-
-# a change handled: the next, if one came meanwhile, starts
-task settle
-  take state, like watch-state
-  take on-change, like dynamic
-  take name, like text
-  mark private
-
-  save state/running, false
-  fork test, state/pending
-    hold
-      save state/pending, false
-      tick fire(state, on-change, name)
-
 # a watch ends on ctrl-c, with its closing item and exit 130 (section 18)
 task stop-on-interrupt
   mark private
 
-  host-process/once
-    <SIGINT>
+  listen-signal
+    <interrupt>
     task
       like void
-      host-process/exit(close-run(make(run-interrupted, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+      # a signal's handler raises nothing (`listen`), and `exit` can raise failure: an exit that fails leaves the
+      # watch running, as a second ctrl-c can try again
+      fork
+        mark unsafe
+        exit-process(close-run(make(run-interrupted, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+      halt take
+        take problem
+        back
 
 # Watch the project's .tree files and build it again on each change, until the process is killed. One build graph is
 # kept for the life of the watch: an edit rebuilds the entries it reaches, re-walks the modules it changed, and misses
@@ -327,12 +400,12 @@ task write-watch-roll
   fork
     mark unsafe
     save rolled, project-roll(root, rolls)
-    save roll-path, node-path/join(root, <host>, <roll.json>)
+    save roll-path, path-join(path-join(root, <host>), <roll.json>)
     save text, <{host-global/JSON/stringify(rolled/roll, void, 2)}\n>
     fork test, is-unequal(held-text(roll-path), text)
       hold
-        node-file/mkdir-sync(node-path/dirname(roll-path), make(watch-options, bind(recursive, true)))
-        node-file/write-file-sync(roll-path, text)
+        make-directory(path-directory(roll-path))
+        write-file(roll-path, text)
   halt take
     take problem
     save message, make list
@@ -344,10 +417,10 @@ task drop-watch-roll
   take root, like text
   mark private
 
-  save roll-path, node-path/join(root, <host>, <roll.json>)
-  fork test, node-file/exists-sync(roll-path)
+  save roll-path, path-join(path-join(root, <host>), <roll.json>)
+  fork test, file-test(roll-path)
     hold
-      node-file/unlink-sync(roll-path)
+      remove-file(roll-path)
 
 form roll-said-item
   link glyph, like text

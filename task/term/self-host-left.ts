@@ -38,8 +38,24 @@
 // repository's own `task/term/` scripts, that import a file by any specifier: relative, `@term/<deck>/...`, `@/...`,
 // a dynamic `import()` or a `require`.
 //
-// Output: the verdict (at most 15 lines) on stdout and the full list in <term>/tmp/self-host/left/<date>.json (with
-// `--deck d`, `<date>-d.json`, so a limited run never replaces the full one). `--json` prints that JSON instead.
+// A `.tree` DOCK is an importer too (term-self-host-001-1296, decision 157 rule 4, trap T-0118). Every `.tree` under the
+// walked roots is read as the build reads it: `buildable` (deck/call/code/make.ts) turns a file of `test` blocks into
+// its rewritten text and a feed grammar into the reader it generates, then the compiler's parser
+// (`@term/make/code/parser/tree`) reads that, its nodes walked the way dock-aliases.ts walks them, never a regex. Each
+// `load <module>` whose module resolves to a walked `.ts` is an edge, its importer the `.tree` path. A shelved `.tree`
+// (`mark draft`) is read too and flagged `shelved`: the build skips it, but it still names the module and breaks when
+// unshelved. A `.tree` that neither builds nor parses is listed as unread, never passed over. Each dock is marked
+// SUBJECT when the `.tree` is the target's own suite, and OTHER otherwise. A suite is the target's own when it is
+//   - a suite of the target's deck, `deck/<d>/test/**/*.test.tree` docking a file under `deck/<d>/` (decision 157 rule
+//     1: the deck/deck suites are statement ports of the faces' own tests, owed with the face), or
+//   - a package suite of the same path, `test/<p>.tree` docking `deck/<d>/code/<p>.ts` (decision 106 rule 2).
+// An OTHER dock of a face loads the port now (decision 157 rule 2), and gate 0137 step 1 fails on one. The JSON's
+// `docks` lists every dock of a file with its mark, and `treeDocks` and the verdict list every `.tree` that docks the
+// counted TypeScript, a face or not (index.ts and form.ts are `unported` here and still owed by decision 153).
+//
+// Output: the verdict (at most 15 lines, then one line per `.tree` docking the counted TypeScript) on stdout and the
+// full list in <term>/tmp/self-host/left/<date>.json (with `--deck d`, `<date>-d.json`, so a limited run never replaces
+// the full one). `--json` prints that JSON instead.
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -140,9 +156,18 @@ type File = {
   owned: Bucket | null
   importers: string[]
   port: string[]
+  docks: TreeDock[]
 }
 
-function main(): void {
+// a `.tree` that docks the file, whether the file is that suite's subject (decision 157), and whether it is shelved
+type TreeDock = { tree: string; mark: 'subject' | 'other'; shelved: boolean }
+
+// the compiler's parser and the build's one reading of a file, the ones short-loads.ts imports: the Term tsconfig's
+// `@term/*` paths reach them. Imported by `main` before any `.tree` is read, so `--line` and `--hidden` never load them
+let parse: (source: { file: string; text: string }) => { ok: boolean; tree: { nodes: Array<unknown> } }
+let buildable: (file: string, source: string) => { text: string } | { faults: string[] }
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const wantJson = args.includes('--json')
   let only: string | null = null
@@ -209,14 +234,20 @@ function main(): void {
 
   const walked: File[] = []
   const apartWalked: Array<{ path: string; root: Root }> = []
+  const treesWalked: string[] = []
 
   for (const root of roots) {
-    walk(root, root.dir, walked, apartWalked)
+    walk(root, root.dir, walked, apartWalked, treesWalked)
   }
 
-  const ignored = gitIgnored([...walked.map(file => file.path), ...apartWalked.map(file => file.path)])
+  const ignored = gitIgnored([
+    ...walked.map(file => file.path),
+    ...apartWalked.map(file => file.path),
+    ...treesWalked.map(abs => relative(TERM, abs)),
+  ])
   const files = walked.filter(file => !ignored.has(file.path))
   const apartFiles = apartWalked.filter(file => !ignored.has(file.path))
+  const trees = treesWalked.filter(abs => !ignored.has(relative(TERM, abs)))
 
   const byAbs = new Map(files.map(file => [file.abs, file]))
   const locks = readLocks()
@@ -238,6 +269,22 @@ function main(): void {
         edges.set(target, seen)
       }
     }
+  }
+
+  // every `.tree` dock of a walked file (T-0118: the edges above read code files only)
+  parse = (await import('@term/make/code/parser/tree')).parse
+  buildable = (await import('@term/call/code/make')).buildable
+  const treeRead = treeDocks(trees, byAbs)
+
+  for (const [target, docks] of treeRead.docks) {
+    const seen = edges.get(target) ?? new Set<string>()
+
+    for (const dock of docks) {
+      seen.add(dock.tree)
+    }
+
+    edges.set(target, seen)
+    target.docks = docks.sort((a, b) => a.tree.localeCompare(b.tree))
   }
 
   for (const file of files) {
@@ -273,6 +320,8 @@ function main(): void {
     lines: kept.reduce((sum, file) => sum + file.lines, 0),
     bucket: tally(kept),
     apart,
+    tree: { read: treeRead.read, shelved: treeRead.shelved, unread: treeRead.unread },
+    treeDocks: treeDocksOf(kept),
     deckBucket: Object.fromEntries(
       roots
         .filter(root => kept.some(file => file.root === root))
@@ -286,6 +335,7 @@ function main(): void {
       lines: file.lines,
       importers: file.importers,
       port: file.port,
+      docks: file.docks,
     })),
   }
 
@@ -300,6 +350,177 @@ function main(): void {
   }
 
   verdict(roots, kept, target, apart)
+  printTreeDocks(record.treeDocks, record.tree)
+}
+
+// THE .TREE DOCKS (term-self-host-001-1296). Each `.tree` is read by the compiler's parser, and every `load` whose
+// target is a text (`load <module>, name alias`, under a `dock` or not, at any depth) is a dock, read off the parse tree
+// as dock-aliases.ts reads it. A `{platform}` module and one naming no walked file are not edges.
+type TreeRead = { docks: Map<File, TreeDock[]>; read: number; shelved: number; unread: string[] }
+
+function treeDocks(trees: string[], byAbs: Map<string, File>): TreeRead {
+  const docks = new Map<File, TreeDock[]>()
+  let read = 0
+  let shelved = 0
+  const unread: string[] = []
+
+  for (const abs of trees) {
+    const source = readFileSync(abs, 'utf8')
+
+    // a cheap filter: a dock this tool can resolve names `<.` or `<@`, and the parse below decides what is a dock
+    if (!source.includes('<@') && !source.includes('<.')) {
+      continue
+    }
+
+    const tree = relative(TERM, abs)
+    const built = buildable(abs, source)
+
+    if (!('text' in built)) {
+      unread.push(tree)
+      continue
+    }
+
+    const parsed = parse({ file: abs, text: built.text })
+
+    if (!parsed.ok) {
+      unread.push(tree)
+      continue
+    }
+
+    const isShelved = declaresDraft(source)
+    read++
+
+    if (isShelved) {
+      shelved++
+    }
+
+    for (const module of dockedModules(parsed.tree.nodes as ParseNode[])) {
+      const found = resolveImport(module, abs)
+      const target = found.file === null ? undefined : byAbs.get(found.file)
+
+      if (target === undefined) {
+        continue
+      }
+
+      const list = docks.get(target) ?? []
+
+      if (!list.some(dock => dock.tree === tree)) {
+        list.push({ tree, mark: subjectOf(tree, target.path) ? 'subject' : 'other', shelved: isShelved })
+      }
+
+      docks.set(target, list)
+    }
+  }
+
+  return { docks, read, shelved, unread: unread.sort() }
+}
+
+// the parser's node, as much of it as this reads (dock-aliases.ts's shape)
+type ParsePart = { kind: string; text?: string }
+type ParseNode = { kind: string; nodes?: ParseNode[]; parts?: ParsePart[] }
+
+// a name or text node's plain text, or undefined when it interpolates (`{platform}`) or is another kind
+function plainOf(node: ParseNode | undefined): string | undefined {
+  if (!node || (node.kind !== 'name' && node.kind !== 'text') || !node.parts) {
+    return undefined
+  }
+
+  if (!node.parts.every(part => part.kind === 'chunk')) {
+    return undefined
+  }
+
+  return node.parts.map(part => part.text ?? '').join('')
+}
+
+function headOf(node: ParseNode | undefined): string | undefined {
+  const first = node?.kind === 'group' ? node.nodes?.[0] : undefined
+
+  return first?.kind === 'name' ? plainOf(first) : undefined
+}
+
+function dockedModules(nodes: ParseNode[]): string[] {
+  const out: string[] = []
+
+  const visit = (group: ParseNode): void => {
+    if (headOf(group) === 'load') {
+      const target = group.nodes?.[1]
+      const module = target?.kind === 'text' ? plainOf(target) : undefined
+
+      if (module !== undefined) {
+        out.push(module)
+      }
+    }
+
+    for (const child of group.nodes?.slice(1) ?? []) {
+      if (child.kind === 'group') {
+        visit(child)
+      }
+    }
+  }
+
+  for (const group of nodes) {
+    if (group.kind === 'group') {
+      visit(group)
+    }
+  }
+
+  return out
+}
+
+// SUBJECT: the target's own suite (the header above). Decision 157's census reads so: the deck/deck/test suites are the
+// faces' own, and test/compile, test/call, test/deck, test/view and task/ use a face as a helper
+function subjectOf(tree: string, target: string): boolean {
+  const suite = /^deck\/([^/]+)\/test\/.*\.test\.tree$/.exec(tree)
+
+  if (suite !== null) {
+    return target.startsWith(`deck/${suite[1]}/`)
+  }
+
+  const own = /^test\/(.+)\.tree$/.exec(tree)
+  const module = /^deck\/[^/]+\/code\/(.+)\.ts$/.exec(target)
+
+  return own !== null && module !== null && own[1] === module[1]
+}
+
+type TreeRow = { tree: string; mark: 'subject' | 'other'; shelved: boolean; module: Array<{ path: string; bucket: Bucket }> }
+
+// one row per `.tree` that docks the kept files: what it docks, each with its bucket, and its mark (`other` when any
+// of its docks is other)
+function treeDocksOf(kept: File[]): TreeRow[] {
+  const byTree = new Map<string, TreeRow>()
+
+  for (const file of kept) {
+    for (const dock of file.docks) {
+      const row = byTree.get(dock.tree) ?? { tree: dock.tree, mark: 'subject', shelved: dock.shelved, module: [] }
+      row.module.push({ path: file.path, bucket: file.owned ?? file.bucket })
+
+      if (dock.mark === 'other') {
+        row.mark = 'other'
+      }
+
+      byTree.set(dock.tree, row)
+    }
+  }
+
+  return [...byTree.values()]
+    .map(row => ({ ...row, module: row.module.sort((a, b) => a.path.localeCompare(b.path)) }))
+    .sort((a, b) => a.mark.localeCompare(b.mark) || a.tree.localeCompare(b.tree))
+}
+
+function printTreeDocks(rows: TreeRow[], tree: { read: number; shelved: number; unread: string[] }): void {
+  const other = rows.filter(row => row.mark === 'other').length
+  const unread = tree.unread.length === 0 ? 'none' : tree.unread.join(', ')
+
+  console.log(`.tree docks: ${tree.read} .tree read (${tree.shelved} shelved); ${rows.length} dock this TypeScript: ${rows.length - other} subject (owed with it), ${other} other`)
+  console.log(`  unread, no dock seen: ${unread}`)
+
+  for (const row of rows) {
+    const shown = row.module
+      .map(one => `${one.path.replace(/^deck\/[^/]+\/code\//, '')}${one.bucket === 'thin-face' || one.bucket === 'fat-face' ? '' : ` [${one.bucket}]`}`)
+      .join(', ')
+
+    console.log(`  ${row.mark === 'other' ? 'OTHER  ' : 'owed   '} ${row.tree}${row.shelved ? ' (shelved)' : ''}: ${shown}`)
+  }
 }
 
 // `--line`: what every bundle make:line writes is made of, per deck, from the esbuild metafile it writes beside each
@@ -555,7 +776,7 @@ function matches(root: Root, name: string): boolean {
   return root.name === name || (name === 'pkg' && root.name.startsWith('pkg/'))
 }
 
-function walk(root: Root, dir: string, out: File[], apart: Array<{ path: string; root: Root }>): void {
+function walk(root: Root, dir: string, out: File[], apart: Array<{ path: string; root: Root }>, trees: string[]): void {
   for (const name of readdirSync(dir).sort()) {
     if (SKIP.has(name) || name.endsWith('-cache') || name.startsWith('.env')) {
       continue
@@ -570,11 +791,17 @@ function walk(root: Root, dir: string, out: File[], apart: Array<{ path: string;
     }
 
     if (stat.isDirectory()) {
-      walk(root, full, out, apart)
+      walk(root, full, out, apart, trees)
       continue
     }
 
-    if (/\.d\.m?ts$/.test(name) || name.endsWith('.generated.ts') || name.endsWith('.tree')) {
+    // a `.tree` is never counted, but its docks are importer edges
+    if (name.endsWith('.tree')) {
+      trees.push(full)
+      continue
+    }
+
+    if (/\.d\.m?ts$/.test(name) || name.endsWith('.generated.ts')) {
       continue
     }
 
@@ -595,6 +822,7 @@ function walk(root: Root, dir: string, out: File[], apart: Array<{ path: string;
       owned: null,
       importers: [],
       port: [],
+      docks: [],
     })
   }
 }
@@ -618,6 +846,7 @@ function scripts(): File[] {
         owned: null,
         importers: [],
         port: [],
+        docks: [],
       })
     }
   }
@@ -994,4 +1223,7 @@ function fail(why: string): never {
   process.exit(2)
 }
 
-main()
+main().catch(error => {
+  console.error(error)
+  process.exit(2)
+})

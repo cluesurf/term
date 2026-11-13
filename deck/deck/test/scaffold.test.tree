@@ -1,10 +1,10 @@
 note <what `term wake` writes holds against the formatter, the build's manifest detection, and the publish rules>
 
-# SHELVED (item term-self-host-001-0582): every test reads deck/call's wake-files.tree or manifest-read.tree, and
-# @term/deck links no @term/call, so neither a load nor a dock reaches them from here ("Nothing answers `load
-# ../../call/code/wake-files`", and a dock of `@term/call/code/wake-files` stops the run with "Cannot find package
-# '@term/call'"). The TypeScript original reached them by a relative import. Unshelve once a decision says where this
-# suite lives or how @term/deck's tests reach @term/call.
+# SHELVED (item term-self-host-001-0582): every test reads deck/call's wake-files.tree, and @term/deck links no
+# @term/call, so neither a load nor a dock reaches it from here ("Nothing answers `load ../../call/code/wake-files`",
+# and a dock of `@term/call/code/wake-files` stops the run with "Cannot find package '@term/call'"). The TypeScript
+# original reached it by a relative import. manifest-read.tree moved to @term/make (decision 155), which this package
+# links. Unshelve once a decision says where this suite lives or how @term/deck's tests reach @term/call.
 mark draft
 
 # Ported from scaffold.test.ts by statement (item term-self-host-001-0582), one test per `it` in its order. Each rule
@@ -12,8 +12,8 @@ mark draft
 # is the only order a new user ever meets them in. The subjects are docked as the original imported them: the
 # formatter, the manifest face (code/package/manifest.ts, which hands the grammars to the Term manifest modules) and the
 # version face (code/code.ts). The original's wake-text and manifest-name faces only renamed deck/call's
-# wake-files.tree and manifest-read.tree, which @term/deck cannot dock (it links no @term/call), so those two are loaded
-# here: a name the manifest does not declare is their `none`, where the face answered undefined.
+# wake-files.tree and manifest-read.tree, so those two are loaded here: a name the manifest does not declare is their
+# `none`, where the face answered undefined.
 
 load @term/base/text
   find contains, name text-contains
@@ -26,7 +26,7 @@ load ../../call/code/wake-files
   find deck-tree
   find boot-tree
 
-load ../../call/code/manifest-read
+load @term/make/manifest-read
   find manifest-name
 
 dock load

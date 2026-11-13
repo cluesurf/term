@@ -3,11 +3,15 @@
 # term-self-host-001-0718), run by `term boot` through the alias.
 #
 #   pnpm term:distro            build everything under tmp/release/<version>/distro/ and stop
+#   node host/line.js boot task/distro.tree -- managers
+#                               only the AUR, Scoop and nixpkgs files, again, from the packages already built
 #   pnpm term:distro --commit   also write the signed apt and dnf indexes and the installer load.mjs (task/make-load.tree,
 #                               from installer.tree) into the term.surf site's public/ (served at https://term.surf/apt,
 #                               /rpm and /load.mjs; `--site <dir>` or TERM_SITE_DIR, else host/site/)
 #                               and the winget manifests into the winget-pkgs fork (`--winget <dir>` or
-#                               TERM_WINGET_FORK, else host/winget/). It writes files and nothing else: the GitHub
+#                               TERM_WINGET_FORK, else host/winget/), and the AUR, Scoop and nixpkgs files into the
+#                               checkouts TERM_AUR_DIR, TERM_SCOOP_DIR and TERM_NIX_DIR name, each only when it is set.
+#                               It writes files and nothing else: the GitHub
 #                               release, the deploy and every git step are printed for a person to run
 #
 # What it makes, all from tmp/release/<version>/term-<platform>.tar.gz, the bytes `@term/code` releases:
@@ -16,6 +20,9 @@
 #   packages/term-<v>-1.{x86_64,aarch64}.rpm     to its launcher (task/distro/debian.sh, fedora.sh, term.spec)
 #   packages/term-<v>-windows-{x64,arm64}.zip    term\, with bin\term.exe (task/launcher/term.go) for winget
 #   winget/manifests/c/ClueSurf/Term/<v>/        ClueSurf.Term
+#   aur/PKGBUILD, aur/.SRCINFO                   term-bin for Arch, from the .deb files
+#   scoop/bucket/term.json                       the cluesurf/scoop-term bucket, from the Windows zips
+#   nix/pkgs/by-name/te/term/package.nix         nixpkgs, from the .deb files (Linux only)
 #   repo/                                        the repositories, packages included, as apt and dnf read them
 #   public/                                      the same without the packages, and load.mjs: what --commit puts on
 #                                                term.surf
@@ -62,6 +69,9 @@ load @term/base/environment
 
 load @term/base/process
   find exit
+
+load @term/base/console
+  find log
 
 load @term/base/list
   find list
@@ -1498,6 +1508,338 @@ task write-winget
       text <\n>
   send back, read dir
 
+# ---- AUR, Scoop and nixpkgs ----
+#
+# Each release also writes what three more package managers read, from the same release assets and their sha256:
+#
+#   aur/PKGBUILD, aur/.SRCINFO                  term-bin for Arch, from the two .deb files (aur.archlinux.org/term-bin)
+#   scoop/bucket/term.json                      the cluesurf/scoop-term bucket, from the two Windows zips
+#   nix/pkgs/by-name/te/term/package.nix        nixpkgs, from the two .deb files, Linux only (the release carries no
+#                                               macOS asset)
+#
+# Every value is a fixed text or a version and a hash, so nothing a release names can break the quoting.
+
+# a sha256 as nixpkgs writes it, `sha256-` and the base64 of its bytes
+bind sri-hash
+  take hex, like text
+  like text
+  case node
+    text <<("sha256-" + Buffer.from($hex, "hex").toString("base64"))>>
+
+# the sha256 of the made file whose name ends in `suffix`, the empty text when none does
+task sha-ending
+  take files, like list, like made-file
+  take suffix, like text
+  like text
+  walk list
+    read files
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call ends-with
+            read one/name
+            read suffix
+        hook hold
+          send back, read one/sha256
+  send back, text <>
+
+task write-lines
+  take file, like text
+  take lines, like list, like text
+  like void
+  call node-fs/mkdir-sync
+    call node-path/dirname
+      read file
+    call recursive-options
+  save body
+    call joined
+      read lines
+      text <\n>
+  call node-fs/write-file-sync
+    read file
+    text <{body}\n>
+
+# term-bin: the .deb's own tree under /, so /usr/lib/term and the /usr/bin/term link are the apt package's
+task write-aur
+  take version, like text
+  take debs, like list, like made-file
+  take into, like text
+  like void
+  save amd
+    call sha-ending
+      read debs
+      text <_amd64.deb>
+  save arm
+    call sha-ending
+      read debs
+      text <_arm64.deb>
+  save url, text <{releases-url()}/v{version}>
+  save lines
+    make list
+  call lines/push, text <# Maintainer: ClueSurf \<base@clue.surf\>>
+  call lines/push, text <pkgname=term-bin>
+  call lines/push, text <pkgver={version}>
+  call lines/push, text <pkgrel=1>
+  call lines/push, text <pkgdesc='{summary()}'>
+  call lines/push, text <arch=('x86_64' 'aarch64')>
+  call lines/push, text <url='{site-url()}'>
+  call lines/push, text <license=('Apache-2.0')>
+  call lines/push, text <depends=('nodejs\>={node-floor()}')>
+  call lines/push, text <provides=('term')>
+  call lines/push, text <conflicts=('term')>
+  call lines/push, text <options=('!strip' '!debug')>
+  call lines/push, text <source_x86_64=("term_$\{pkgver\}_amd64.deb::{releases-url()}/v$\{pkgver\}/term_$\{pkgver\}_amd64.deb")>
+  call lines/push, text <source_aarch64=("term_$\{pkgver\}_arm64.deb::{releases-url()}/v$\{pkgver\}/term_$\{pkgver\}_arm64.deb")>
+  call lines/push, text <sha256sums_x86_64=('{amd}')>
+  call lines/push, text <sha256sums_aarch64=('{arm}')>
+  call lines/push, text <>
+  call lines/push, text <package() \{>
+  call lines/push, text <  bsdtar -xf data.tar.xz -C "$pkgdir">
+  call lines/push, text <\}>
+  call write-lines
+    call node-path/join
+      read into
+      text <PKGBUILD>
+    read lines
+  # .SRCINFO is what `makepkg --printsrcinfo` prints for the PKGBUILD above, written from the same values
+  save info
+    make list
+  call info/push, text <pkgbase = term-bin>
+  call info/push, text <\tpkgdesc = {summary()}>
+  call info/push, text <\tpkgver = {version}>
+  call info/push, text <\tpkgrel = 1>
+  call info/push, text <\turl = {site-url()}>
+  call info/push, text <\tarch = x86_64>
+  call info/push, text <\tarch = aarch64>
+  call info/push, text <\tlicense = Apache-2.0>
+  call info/push, text <\tdepends = nodejs\>={node-floor()}>
+  call info/push, text <\tprovides = term>
+  call info/push, text <\tconflicts = term>
+  call info/push, text <\toptions = !strip>
+  call info/push, text <\toptions = !debug>
+  call info/push, text <\tsource_x86_64 = term_{version}_amd64.deb::{url}/term_{version}_amd64.deb>
+  call info/push, text <\tsha256sums_x86_64 = {amd}>
+  call info/push, text <\tsource_aarch64 = term_{version}_arm64.deb::{url}/term_{version}_arm64.deb>
+  call info/push, text <\tsha256sums_aarch64 = {arm}>
+  call info/push, text <>
+  call info/push, text <pkgname = term-bin>
+  call write-lines
+    call node-path/join
+      read into
+      text <.SRCINFO>
+    read info
+
+# the bucket's manifest: the winget zips, whose term\bin\term.exe Scoop shims onto PATH, and Node from Scoop's main
+# bucket. autoupdate lets `checkver` move it to a later release with no new file from here
+task write-scoop
+  take version, like text
+  take zips, like list, like made-file
+  take into, like text
+  like void
+  save x64
+    call sha-ending
+      read zips
+      text <-windows-x64.zip>
+  save arm
+    call sha-ending
+      read zips
+      text <-windows-arm64.zip>
+  save lines
+    make list
+  call lines/push, text <\{>
+  call lines/push, text <    "version": "{version}",>
+  call lines/push, text <    "description": "{summary()}",>
+  call lines/push, text <    "homepage": "{site-url()}",>
+  call lines/push, text <    "license": "Apache-2.0",>
+  call lines/push, text <    "notes": "term runs on Node.js {node-floor()} or newer.",>
+  call lines/push, text <    "depends": "nodejs-lts",>
+  call lines/push, text <    "architecture": \{>
+  call lines/push, text <        "64bit": \{>
+  call lines/push, text <            "url": "{releases-url()}/v{version}/term-{version}-windows-x64.zip",>
+  call lines/push, text <            "hash": "{x64}">
+  call lines/push, text <        \},>
+  call lines/push, text <        "arm64": \{>
+  call lines/push, text <            "url": "{releases-url()}/v{version}/term-{version}-windows-arm64.zip",>
+  call lines/push, text <            "hash": "{arm}">
+  call lines/push, text <        \}>
+  call lines/push, text <    \},>
+  call lines/push, text <    "bin": "term\\\\bin\\\\term.exe",>
+  call lines/push, text <    "checkver": \{>
+  call lines/push, text <        "github": "https://github.com/{repository()}">
+  call lines/push, text <    \},>
+  call lines/push, text <    "autoupdate": \{>
+  call lines/push, text <        "architecture": \{>
+  call lines/push, text <            "64bit": \{>
+  call lines/push, text <                "url": "{releases-url()}/v$version/term-$version-windows-x64.zip">
+  call lines/push, text <            \},>
+  call lines/push, text <            "arm64": \{>
+  call lines/push, text <                "url": "{releases-url()}/v$version/term-$version-windows-arm64.zip">
+  call lines/push, text <            \}>
+  call lines/push, text <        \}>
+  call lines/push, text <    \}>
+  call lines/push, text <\}>
+  call write-lines
+    call node-path/join
+      read into
+      text <term.json>
+    read lines
+
+# nixpkgs' pkgs/by-name/te/term/package.nix: the .deb unpacked, its launcher wrapped with Node on PATH
+task write-nix
+  take version, like text
+  take debs, like list, like made-file
+  take into, like text
+  like void
+  save amd
+    call sri-hash
+      call sha-ending
+        read debs
+        text <_amd64.deb>
+  save arm
+    call sri-hash
+      call sha-ending
+        read debs
+        text <_arm64.deb>
+  save lines
+    make list
+  call lines/push, text <\{>
+  call lines/push, text <  lib,>
+  call lines/push, text <  stdenv,>
+  call lines/push, text <  fetchurl,>
+  call lines/push, text <  dpkg,>
+  call lines/push, text <  makeWrapper,>
+  call lines/push, text <  nodejs,>
+  call lines/push, text <\}:>
+  call lines/push, text <>
+  call lines/push, text <let>
+  call lines/push, text <  sources = \{>
+  call lines/push, text <    x86_64-linux = \{>
+  call lines/push, text <      arch = "amd64";>
+  call lines/push, text <      hash = "{amd}";>
+  call lines/push, text <    \};>
+  call lines/push, text <    aarch64-linux = \{>
+  call lines/push, text <      arch = "arm64";>
+  call lines/push, text <      hash = "{arm}";>
+  call lines/push, text <    \};>
+  call lines/push, text <  \};>
+  call lines/push, text <  source =>
+  call lines/push, text <    sources.$\{stdenv.hostPlatform.system\}>
+  call lines/push, text <      or (throw "term: unsupported system $\{stdenv.hostPlatform.system\}");>
+  call lines/push, text <in>
+  call lines/push, text <>
+  call lines/push, text <assert lib.versionAtLeast nodejs.version "{node-floor()}";>
+  call lines/push, text <>
+  call lines/push, text <stdenv.mkDerivation (finalAttrs: \{>
+  call lines/push, text <  pname = "term";>
+  call lines/push, text <  version = "{version}";>
+  call lines/push, text <>
+  call lines/push, text <  src = fetchurl \{>
+  call lines/push, text <    url = "{releases-url()}/v$\{finalAttrs.version\}/term_$\{finalAttrs.version\}_$\{source.arch\}.deb";>
+  call lines/push, text <    inherit (source) hash;>
+  call lines/push, text <  \};>
+  call lines/push, text <>
+  call lines/push, text <  nativeBuildInputs = [>
+  call lines/push, text <    dpkg>
+  call lines/push, text <    makeWrapper>
+  call lines/push, text <  ];>
+  call lines/push, text <>
+  call lines/push, text <  unpackPhase = ''>
+  call lines/push, text <    runHook preUnpack>
+  call lines/push, text <    dpkg-deb -x $src .>
+  call lines/push, text <    runHook postUnpack>
+  call lines/push, text <  '';>
+  call lines/push, text <>
+  call lines/push, text <  dontConfigure = true;>
+  call lines/push, text <  dontBuild = true;>
+  call lines/push, text <  dontStrip = true;>
+  call lines/push, text <>
+  call lines/push, text <  installPhase = ''>
+  call lines/push, text <    runHook preInstall>
+  call lines/push, text <    mkdir -p $out/lib $out/bin>
+  call lines/push, text <    cp -r usr/lib/term $out/lib/term>
+  call lines/push, text <    makeWrapper $out/lib/term/bin/term $out/bin/term \\>
+  call lines/push, text <      --prefix PATH : $\{lib.makeBinPath [ nodejs ]\}>
+  call lines/push, text <    runHook postInstall>
+  call lines/push, text <  '';>
+  call lines/push, text <>
+  call lines/push, text <  meta = \{>
+  call lines/push, text <    description = "Compiler, package manager, test runner and language server of the Term language";>
+  call lines/push, text <    homepage = "{site-url()}";>
+  call lines/push, text <    changelog = "https://github.com/{repository()}/releases/tag/v$\{finalAttrs.version\}";>
+  call lines/push, text <    license = lib.licenses.asl20;>
+  call lines/push, text <    sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];>
+  call lines/push, text <    maintainers = with lib.maintainers; [ lancejpollard ];>
+  call lines/push, text <    platforms = builtins.attrNames sources;>
+  call lines/push, text <    mainProgram = "term";>
+  call lines/push, text <  \};>
+  call lines/push, text <\})>
+  call write-lines
+    call node-path/join
+      read into
+      text <pkgs>
+      text <by-name>
+      text <te>
+      text <term>
+      text <package.nix>
+    read lines
+
+# The three from a version's packages folder, into distro/aur, distro/scoop and distro/nix
+task write-managers
+  take version, like text
+  take packages, like text
+  take out, like text
+  like void
+  save debs
+    call made-files
+      read packages
+      text <.deb>
+  save zips
+    call made-files
+      read packages
+      text <.zip>
+  call write-aur
+    read version
+    read debs
+    call node-path/join
+      read out
+      text <aur>
+  call write-scoop
+    read version
+    read zips
+    call node-path/join
+      read out
+      text <scoop>
+      text <bucket>
+  call write-nix
+    read version
+    read debs
+    call node-path/join
+      read out
+      text <nix>
+
+# --commit copies one of the three into the checkout its variable names (TERM_AUR_DIR, TERM_SCOOP_DIR, TERM_NIX_DIR),
+# and passes it over when the variable is not set. Each folder is copied over the checkout's own, file by file
+task copy-manager
+  take from, like text
+  take variable-name, like text
+  like text
+  save to
+    call trimmed-variable
+      read variable-name
+  fork test
+    hook test
+      call is-equal
+        read to
+        text <>
+    hook hold
+      send back, text <>
+  call node-fs/cp-sync
+    read from
+    read to
+    call recursive-options
+  send back, read to
+
 # ---- the run ----
 
 task mount-of
@@ -1820,6 +2162,23 @@ task pack
       bind verb, text <winget>
       bind subject, text <ClueSurf.Term {version}>
       bind fields, read winget-fields
+  call write-managers
+    read version
+    read packages
+    read out
+  save manager-fields
+    make list
+  call manager-fields/push
+    call location
+      call show-path
+        read out
+        read term
+  call report
+    make fields-item
+      bind glyph, text <done>
+      bind verb, text <managers>
+      bind subject, text <term-bin {version} for the AUR, the Scoop manifest and the nixpkgs package>
+      bind fields, read manager-fields
   # the repositories: this version's packages, and the versions before it read back from their releases
   save repo
     call node-path/join
@@ -2187,9 +2546,56 @@ task pack
   call steps/push, text <   git -C {winget-fork} commit -m "New package: ClueSurf.Term version {version}">
   call steps/push, text <   git -C {winget-fork} push -u origin {branch}>
   call steps/push, text <   https://github.com/microsoft/winget-pkgs/compare/master...cluesurf:fork-winget-pkgs:{branch}>
+  # the AUR, Scoop and nixpkgs files, copied into the checkouts the person's alias names, each after the release
+  save aur-to
+    call copy-manager
+      call node-path/join
+        read out
+        text <aur>
+      text <TERM_AUR_DIR>
+  save scoop-to
+    call copy-manager
+      call node-path/join
+        read out
+        text <scoop>
+      text <TERM_SCOOP_DIR>
+  save nix-to
+    call copy-manager
+      call node-path/join
+        read out
+        text <nix>
+      text <TERM_NIX_DIR>
+  call steps/push, text <4. the AUR, Scoop and nixpkgs files ({out}/aur, scoop, nix), once the release exists:>
+  fork test
+    hook test
+      call is-unequal
+        read aur-to
+        text <>
+    hook hold
+      call steps/push, text <   git -C {aur-to} add PKGBUILD .SRCINFO>
+      call steps/push, text <   git -C {aur-to} commit -m "term-bin {version}">
+      call steps/push, text <   git -C {aur-to} push>
+  fork test
+    hook test
+      call is-unequal
+        read scoop-to
+        text <>
+    hook hold
+      call steps/push, text <   git -C {scoop-to} add bucket/term.json>
+      call steps/push, text <   git -C {scoop-to} commit -m "term: update to {version}">
+      call steps/push, text <   git -C {scoop-to} push>
+  fork test
+    hook test
+      call is-unequal
+        read nix-to
+        text <>
+    hook hold
+      call steps/push, text <   git -C {nix-to} add pkgs/by-name/te/term/package.nix>
+      call steps/push, text <   git -C {nix-to} commit -m "term: \<the version before\> -\> {version}">
+      call steps/push, text <   on a branch of the nixpkgs fork, then a pull request to NixOS/nixpkgs>
   call close-run
     make message-close
-      bind verdict, text <Written. Publishing is three steps, in this order>
+      bind verdict, text <Written. Publishing is four steps, in this order>
       bind message, read steps
       bind done, true
 
@@ -2210,3 +2616,37 @@ hook pack
     like text
     bind <>
   task pack
+
+# Write the AUR, Scoop and nixpkgs files of this version again from tmp/release/<version>/distro/packages/, with no
+# Docker and no key: the same writers `pack` runs
+task managers
+  like void
+  save term
+    call term-root
+  save manifest
+    call parse-json
+      call node-fs/read-file-sync
+        call node-path/join
+          read term
+          text <package.json>
+        text <utf8>
+  save version
+    call text-of
+      read manifest/version
+  save out
+    call node-path/join
+      read term
+      text <tmp>
+      text <release>
+      read version
+      text <distro>
+  call write-managers
+    read version
+    call node-path/join
+      read out
+      text <packages>
+    read out
+  call log, text <distro: wrote {out}/aur, {out}/scoop and {out}/nix for term {version}>
+
+hook managers
+  task managers

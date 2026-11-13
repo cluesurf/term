@@ -1,13 +1,13 @@
 # A manifest's declarations read from its FILE: the package name a `deck.tree` declares, any `<head>` value under its
 # `deck` statement, and whether a file is a lockfile or a role file. Ported from call/code/manifest-name.ts
-# (term-cli-in-term-0062), which was already a face: every reading of a parsed file is call/code/manifest-read.tree,
+# (term-cli-in-term-0062), which was already a face: every reading of a parsed file is make/code/manifest-read.tree,
 # with the reasons each rule is what it is. What is left is reading the file, where a file that cannot be read answers
 # as a missing manifest does: nothing, or false.
 #
 # There is ONE parser for `.tree` in this codebase (note/project/term/one-parser.md), and manifest-read.tree reads the
 # file through it, never a pattern.
 
-load @term/call/manifest-read
+load @term/make/manifest-read
   find manifest-value
   find manifest-name
   find is-lockfile-text

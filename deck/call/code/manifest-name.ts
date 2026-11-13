@@ -10,11 +10,12 @@
 // module called deck.tree (`form deck`, the manifest's own shape), which has no such statement and correctly reads
 // as undefined here.
 //
-// Every reading of a parsed file is Term since 2026-10-06, call/code/manifest-read.tree, with the reasons each rule is
-// what it is. This file reads the files, and answers undefined where the port answers none or a read fails.
+// Every reading of a parsed file is Term since 2026-10-06, make/code/manifest-read.tree (in deck/call until decision
+// 155), with the reasons each rule is what it is. This file reads the files, and answers undefined where the port
+// answers none or a read fails.
 
 import { readFileSync } from 'node:fs'
-import * as port from '@term/call/code/manifest-read'
+import * as port from '@term/make/code/manifest-read'
 
 const given = (value: port.Maybe<string>): string | undefined =>
   value.form === 'some' ? value.value : undefined
