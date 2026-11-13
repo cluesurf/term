@@ -1,0 +1,84 @@
+# @term/base/truth: a value's truth, the same on every backend, for values parsed from JSON (the dynamic values the
+# CLI reads). Held by `pnpm term:base-gate` and `term test test/edge-truth.tree --env <env>`.
+
+load @term/base/truth
+  find is-truthy
+
+load @term/base/json
+  find parse
+  find get-field
+
+# the truth of a JSON text's value
+task truth-of
+  take input, like text
+  like boolean
+  send back
+    call is-truthy
+      call parse
+        read input
+
+test <null is false>
+  want miss
+    call truth-of
+      text <null>
+
+test <false is false>
+  want miss
+    call truth-of
+      text <false>
+
+test <true is true>
+  want hold
+    call truth-of
+      text <true>
+
+test <zero is false>
+  want miss
+    call truth-of
+      text <0>
+
+test <a whole number is true>
+  want hold
+    call truth-of
+      text <7>
+
+test <a negative fraction is true>
+  want hold
+    call truth-of
+      text <-0.5>
+
+test <the empty text is false>
+  want miss
+    call truth-of
+      text <"">
+
+test <a text is true, even the text 0>
+  want hold
+    call truth-of
+      text <"0">
+
+test <an empty list is true>
+  want hold
+    call truth-of
+      text <[]>
+
+test <an empty object is true>
+  want hold
+    call truth-of
+      text <\{\}>
+
+test <a missing field is false>
+  want miss
+    call is-truthy
+      call get-field
+        call parse
+          text <\{"a": 1\}>
+        text <b>
+
+test <a present field is true>
+  want hold
+    call is-truthy
+      call get-field
+        call parse
+          text <\{"a": 1\}>
+        text <a>

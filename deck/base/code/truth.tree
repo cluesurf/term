@@ -1,0 +1,17 @@
+# Truth: whether a host value counts as true, as JavaScript's `if (value)` reads it. Absent, false, zero and the empty
+# text are false, and every other value (a list, an object, a non-empty text, a non-zero number) is true. One task on
+# every backend, over the compare module each platform already keeps (native/<platform>/compare.tree, decision 132):
+# node and the browser ask the host's `Boolean`, Rust, Swift and Kotlin their compare runtime. It replaces the
+# `bind is-truthy` copies the CLI's folders kept, each with a node case only (item term-self-host-001-1379).
+
+mark stable
+
+load @term/base/native/{platform}/compare
+  find is-truthy, name host-is-truthy
+
+task is-truthy
+  take value, like dynamic
+  like boolean
+  send back
+    call host-is-truthy
+      read value

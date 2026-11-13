@@ -44,7 +44,10 @@ enum compareRuntime {
         (v as? String) ?? ""
     }
 
+    // JSON's null is Foundation's NSNull (runtime/json.swift), false as JavaScript's `Boolean(null)` is (item
+    // term-self-host-001-1379). Told by its type's name, so this shim needs no json shim or Foundation beside it
     static func isTruthy(_ v: Any) -> Bool {
+        if String(describing: type(of: v)) == "NSNull" { return false }
         if let b = v as? Bool { return b }
         if let n = v as? Int { return n != 0 }
         if let n = v as? Double { return n != 0 }

@@ -144,7 +144,8 @@ mod prompt {
     }
 
     // the line without its newline, or "" at the end of input. A last line with no newline is answered as a line,
-    // and the read after it is ""
+    // and the read after it is "". `ended` stays set, so every later read answers "" without reading again (item
+    // 1163), though a terminal after Ctrl-D or a FIFO a second writer opens would give more
     #[cfg(unix)]
     pub async fn line_read(tool: Tool) -> String {
         let mut chunk = vec![0u8; 8192];
@@ -196,17 +197,29 @@ mod prompt {
     }
 
     // no poll(2): the blocking read on the runtime's pool. std's standard input is one buffered reader for the
-    // whole process, so nothing is lost between two calls
+    // whole process, so nothing is lost between two calls. Once a read met the end (or an error), every later read
+    // answers "" without reading again (item 1163), as the unix read does: a console after Ctrl-Z would otherwise
+    // give more lines after the end
     #[cfg(not(unix))]
-    pub async fn line_read(_tool: Tool) -> String {
-        crate::__term_hand_back(|| {
+    pub async fn line_read(tool: Tool) -> String {
+        if tool.borrow().ended {
+            return String::new();
+        }
+        let line = crate::__term_hand_back(|| {
             let mut line = String::new();
             match std::io::stdin().read_line(&mut line) {
-                Ok(0) | Err(_) => String::new(),
-                Ok(_) => line.trim_end_matches('\n').trim_end_matches('\r').to_string(),
+                Ok(0) | Err(_) => None,
+                Ok(_) => Some(line.trim_end_matches('\n').trim_end_matches('\r').to_string()),
             }
         })
-        .await
+        .await;
+        match line {
+            Some(line) => line,
+            None => {
+                tool.borrow_mut().ended = true;
+                String::new()
+            }
+        }
     }
 
     // standard input is not ours to close: the tool is dropped, the descriptor stays as the process found it

@@ -32,13 +32,15 @@ object compareRuntime {
 
     fun asText(v: Any?): String = (v as? String) ?: ""
 
+    // JSON's null is runtime/json.kt's JsonNull object, false as JavaScript's `Boolean(null)` is (item
+    // term-self-host-001-1379). Told by its class's name, so this shim needs no json shim beside it
     fun isTruthy(v: Any?): Boolean = when (v) {
         null, Unit -> false
         is Boolean -> v
         is Long -> v != 0L
         is Double -> v != 0.0
         is String -> v.isNotEmpty()
-        else -> true
+        else -> v?.let { it::class.simpleName } != "JsonNull"
     }
 
     fun above(a: Any?, b: Any?): Boolean = numeric(a) > numeric(b)

@@ -2,8 +2,12 @@
 // process/line API.
 //
 // `readLine` is synchronous and there is no asynchronous stdin in Foundation, so the read runs on a detached task
-// and the caller's task is not blocked. That is the honest shape: waiting for a person to type is not something
-// the kernel can hand back sooner.
+// and the caller's task is not blocked. Waiting for a person to type is not something the kernel can hand back
+// sooner.
+//
+// Once a read has met the end of input, every later read answers "" without reading again (item 1163), as on node,
+// rust and kotlin and as process/line declares ("The empty text means the input ended"), whether or not the C
+// library's end-of-file flag on stdin stays set.
 import Foundation
 
 enum prompt {
@@ -11,6 +15,8 @@ enum prompt {
   // same one every other target has
   final class Tool: @unchecked Sendable {
     var open = true
+    // set once a read met the end
+    var ended = false
   }
 
   static func lineOpen() async -> Tool {
@@ -23,11 +29,17 @@ enum prompt {
     return await lineRead(tool)
   }
 
-  // the line without its newline, or "" at the end of input
+  // the line without its newline, or "" at the end of input and after it
   static func lineRead(_ tool: Tool) async -> String {
-    guard tool.open else { return "" }
+    guard tool.open, !tool.ended else { return "" }
 
-    return await Task.detached { readLine(strippingNewline: true) ?? "" }.value
+    let line = await Task.detached { readLine(strippingNewline: true) }.value
+    guard let line = line else {
+      tool.ended = true
+      return ""
+    }
+
+    return line
   }
 
   static func lineClose(_ tool: Tool) async {

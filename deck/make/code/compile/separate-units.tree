@@ -446,6 +446,8 @@ form separate-run
     like hash
       like number
       like number
+  # each unit's import names (unit-slugs), by unit: what an importer's `./<slug>` lines spell
+  link unit-slugs, like list, like text
   link template-set, like graph-template-set
   link builds, like list, like unit-build
   # each name to where it is defined, unit by unit, grown as units are answered (compile/names.tree)
@@ -994,10 +996,101 @@ task key-as
   mark private
 
   save fields, own-key(run, state, checked-as)
+  # the import names of every unit reached: a renamed deck moves the name key's pointer, which then asks the name key
+  push(fields, slugs-field(run, reach-sorted(run, state/at)))
   walk state/dep-hashes
     take one
     push(fields, one)
   back hash-fields(fields)
+
+# ---- the import names in the key (item term-self-host-001-1374, resolving 1366) ----
+#
+# A UNIT IMPORTS EACH UNIT IT LOADS BY ITS IMPORT NAME, `./<slug>`, the slug the module's deck NAME plus its path
+# (`module-of`, make-plan `unitSlugOf`). The rest of the key sees a dependency only by its surface, its definitions'
+# prints and the trace, none of which holds a deck's name: renaming a deck, or a module moving under a new nested
+# deck.tree, replayed every importer with imports of units no longer written (1344, l1344a). So the key holds the
+# import name of each unit a dependent can import: the units holding a definition its name walk reaches (the name key),
+# and every unit it reaches (the surface key, the name key's pointer). A rename moves both. A unit newly reached
+# already moves the surface key, and a definition newly reached the name key, so the field moves neither for a change
+# that left every import name where it was
+
+# each unit's import names, by unit: every file of the unit, written portably, with the name its module is imported by,
+# as one fingerprint
+task unit-slugs
+  take order, like list, like list, like text
+  take held, like portable
+  take given, like separate-given
+  like list, like text
+  mark private
+
+  save module-of, given/module-of
+  save out, make list
+  walk order
+    take group
+    save written, make list
+    walk group
+      take file
+      push(written, <{portable-write(held, file)}\>{module-of(file)}>)
+    save joined, join(sort(written, from-texts), <+>)
+    push(out, separate-cache/content-hash(joined))
+  back out
+
+# the import names of `units`, sorted, as one field of a key
+task slugs-field
+  take run, like separate-run
+  take units, like list, like number
+  like text
+  mark private
+
+  save written, make list
+  walk units
+    take u
+    push(written, get(run/unit-slugs, u))
+  save joined, join(sort(written, from-texts), <+>)
+  back <imports:{joined}>
+
+# THE UNITS A UNIT CAN IMPORT: those holding a definition its name walk reaches (names.tree `names-reached-indexed`, the
+# same walk over the build's index, from the names its own modules write). The emit imports a name from its true
+# definer, which the walk reaches: a name the unit writes, or one a reached definition's type or carried text mentions
+task units-named
+  take run, like separate-run
+  take state, like unit-state
+  take used, like list, like text
+  like list, like number
+  mark private
+
+  save reached, get(run/reach, state/at)
+  save named, make hash
+  save queue, make list
+  walk used
+    take name
+    fork test, not(named/has(name))
+      hold
+        save named/{name}, true
+        push(queue, name)
+  save units
+    like hash
+      like number
+      like boolean
+    make hash
+  walk test
+    hook test, is-above(queue/length, 0)
+    hook hold
+      save name, pop(queue)
+      walk get-or-default(run/name-index, name, make list)
+        take place
+        save u, place/unit
+        fork test, reached/has(u)
+          hold
+            save units/{u}, true
+            save def, get(get(run/unit-defs, u), place/at)
+            walk def/reads
+              take read
+              fork test, not(named/has(read))
+                hold
+                  save named/{read}, true
+                  push(queue, read)
+  back units/keys()
 
 # a unit's stub definitions, as the stored answer has them or worked out from its stubs
 task defs-of
@@ -1184,6 +1277,8 @@ task named-key-as
   walk names-reached-indexed(run/name-index, run/unit-defs, sees, used, 1000000)
     take one
     push(fields, one)
+  # the import names of the units this one can import (units-named)
+  push(fields, slugs-field(run, units-named(run, state, used)))
   back hash-fields(fields)
 
 # the name key, through a pointer kept under the whole-surface key: the same surface always gives the same name key,
@@ -2145,6 +2240,7 @@ task compile-separate
       bind reach, reach
       bind under-proof, proving
       bind rank, unit-ranks(order, held-roots)
+      bind unit-slugs, unit-slugs(order, held-roots, given)
       bind template-set, template-set
       bind builds, make list
       bind name-index, make hash
