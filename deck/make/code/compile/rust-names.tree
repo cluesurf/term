@@ -206,10 +206,33 @@ task lower-or-digit
   save code, char-code-at(one, 0)
   back or(and(is-minimum(code, 97), is-maximum(code, 122)), and(is-minimum(code, 48), is-maximum(code, 57)))
 
-# `(^|-)([a-z0-9])` upper-cased, every hyphen before one dropped (`sha-256` is `Sha256`)
+# the standard prelude's types, traits and variants, which the emitted program names bare: a form or variant spelled
+# like one takes a `Term` prefix, since a type declared in the crate's root wins over the prelude. `form option`,
+# `form vec` and an async `form box` stopped rustc with E0107 (item term-self-host-001-0752). The variants Some, None,
+# Ok and Err are left out: `maybe`'s own cases spell `Maybe::Some` and `Maybe::None` through this task while the
+# emitter writes those two by hand (rust-names.tree fill-of and melt-of, rust-program.tree), so prefixing them would
+# split one enum in two
+task rust-prelude-taken
+  like list, like text
+  mark private
+
+  back split-words(<Option Result Vec String Box ToString ToOwned Clone Copy Send Sync Sized Unpin Drop Fn FnMut FnOnce Default Eq PartialEq Ord PartialOrd Iterator IntoIterator DoubleEndedIterator ExactSizeIterator Extend From Into TryFrom TryInto AsRef AsMut>)
+
+# `(^|-)([a-z0-9])` upper-cased, every hyphen before one dropped (`sha-256` is `Sha256`), a prelude name prefixed
 task pascal
   take name, like text
   like text
+
+  save spelled, pascal-raw(name)
+  fork test, has-text(rust-prelude-taken(), spelled)
+    hold
+      back <Term{spelled}>
+  back spelled
+
+task pascal-raw
+  take name, like text
+  like text
+  mark private
 
   save out, <>
   save at, 0

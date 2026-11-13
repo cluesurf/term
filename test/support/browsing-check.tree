@@ -1,0 +1,49 @@
+note <the browser harness itself, with no browser: the script it bundles and the page it serves on 127.0.0.1>
+
+# Tests of test/support/browsing.tree, beside it rather than in it: a loaded file's test blocks are not rewritten
+# (T-0878). Item term-self-host-001-1196. These need no Playwright and no Chromium, so they run on every machine; the
+# browser half is held by the web suites that drive a page through it.
+
+load ./compiling
+  find compile-text
+  find compile-choice
+
+load ./browsing
+  find browser-script
+  find serve-page
+  find stop-page
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+
+# host native: the body of a GET of `url`
+bind fetched-text
+  take url, like text
+  like text
+  mark async
+  case node
+    text <(await (await fetch($url)).text())>
+
+host program, <task twice\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n>
+
+host out, compile-text(program, make(compile-choice, bind(file, <twice.tree>), bind(env, <browser>)))
+
+test <a program compiled for the browser is bundled into one script, with the suite's own JavaScript after it>
+  want hold, out/ok
+  host script, browser-script(out, <window.__twice = twice(21)>)
+  want hold, text-contains(script, <__twice>)
+  want hold, text-contains(script, <function twice>)
+
+test <a refused program gives no script>
+  host refused, compile-text(<task broken\n  like number\n  send back, read missing-variable\n>)
+  want hold, not(refused/ok)
+  want hold, is-equal(browser-script(refused, <>), <>)
+
+test <the page is served on 127.0.0.1, every path the page and /app.js the script>
+  host served, serve-page(<window.__served = 1>)
+  want hold, starts-with(served/address, <http://127.0.0.1:>)
+  want hold, text-contains(fetched-text(served/address), <\<script src="/app.js"\>>)
+  want hold, text-contains(fetched-text(<{served/address}deep/place>), <\<body\>\</body\>>)
+  want hold, is-equal(fetched-text(<{served/address}app.js>), <window.__served = 1>)
+  stop-page(served)

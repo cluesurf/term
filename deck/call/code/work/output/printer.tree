@@ -1292,7 +1292,7 @@ bind hint-of
   take found, like dynamic
   like text
   case node
-    text <(($found).hint)>
+    text <(($found).hint ?? '')>
 
 # the standard with no cap on problems, for `--all`
 bind without-problem-cap

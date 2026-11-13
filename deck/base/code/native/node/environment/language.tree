@@ -50,7 +50,12 @@ task read-locale
       bind tag, read tag
       bind timezone, read timezone
 
+# a list of locale tags, declared so the emitted list is typed as text (an undeclared list of a dynamic read emitted
+# number[], item 1358)
 task known-locales
+  like list
+    like text
+
   save options
     call locale-options
   save tag, read options/locale

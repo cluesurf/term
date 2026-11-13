@@ -2999,10 +2999,11 @@ task emit-statement
       link guard-body
       link guard-catch
       # the handler is written first, as the original computed it before the body
-      # an integer overflow is a stop (D15): every catch passes `__TermStop` on first, and the class rides in with the int
-      # prelude, so a guard asks for that prelude
+      # an integer overflow is a stop (D15): every catch passes a stop on first. It is told by its name, never by
+      # instanceof (term/compiler decision 017): each unit carries its own `__TermStop` class, so a stop raised in
+      # another unit is not an instance of this one's. A guard still asks for the int prelude, as before
       save st/int-used, true
-      save handler, < catch (__stop: any) \{ if (__stop instanceof __TermStop) throw __stop \}>
+      save handler, < catch (__stop: any) \{ if (__stop?.name === "__TermStop") throw __stop \}>
       sift guard-catch
         case some
           link clause
@@ -3012,7 +3013,7 @@ task emit-statement
           fork test, st/site-local
             hold
               save appended, < __termFrame({caught}, __site);>
-          save handler, < catch ({caught}: any) \{ if ({caught} instanceof __TermStop) throw {caught};{appended}{substring(emit-block(clause/body, depth, st, facts), 1)}>
+          save handler, < catch ({caught}: any) \{ if ({caught}?.name === "__TermStop") throw {caught};{appended}{substring(emit-block(clause/body, depth, st, facts), 1)}>
         case none
           save nothing, 0
       back <try {emit-block(guard-body, depth, st, facts)}{handler}>

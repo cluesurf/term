@@ -315,7 +315,10 @@ task run-native-test-file
       hold
         save chosen, phrase
     asked/push(make(report-test, bind(name, host-text(one/name)), bind(line, line), bind(cases, cases), bind(label, host-text(one/label)), bind(chosen, chosen)))
-  node-file/write-file-sync(report-file, report-text(load, asked))
+  # one report path per test file, which another `term test` process running the same file writes too: written whole
+  # by a rename, and compiled from this run's own text, never read back, so a run never compiles another's report
+  save asked-report, report-text(load, asked)
+  save report-written, native-report-written(report-file, asked-report)
   save resolving, face-project-resolver(make-project-resolver(root, env))
   save real, host-text(node-file/realpath-sync(file))
   save rewritten, host-text(input/text)
@@ -331,7 +334,7 @@ task run-native-test-file
         hold
           back rewritten-source(found, rewritten)
       back found
-  save report-source, make(source-ask, bind(file, report-file), bind(text, host-text(node-file/read-file-sync(report-file, <utf8>))))
+  save report-source, make(source-ask, bind(file, report-file), bind(text, asked-report))
   save result, compile-module/compile(report-source, make(compile-ask, bind(resolve, resolve), bind(env, env), bind(role-of, input/role-of), bind(lean-of, input/lean-of), bind(deck-of, input/deck-of)))
   fork test, not(is-truthy(result/ok))
     hold
@@ -353,21 +356,24 @@ task run-native-test-file
           save emitted, emit-kotlin(result/program, wake-of(result/wake), false, emit-refused)
   save prelude, host-text(native-module/native-prelude(result/program, env, runtime-reader(), emitted))
   # compiled: the run pool's next file may build, and this one waits for a run slot (item 0158). The toolchain builds
-  # into the slot's own folder, so no build writes over a program another slot is running
+  # into a folder this run leases across processes (item term-self-host-001-1363, T-1288b): slot-1, slot-2 ... under
+  # cache/test-native/<env>, the first whose '<folder>.lease' it creates, from the run slot on. A second `term test` of
+  # the package on the env builds in another folder, never over this program, and the folders stay a small pool whose
+  # toolchain caches stay warm
   save run-slot, gate-slot(input/gate)
-  save folder, work
-  fork test, is-above(run-slot, 0)
-    hold
-      save folder, node-path/join(work, <slot-{run-slot}>)
+  save folder, native-folder-leased(work, run-slot)
   # built as `term make --emit <env> --build` builds a program, with the same main, so a test runs on the 1 GiB stack
   # thread a program runs on, under the same driver for an async or raising entry
   save built, build-native(make(build-ask, bind(source, <{prelude}\n{emitted}>), bind(target, env), bind(folder, folder), bind(name, <term-test>), bind(entry, report-name())))
   fork test, not(is-truthy(built/ok))
     hold
+      save freed, native-folder-freed(folder)
       save none, make list
       back failed(<the {env} build failed: {reason-line(host-text(built/reason))}>, none)
-  # THE CHILD, its report the file every target writes, and what it reported stands however it ended
+  # THE CHILD, its report the file every target writes, and what it reported stands however it ended. The folder's
+  # lease is given back once the child has ended
   save ran, run-reported(built/command, root, file, limit-of(input/limit))
+  save freed, native-folder-freed(folder)
   save results, make list
   save all-held, true
   walk settle-report(names, ran/report/entries, ran/stop)
@@ -424,6 +430,36 @@ bind gate-slot
   like number
   case node
     text <<Number((await ((given) => (typeof given === "function" ? given() : 0))($gate)) ?? 0)>>
+
+# The folder a native test's build runs in, leased across processes (item term-self-host-001-1363): `<work>/slot-<n>`
+# for the first n from `start` (1 at least) whose `slot-<n>.lease` this process creates with an exclusive create
+# (`wx`), the lease holding its pid. A lease whose pid is dead (or that holds no pid and is older than 10 s, a creator
+# that died between the create and the write) is taken over, under a `<lease>.take` guard made the same way, so two
+# processes never both take one stale lease; a guard older than 30 s is a taker that died and is cleared. A lease this
+# process holds is held, so two runs inside one process never share a folder either. Nothing waits: a held folder is
+# passed over for the next
+bind native-folder-leased
+  take work, like text
+  take start, like number
+  like text
+  case node
+    text <<((nl_work, nl_start) => { const nl_fs = process.getBuiltinModule("node:fs"); const nl_path = process.getBuiltinModule("node:path"); const nl_own = String(process.pid); const nl_held = (nl_lease) => { let nl_text; try { nl_text = nl_fs.readFileSync(nl_lease, "utf8").trim() } catch (nl_problem) { return nl_problem?.code !== "ENOENT" } const nl_pid = Number(nl_text); if (!(Number.isInteger(nl_pid) && nl_pid > 0)) { try { return Date.now() - nl_fs.statSync(nl_lease).mtimeMs < 10000 } catch { return false } } try { process.kill(nl_pid, 0); return true } catch (nl_problem) { return nl_problem?.code === "EPERM" } }; const nl_create = (nl_lease) => { let nl_fd; try { nl_fd = nl_fs.openSync(nl_lease, "wx") } catch (nl_problem) { if (nl_problem?.code === "EEXIST") { return false } throw nl_problem } try { nl_fs.writeSync(nl_fd, nl_own) } finally { nl_fs.closeSync(nl_fd) } return true }; const nl_claim = (nl_lease) => { if (nl_create(nl_lease)) { return true } if (nl_held(nl_lease)) { return false } const nl_guard = nl_lease + ".take"; if (!nl_create(nl_guard)) { try { if (Date.now() - nl_fs.statSync(nl_guard).mtimeMs > 30000) { nl_fs.unlinkSync(nl_guard) } } catch {} return false } try { if (nl_held(nl_lease)) { return false } try { nl_fs.unlinkSync(nl_lease) } catch {} return nl_create(nl_lease) } finally { try { nl_fs.unlinkSync(nl_guard) } catch {} } }; nl_fs.mkdirSync(nl_work, { recursive: true }); for (let nl_slot = Math.max(1, Math.floor(nl_start) || 1); ; nl_slot += 1) { const nl_folder = nl_path.join(nl_work, "slot-" + nl_slot); if (nl_claim(nl_folder + ".lease")) { return nl_folder } } })($work, $start)>>
+
+# a leased folder given back: its lease removed when it still holds this process's pid, true when it was
+bind native-folder-freed
+  take folder, like text
+  like boolean
+  case node
+    text <<((nf_folder) => { const nf_fs = process.getBuiltinModule("node:fs"); const nf_lease = nf_folder + ".lease"; try { if (nf_fs.readFileSync(nf_lease, "utf8").trim() !== String(process.pid)) { return false } nf_fs.unlinkSync(nf_lease); return true } catch { return false } })($folder)>>
+
+# a report written whole: to a file of this process's own beside it, then renamed over it, so a reader in another
+# process sees one run's report or another's, never a cut one. True when written
+bind native-report-written
+  take path, like text
+  take text, like text
+  like boolean
+  case node
+    text <<((nr_path, nr_text) => { const nr_fs = process.getBuiltinModule("node:fs"); const nr_own = nr_path + "." + process.pid + ".writing"; nr_fs.writeFileSync(nr_own, nr_text); nr_fs.renameSync(nr_own, nr_path); return true })($path, $text)>>
 
 # the seconds `--limit` said, 0 for nothing
 bind limit-of

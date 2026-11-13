@@ -1,37 +1,61 @@
-// Channel runtime over tokio's unbounded mpsc. The opaque handle a seed channel holds is a SeedChannel pairing the
-// sender (Clone, multi-producer) with an Rc<Mutex<receiver>> (the single consumer, shareable through the Clone-derived
-// struct). A message is any Term value, boxed as the unknown (`Rc<dyn Any>`): the public `channel` form is what types
-// it, by a downcast on the way out. send never blocks (unbounded); receive awaits the next value. Reached only through
-// the public channel API.
+// Channel runtime over a queue the program's one loop owns. The opaque handle a seed channel holds is a SeedChannel,
+// an Rc'd buffer of messages (Clone, so every holder shares the one queue). A message is any Term value, boxed as the
+// unknown (`Rc<dyn Any>`): the public `channel` form is what types it, by a downcast on the way out. send never blocks
+// (unbounded); receive waits for the next value. Reached only through the public channel API.
+//
+// The queue is the loop's own (note/project/term/decision/001-native-work-hands-back-to-the-loop.md), never a tokio
+// channel. `__term_block_on` polls every waiting future each round with a no-op waker and stops with the defect when a
+// round ends no wait. A tokio receive that took a message counted nothing, so two jobs passing messages back and forth
+// stopped there although each round moved a message (item 1155). A receive here counts as an ended wait.
 mod channel {
     use std::any::Any;
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
     use std::rc::Rc;
-    use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-    use tokio::sync::Mutex;
 
     #[derive(Clone)]
     pub struct SeedChannel {
-        sender: UnboundedSender<Rc<dyn Any>>,
-        receiver: Rc<Mutex<UnboundedReceiver<Rc<dyn Any>>>>,
+        queue: Rc<RefCell<VecDeque<Rc<dyn Any>>>>,
     }
 
     pub fn make() -> SeedChannel {
-        let (sender, receiver) = unbounded_channel();
         SeedChannel {
-            sender,
-            receiver: Rc::new(Mutex::new(receiver)),
+            queue: Rc::new(RefCell::new(VecDeque::new())),
         }
     }
 
     pub async fn send(target: SeedChannel, item: Rc<dyn Any>) {
-        let _ = target.sender.send(item);
+        target.queue.borrow_mut().push_back(item);
     }
 
-    // every sender is held by the channel itself, so the queue never closes while a receiver waits; the unit is
-    // unreachable rather than a default anyone can see
+    // the next message, once one is queued: re-polled by the loop each round until then
+    struct Next {
+        source: SeedChannel,
+    }
+
+    impl std::future::Future for Next {
+        type Output = Rc<dyn Any>;
+        fn poll(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Rc<dyn Any>> {
+            let item = self.source.queue.borrow_mut().pop_front();
+            match item {
+                Some(item) => {
+                    crate::__term_progressed();
+                    std::task::Poll::Ready(item)
+                }
+                None => {
+                    cx.waker().wake_by_ref();
+                    std::task::Poll::Pending
+                }
+            }
+        }
+    }
+
+    // a receive nothing ever sends to waits for ever, so the loop reports it as a wait nothing can finish
     pub async fn receive(source: SeedChannel) -> Rc<dyn Any> {
-        let mut guard = source.receiver.lock().await;
-        guard.recv().await.unwrap_or_else(|| Rc::new(()))
+        Next { source }.await
     }
 
     pub async fn close(_target: SeedChannel) {}

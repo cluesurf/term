@@ -29,7 +29,7 @@
     "format": "prettier --write \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "host": "pnpm run make && pnpm publish --access public",
     "install:all": "pnpm install && (cd deck/deck && pnpm install) && (cd deck/mill && pnpm install) && (cd deck/base && pnpm install) && (cd deck/flow && pnpm install --ignore-workspace)",
-    "make:port": "pnpm exec tsx task/port-build.ts",
+    "make:port": "node task/launch.mjs port-build",
     "stage0:pin": "pnpm exec tsx task/stage0.ts pin",
     "stage0:show": "pnpm exec tsx task/stage0.ts show",
     "make:load": "pnpm run make:port && node host/line.js boot task/make-load.tree -- write",

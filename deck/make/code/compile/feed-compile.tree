@@ -1893,6 +1893,34 @@ task fault-walk
   fork test, not(is-group(one))
     hold
       back
+  # a `bind <name>` over a bare `mine text` with rules under it is a span capture (read-feed-mine-rule): that `mine
+  # text` names no literal by design, so only the rules under it are walked (item term-self-host-001-1352: json's
+  # number, line 66, was refused as "names no text")
+  fork test, headed(one, <bind>)
+    hold
+      save spanned, false
+      walk groups-only(siblings-of(one))
+        take probe
+        fork test, and(headed(probe, <mine>), maybe-is(word-in(kid-at(kids-in(probe), 1)), <text>))
+          hold
+            sift find-headed(groups-only(siblings-of(probe)), <mine>)
+              case some
+                link first-rule
+                save spanned, true
+              case none
+                save nothing, 0
+      fork test, spanned
+        hold
+          walk kids-in(one)
+            take part
+            fork test, and(headed(part, <mine>), maybe-is(word-in(kid-at(kids-in(part), 1)), <text>))
+              hold
+                walk kids-in(part)
+                  take inner-part
+                  fault-walk(inner-part, out)
+              miss
+                fault-walk(part, out)
+          back
   fork test, headed(one, <mine>)
     hold
       save kind-read, word-in(kid-at(kids-in(one), 1))
@@ -1912,6 +1940,36 @@ task fault-walk
               push(out, <`mine {kind}` at line {line} names no {noun}, so the reader would stop checking it. Write the literal after it: `mine {kind}, \<.\>`, `mine {kind}, text \<.\>`{extra}>)
             case some
               link rule
+              save nothing, 0
+      # a `mine form` whose name is not on its own line reads to nothing, and a repetition or choice whose children all
+      # read to nothing generates a loop that never moves the cursor and captures a name nothing defines (item
+      # term-self-host-001-0516: json's whitespace lists were spelled `mine` / `list` / `mine form` / `form whitespace`)
+      # a `mine form` with `mine` rules under it is a rule NAMED form (otf/table/shared), not a reference
+      fork test, maybe-is(kind-read, <form>)
+        hold
+          sift find-headed(groups-only(siblings-of(one)), <mine>)
+            case none
+              sift read-feed-mine-rule(one)
+                case none
+                  save line, add(span-of-whole(one)/start/line, 1)
+                  push(out, <`mine form` at line {line} names no form, so the reader would skip that position. Write the name after it: `mine form, form \<name\>`>)
+                case some
+                  link rule
+                  save nothing, 0
+            case some
+              link body
+              save nothing, 0
+      fork test, or(maybe-is(kind-read, <list>), or(maybe-is(kind-read, <any>), maybe-is(kind-read, <maybe>)))
+        hold
+          sift read-feed-mine-rule(one)
+            case some
+              link rule
+              fork test, is-equal(rule-children(rule)/length, 0)
+                hold
+                  save said, kind-word(rule)
+                  save line, add(span-of-whole(one)/start/line, 1)
+                  push(out, <`mine {said}` at line {line} reads no rule, so the reader would loop or choose over nothing. Write its rules indented under it: `mine {said}` then `mine form, form \<name\>`>)
+            case none
               save nothing, 0
   walk kids-in(one)
     take child
@@ -2711,6 +2769,7 @@ task compile-named-rule
       sift only
         case list
           link inner-children
+          link inner-count
           push(out, <task {task-name}>)
           push(out, <  take cursor, like {ops/cursor-type}>)
           push-all(out, takes)
@@ -2719,7 +2778,14 @@ task compile-named-rule
           push(out, <    make list>)
           push(out, <  walk test>)
           push(out, <    hook test>)
-          push(out, <      call not, call {ops/at-end}(read(cursor))>)
+          # a count-less list stops on its children's whole FIRST set (item 1352); this path has never read a count,
+          # so a counted one keeps the end of input as its only stop, as before
+          sift inner-count
+            case none
+              push-all(out, list-test(inner-children, ops, grammar, <      >))
+            case some
+              link counted
+              push(out, <      call not, call {ops/at-end}(read(cursor))>)
           push(out, <    hook hold>)
           save state/in-repetition, add(state/in-repetition, 1)
           compile-sequence(inner-children, 3, ops, grammar, scope, state, out, helpers)
@@ -3034,7 +3100,7 @@ task compile-expr
           push(out, <{p}      call not, call {ops/at-end}(read(cursor))>)
           push(out, <{p}      call is-below(call(size(read({local-name}))), {known/text})>)
         case none
-          push(out, <{p}    call not, call {ops/at-end}(read(cursor))>)
+          push-all(out, list-test(list-children, ops, grammar, <{p}    >))
       push(out, <{p}  hook hold>)
       save before, scope/sends/length
       save inner, make list
@@ -3349,6 +3415,246 @@ task first-of-rule
     push(inner, one)
   push(inner, name)
   back first-of-sequence(rules, grammar, inner)
+
+# the WHOLE set of code points a rule can begin with, none when any part of it cannot be decided. `first-of` may
+# answer part of the set (the optional rules before an undecided one), which is enough to choose a branch but not to
+# stop a repetition: a count-less list stops where the next code is outside this set, so a part of it would stop the
+# list early (decision for term-self-host-001-1325, option a; item 1352). A repetition, an optional and a rule that
+# can match nothing let the rules after them begin too, and a `not` takes its codes out of what follows it
+task whole-first-of
+  take rule, like feed-rule
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like maybe, like list, like first-span
+  mark private
+
+  sift rule
+    case char
+      back first-of(rule, grammar, seen)
+    case text
+      back first-of(rule, grammar, seen)
+    case range
+      back first-of(rule, grammar, seen)
+    case form
+      back whole-first-of-rule(name, grammar, seen)
+    case span
+      back whole-first-of-sequence(children, grammar, seen)
+    case check
+      back whole-first-of-sequence(children, grammar, seen)
+    case maybe
+      back whole-first-of-sequence(children, grammar, seen)
+    case list
+      back whole-first-of-sequence(children, grammar, seen)
+    case any
+      save out, make list
+      walk children
+        take child
+        sift whole-first-of(child, grammar, seen)
+          case some
+            link spans
+            walk spans
+              take one
+              push(out, one)
+          case none
+            back make none
+      back make(some, out)
+    miss
+      back make none
+
+# the whole set a sequence can begin with: each rule's own until one that must match, none when a rule on the way
+# cannot be decided or when every rule can match nothing (then nothing tells when the sequence stops)
+task whole-first-of-sequence
+  take rules, like list, like feed-rule
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like maybe, like list, like first-span
+  mark private
+
+  save out, make list
+  save banned, make list
+  walk rules
+    take rule
+    sift rule
+      case not
+        walk codes
+          take code
+          push(banned, code)
+        turn next
+      case send
+        turn next
+      case let
+        turn next
+      case value
+        turn next
+      case start
+        turn next
+      miss
+        save nothing, 0
+    sift whole-first-of(rule, grammar, seen)
+      case some
+        link spans
+        walk spans-without(spans, banned)
+          take one
+          push(out, one)
+        fork test, not(is-nullable(rule, grammar, seen))
+          hold
+            back make(some, out)
+      case none
+        back make none
+  back make none
+
+task whole-first-of-rule
+  take name, like text
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like maybe, like list, like first-span
+  mark private
+
+  fork test, has-text-in(seen, name)
+    hold
+      back make none
+  fork test, not(grammar/has(name))
+    hold
+      back make none
+  save rules, grammar/get(name)
+  save inner, make list
+  walk seen
+    take one
+    push(inner, one)
+  push(inner, name)
+  back whole-first-of-sequence(rules, grammar, inner)
+
+# whether a rule can match without reading anything: a repetition (it may repeat no times), an optional, a span or a
+# rule whose every part can, a choice one of whose branches can. A rule met again while it is being asked (left
+# recursion) is taken to read something
+task is-nullable
+  take rule, like feed-rule
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like boolean
+  mark private
+
+  sift rule
+    case maybe
+      back true
+    case check
+      back true
+    case list
+      back true
+    case span
+      back all-nullable(children, grammar, seen)
+    case any
+      walk children
+        take child
+        fork test, is-nullable(child, grammar, seen)
+          hold
+            back true
+      back false
+    case form
+      fork test, has-text-in(seen, name)
+        hold
+          back false
+      fork test, not(grammar/has(name))
+        hold
+          back false
+      save inner, make list
+      walk seen
+        take one
+        push(inner, one)
+      push(inner, name)
+      back all-nullable(grammar/get(name), grammar, inner)
+    miss
+      back false
+
+task all-nullable
+  take rules, like list, like feed-rule
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like boolean
+  mark private
+
+  walk rules
+    take rule
+    sift rule
+      case not
+        turn next
+      case send
+        turn next
+      case let
+        turn next
+      case value
+        turn next
+      case start
+        turn next
+      miss
+        save nothing, 0
+    fork test, not(is-nullable(rule, grammar, seen))
+      hold
+        back false
+  back true
+
+# the spans with every banned code taken out, a span split around a code inside it
+task spans-without
+  take spans, like list, like first-span
+  take banned, like list, like float
+  like list, like first-span
+  mark private
+
+  save current, make list
+  walk spans
+    take one
+    push(current, one)
+  walk banned
+    take code
+    save kept, make list
+    walk current
+      take one
+      fork test, or(is-below(code, one/base), is-above(code, one/head))
+        hold
+          push(kept, one)
+          turn next
+      fork test, is-above(code, one/base)
+        hold
+          save below
+            make first-span
+              bind base, one/base
+              bind head, subtract(code, 1.0)
+          push(kept, below)
+      fork test, is-below(code, one/head)
+        hold
+          save above
+            make first-span
+              bind base, add(code, 1.0)
+              bind head, one/head
+          push(kept, above)
+    save current, kept
+  back current
+
+# the test a count-less list repeats on: not at the end, and the next code in its children's whole FIRST set; only
+# not at the end where that set cannot be decided (the decision for term-self-host-001-1325, option a)
+task list-test
+  take children, like list, like feed-rule
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take p, like text
+  like list, like text
+  mark private
+
+  save lines, make list
+  save none-seen, make list
+  sift whole-first-of-sequence(children, grammar, none-seen)
+    case some
+      link spans
+      fork test, is-above(spans/length, 0)
+        hold
+          push(lines, <{p}call and>)
+          push(lines, <{p}  call not, call {ops/at-end}(read(cursor))>)
+          push(lines, <{p}  {span-test(spans, <call({ops/peek-code}(read(cursor)))>)}>)
+          back lines
+    case none
+      save nothing, 0
+  push(lines, <{p}call not, call {ops/at-end}(read(cursor))>)
+  back lines
 
 task is-form-rule
   take rule, like feed-rule
@@ -3737,6 +4043,16 @@ task first-test
   mark private
 
   save none-seen, make list
+  # the whole set first, where it can be decided: the first child's own set misses what an optional or a repetition
+  # at its start lets begin (json's `pair` begins with whitespace OR a quote, item 1352)
+  sift whole-first-of-sequence(children, grammar, none-seen)
+    case some
+      link whole
+      fork test, is-above(whole/length, 0)
+        hold
+          back span-test(whole, <call({ops/peek-code}(read(cursor)))>)
+    case none
+      save nothing, 0
   save spans, make list
   walk children
     take child

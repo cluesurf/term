@@ -102,12 +102,17 @@ task kotlin-keywords
 
   back split-words(<as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while>)
 
-# the java.lang classes the runtime shims name bare: a Term name that would spell one takes a `Term` prefix
+# the default-imported classes (java.lang, kotlin, kotlin.collections, kotlin.text) the emitted program and the runtime
+# shims name bare: a Term name that would spell one takes a `Term` prefix, since a class declared in the file wins over
+# the import. `form result` took kotlin.Result from job.kt's continuations and `form throwable` every emitted catch
+# (item term-self-host-001-0752). The list is every such name the Kotlin emitter, its prelude and the runtimes write
+# bare (tmp/self-host/0752/scan-emit.ts), less the Term primitives' own spellings (Boolean, Number, Integer, List,
+# Unit, Any, Map, Array), which a `like` reaches through kotlin-primitive and the checker's seeding
 task jvm-shadowed
   like list, like text
   mark private
 
-  back split-words(<System Math Thread Runtime Process ProcessBuilder Character StringBuilder>)
+  back split-words(<System Math Thread Runtime Process ProcessBuilder Character StringBuilder Result Throwable Error Pair Regex Nothing MutableList MutableMap ArrayList HashMap LinkedHashMap Collection CharSequence Object Function String Long Int Double ByteArray LongArray CharArray IntArray DoubleArray RuntimeException IllegalStateException IllegalArgumentException ArithmeticException IndexOutOfBoundsException NumberFormatException>)
 
 # every `-` before a lowercase letter or a digit dropped and that character upper-cased (`sha-256` to `sha256`), as
 # `/-([a-z0-9])/g` did. Any other `-` stays

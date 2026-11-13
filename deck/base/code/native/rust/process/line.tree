@@ -1,5 +1,5 @@
-# rust line reading, over tokio's asynchronous standard input. Internal: reached only through the public
-# process/line API.
+# rust line reading, over standard input read by the program's own loop (a read is made once poll(2) says it would
+# not wait, so a wait for a line holds no pool worker). Internal: reached only through the public process/line API.
 
 dock type
   load <prompt::Tool>, name line-dock

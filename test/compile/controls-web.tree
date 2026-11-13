@@ -1,0 +1,193 @@
+note <Face's platform controls on the web: each is the browser's own control, and its value goes both ways through it, in headless Chromium>
+
+# Ported from controls-web.ts by statement (item term-self-host-001-1196), one test per `ok` in its order. Compiled for
+# the `browser` env (native-dom-0026), each control reaches its generic implementation, which is the browser's own
+# control, and the value goes both ways through it:
+#
+#   slider   the browser's range input: the range's 40 is its value, a move the person makes (the value changed and
+#            `input` fired, which is what a drag does) is written into the range, and writing the range moves it
+#   select   the browser's `<select>`: the signal's `medium` is chosen, a choice the person makes (the value changed and
+#            `change` fired) is written into the signal, and writing the signal moves it
+#   input    the browser's text field, both ways, and dialog a modal shown only while its disclosure is open
+#
+# The same facts test/compile/toolkit-view.ts holds on AppKit, UIKit and Android. The program and the page's own
+# JavaScript are the original's, byte for byte. The page runs once through test/support/browsing (bundled, served on
+# 127.0.0.1, opened in headless Chromium), the JavaScript writes what it saw into `window.__said`, and each test reads
+# its part. Where Playwright or its Chromium is absent each browser test says `skip` with the reason. The original
+# skipped before it compiled: here the two compile tests still run.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/browsing
+  find browser-absent
+  find browser-script
+  find open-browser
+  find page-ask
+  find close-browser
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/list
+  find push
+
+host program, <load @term/site/code/dom/dom\n  find view\n  find page-body\n\nload @term/site/code/view/reactive\n  find signal\n  find write-signal\n\nload @term/face/code/component/slider\n  find slider\n\nload @term/face/code/logic/range\n  find make-range\n  find range-value\n\nload @term/face/code/component/select\n  find select\n\nload @term/face/code/component/input\n  find input\n\nload @term/face/code/component/dialog\n  find dialog\n\nload @term/face/code/logic/disclosure\n  find make-disclosure\n  find open-disclosure\n\nload @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n\nload @term/base/code/list\n  find list\n\nform held-range\n  note shared\n  link range, like signal float\n\nhost held\n  make held-range\n    bind range\n      call make-range\n        bind start, code 40.0\n\nform held-choice\n  note shared\n  link size, like signal text\n\ntask first-size\n  like signal text\n  send back\n    call make-signal\n      bind value, text \<medium\>\n\ntask first-greeting\n  like signal text\n  send back\n    call make-signal\n      bind value, text \<hello\>\n\nform held-text\n  note shared\n  link greeting, like signal text\n\nhost written\n  make held-text\n    bind greeting, call first-greeting\n\ntask first-asking\n  like signal boolean\n  send back\n    call make-disclosure\n      bind start, false\n\nform held-asking\n  note shared\n  link asking, like signal boolean\n\nhost shown\n  make held-asking\n    bind asking, call first-asking\n\nview dialog-body\n  take host, like view\n  view span\n    text \<Sure?\>\n\ntask open-dialog\n  call open-disclosure\n    bind self, read shown/asking\n\ntask greeting\n  like text\n  send back\n    call read-signal\n      bind self, read written/greeting\n\ntask set-greeting\n  take to, like text\n  call write-signal\n    bind self, read written/greeting\n    bind value, read to\n\n# made right in the host: this failed until make-signal said like signal t (native-dom-0044)\nhost chosen\n  make held-choice\n    bind size\n      call make-signal\n        bind value, text \<medium\>\n\ntask size-names\n  like list\n    like text\n  save names\n    make list\n  call push\n    bind list, read names\n    bind item, text \<small\>\n  call push\n    bind list, read names\n    bind item, text \<medium\>\n  call push\n    bind list, read names\n    bind item, text \<large\>\n  send back, read names\n\ntask mount-page\n  save body, call page-body\n  call slider\n    read body\n    text \<\>\n    read held/range\n    code 0.0\n    code 100.0\n    code 0.5\n  call select\n    read body\n    text \<\>\n    read chosen/size\n    call size-names\n  call input\n    read body\n    text \<\>\n    read written/greeting\n    text \<Your name\>\n  call dialog\n    read body\n    text \<\>\n    read shown/asking\n    text \<Delete it?\>\n    read dialog-body\n\ntask size\n  like text\n  send back\n    call read-signal\n      bind self, read chosen/size\n\ntask set-size\n  take to, like text\n  call write-signal\n    bind self, read chosen/size\n    bind value, read to\n\ntask volume\n  like float\n  send back\n    call range-value\n      read held/range\n\ntask set-volume\n  take to, like float\n  call write-signal\n    bind self, read held/range\n    bind value, read to\n>
+
+host harness, <\n\{\nmountPage()\nconst range = document.querySelector('input[type=range]')\nconst said = \{ shown: range.type + ' ' + range.value \}\nrange.value = '37.5'\nrange.dispatchEvent(new Event('input'))\nsaid.heard = String(volume())\nsetVolume(20)\nsaid.moved = range.value\nconst picker = document.querySelector('select')\nsaid.picked = picker.options.length + ' ' + picker.value\npicker.value = 'large'\npicker.dispatchEvent(new Event('change'))\nsaid.chosen = size()\nsetSize('small')\nsaid.repicked = picker.value\nconst field = document.querySelector('input[type=text]')\nsaid.field = field.placeholder + ' ' + field.value\nfield.value = 'hello world'\nfield.dispatchEvent(new Event('input'))\nsaid.typed = greeting()\nsetGreeting('bye')\nsaid.rewritten = field.value\nconst frame = document.querySelector('[role=dialog]')\nsaid.dialog = frame.getAttribute('aria-modal') + ' ' + frame.querySelector('h2').textContent + ' ' + frame.querySelector('span').textContent\nsaid.hidden = getComputedStyle(frame).display\nopenDialog()\nsaid.showing = getComputedStyle(frame).display\nwindow.__said = said\n\}\n>
+
+host out, compile-text(program, make(compile-choice, bind(file, <slider.tree>), bind(project, <.>), bind(project-env, <browser>), bind(env, <browser>)))
+
+# what the page wrote into window.__said, in the order the tests read it
+host keys, make list(<shown>, <heard>, <moved>, <picked>, <chosen>, <repicked>, <field>, <typed>, <rewritten>, <dialog>, <hidden>, <showing>)
+
+# the page, run once: `state` <open> when it ran, <skipped> with the reason, <failed> when the page raised
+form held-run
+  mark shared
+  link done, like boolean
+  link state, like text
+  link reason, like text
+  link said, like list, like text
+
+host held, make(held-run, bind(done, false), bind(state, <>), bind(reason, <>), bind(said, make list))
+
+task the-run
+  like held-run
+  mark async
+
+  fork test, held/done
+    hold
+      back held
+  save held/done, true
+  save absent, browser-absent()
+  fork test, is-unequal(absent, <>)
+    hold
+      save held/state, <skipped>
+      save held/reason, absent
+      back held
+  save script, <>
+  fork
+    mark unsafe
+    save script, browser-script(out, harness)
+  halt take
+    take problem
+    save held/state, <failed>
+    back held
+  host open, open-browser(script)
+  save held/state, open/state
+  save held/reason, open/reason
+  fork test, is-equal(open/state, <open>)
+    hold
+      fork
+        mark unsafe
+        walk keys
+          take key, like text
+          held/said/push(page-ask(open, <String(window.__said.{key})>))
+      halt take
+        take problem
+        save held/state, <failed>
+      close-browser(open)
+  back held
+
+# what the page saw at `at`, <nothing said> when it saw nothing there (<none> is a display the page can say)
+task said-of
+  take at, like number
+  like text
+  mark async
+
+  save said, the-run()/said
+  fork test, is-below(at, said/length)
+    hold
+      back said/{at}
+  back <nothing said>
+
+test <the controls compile for the browser>
+  want hold, out/ok
+
+test <the browser gets the generic slider, a range input>
+  want hold, text-contains(out/emitted, <"range">)
+
+test <the slider is the browser's range input, showing the range's 40>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(0), <range 40>)
+
+test <a move to 37.5 made on the input, half a step, is written into the range>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(1), <37.5>)
+
+test <the range written to 20 moves the input>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(2), <20>)
+
+test <the select is the browser's own, three options, showing the signal's medium>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(3), <3 medium>)
+
+test <large chosen on it is written into the signal>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(4), <large>)
+
+test <the signal written to small moves it>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(5), <small>)
+
+test <the input is the browser's own text field, its placeholder set, showing the signal's hello>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(6), <Your name hello>)
+
+test <hello world typed into it is written into the signal>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(7), <hello world>)
+
+test <the signal written to bye shows in it>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(8), <bye>)
+
+test <the dialog is a modal dialog holding its title and content>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(9), <true Delete it? Sure?>)
+
+test <it is hidden while the disclosure is closed>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(10), <none>)
+
+test <and shown when it opens>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said-of(11), <block>)

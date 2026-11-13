@@ -435,6 +435,16 @@ const WORD_PROGRAMS: Record<string, { text: string; answer: string }> = {
   boolean: { text: 'form boolean\n  link encoding, like text\n\ntask one\n  like boolean\n  back make boolean, bind encoding, <r>\n\ntask run\n  back one()/encoding\n', answer: 'r' },
   text: { text: 'form text\n  link data, like native-string\n\ntask one\n  like text\n  back make text, bind data, <r>\n\ntask run\n  back one()/data\n', answer: 'r' },
   list: { text: 'form list\n  link zone, like native-string\n\ntask one\n  like list\n  back make list, bind zone, <r>\n\ntask run\n  back one()/zone\n', answer: 'r' },
+  // A FORM NAMED LIKE A HOST STDLIB CLASS (term-self-host-001-0752): the class the emitted program or a runtime names
+  // bare. Kotlin took kotlin.Result from job.kt's continuations (an async task) and kotlin.Throwable from every catch,
+  // and kotlin.String and kotlin.Long from emitted text, Rust took the prelude's Option, Vec, Box and String (E0107,
+  // E0072) and its traits Clone, Iterator, Default, Sized, From (E0404). Swift's `swift-taken` already held its own
+  ...Object.fromEntries(
+    ['result', 'throwable', 'string', 'long', 'option', 'vec', 'box', 'clone'].flatMap(name => [
+      [name, { text: `form ${name}\n  link ring, like text\n\ntask one\n  like ${name}\n  back make ${name}, bind ring, <r>\n\ntask run\n  back one()/ring\n`, answer: 'r' }],
+      [`${name}-async`, { text: `form ${name}\n  link ring, like text\n\ntask one\n  like ${name}\n  back make ${name}, bind ring, <r>\n\ntask later\n  mark async\n  take s, like text\n  like text\n  back s\n\ntask run\n  mark async\n  like text\n  back later(one()/ring)\n`, answer: 'r' }],
+    ]),
+  ),
 }
 
 const MANIFEST = '\ndeck @term/probe\n  head <check>\n  mark <0.0.2>\n  sort tool\n  lock mit\n'

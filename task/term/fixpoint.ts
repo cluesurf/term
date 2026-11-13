@@ -9,6 +9,9 @@
 // link/@term pointed at the copy, traps T-0792), then works only there, with port-build's own two steps (decision 030
 // section 1) and stage0's own bundle (decision 036), never a build path of its own:
 //
+// port-build is the Term task task/port-build.tree, run by the copy's launcher (`node task/launch.mjs port-build`,
+// decision 140), so in C the build task itself is compiled by the stage1 bundle.
+//
 //   A  port-build --stage-check, stage0 the pin (or --stage0): stage0 writes every port, the stage1 compiler's source
 //      (stage1/ts), then the stage1 compiler compiles every module again (stage2/ts). With rust, the stage1 compiler
 //      emits Rust for every module (stage2/rust), as emit-manifest.ts emits it
@@ -74,7 +77,7 @@ function usage(message: string): never {
 
 const sha = (data: string | Buffer): string => createHash('sha256').update(data).digest('hex')
 const clock = (): string => `${new Date().toISOString().slice(11, 19)}Z`
-// the deck folders port-build's plan covers (task/port-build.ts DECKS)
+// the deck folders port-build's plan covers (task/port-build.tree `decks`)
 const PORT_DECKS = ['make', 'deck', 'flow', 'scan', 'test', 'call']
 
 // ---- the copy ----
@@ -151,6 +154,24 @@ function step(tree: string, log: string, args: string[]): Ended {
 
   try {
     const run = spawnSync(process.execPath, [join(tree, 'node_modules', 'tsx', 'dist', 'cli.mjs'), ...args], {
+      cwd: tree,
+      env: stepEnv(tree),
+      stdio: ['ignore', fd, fd],
+    })
+
+    return { status: run.status, signal: run.signal }
+  } finally {
+    closeSync(fd)
+  }
+}
+
+// a Term task in the copy, run by the copy's own launcher on the copy's stage0 pin (decision 140): `port-build` in A
+// and C, so step C's port-build is itself compiled by the stage1 bundle
+function launchStep(tree: string, log: string, args: string[]): Ended {
+  const fd = openSync(log, 'w')
+
+  try {
+    const run = spawnSync(process.execPath, [join(tree, 'task', 'launch.mjs'), ...args], {
       cwd: tree,
       env: stepEnv(tree),
       stdio: ['ignore', fd, fd],
@@ -554,7 +575,7 @@ async function run(): Promise<void> {
 
   // A: stage0 writes the ports, the stage1 compiler compiles every module again
   const logA = join(logs, 'a-port-build.log')
-  const a = step(tree, logA, ['task/port-build.ts', '--stage-check', ...only])
+  const a = launchStep(tree, logA, ['port-build', '--stage-check', ...only])
   say(`${clock()} A ${lastLine(logA, /^term port-build: /)}; ${lastLine(logA, /^term port-build --stage-check/)}`)
 
   if (a.signal) {
@@ -667,7 +688,7 @@ async function run(): Promise<void> {
   // C: the stage1 bundle writes the ports, the stage2 compiler compiles every module again
   const logC = join(logs, 'c-port-build.log')
   const startC = Date.now()
-  const c = step(tree, logC, ['task/port-build.ts', '--stage-check', ...only])
+  const c = launchStep(tree, logC, ['port-build', '--stage-check', ...only])
   say(`${clock()} C ${lastLine(logC, /^term port-build: /)}; ${lastLine(logC, /^term port-build --stage-check/)}`)
 
   if (c.signal) {

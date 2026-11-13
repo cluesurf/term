@@ -12,6 +12,9 @@ note <Eight programs that compiled with NO message and emitted WRONG code>
 #   6. `host(route, port)`, a call to a task named `host`, was read as the constant keyword
 #   7. a bare call under a view's `seed click` bound an attribute instead of attaching a handler
 #   8. a grammar's `mine char, <.>` lost its character check
+#   9. a grammar's `mine list` whose form's name sat on a line of its own read to nothing, and its reader read `item`
+#  10. a span (`bind <name>` over `mine text` with rules) was refused as naming no text, and a count-less `mine list`
+#      repeated until the end of input, raising at the first character outside it
 #
 # The parser, the mill and compile/feed-mill are the subject (decision 106).
 
@@ -399,3 +402,47 @@ test <8. a `mine char` naming no character is a fault, with the line and the spe
   want hold, is-equal(empty/length, 1)
   want hold, text-contains(empty/0, <at line 5>)
   want hold, text-contains(empty/0, <`mine char, \<.\>`>)
+
+# ---- 9. a repetition over nothing and a nameless form are faults (item term-self-host-001-0516) ----
+
+test <9. a `mine form` naming no form is a fault, with the line and the spelling to write>
+  host nameless, faults(<mine form>)
+  want hold, is-equal(nameless/length, 1)
+  want hold, text-contains(nameless/0, <at line 5>)
+  want hold, text-contains(nameless/0, <`mine form, form \<name\>`>)
+
+test <9. json's old whitespace spelling, its form's name on a line of its own, is two faults>
+  host flat, faults(<mine\n    list\n    mine form\n    form digits>)
+  want hold, is-equal(flat/length, 2)
+  want hold, text-contains(flat/0, <`mine list` at line 5 reads no rule>)
+  want hold, text-contains(flat/1, <`mine form` at line 7 names no form>)
+
+test <9. a `mine form` with `mine` rules under it is a rule named form, no fault>
+  want hold, is-equal(faults(<mine form\n    mine form, form digits>)/length, 0)
+
+test <9. the list spelled with its form under it has no fault>
+  want hold, is-equal(faults(<mine list\n    mine form, form digits>)/length, 0)
+
+test <9. ...and its reader reads no name nothing defines>
+  want hold, not(text-contains(reader(<mine list\n    mine form, form digits>), <read(item)>))
+
+# ---- 10. a span is no fault, and a count-less list stops on its FIRST set (item term-self-host-001-1352) ----
+
+test <10. a span, `bind` over `mine text` with rules under it, has no fault>
+  want hold, is-equal(faults(<bind middle\n    mine text\n      mine form, form digits>)/length, 0)
+
+test <10. ...and a fault under the span is still found, at its own line>
+  host inside, faults(<bind middle\n    mine text\n      mine char>)
+  want hold, is-equal(inside/length, 1)
+  want hold, text-contains(inside/0, <`mine char` at line 7>)
+
+test <10. a bare `mine text` naming no text is still a fault>
+  want hold, is-equal(faults(<mine text>)/length, 1)
+
+host letters-reader, reader(<mine list\n    mine any\n      mine char, \<a\>\n      mine char, \<b\>>)
+
+test <10. a count-less list of `a` or `b` repeats while the next code is one of them>
+  want hold, text-contains(letters-reader, <call or(call(is-equal(call(peek-text-cursor-code(read(cursor))), code 97)), call is-equal(call(peek-text-cursor-code(read(cursor))), code 98))>)
+
+test <10. ...and not only while the cursor has more>
+  want hold, not(text-contains(letters-reader, <hook test\n      call not, call is-text-cursor-at-end(read(cursor))\n    hook hold>))

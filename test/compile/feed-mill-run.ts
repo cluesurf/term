@@ -127,10 +127,21 @@ function frontEnd(text: string, roots: string[]): Program {
 
   // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts)
   bindModules(program, scope, 'main.tree')
-  // resolve's answer is dropped, so an UNDEFINED NAME passes here (the hole feed-mill-coverage.ts names): the json
-  // reader's `read-pair` reads an `item` nothing defines (term-self-host-001-0515 found it, filed as its own item),
-  // and the gzip reader once called a `to-u8` no unit had made. The cases below are the run-time witness
-  resolveNames(program, 'main.tree')
+  // resolve's answer is kept, so an UNDEFINED NAME fails here: the json reader's `read-pair` once read an `item`
+  // nothing defined, its whitespace lists read to nothing (term-self-host-001-0516), and the gzip reader once called
+  // a `to-u8` no unit had made
+  const unresolved = resolveNames(program, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
+
+  if (unresolved.length) {
+    throw new Error(
+      `resolve failed: ${unresolved
+        .slice(0, 8)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
+  }
 
   const errors = check(program, 'main.tree').filter(
     d => d.severity !== 'warning',
@@ -212,7 +223,9 @@ function runSuite(suite: Suite): void {
       (_, c: string) => c.toUpperCase(),
     )
     const inputs = suite.cases.map(([, input]) => JSON.stringify(input))
-    const main = `\nfor (const input of [${inputs.join(', ')}]) { console.log(${jsName}(input)) }\n`
+    // one line per case: a text as it is, any other value as JSON, a raise as RAISE and its first line (item 1352:
+    // one raising case no longer hides the others' answers)
+    const main = `\nfor (const input of [${inputs.join(', ')}]) { try { const got = ${jsName}(input); console.log(typeof got === 'string' ? got : JSON.stringify(got)) } catch (e) { console.log('RAISE ' + String(e?.message ?? e).split('\\n')[0]) } }\n`
 
     writeFileSync(file, `${ts}${main}`)
 
@@ -227,7 +240,9 @@ function runSuite(suite: Suite): void {
 
       ok(
         `${suite.label}: ${name}`,
-        got === want,
+        want === 'ANY'
+          ? got !== undefined && got !== '' && !got.startsWith('RAISE')
+          : got === want,
         `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`,
       )
     })
@@ -357,6 +372,38 @@ runSuite({
     ['a negative keeps its sign', '-7', '-7'],
     ['a decimal keeps its fraction', '3.5', '3.5'],
     ['an exponent survives', '1e10', '1e10'],
+  ],
+  expectRules: 15,
+})
+
+// json-value (item 1352): the readers a count-less `mine list` sits in. Each list stops where the next character is
+// outside its children's whole FIRST set (the decision for term-self-host-001-1325, option a), so whitespace before a
+// `,` or a `}`, the characters of a string before its closing quote, and the pairs and items of an object and an array
+// end where they should. Before it every list repeated until the end of input and raised at the first character its
+// form could not read
+runSuite({
+  label: 'json-value',
+  mineFile: join(TERM, 'deck/mill/code/text/json/mine.tree'),
+  substrate: 'text',
+  cursorImportPath: '@term/mill/feed',
+  extraImports: [],
+  entryTaskName: 'round-generated-json-value',
+  entryTaskBody: [
+    'task round-generated-json-value',
+    '  take input, like text',
+    '  like unknown',
+    '  save cursor',
+    '    call make-text-cursor(read input)',
+    '  send back',
+    '    call read-value(read cursor)',
+  ].join('\n'),
+  cases: [
+    ['an empty object', '{}', 'ANY'],
+    ['an object with spaces', '{ "a" : 1 , "b": 2 }', 'ANY'],
+    ['an empty array', '[]', 'ANY'],
+    ['an array with spaces', '[ 1, 2 ,3 ]', 'ANY'],
+    ['a plain string', '"hi"', 'ANY'],
+    ['nested', '{"a": [true, null, {"b": "c"}]}', 'ANY'],
   ],
   expectRules: 15,
 })

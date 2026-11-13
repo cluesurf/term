@@ -1,0 +1,353 @@
+note <a headless browser for a suite: a Term program bundled for the browser, served on 127.0.0.1, opened in Chromium, asked and clicked>
+
+# The harness the web suites drive a page through (item term-self-host-001-1196), for the ports of controls-web.ts and
+# navigation-web.ts, which drove Playwright's Chromium themselves.
+#
+#   browser-script   a program compiled for the browser, its native prelude in front and the suite's own JavaScript
+#                    after, bundled by esbuild into one script (an iife, as the originals bundled it)
+#   open-browser     that script served on 127.0.0.1 at a free port (every path answers the one page, as a single-page
+#                    app's server does, and /app.js the script), Chromium launched headless and a page opened on it.
+#                    Never a real network host: the server listens on the loopback only
+#   page-ask         a JavaScript expression evaluated in the page, its value as text (a non-text value as JSON)
+#   page-click       a click on the first element a selector finds
+#   page-wait        waits until a JavaScript expression is true in the page
+#   close-browser    Chromium and the server both closed
+#
+# A `browser` whose `state` is <skipped> carries the `reason`, which the test reads and says `skip` with, as a leg of
+# ./device/toolkit-run does: Playwright is not installed where it is looked for, or its Chromium did not launch.
+# Playwright is borrowed, as the Term package does not declare it (test/borrow.ts, decision 1141): the Term root first,
+# then the folder TERM_TEST_MODULES names. Its Chromium is found where Playwright looks, PLAYWRIGHT_BROWSERS_PATH when set.
+
+load ./cli
+  find term-root
+
+load ./temp
+  find temp-folder
+
+load ./compiling
+  find compile-outcome
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find exists, name file-exists
+  find write, name write-file
+
+load @term/base/path
+  find directory
+  find resolve-path
+
+load @term/base/text
+  find trim
+
+dock load
+  load <@term/make/code/compile/native>, name browsing-native
+  load <esbuild>, name browsing-bundler
+
+# A browser with a page open on the served script, or why not. `state` is <open> or <skipped>, `reason` why it was
+# skipped. `engine`, `page` and `server` are Playwright's browser, its page, and the node server, void when skipped.
+# `address` is the page's origin, `http://127.0.0.1:<port>/`.
+form browser
+  link state, like text
+  link reason, like text, fall <>
+  link engine, like dynamic, fall void
+  link page, like dynamic, fall void
+  link server, like dynamic, fall void
+  link address, like text, fall <>
+
+# ---- the borrowed package ----
+
+# host native: the package as node's `require` loads it from a place, which reads the package's exports map
+bind browsing-required
+  take place, like text
+  take name, like text
+  like dynamic
+  case node
+    text <process.getBuiltinModule('node:module').createRequire($place + '/package.json')($name)>
+
+# the folders a package is looked for in, in order: the Term root, then the folder TERM_TEST_MODULES names
+task browsing-places
+  like list, like text
+
+  save places, make list(term-root())
+  save given, trim(variable(<TERM_TEST_MODULES>))
+  fork test, is-unequal(given, <>)
+    hold
+      places/push(resolve-path(term-root(), given))
+  back places
+
+# whether the package sits in a node_modules of the place or a folder above it. `require` also falls back to
+# NODE_PATH, where pnpm hoists every transitive dependency, so the folders are walked first (test/borrow.ts)
+task browsing-installed-in
+  take place, like text
+  take name, like text
+  like boolean
+  mark async
+
+  fork test, file-exists(<{place}/node_modules/{name}/package.json>)
+    hold
+      back true
+  save up, directory(place)
+  fork test, is-equal(up, place)
+    hold
+      back false
+  back browsing-installed-in(up, name)
+
+# the package as `require` loads it, void when it is not installed where it is looked for
+task browsing-borrowed
+  take name, like text
+  like dynamic
+  mark async
+
+  walk browsing-places()
+    take place, like text
+    fork test, browsing-installed-in(place, name)
+      hold
+        save found, void
+        fork
+          mark unsafe
+          save found, browsing-required(place, name)
+        halt take
+          take problem
+          save ignored, 0
+        fork test, browsing-present(found)
+          hold
+            back found
+  back void
+
+# why a package was not found, naming where it was looked for, as test/borrow.ts words it
+task browsing-missing
+  take name, like text
+  like text
+
+  save given, trim(variable(<TERM_TEST_MODULES>))
+  fork test, is-unequal(given, <>)
+    hold
+      back <no {name} in the Term root or in {resolve-path(term-root(), given)} (TERM_TEST_MODULES)>
+  back <no {name} in the Term root, and TERM_TEST_MODULES names no project that has it>
+
+# ---- the host's side ----
+
+bind browsing-present
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined && $value !== null)>
+
+# host value: a raised exception as one line, at most 160 characters, as the originals printed it
+bind browsing-said
+  take problem, like dynamic
+  like text
+  case node
+    text <String($problem?.message ?? $problem).split(String.fromCharCode(10))[0].slice(0, 160)>
+
+# host native: the script esbuild makes of an entry file, one iife for the browser
+bind browsing-bundled
+  take bundler, like dynamic
+  take entry, like text
+  like text
+  mark async
+  case node
+    text <<(await $bundler.build({ entryPoints: [$entry], bundle: true, write: false, format: "iife", platform: "browser", logLevel: "silent" })).outputFiles[0].text>>
+
+# host native: a node server on 127.0.0.1 at a port the system picks, answering /app.js with the script and every other
+# path with the page. unref'd, so a suite that raises before close-browser still ends
+bind browsing-serve
+  take page, like text
+  take script, like text
+  like dynamic
+  mark async
+  case node
+    text <<(await new Promise((done, fail) => { const server = process.getBuiltinModule("node:http").createServer((request, response) => { const script = request.url === "/app.js"; response.writeHead(200, { "content-type": script ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8" }); response.end(script ? $script : $page) }); server.on("error", fail); server.listen(0, "127.0.0.1", () => { server.unref(); done(server) }) }))>>
+
+bind browsing-port
+  take server, like dynamic
+  like number
+  case node
+    text <$server.address().port>
+
+bind browsing-stop
+  take server, like dynamic
+  like void
+  case node
+    text <$server.close()>
+
+# host native: Playwright's Chromium, headless
+bind browsing-launch
+  take playwright, like dynamic
+  like dynamic
+  mark async
+  case node
+    text <<(await $playwright.chromium.launch({ headless: true }))>>
+
+bind browsing-new-page
+  take engine, like dynamic
+  like dynamic
+  mark async
+  case node
+    text <(await $engine.newPage())>
+
+bind browsing-go
+  take page, like dynamic
+  take address, like text
+  like void
+  mark async
+  case node
+    text <(await $page.goto($address))>
+
+bind browsing-evaluate
+  take page, like dynamic
+  take expression, like text
+  like text
+  mark async
+  case node
+    text <((value) =\> typeof value === "string" ? value : JSON.stringify(value) ?? "undefined")(await $page.evaluate($expression))>
+
+bind browsing-click
+  take page, like dynamic
+  take selector, like text
+  like void
+  mark async
+  case node
+    text <(await $page.click($selector))>
+
+bind browsing-wait
+  take page, like dynamic
+  take expression, like text
+  like void
+  mark async
+  case node
+    text <(await $page.waitForFunction($expression))>
+
+bind browsing-close
+  take engine, like dynamic
+  like void
+  mark async
+  case node
+    text <(await $engine.close())>
+
+# ---- the script ----
+
+# the reader the native prelude reads a runtime file through. The positioning runtime imports @floating-ui/dom, which a
+# page of these suites places nothing with, so it is left out, as the originals left it out
+# host native: the driver tells a missing runtime file by `undefined`, which a Term `void` is not
+bind browsing-runtime-reader
+  take seed, like number
+  like dynamic
+  case node
+    text <((path) =\> path.endsWith("/position.ts") || !process.getBuiltinModule("node:fs").existsSync(path) ? undefined : process.getBuiltinModule("node:fs").readFileSync(path, "utf8"))>
+
+# the one script a page runs: the program's native prelude for the browser, its TypeScript, then `harness`, the suite's
+# own JavaScript, bundled. <> for a program that was refused
+task browser-script
+  take outcome, like compile-outcome
+  take harness, like text
+  like text
+  mark async
+
+  fork test, not(outcome/ok)
+    hold
+      back <>
+  save prelude, browsing-native/native-prelude(outcome/program, <browser>, browsing-runtime-reader(0), outcome/emitted)
+  save folder, temp-folder(<term-browsing->)
+  save entry, <{folder}/page.ts>
+  write-file(entry, <{prelude}\n{outcome/emitted}\n{harness}>)
+  back browsing-bundled(browsing-bundler, entry)
+
+# ---- the browser ----
+
+# the page every path answers: an empty body, then the script
+host browsing-page, <\<!doctype html\>\<html\>\<head\>\<meta charset="utf-8"\>\</head\>\<body\>\</body\>\<script src="/app.js"\>\</script\>\</html\>>
+
+# why no browser can be had, <> when Playwright is installed where it is looked for: a suite asks before it bundles,
+# as the originals skipped before they compiled
+task browser-absent
+  like text
+  mark async
+
+  fork test, browsing-present(browsing-borrowed(<@playwright/test>))
+    hold
+      back <>
+  back browsing-missing(<@playwright/test>)
+
+# the script served on 127.0.0.1 and a page of headless Chromium opened on it, or why not
+task open-browser
+  take script, like text
+  like browser
+  mark async
+
+  host playwright, browsing-borrowed(<@playwright/test>)
+  fork test, not(browsing-present(playwright))
+    hold
+      back make(browser, bind(state, <skipped>), bind(reason, browsing-missing(<@playwright/test>)))
+  save engine, void
+  save reason, <>
+  fork
+    mark unsafe
+    save engine, browsing-launch(playwright)
+  halt take
+    take problem
+    save reason, <Chromium did not launch: {browsing-said(problem)}>
+  fork test, not(browsing-present(engine))
+    hold
+      back make(browser, bind(state, <skipped>), bind(reason, reason))
+  host served, serve-page(script)
+  host page, browsing-new-page(engine)
+  browsing-go(page, served/address)
+  back make(browser, bind(state, <open>), bind(engine, engine), bind(page, page), bind(server, served/server), bind(address, served/address))
+
+# A page served on 127.0.0.1: the node server and its origin, `http://127.0.0.1:<port>/`
+form served-page
+  link server, like dynamic
+  link address, like text
+
+# the script served on 127.0.0.1 at a free port: /app.js the script, every other path the page that runs it
+task serve-page
+  take script, like text
+  like served-page
+  mark async
+
+  host server, browsing-serve(browsing-page, script)
+  back make(served-page, bind(server, server), bind(address, <http://127.0.0.1:{browsing-port(server)}/>))
+
+# the server closed
+task stop-page
+  take served, like served-page
+
+  browsing-stop(served/server)
+
+# a JavaScript expression's value in the page, as text: a text as it is, anything else as JSON
+task page-ask
+  take open, like browser
+  take expression, like text
+  like text
+  mark async
+
+  back browsing-evaluate(open/page, expression)
+
+# a click on the first element `selector` finds, as a person makes it
+task page-click
+  take open, like browser
+  take selector, like text
+  mark async
+
+  browsing-click(open/page, selector)
+
+# wait until `expression` is true in the page, Playwright's own timeout the limit
+task page-wait
+  take open, like browser
+  take expression, like text
+  mark async
+
+  browsing-wait(open/page, expression)
+
+# Chromium and the server closed. A skipped browser has neither
+task close-browser
+  take open, like browser
+  mark async
+
+  fork test, is-equal(open/state, <open>)
+    hold
+      browsing-close(open/engine)
+      browsing-stop(open/server)

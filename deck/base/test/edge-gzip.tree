@@ -4,6 +4,7 @@
 load @term/base/gzip
   find gzip
   find gunzip
+  find gunzip-within
   find gzip-mismatch
 
 load @term/base/bytes
@@ -12,6 +13,8 @@ load @term/base/bytes
   find from-hex
   find to-hex
   find length
+  find concat
+  find from-byte-list
 
 load @term/base/text
   find starts-with
@@ -37,6 +40,107 @@ task why
         send back, text <{{at}} {{reason}}>
       case failure
         send back, text <failure>
+
+# `count` zero bytes
+task zeros
+  take count, like number
+  like bytes
+  save out
+    make list
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read count
+        read k
+    hook test
+      call is-below
+        read k
+        read count
+    hook step
+      call out/push, code 0
+      save k
+        call add
+          read k
+          code 1
+  send back
+    call from-byte-list
+      read out
+
+# what gunzip-within says of `data` at `limit`: the inflated length, or the refusal's place and reason
+task within
+  take data, like bytes
+  take limit, like number
+  like text
+  fork
+    mark unsafe
+    save got
+      call gunzip-within
+        read data
+        read limit
+    send back
+      text <{length(got)}>
+  halt take
+    take problem
+    fork case, read problem
+      case gzip-mismatch
+        send back, text <{{at}} {{reason}}>
+      case failure
+        send back, text <failure>
+
+test <gunzip-within refuses 64 KiB of zeros at 1000 bytes and returns them at 65536>
+  save packed
+    call gzip
+      call zeros, code 65536
+  save refused
+    call within
+      read packed
+      code 1000
+  want hold
+    call and
+      call ends-with
+        read refused
+        text < the output passes the limit of 1000 bytes>
+      call is-equal
+        call within
+          read packed
+          code 65536
+        text <65536>
+
+test <gunzip-within bounds two members together, and a stored block>
+  save two
+    call concat
+      call gzip
+        call zeros, code 600
+      call gzip
+        call zeros, code 600
+  save stored
+    call from-hex
+      text <1f8b08000000000004ff011100eeff73746f72656420f09d849e20626c6f636b1711b05711000000>
+  want hold
+    call and
+      call and
+        call ends-with
+          call within
+            read two
+            code 1000
+          text < the output passes the limit of 1000 bytes>
+        call is-equal
+          call within
+            read two
+            code 1200
+          text <1200>
+      call and
+        call is-equal
+          call within
+            read stored
+            code 16
+          text <11 the output passes the limit of 16 bytes>
+        call is-equal
+          call within
+            read stored
+            code 17
+          text <17>
 
 test <a dynamic Huffman block from zlib>
   save got

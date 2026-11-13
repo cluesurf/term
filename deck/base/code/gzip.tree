@@ -4,6 +4,10 @@
 #
 #   gzip     one member: LZ77 over a 32 KiB window, greedy, the fixed Huffman codes, mtime 0, OS unknown (255)
 #   gunzip   every member in turn, each block stored, fixed or dynamic, the CRC-32 and length checked
+#   gunzip-within
+#            gunzip with an output bound: it refuses the moment the inflated bytes, across every member, would pass
+#            `limit`, so memory stays under the limit whatever the stream's trailer says (decision 154 of the
+#            self-host change, item term-self-host-001-1288)
 #
 # Data that is not gzip, or is cut short, or fails its check, raises `gzip-mismatch` with the byte position and the
 # reason. The inflater follows zlib's reference decoder, puff.c (Mark Adler).
@@ -90,6 +94,31 @@ task refuse-gzip
     bind thing, text <gzip>
     bind at, read at
     bind reason, read reason
+
+# whether `size` output bytes pass `limit`. A limit below 0 is no limit (`gunzip`)
+task passes-limit
+  mark private
+  take size, like number
+  take limit, like number
+  like boolean
+  send back
+    call and
+      call is-minimum
+        read limit
+        code 0
+      call is-above
+        read size
+        read limit
+
+task refuse-limit
+  mark private
+  take at, like number
+  take limit, like number
+  like number
+  halt gzip-mismatch
+    bind thing, text <gzip>
+    bind at, read at
+    bind reason, text <the output passes the limit of {limit} bytes>
 
 # a list read that is -1 past either end
 task byte-at
@@ -1287,6 +1316,8 @@ task inflate-codes
       like number
   take literals, like huffman-table
   take distances, like huffman-table
+  # the output bound, below 0 none (`limit` is taken: it names the walk's turn bound below)
+  take bound, like number
   like number
   save length-bases
     call length-base
@@ -1335,6 +1366,19 @@ task inflate-codes
             read symbol
             code 256
         hook hold
+          fork test
+            hook test
+              call passes-limit
+                call add
+                  call list-length
+                    read out
+                  code 1
+                read bound
+            hook hold
+              call refuse-limit
+                read reader/at
+                read bound
+                halt kink
           call out/push
             read symbol
         hook test
@@ -1408,6 +1452,19 @@ task inflate-codes
               call refuse-gzip
                 read reader/at
                 text <a distance reaches before the start>
+                halt kink
+          fork test
+            hook test
+              call passes-limit
+                call add
+                  call list-length
+                    read out
+                  read copy-length
+                read bound
+            hook hold
+              call refuse-limit
+                read reader/at
+                read bound
                 halt kink
           save from
             call subtract
@@ -1767,6 +1824,8 @@ task inflate
   take out
     like list
       like number
+  # the output bound, below 0 none (`limit` is taken: it names the walk's turn bound below)
+  take bound, like number
   like number
   save last, false
   # each block's header takes three bits of the data, so the count of turns is bounded by the data's bits, as in
@@ -1876,6 +1935,19 @@ task inflate
                 read at
                 text <the data ends inside a block>
                 halt kink
+          fork test
+            hook test
+              call passes-limit
+                call add
+                  call list-length
+                    read out
+                  read stored-length
+                read bound
+            hook hold
+              call refuse-limit
+                read at
+                read bound
+                halt kink
           save k, code 0
           walk test
             down
@@ -1918,6 +1990,7 @@ task inflate
             read out
             read tables/literals
             read tables/distances
+            read bound
             halt kink
         hook test
           call is-equal
@@ -1935,6 +2008,7 @@ task inflate
             read out
             read tables/literals
             read tables/distances
+            read bound
             halt kink
         hook miss
           call refuse-gzip
@@ -2036,6 +2110,31 @@ task past-zero
 # every member's data, joined
 task gunzip
   take data, like bytes
+  like bytes
+  send back
+    call inflate-members
+      read data
+      call subtract
+        code 0
+        code 1
+      halt kink
+
+# every member's data, joined, refused the moment it would pass `limit` bytes in all (decision 154 section 4)
+task gunzip-within
+  take data, like bytes
+  take limit, like number
+  like bytes
+  send back
+    call inflate-members
+      read data
+      read limit
+      halt kink
+
+# the member loop `gunzip` and `gunzip-within` share. A limit below 0 is no limit
+task inflate-members
+  mark private
+  take data, like bytes
+  take limit, like number
   like bytes
   save input
     call to-byte-list
@@ -2199,6 +2298,7 @@ task gunzip
         read input
         read reader
         read out
+        read limit
         halt kink
       save end
         read reader/at

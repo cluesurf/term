@@ -57,6 +57,7 @@ task read-locale
 
 task known-locales
   like list
+    like text
 
   send back
     call locale-preferred
