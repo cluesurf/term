@@ -3,7 +3,6 @@ import {
   validateManifest,
   showCode,
   writeCodeHold,
-  localObjectStore,
   generateKeypair,
   makeDefaultFetchConfig,
   ociRouteOf,
@@ -281,7 +280,6 @@ export async function callHost(input: {
       }
     }
 
-    const local = localObjectStore()
     // the signed config keeps the JSON key `code` for a link's constraint: the signature covers those bytes and every
     // published version carries them, so the wire format is not the manifest's spelling and does not follow it
     const link = manifest.link.map(dep => ({
@@ -309,16 +307,13 @@ export async function callHost(input: {
       annotations[one.key] = one.value
     }
 
+    // what every build of the artifact shares, as work/registry/publishing.tree's common-of. A version holds no time,
+    // author or message (decision 154 section 1), so the same files under the same key build the same manifest
     const common = {
       dir: input.root,
       package: name,
       version,
-      target: { kind: 'version' as const, version },
       link,
-      local,
-      author: manifest.mind?.[0]?.name ?? 'unknown',
-      time: new Date().toISOString(),
-      message: `${name} ${version}`,
       annotations,
       include,
     }
@@ -329,7 +324,7 @@ export async function callHost(input: {
         (await loadPublishKeypair({ mint: false })) ?? generateKeypair()
 
       const started = Date.now()
-      const { release, artifact } = await buildOciArtifact({
+      const { artifact } = await buildOciArtifact({
         ...common,
         keypair,
       })
@@ -343,14 +338,11 @@ export async function callHost(input: {
         duration: Date.now() - started,
         bytes: artifact.manifest.length,
         counts: [
-          count(release.files.length, 'files', 'file'),
-          count(release.closure.length, 'objects', 'object'),
-          count(artifact.packed, 'packed'),
-          count(artifact.files.packs.length, 'packs', 'pack'),
-          count(artifact.loose, 'loose'),
+          count(artifact.entries, 'entries', 'entry'),
+          count(1, 'layers', 'layer'),
         ],
         fields: [
-          field('commit', release.commit),
+          field('archive', `${artifact.archive.size} B`),
           field('digest', artifact.digest),
         ],
       })

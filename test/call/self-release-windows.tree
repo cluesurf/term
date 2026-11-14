@@ -12,7 +12,8 @@ note <`term` on Windows end to end: the payload on a loopback registry, installe
 # The machine is the parent's machine module (task/term/cask/windows.ts under TERM_PARENT_ROOT), which reaches it, so
 # with no TERM_PARENT_ROOT every test skips, as the original did. The loader is read from the same parent checkout. One
 # PowerShell script on the machine is sent as -EncodedCommand (base64 of UTF-16LE), so no quote or `$` in it ever meets
-# cmd.exe or ssh. oci/keys, oci/release, oci/transport and object/sign of @term/deck are the subject (decision 106).
+# cmd.exe or ssh. @term/deck's ports are loaded, never their faces (decision 157 rule 2, item term-self-host-001-1297):
+# oci/key-trust, oci/toolchain-release, oci/registry-transport and object/id-signing, called by position.
 
 load @term/base/environment
   find variable
@@ -32,11 +33,20 @@ load @term/deck/test/oci-server
 load ../support/judging
   find make-record
 
+load @term/deck/oci/toolchain-release
+  find publish-release
+
+load @term/deck/oci/registry-transport
+  find http-transport
+  find sha256-digest
+
+load @term/deck/oci/key-trust
+  find ensure-publisher
+
+load @term/deck/object/id-signing
+  find generate-keypair
+
 dock load
-  load <@term/deck/code/object/sign>, name sign-face
-  load <@term/deck/code/oci/keys>, name keys-face
-  load <@term/deck/code/oci/release>, name release-face
-  load <@term/deck/code/oci/transport>, name transport-face
   load <node:fs>, name dock-file
   load <node:path>, name dock-path
 
@@ -65,6 +75,12 @@ bind as-number
   like number
   case node
     text <Number($text)>
+
+# host value: none, for a port parameter left out (undefined)
+bind windows-nothing
+  like dynamic
+  case node
+    text <undefined>
 
 bind now-millis
   like number
@@ -215,17 +231,17 @@ task the-windows
   # before the registry starts: ship is synchronous, and nothing it does needs the registry
   windows/ship(sent, folder)
   save payload, dock-file/readFileSync(payload-file)
-  save digest, transport-face/sha256Digest(payload)
+  save digest, sha256-digest(payload)
   save windows-now/digest, digest
   save server, start-oci-server()
-  save transport, transport-face/httpTransport(make-record(make(list, <host>, server/host, <credentials>, tester-credentials, <retries>, 0)))
-  save keypair, sign-face/generateKeypair()
-  wait keys-face/ensurePublisher(make-record(make(list, <transport>, transport, <repository>, <cluesurf/term/name>, <scope>, <@term>, <keypair>, keypair)))
+  save transport, http-transport(server/host, tester-credentials, windows-nothing(), windows-nothing(), windows-nothing(), windows-nothing(), 0, windows-nothing())
+  save keypair, generate-keypair()
+  ensure-publisher(transport, <cluesurf/term/name>, <@term>, keypair)
   walk make(list, version, next)
     take one, like text
     save payloads, make list
     payloads/push(make-record(make(list, <platform>, platform, <bytes>, payload)))
-    wait release-face/publishRelease(make-record(make(list, <transport>, transport, <repository>, <cluesurf/term/code>, <package>, <@term/code>, <version>, one, <payloads>, payloads, <keypair>, keypair)))
+    publish-release(transport, <cluesurf/term/code>, <@term/code>, one, payloads, keypair, windows-nothing(), windows-nothing())
   save port, as-number(text-split(server/host, <:>)/1)
   save forwards, make list
   forwards/push(forward(port, <127.0.0.1>))

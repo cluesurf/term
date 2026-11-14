@@ -2,11 +2,12 @@
 // their shapes, answered by deck/deck/code/oci/version-installing.tree.
 // The logic is Term; this file only converts shapes for TypeScript callers.
 // The original is kept byte for byte at deck/term/deck/term/tmp/retired/make/deck-oci-install.
+// Artifact format v2 (decision 129 section 2 of the self-host change, decisions 154 and 158, item
+// term-self-host-001-1043): one archive layer, unpacked under the `.term-digest` marker, no object store.
 import * as port from '@term/deck/code/oci/version-installing'
 import { ociErrorOf, type OciTransport } from './transport'
-import type { DeckConfig, FilesLayer, ParsedManifest } from './artifact'
+import type { DeckConfig, ParsedManifest } from './artifact'
 import type { TrustedKeys } from './keys'
-import type { ObjectStore } from '../object/store'
 
 const p = port as unknown as Record<
   string,
@@ -71,20 +72,18 @@ export const readOciVersion = (input: {
       ) as Promise<OciVersion>,
   )
 
+// a verified version unpacked at `dest`, skipped with nothing fetched when `dest/.term-digest` already reads its
+// manifest digest. `fetched` says whether the archive was fetched, `bytes` its size, `files` the entries unpacked
 export const installOciVersion = (input: {
   transport: OciTransport
   repository: string
   version: OciVersion
   dest: string
-  local: ObjectStore
   cache?: OciTransport
-  concurrency?: number
 }): Promise<{
-  packsFetched: number
-  packsSkipped: number
-  looseFetched: number
+  fetched: boolean
   bytes: number
-  files: FilesLayer
+  files: number
 }> =>
   liftAsync(
     () =>
@@ -93,14 +92,10 @@ export const installOciVersion = (input: {
         input.repository,
         input.version,
         input.dest,
-        input.local,
         input.cache,
-        input.concurrency,
       ) as Promise<{
-        packsFetched: number
-        packsSkipped: number
-        looseFetched: number
+        fetched: boolean
         bytes: number
-        files: FilesLayer
+        files: number
       }>,
   )

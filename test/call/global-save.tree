@@ -5,7 +5,8 @@
 # folder, TERM_STORE and TERM_TRUST_DIR beside it, and the registry is this process's own (deck/deck/test/oci-server.tree),
 # holding @alice/demo 1.0.2, a deck whose `line` names its console. So no real home, store, key, token or registry is
 # read. The user manifest routes the alice scope to the registry with a base line, written before the first save. The
-# version is published as OCI format v2 by oci/oci-publishing.tree (item term-self-host-001-1290).
+# version is published as OCI format v2 by oci/oci-publishing.tree (item term-self-host-001-1290), through
+# oci/registry-transport.tree's http-transport, loaded, never its face (decision 157 rule 2, item term-self-host-001-1297).
 
 load @term/call/work/small/global-saving
   find call-save-global
@@ -32,10 +33,12 @@ load @term/deck/oci/oci-publishing
 load @term/deck/object/id-signing
   find generate-keypair
 
+load @term/deck/oci/registry-transport
+  find http-transport
+
 dock load
   load <node:fs>, name saving-file
   load <node:path>, name saving-path
-  load <@term/deck/code/oci/transport>, name saving-transport
 
 bind saving-nothing
   like dynamic
@@ -73,11 +76,6 @@ form saving-credential
   link kind, like text
   link username, like text
   link password, like text
-
-form saving-transport-ask
-  link host, like text
-  link credentials, like dynamic
-  link retries, like number
 
 form saving-repository
   link host, like text
@@ -119,7 +117,7 @@ task open-saving
   saving-file/mkdir-sync(saving-path/join(source, <code>, <line>), saving-folder-options(0))
   saving-file/write-file-sync(saving-path/join(source, <deck.tree>), <deck @alice/demo\n  mark \<1.0.2\>\n  line ./code/line\n>)
   saving-file/write-file-sync(saving-path/join(source, <code>, <line>, <base.tree>), <hook demo\n  task show\n>)
-  host transport, saving-transport/http-transport(make(saving-transport-ask, bind(host, server/host), bind(credentials, saving-credentials), bind(retries, 0)))
+  host transport, http-transport(server/host, saving-credentials, saving-nothing(), saving-nothing(), saving-nothing(), saving-nothing(), 0, saving-nothing())
   host repository, make(saving-repository, bind(host, server/host), bind(namespace, <alice>), bind(name, <alice/demo>))
   host published, publish-to-oci(source, <@alice/demo>, <1.0.2>, saving-no-links(), transport, repository, <@alice>, <alice/name>, generate-keypair(), saving-nothing(), saving-nothing(), saving-nothing(), saving-nothing())
   host base, saving-path/join(work, <home>, <.base>)

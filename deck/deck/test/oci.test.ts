@@ -1,5 +1,8 @@
 // The OCI registry path, end to end against an in-process registry (./oci-server.ts) and an on-disk layout.
-// Each test names the attack or failure it holds the client to.
+// Each test names the attack or failure it holds the client to. OCI artifact format v2 (item term-self-host-001-1043,
+// decision 129 section 2, decisions 154 and 158): one gzip ustar archive layer signed in the config, versions only, no
+// object store, packs, files layer or signature referrer, and an installed folder that carries the `.term-digest`
+// marker, left out when a tree is compared.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import fs from 'fs/promises'
@@ -7,12 +10,12 @@ import os from 'os'
 import path from 'path'
 
 import { generateKeypair, signId } from '../code/object/sign'
-import { readVersionFiles } from '../code/object/version'
+import * as versionFiles from '@term/deck/code/oci/version-files'
 import { credentialsFor, parseChallenge } from '../code/oci/auth'
-import { checkClosure, deckStatement, openRemotePack, parseDeckManifest } from '../code/oci/artifact'
+import { checkArchiveLayer, deckStatement, parseDeckManifest, type DeckConfig } from '../code/oci/artifact'
 import { installOciVersion, listOciVersions, readOciVersion } from '../code/oci/install'
 import { keySetStatement, rotateKeys, trustedKeys, KEYS_ARTIFACT_TYPE, KEYS_CONFIG_MEDIA_TYPE } from '../code/oci/keys'
-import { layoutObjectStore, layoutTransport } from '../code/oci/layout'
+import { layoutTransport } from '../code/oci/layout'
 import { publishToOci } from '../code/oci/publish'
 import {
   parseOciRegistry,
@@ -26,7 +29,10 @@ import { httpTransport, sha256Digest, type OciTransport } from '../code/oci/tran
 import { parseLockfile, writeLockfile } from '../code/package/lock'
 import { startOciServer, type OciServer } from './oci-server'
 
-const TIME = '2026-01-01T00:00:00.000Z'
+const walk = versionFiles as unknown as {
+  defaultVersionExclude: () => string[]
+  readVersionFiles: (dir: string, exclude: string[], include: string[]) => Promise<{ path: string; kind: string }[]>
+}
 
 async function scratch(name: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), `term-oci-${name}-`))
@@ -45,6 +51,11 @@ async function readTree(dir: string): Promise<Record<string, string>> {
   const walk = async (at: string): Promise<void> => {
     for (const entry of await fs.readdir(path.join(dir, at), { withFileTypes: true })) {
       const rel = path.join(at, entry.name)
+
+      // the install's marker at the top of a version folder is the installer's, never a file of the package
+      if (rel === '.term-digest') {
+        continue
+      }
 
       if (entry.isDirectory()) {
         await walk(rel)
@@ -96,21 +107,21 @@ describe('OCI references', () => {
 
 describe('the signed statement', () => {
   it('is byte for byte what the package index verifies', () => {
-    // the same literal is held in mesh/deck/back/code/resource/package/oci.test.ts, the server side reader
+    // the server side reader, mesh/deck/back/code/resource/package/oci.test.ts, holds the v1 literal until it moves
+    // (log.md, 1043). The archive's fields come out of order: the statement writes digest, size, media type
     expect(
       deckStatement({
         package: '@term/demo',
         version: '1.0.0',
         tag: '1.0.0',
-        commit: `sha256:${'a'.repeat(64)}`,
-        tree: `sha256:${'b'.repeat(64)}`,
         link: [
           { deck: '@term/z', code: '1.x.x' },
           { deck: '@term/base', code: '0.0.x' },
         ],
+        archive: { mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip', size: 1234, digest: `sha256:${'a'.repeat(64)}` },
       }),
     ).toBe(
-      `{"type":"application/vnd.cluesurf.term.deck.v1","package":"@term/demo","version":"1.0.0","tag":"1.0.0","commit":"sha256:${'a'.repeat(64)}","tree":"sha256:${'b'.repeat(64)}","link":[["@term/base","0.0.x"],["@term/z","1.x.x"]]}`,
+      `{"type":"application/vnd.cluesurf.term.deck.v2","package":"@term/demo","version":"1.0.0","tag":"1.0.0","link":[["@term/base","0.0.x"],["@term/z","1.x.x"]],"archive":{"digest":"sha256:${'a'.repeat(64)}","size":1234,"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip"}}`,
     )
   })
 })
@@ -266,20 +277,15 @@ describe('OCI publish and install', () => {
     keysRepository: 'term',
   })
 
-  const publish = (input: { dir: string; version: string; time?: string; signer?: typeof keypair; referrer?: boolean }) =>
+  const publish = (input: { dir: string; version: string; signer?: typeof keypair }) =>
     publishToOci({
-      referrer: input.referrer,
       dir: input.dir,
       package: '@term/demo',
       version: input.version,
-      target: { kind: 'version', version: input.version },
       link: [{ deck: '@term/base', code: '1.x.x' }],
       transport,
       ...route(),
-      local: layoutObjectStore({ dir: path.join(work, 'publisher-store') }),
       keypair: input.signer ?? keypair,
-      author: 'tester',
-      time: input.time ?? TIME,
     })
 
   const read = (input: { reference: string; trustDir: string; expect?: { digest?: string; key?: string; version?: string } }) =>
@@ -308,47 +314,48 @@ describe('OCI publish and install', () => {
 
   afterAll(() => server.close())
 
-  it('publishes, installs byte for byte, and attaches the signature referrer when asked', async () => {
+  it('publishes, installs byte for byte under the marker, and a second install fetches nothing', async () => {
     const source = path.join(work, 'v1')
     await writePackage(source, FILES)
 
-    const result = await publish({ dir: source, version: '1.0.0', referrer: true })
+    const result = await publish({ dir: source, version: '1.0.0' })
 
     expect(result.unchanged).toBe(false)
     expect(result.keySet).toBe('created')
-    expect(result.referrer).toBe('attached')
-    expect(result.artifact.loose).toBeGreaterThan(0)
-
-    const referrers = await transport.referrers({ repository: route().repository.name, digest: result.digest })
-    expect(referrers?.map(entry => entry.artifactType)).toContain('application/vnd.cluesurf.term.signature.v1')
+    expect(result.layers).toBe(1)
+    expect(result.artifact.config.type).toBe('application/vnd.cluesurf.term.deck.v2')
 
     const version = await read({ reference: '1.0.0', trustDir: path.join(work, 'trust') })
     expect(version.config.link).toEqual([{ deck: '@term/base', code: '1.x.x' }])
     expect(version.trust?.source).toBe('first-use')
+    expect(version.manifest.archive.digest).toBe(version.config.archive.digest)
 
     const dest = path.join(work, 'installed')
-    const local = layoutObjectStore({ dir: path.join(work, 'client-store') })
-    const pulled = await installOciVersion({ transport, repository: route().repository.name, version, dest, local })
+    const pulled = await installOciVersion({ transport, repository: route().repository.name, version, dest })
 
-    expect(pulled.packsFetched).toBeGreaterThan(0)
+    expect(pulled.fetched).toBe(true)
     expect(await readTree(dest)).toEqual(await readTree(source))
+    expect(await fs.readFile(path.join(dest, '.term-digest'), 'utf8')).toBe(`${version.digest}\n`)
 
-    // a second install of the same version fetches no pack: every object is already local
-    const again = await installOciVersion({ transport, repository: route().repository.name, version, dest: path.join(work, 'again'), local })
-    expect(again.packsFetched).toBe(0)
-    expect(again.looseFetched).toBe(0)
+    // a second install of the same version into the same folder fetches nothing: its marker names the manifest
+    const before = server.requests.length
+    const again = await installOciVersion({ transport, repository: route().repository.name, version, dest })
+    expect(again.fetched).toBe(false)
+    expect(server.requests.length).toBe(before)
   })
 
-  // On GHCR, which lacks the referrers API, a referrer is an index TAGGED `sha256-<hex>`, listed beside every version
-  it('attaches no signature referrer unless asked', async () => {
+  // v1 attached a signature referrer on request, which GHCR (lacking the referrers API) listed as a `sha256-<hex>` tag
+  // beside every version. v2 has none (decision 158 rule 3), and one gzip ustar layer
+  it('writes no signature referrer, and exactly one archive layer', async () => {
     const source = path.join(work, 'plain')
     await writePackage(source, FILES)
 
     const result = await publish({ dir: source, version: '0.9.0' })
     const referrers = await transport.referrers({ repository: route().repository.name, digest: result.digest })
+    const manifest = JSON.parse(result.artifact.manifest.toString('utf8')) as { layers: { mediaType: string }[] }
 
-    expect(result.referrer).toBe('skipped')
     expect(referrers ?? []).toEqual([])
+    expect(manifest.layers.map(layer => layer.mediaType)).toEqual(['application/vnd.oci.image.layer.v1.tar+gzip'])
   })
 
   it('treats an identical republish as a no-op, and refuses to overwrite a version', async () => {
@@ -361,11 +368,12 @@ describe('OCI publish and install', () => {
     await expect(publish({ dir: source, version: '1.0.0' })).rejects.toThrow(/write-once/)
   })
 
+  // the files of 0.9.0 under the next version: the archive is the blob already there, only the config goes up
   it('uploads only what changed in the next version', async () => {
-    const source = path.join(work, 'v1')
-    const next = await publish({ dir: source, version: '1.0.2' })
+    const next = await publish({ dir: path.join(work, 'plain'), version: '1.0.2' })
 
-    expect(next.blobs.present).toBeGreaterThan(0)
+    expect(next.blobs.present).toBe(1)
+    expect(next.blobs.uploaded).toBe(1)
     expect(next.bytes.uploaded).toBeLessThan(next.bytes.total)
   })
 
@@ -435,37 +443,32 @@ describe('OCI publish and install', () => {
     server.retag({ repository: repo, tag: 'keys', digest: generation2 })
   })
 
-  it('refuses a pack the registry has tampered with', async () => {
+  it('refuses an archive the registry has tampered with, and leaves no folder', async () => {
     const version = await read({ reference: '1.0.0', trustDir: path.join(work, 'trust') })
-    const pack = version.manifest.packs[0]!
-    const original = server.blobs.get(pack.digest)!
-    server.tamperBlob(pack.digest, Buffer.from('not a pack'))
+    const archive = version.config.archive
+    const original = server.blobs.get(archive.digest)!
+    server.tamperBlob(archive.digest, Buffer.from('not the archive'))
 
-    await expect(
-      installOciVersion({
-        transport,
-        repository: route().repository.name,
-        version,
-        dest: path.join(work, 'tampered'),
-        local: layoutObjectStore({ dir: path.join(work, 'fresh-store') }),
-      }),
-    ).rejects.toThrow()
+    await expect(installOciVersion({ transport, repository: route().repository.name, version, dest: path.join(work, 'tampered') })).rejects.toThrow()
 
-    server.tamperBlob(pack.digest, original)
+    server.tamperBlob(archive.digest, original)
     await expect(fs.access(path.join(work, 'tampered'))).rejects.toThrow()
   })
 
-  it('holds the closure rule when a pack is dropped from the manifest', async () => {
+  it('refuses a manifest that lists a layer beside the archive', async () => {
     const version = await read({ reference: '1.0.0', trustDir: path.join(work, 'trust') })
-    const files = JSON.parse((await transport.getBlob({ repository: route().repository.name, digest: version.manifest.files.digest, limit: 1 << 24 })).toString('utf8'))
-    const closure = files.packs.flatMap((pack: { objects: [string][] }) => pack.objects.map(([id]) => id))
-    const layers = [version.manifest.files, ...version.manifest.packs.slice(1), ...version.manifest.loose]
+    const manifest = JSON.parse(version.manifestBytes.toString('utf8'))
+    const doubled = Buffer.from(JSON.stringify({ ...manifest, layers: [...manifest.layers, manifest.layers[0]] }))
 
-    expect(() => checkClosure({ closure, files, layers })).toThrow(/does not list/)
+    expect(() => parseDeckManifest(doubled)).toThrow(/exactly 1 layer/)
   })
 
-  it('refuses a pack that does not hold what the files layer placed in it', () => {
-    expect(() => openRemotePack({ bytes: Buffer.from('junk'), expect: [] })).toThrow()
+  it('refuses a fetched archive that is not the signed one', () => {
+    const config = {
+      archive: { digest: sha256Digest(Buffer.from('the archive')), size: 11, mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip' },
+    } as DeckConfig
+
+    expect(() => checkArchiveLayer({ bytes: Buffer.from('junk'), config })).toThrow(/the fetched archive is/)
   })
 
   it('refuses a manifest that is not a Term deck', () => {
@@ -476,30 +479,32 @@ describe('OCI publish and install', () => {
 })
 
 describe('OCI image layout', () => {
+  const layoutPublish = (input: {
+    dir: string
+    transport: OciTransport
+    repository: { host: string; namespace: string; name: string }
+    keypair: ReturnType<typeof generateKeypair>
+  }) =>
+    publishToOci({
+      dir: input.dir,
+      package: '@term/demo',
+      version: '1.0.0',
+      link: [],
+      transport: input.transport,
+      repository: input.repository,
+      scope: '@term',
+      keysRepository: 'term',
+      keypair: input.keypair,
+    })
+
   it('publishes into a layout and installs from it, as a registry that is a directory', async () => {
     const work = await scratch('layout')
     const source = path.join(work, 'src')
     await writePackage(source, FILES)
 
     const transport = layoutTransport({ dir: path.join(work, 'mirror'), prefix: 'mirror.local' })
-    const keypair = generateKeypair()
     const repository = { host: 'mirror.local', namespace: 'term', name: 'term/demo' }
-
-    const result = await publishToOci({
-      dir: source,
-      package: '@term/demo',
-      version: '1.0.0',
-      target: { kind: 'version', version: '1.0.0' },
-      link: [],
-      transport,
-      repository,
-      scope: '@term',
-      keysRepository: 'term',
-      local: layoutObjectStore({ dir: path.join(work, 'store') }),
-      keypair,
-      author: 'tester',
-      time: TIME,
-    })
+    const result = await layoutPublish({ dir: source, transport, repository, keypair: generateKeypair() })
 
     const index = JSON.parse(await fs.readFile(path.join(work, 'mirror', 'index.json'), 'utf8'))
     expect(index.manifests.some((entry: { digest: string }) => entry.digest === result.digest)).toBe(true)
@@ -517,15 +522,15 @@ describe('OCI image layout', () => {
       env: {},
     })
     const dest = path.join(work, 'dest')
-    await installOciVersion({ transport, repository: 'term/demo', version, dest, local: layoutObjectStore({ dir: path.join(work, 'client') }) })
+    await installOciVersion({ transport, repository: 'term/demo', version, dest })
 
     expect(await readTree(dest)).toEqual(await readTree(source))
   })
 
   // A `.tree` file is stored as a record only when the record gives the file back. Term source is not a record: the
   // data grammar read its first top-level node and dropped the rest, and every installed `.tree` file came back cut
-  // to its first line or block (object/version.ts `recordOf`, 2026-10-05). Several top-level nodes, comments, blank
-  // lines and a lean file, each byte for byte
+  // to its first line or block (object/version.ts `recordOf`, 2026-10-05). v2 archives every file as its bytes, and
+  // this holds it: several top-level nodes, comments, blank lines and a lean file, each byte for byte
   it('installs Term source byte for byte', async () => {
     const work = await scratch('source')
     const source = path.join(work, 'src')
@@ -541,26 +546,12 @@ describe('OCI image layout', () => {
     const transport = layoutTransport({ dir: path.join(work, 'mirror'), prefix: 'mirror.local' })
     const repository = { host: 'mirror.local', namespace: 'term', name: 'term/demo' }
 
-    await publishToOci({
-      dir: source,
-      package: '@term/demo',
-      version: '1.0.0',
-      target: { kind: 'version', version: '1.0.0' },
-      link: [],
-      transport,
-      repository,
-      scope: '@term',
-      keysRepository: 'term',
-      local: layoutObjectStore({ dir: path.join(work, 'store') }),
-      keypair: generateKeypair(),
-      author: 'tester',
-      time: TIME,
-    })
+    await layoutPublish({ dir: source, transport, repository, keypair: generateKeypair() })
 
     const version = await readOciVersion({ transport, repository: 'term/demo', package: '@term/demo', reference: '1.0.0', scope: '@term', keysRepository: 'term', host: 'mirror.local', trustDir: path.join(work, 'trust'), env: {} })
     const dest = path.join(work, 'dest')
 
-    await installOciVersion({ transport, repository: 'term/demo', version, dest, local: layoutObjectStore({ dir: path.join(work, 'client') }) })
+    await installOciVersion({ transport, repository: 'term/demo', version, dest })
 
     expect(await readTree(dest)).toEqual(await readTree(source))
   })
@@ -573,21 +564,7 @@ describe('OCI image layout', () => {
     const transport = layoutTransport({ dir, bare: true })
     const keypair = generateKeypair()
 
-    await publishToOci({
-      dir: source,
-      package: '@term/demo',
-      version: '1.0.0',
-      target: { kind: 'version', version: '1.0.0' },
-      link: [],
-      transport,
-      repository: { host: 'layout', namespace: 'term', name: 'term/demo' },
-      scope: '@term',
-      keysRepository: 'term',
-      local: layoutObjectStore({ dir: path.join(work, 'store') }),
-      keypair,
-      author: 'tester',
-      time: TIME,
-    })
+    await layoutPublish({ dir: source, transport, repository: { host: 'layout', namespace: 'term', name: 'term/demo' }, keypair })
 
     const index = JSON.parse(await fs.readFile(path.join(dir, 'index.json'), 'utf8')) as {
       manifests: { annotations?: Record<string, string> }[]
@@ -609,7 +586,7 @@ describe('OCI image layout', () => {
     expect(version.trust?.source).toBe('env')
 
     const dest = path.join(work, 'dest')
-    await installOciVersion({ transport, repository: 'term/demo', version, dest, local: layoutObjectStore({ dir: path.join(work, 'client') }) })
+    await installOciVersion({ transport, repository: 'term/demo', version, dest })
     expect(await readTree(dest)).toEqual(await readTree(source))
   })
 
@@ -622,23 +599,8 @@ describe('OCI image layout', () => {
       'link/@term/base/leak.ts': 'export const leak = 1\n',
     })
     const transport = layoutTransport({ dir: path.join(work, 'layout'), bare: true })
-    const keypair = generateKeypair()
 
-    await publishToOci({
-      dir: source,
-      package: '@term/demo',
-      version: '1.0.0',
-      target: { kind: 'version', version: '1.0.0' },
-      link: [],
-      transport,
-      repository: { host: 'layout', namespace: 'term', name: 'term/demo' },
-      scope: '@term',
-      keysRepository: 'term',
-      local: layoutObjectStore({ dir: path.join(work, 'store') }),
-      keypair,
-      author: 'tester',
-      time: TIME,
-    })
+    await layoutPublish({ dir: source, transport, repository: { host: 'layout', namespace: 'term', name: 'term/demo' }, keypair: generateKeypair() })
 
     const version = await readOciVersion({
       transport,
@@ -652,12 +614,14 @@ describe('OCI image layout', () => {
       env: {},
     })
     const dest = path.join(work, 'dest')
-    await installOciVersion({ transport, repository: 'term/demo', version, dest, local: layoutObjectStore({ dir: path.join(work, 'client') }) })
+    await installOciVersion({ transport, repository: 'term/demo', version, dest })
 
     expect(Object.keys(await readTree(dest)).sort()).toEqual(['code/empty.tree', 'code/link/kept.ts'])
     expect(await fs.readFile(path.join(dest, 'code/empty.tree'), 'utf8')).toBe('')
   })
 
+  // the version walk (oci/version-files.tree, decision 154 section 2) keeps an included built folder and nothing else
+  // of host/
   it('ships an included built directory and nothing else from host/', async () => {
     const work = await scratch('include')
     await writePackage(work, {
@@ -668,19 +632,15 @@ describe('OCI image layout', () => {
       'host/cache/x.js': 'leak\n',
     })
 
-    const files = await readVersionFiles({
-      dir: work,
-      store: layoutObjectStore({ dir: path.join(work, '.store') }),
-      include: ['host/line'],
-    })
+    const entries = await walk.readVersionFiles(work, walk.defaultVersionExclude(), ['host/line'])
 
-    expect(files.map(file => file.path)).toEqual(['code/line/base.tree', 'host/line/app.mjs', 'host/line/run.mjs'])
+    expect(entries.filter(entry => entry.kind === 'file').map(entry => entry.path)).toEqual(['code/line/base.tree', 'host/line/app.mjs', 'host/line/run.mjs'])
   })
 
-  it('never stores an object under the wrong digest', async () => {
-    const store = layoutObjectStore({ dir: await scratch('verify') })
+  it('never stores a blob under the wrong digest', async () => {
+    const transport = layoutTransport({ dir: await scratch('verify'), bare: true })
 
-    await expect(store.put({ id: sha256Digest(Buffer.from('a')), bytes: Buffer.from('b') })).rejects.toThrow(/verification/)
+    await expect(transport.putBlob({ repository: 'term/demo', digest: sha256Digest(Buffer.from('a')), bytes: Buffer.from('b') })).rejects.toThrow(/verification/)
   })
 })
 

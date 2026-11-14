@@ -4,14 +4,15 @@
 // task/port-build.ts compiles every port with stage0, never with the working tree's compiler, so an edit to a
 // compiler `.tree` rebuilds only the ports whose own text or imports changed, and a half-edited compiler cannot break
 // the build that would rebuild it (traps.md T033). Stage0 is one esbuild bundle of the compile closure port-build
-// calls (the eight names below), taken from the working tree when it is PINNED and never again: a compiler edit never
+// calls (STAGE0_SOURCES below), taken from the working tree when it is PINNED and never again: a compiler edit never
 // changes it. It is stored under the user home, `~/.base/@term/code/stage0/<id>/compile.mjs`, beside `source.json`
 // (the HEAD commit the working tree sat on, a digest of its deck/make sources and of every bundled source). Its id is
 // the sha256 of the bundle's bytes, since the working tree has edits no commit names, and port-build's compiler
 // fingerprint is that same id. `task/stage0.json` names the pinned id.
 //
-//   npx tsx task/stage0.ts show     the pin, whether its bundle is installed, and whether the working tree's compile
-//                                   closure would bundle to it (exit 1 when the pinned bundle is missing)
+//   npx tsx task/stage0.ts show     the pin, whether its bundle is installed, whether the working tree's compile
+//                                   closure would bundle to it, and each name STAGE0_SOURCES lists with whether the
+//                                   installed bundle exports it (exit 1 when the pinned bundle is missing or lacks one)
 //   npx tsx task/stage0.ts pin      bundle the working tree's compile closure and pin it (the explicit re-pin, the one
 //                                   thing that changes stage0). Every port compiles once more on the next make:port
 //
@@ -21,6 +22,7 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { userHome } from '@term/call/code/home'
 
 // run from the Term package root, the way every script under task/ is
@@ -32,13 +34,25 @@ export const PIN_FILE = join(TERM, 'task', 'stage0.json')
 // task/port-build.ts, so a specifier of this folder is written relative to task/ (bundle() resolves from there too).
 // projectResolver is the port's (task/stage0-resolver.ts), never call/code/make.ts: that driver's closure carried
 // deck/make's analyze.ts and compile/feed-mill.ts into the shipped stage0, outside decision 127's list (item 1026)
+//
+// THE UNIT ENGINE (spec-1339-separate-ports.md section 3, item 1341): port-build compiles each port entry through
+// `term make`'s separate build (decision 162), so stage0 also carries compileSeparate, the CompileCache with the
+// machine store's disk store and its home, the deck and role readers the engine is handed, and make-plan's unit slug
+// and entry shim text with the Pascal spelling the shim's types take. None comes from call/code/make.ts: its unitSlug
+// and entryShim are thin spellings over make-plan's two tasks, and port-build spells its own (it writes host/unit/,
+// never make.ts's host/.unit/)
 export const STAGE0_SOURCES: Record<string, string[]> = {
   '@term/make/code/compile/compile': ['compile'],
   '@term/make/code/compile/load': ['collectModules', 'makeParseMemo'],
   '@term/make/code/compile/native': ['nativePrelude'],
   './stage0-resolver': ['projectResolver'],
-  '@term/call/code/role-of': ['projectLeanOf'],
-  '@term/make/code/compile/typescript': ['toCamel'],
+  '@term/call/code/role-of': ['projectLeanOf', 'projectRoleOf'],
+  '@term/make/code/compile/typescript': ['toCamel', 'toPascal'],
+  '@term/make/code/compile/separate': ['compileSeparate'],
+  '@term/make/code/compile/cache': ['CompileCache'],
+  '@term/call/code/cache-store': ['diskCacheStore', 'cacheHome'],
+  '@term/call/code/deck-of': ['projectDeckOf'],
+  '@term/call/code/make-plan': ['unitSlugOf', 'entryShimText'],
 }
 
 export type Pin = { id: string; pinned: string; head: string; make_digest: string; sources_digest: string; sources: number }
@@ -160,6 +174,30 @@ async function show(): Promise<void> {
   console.log(`  working tree ${now === pinned.id ? 'bundles to the pin' : `differs (it would bundle to ${now})`}`)
 
   if (!installed) {
+    process.exitCode = 1
+    return
+  }
+
+  // each name port-build loads, and whether the installed bundle exports it: a pin made before a name joined
+  // STAGE0_SOURCES lacks it, and port-build would read it as undefined
+  const loaded = (await import(pathToFileURL(file).href)) as Record<string, unknown>
+  let lacking = 0
+
+  for (const [from, names] of Object.entries(STAGE0_SOURCES)) {
+    const marked = names.map(name => {
+      if (typeof loaded[name] === 'function') {
+        return name
+      }
+
+      lacking++
+      return `${name} (NOT EXPORTED)`
+    })
+
+    console.log(`  exports ${marked.join(', ')}  from ${from}`)
+  }
+
+  if (lacking > 0) {
+    console.log(`  the pinned bundle lacks ${lacking} name(s) STAGE0_SOURCES lists: pin again`)
     process.exitCode = 1
   }
 }

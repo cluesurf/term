@@ -32,17 +32,33 @@ load @term/base/environment
 load @term/base/maybe
   find maybe
 
-dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
-  load <node:os>, name node-os
-  # the global, not a namespace of node:process: that namespace is built from every property of process at the first
-  # import, some of them costly getters, about 3 ms on every start (traps.md 0041), and this module is on the start of
-  # host/need.mjs and host/line.js
-  load <global:process>, name host-process
+# node's path.join, dirname and the user's home, through @term/base (each is node's own call on node)
+load @term/base/path
+  find join, name home-join
+  find directory, name home-parent
+  find relative-path, name home-relative
 
-form folder-ask
-  link recursive, like boolean
+load @term/base/environment/path
+  find known-directory
+
+load @term/base/machine
+  find read-platform
+
+# the blocking file calls, each node's own *Sync call on node: existsSync, readdirSync, readFileSync, lstatSync,
+# renameSync, rmdirSync, symlinkSync and writeFileSync (the last five added by item 1439 for this module)
+load @term/base/file/blocking
+  find exists, name home-exists
+  find list, name home-list
+  find read, name home-read
+  find path-kind, name home-kind
+  find rename-path, name home-rename
+  find remove-empty-folder, name home-remove-folder
+  find make-folder-link, name home-link
+  find write-path, name home-write
+  find entry-kind
+
+load @term/base/file/directory
+  find make, name home-make-folder
 
 # the folders already settled in this process, each with the home it answered
 host settled, make hash
@@ -54,7 +70,7 @@ host front-settled, make hash
 task home-folder
   like text
 
-  back node-path/join(<@term>, <code>)
+  back home-join(<@term>, <code>)
 
 # the same, as a path inside a `.base` written with forward slashes, for matching against a path or a command line
 task home-posix
@@ -66,7 +82,7 @@ task home-posix
 task previous-home
   like text
 
-  back node-path/join(<@cluesurf>, <term>)
+  back home-join(<@cluesurf>, <term>)
 
 # the folder before that, until 2026-08-30, still read for data that cannot be rebuilt
 task legacy-home
@@ -94,14 +110,15 @@ task join-all
   like text
   mark private
 
-  # one `join` per part, the first with the base: it is on every command's start (user-home, project-home)
+  # one `join` per part, the first with the base: it is on every command's start (user-home, project-home). With no
+  # part, the base joined to the empty text, which is node's join of the base alone (normalized, `.` for nothing)
   fork test, is-equal(parts/length, 0)
     hold
-      back node-path/join(base)
+      back home-join(base, <>)
   save at, base
   walk parts
     take part
-    save at, node-path/join(at, part)
+    save at, home-join(at, part)
   back at
 
 # `<root>/.base/@term/code/<...parts>`
@@ -110,7 +127,7 @@ task project-home
   take parts, like list, like text
   like text
 
-  back join-all(settle(node-path/join(root, <.base>), root), parts)
+  back join-all(settle(home-join(root, <.base>), root), parts)
 
 # the same path as it was before 2026-08-30, for a fallback read
 task legacy-project-home
@@ -118,14 +135,14 @@ task legacy-project-home
   take parts, like list, like text
   like text
 
-  back join-all(node-path/join(root, <.base>, legacy-home()), parts)
+  back join-all(home-join(home-join(root, <.base>), legacy-home()), parts)
 
 # `~/.base/@term/code/<...parts>`: the installs, the auth token, the link registry and the shared caches
 task user-home
   take parts, like list, like text
   like text
 
-  save home, settle(node-path/join(node-os/homedir(), <.base>), <>)
+  save home, settle(home-join(known-directory(<home>), <.base>), <>)
   settle-front(home)
   back join-all(home, parts)
 
@@ -136,7 +153,7 @@ task user-base
   take parts, like list, like text
   like text
 
-  back join-all(node-path/join(node-os/homedir(), <.base>), parts)
+  back join-all(home-join(known-directory(<home>), <.base>), parts)
 
 # One release of a package under its home, `<home>/code/<version>`: term's own under `~/.base/@term/code`, and each
 # package `term save --global` installs under `~/.base/<scope>/<name>`, the one layout for both (decision
@@ -146,7 +163,7 @@ task release-folder
   take version, like text
   like text
 
-  back node-path/join(home, <code>, version)
+  back home-join(home-join(home, <code>), version)
 
 # THE FRONT'S FOLDER, `call/`: the one thing on PATH, holding `term` (`term.cmd` on Windows), a link to the version
 # that dispatches. It was `bin/` until 2026-10-05, renamed by `settle-front` the way `settle` renames the home
@@ -167,9 +184,9 @@ task front-dir
   take home, like text
   like text
 
-  save call-folder, node-path/join(home, front())
-  save bin-folder, node-path/join(home, previous-front())
-  fork test, and(not(node-file/exists-sync(call-folder)), is-folder(bin-folder))
+  save call-folder, home-join(home, front())
+  save bin-folder, home-join(home, previous-front())
+  fork test, and(not(home-exists(call-folder)), is-folder(bin-folder))
     hold
       back bin-folder
   back call-folder
@@ -189,9 +206,9 @@ task settle-front
   fork test, not(front-settled/has(home))
     hold
       save front-settled/{home}, true
-      save bin-folder, node-path/join(home, previous-front())
-      save call-folder, node-path/join(home, front())
-      fork test, and(is-folder(bin-folder), not(node-file/exists-sync(call-folder)))
+      save bin-folder, home-join(home, previous-front())
+      save call-folder, home-join(home, front())
+      fork test, and(is-folder(bin-folder), not(home-exists(call-folder)))
         hold
           fork test, try-rename(bin-folder, call-folder)
             hold
@@ -202,7 +219,7 @@ task legacy-user-home
   take parts, like list, like text
   like text
 
-  back join-all(node-path/join(node-os/homedir(), <.base>, legacy-home()), parts)
+  back join-all(home-join(home-join(known-directory(<home>), <.base>), legacy-home()), parts)
 
 # The home under `base` (a `.base` folder), after moving `@cluesurf/term` to `@term/code` if this is the first time a
 # version that knows the new name has looked. `project` is the project root when `base` is a project's, whose
@@ -215,20 +232,20 @@ task settle
   fork test, settled/has(base)
     hold
       back settled/get(base)
-  save current, node-path/join(base, home-folder())
-  save previous, node-path/join(base, previous-home())
+  save current, home-join(base, home-folder())
+  save previous, home-join(base, previous-home())
   save home, current
   fork test, is-folder(previous)
     hold
       # the usual case, nothing new yet: one rename. Both there means something wrote the new folder before this
       # ran, and the old one is merged into it entry by entry
       save moved, false
-      fork test, node-file/exists-sync(current)
+      fork test, home-exists(current)
         hold
           save moved, merge-home(previous, current)
         miss
           save moved, move-home(previous, current)
-      fork test, or(moved, node-file/exists-sync(current))
+      fork test, or(moved, home-exists(current))
         hold
           save home, current
         miss
@@ -237,7 +254,7 @@ task settle
       # in it already
       fork test, and(is-equal(home, current), is-unequal(project, <>))
         hold
-          rename-ignore-rules(node-path/join(project, <.gitignore>))
+          rename-ignore-rules(home-join(project, <.gitignore>))
   save settled/{base}, home
   back home
 
@@ -265,11 +282,13 @@ task merge-into
   mark private
 
   save empty, true
-  walk node-file/readdir-sync(from)
-    take name
-    save source, node-path/join(from, name)
-    save target, node-path/join(to, name)
-    fork test, not(node-file/exists-sync(target))
+  # readdirSync's names in the platform's order; `from` is a real folder here (settle asked is-folder first)
+  walk home-list(from)
+    take entry
+    save name, entry/name
+    save source, home-join(from, name)
+    save target, home-join(to, name)
+    fork test, not(home-exists(target))
       hold
         fork test, not(try-rename(source, target))
           hold
@@ -290,10 +309,19 @@ task is-folder
   like boolean
   mark private
 
+  # the path's own kind, a link not followed (lstat). Nothing there at all raises absence, which is no folder
   fork
     mark unsafe
-    save stat, node-file/lstat-sync(file)
-    back stat/is-directory()
+    save kind, home-kind(file)
+    sift kind
+      case directory
+        back true
+      case file
+        back false
+      case link
+        back false
+      case other
+        back false
   halt take
     take error
     back false
@@ -305,13 +333,7 @@ task try-rename
   like boolean
   mark private
 
-  fork
-    mark unsafe
-    node-file/rename-sync(from, to)
-    back true
-  halt take
-    take error
-    back false
+  back home-rename(from, to)
 
 # one empty folder removed, answering whether it was
 task try-remove-folder
@@ -319,13 +341,7 @@ task try-remove-folder
   like boolean
   mark private
 
-  fork
-    mark unsafe
-    node-file/rmdir-sync(folder)
-    back true
-  halt take
-    take error
-    back false
+  back home-remove-folder(folder)
 
 # One rename, which is atomic on one filesystem, then a link at the old path. A rename another process blocks
 # (EPERM, EBUSY on Windows) answers false and moves nothing
@@ -346,14 +362,9 @@ task try-move
   like boolean
   mark private
 
-  fork
-    mark unsafe
-    node-file/mkdir-sync(node-path/dirname(to), make(folder-ask, bind(recursive, true)))
-    node-file/rename-sync(from, to)
-    back true
-  halt take
-    take error
-    back false
+  # recursive and total: a parent it could not make leaves the rename to fail, which answers false as before
+  home-make-folder(home-parent(to))
+  back home-rename(from, to)
 
 # the link at the old name, to the new folder. A link that cannot be made (a Windows account that may not make one) is
 # skipped: the move stands, and only an older `term` loses its way to the new folder
@@ -363,19 +374,15 @@ task link-back
   like boolean
   mark private
 
-  fork
-    mark unsafe
-    # a junction on Windows needs no privilege and takes an absolute target; elsewhere a relative link survives the
-    # home folder itself being moved
-    fork test, is-equal(host-process/platform, <win32>)
-      hold
-        node-file/symlink-sync(to, from, <junction>)
-      miss
-        node-file/symlink-sync(node-path/relative(node-path/dirname(from), to), from)
-    back true
-  halt take
-    take error
-    back true
+  # a junction on Windows needs no privilege and takes an absolute target. Elsewhere a relative link survives the
+  # home folder itself being moved. Whether it was made, the answer is true
+  save made, false
+  fork test, is-equal(read-platform(), <win32>)
+    hold
+      save made, home-link(to, from)
+    miss
+      save made, home-link(home-relative(home-parent(from), to), from)
+  back true
 
 # The rules `term wake` writes, renamed for the moved folder: only the block `term wake` wrote, whole, and nothing else
 # in the file. Which lines, and when, is call/code/home-ignore.tree
@@ -390,7 +397,10 @@ task rename-ignore-rules
       save renamed, renamed-ignore(body)
       fork test, is-unequal(renamed, <>)
         hold
-          node-file/write-file-sync(file, renamed)
+          # a write that fails ends the command, as node's writeFileSync throwing did
+          fork test, not(home-write(file, renamed))
+            hold
+              halt <the ignore rules could not be written to {file}>
     case none
       save nothing, 0
 
@@ -402,7 +412,7 @@ task read-or-nothing
 
   fork
     mark unsafe
-    save body, node-file/read-file-sync(file, <utf8>)
+    save body, home-read(file)
     back make(some, body)
   halt take
     take error
@@ -417,7 +427,7 @@ task kept-at
   take legacy, like text
   like text
 
-  fork test, and(not(node-file/exists-sync(current)), node-file/exists-sync(legacy))
+  fork test, and(not(home-exists(current)), home-exists(legacy))
     hold
       back legacy
   back current

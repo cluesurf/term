@@ -9,8 +9,9 @@
 // link/@term pointed at the copy, traps T-0792), then works only there, with port-build's own two steps (decision 030
 // section 1) and stage0's own bundle (decision 036), never a build path of its own:
 //
-// port-build is the Term task task/port-build.tree, run by the copy's launcher (`node task/launch.mjs port-build`,
-// decision 140), so in C the build task itself is compiled by the stage1 bundle.
+// port-build is the units build, task/port-build.ts --units (decision 166, which suspends decision 140's launcher for
+// port-build until item 1426 ports the units build to task/port-build.tree): A and C prove the units make:port lands.
+// Each stage folder holds the units (host/unit/) beside the ports, which are entry shims.
 //
 //   A  port-build --stage-check, stage0 the pin (or --stage0): stage0 writes every port, the stage1 compiler's source
 //      (stage1/ts), then the stage1 compiler compiles every module again (stage2/ts). With rust, the stage1 compiler
@@ -165,8 +166,13 @@ function step(tree: string, log: string, args: string[]): Ended {
   }
 }
 
-// a Term task in the copy, run by the copy's own launcher on the copy's stage0 pin (decision 140): `port-build` in A
-// and C, so step C's port-build is itself compiled by the stage1 bundle
+// port-build --units in the copy, on the copy's stage0 pin: A and C (decision 166)
+function unitsStep(tree: string, log: string, args: string[]): Ended {
+  return step(tree, log, ['task/port-build.ts', '--units', ...args])
+}
+
+// a Term task in the copy, run by the copy's own launcher on the copy's stage0 pin (decision 140). Unused while
+// decision 166 holds; item 1426 moves A and C back to it
 function launchStep(tree: string, log: string, args: string[]): Ended {
   const fd = openSync(log, 'w')
 
@@ -575,7 +581,7 @@ async function run(): Promise<void> {
 
   // A: stage0 writes the ports, the stage1 compiler compiles every module again
   const logA = join(logs, 'a-port-build.log')
-  const a = launchStep(tree, logA, ['port-build', '--stage-check', ...only])
+  const a = unitsStep(tree, logA, ['--stage-check', ...only])
   say(`${clock()} A ${lastLine(logA, /^term port-build: /)}; ${lastLine(logA, /^term port-build --stage-check/)}`)
 
   if (a.signal) {
@@ -624,6 +630,17 @@ async function run(): Promise<void> {
         if (existsSync(join(tree, one))) {
           put(stage, one, join(tree, one))
         }
+      }
+    }
+
+    // THE UNITS (decision 166): step 1's file of every unit step 2 reached (its scratch names them), so each pair
+    // compares the units and not only the shims, over the same units on both sides (an --only run reaches a part)
+    const units: string[] = []
+    walk(join(checkScratch, 'host', 'unit'), units)
+
+    for (const unit of units) {
+      if (existsSync(join(tree, 'host', 'unit', unit))) {
+        put(stage, join('host', 'unit', unit), join(tree, 'host', 'unit', unit))
       }
     }
   }
@@ -688,7 +705,7 @@ async function run(): Promise<void> {
   // C: the stage1 bundle writes the ports, the stage2 compiler compiles every module again
   const logC = join(logs, 'c-port-build.log')
   const startC = Date.now()
-  const c = launchStep(tree, logC, ['port-build', '--stage-check', ...only])
+  const c = unitsStep(tree, logC, ['--stage-check', ...only])
   say(`${clock()} C ${lastLine(logC, /^term port-build: /)}; ${lastLine(logC, /^term port-build --stage-check/)}`)
 
   if (c.signal) {

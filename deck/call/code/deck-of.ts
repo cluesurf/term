@@ -5,16 +5,48 @@
 //
 // It also carries the manifest's `mark`, the version a console the compiler lowers answers `--version` with, read by
 // the one mark reader a booted console reads through (work/small/manifest-mark.tree, item term-self-host-001-1173).
-// The mark is read from the text the name was read from, and only when a reader asks for it: only a console's
-// lowering does.
+// The mark is read only when a reader asks for it: only a console's lowering does. It is the mark of the nearest deck
+// whose manifest's `line` names the file's directory, else the deck's own (term/compiler decision 018).
 
 import { existsSync, readFileSync } from 'fs'
 import path from 'path'
 import type { DeckOf } from '@term/make/code/compile/roll'
 import { manifestName } from '@term/call/code/manifest-name'
-import { manifestMark } from '@term/call/code/work/small/manifest-mark'
+import { manifestLineOf, manifestMark } from '@term/call/code/work/small/manifest-mark'
 
 type Deck = { name: string; root: string; readonly mark: string }
+
+// THE MARK A CONSOLE LOWERED FROM `dir` SHOWS (term/compiler decision 018, as work/build/deck-finding.tree
+// console-mark-at answers it): the mark of the nearest deck at or above `dir` whose manifest's `line` names `dir`,
+// undefined when none does (then the directory's own deck's mark stands)
+function lineMarkOf(dir: string, lines: Map<string, string>): string | undefined {
+  const target = path.resolve(dir)
+  let at: string | undefined = target
+
+  while (at) {
+    let named = lines.get(at)
+
+    if (named === undefined) {
+      const manifestPath = path.join(at, 'deck.tree')
+      const written = existsSync(manifestPath) ? manifestLineOf(manifestPath) : ''
+      named = written ? path.resolve(at, written) : ''
+      lines.set(at, named)
+    }
+
+    if (named === target) {
+      try {
+        return manifestMark(readFileSync(path.join(at, 'deck.tree'), 'utf8'))
+      } catch {
+        return ''
+      }
+    }
+
+    const parent = path.dirname(at)
+    at = parent === at ? undefined : parent
+  }
+
+  return undefined
+}
 
 // a manifest's deck, its mark read on first ask and kept
 function deckOfManifest(name: string, root: string, text: string): Deck {
@@ -46,6 +78,7 @@ function manifestAt(file: string): { name: string; text: string } | undefined {
 
 export function projectDeckOf(): DeckOf {
   const byDir = new Map<string, Deck | undefined>()
+  const lines = new Map<string, string>()
 
   return file => {
     const dir = path.dirname(file)
@@ -66,7 +99,20 @@ export function projectDeckOf(): DeckOf {
         const manifest = manifestAt(manifestPath)
 
         if (manifest) {
-          found = deckOfManifest(manifest.name, at, manifest.text)
+          const own = deckOfManifest(manifest.name, at, manifest.text)
+          let mark: string | undefined
+
+          // this directory's answer: the deck's name and root, and the mark a console lowered from here shows, read
+          // on first ask
+          found = {
+            name: own.name,
+            root: own.root,
+            get mark() {
+              mark ??= lineMarkOf(dir, lines) ?? own.mark
+
+              return mark
+            },
+          }
           break
         }
       }

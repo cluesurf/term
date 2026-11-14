@@ -7,6 +7,11 @@ note <the OCI registry path end to end, against an in-process registry and an on
 # of the group closes it. code/oci/* and code/object/* and code/package/lock are the subject, docked (decision 106).
 # `toEqual` is a deep equality of plain values (node:util isDeepStrictEqual), a buffer's by its bytes, and a tree of
 # files is compared as its sorted `path base64` lines.
+#
+# Rewritten for OCI artifact format v2 (item term-self-host-001-1043, decision 129 section 2, decisions 154 and 158):
+# one gzip ustar archive layer signed in the config, versions only, no object store, packs, files layer or signature
+# referrer, and an installed folder that carries the `.term-digest` marker, left out when a tree is compared. The
+# version walk is oci/version-files.tree's, loaded as Term.
 
 load @term/base/text
   find contains, name text-contains
@@ -22,9 +27,12 @@ load ./oci-server
   find retag
   find oci-server
 
+load ../code/oci/version-files
+  find default-version-exclude
+  find read-version-files
+
 dock load
   load <@term/deck/code/object/sign>, name sign-face
-  load <@term/deck/code/object/version>, name version-face
   load <@term/deck/code/oci/auth>, name auth-face
   load <@term/deck/code/oci/artifact>, name artifact-face
   load <@term/deck/code/oci/install>, name install-face
@@ -162,8 +170,6 @@ bind message-of
   case node
     text <String($cause?.message ?? $cause)>
 
-host time, <2026-01-01T00:00:00.000Z>
-
 # a record from its parts, a field name then its value, again and again
 task record
   take parts, like list, like dynamic
@@ -217,6 +223,10 @@ task tree-lines
   walk dock-file/readdirSync(dock-path/join(dir, at), record(make(list, <withFileTypes>, true)))
     take entry, like dynamic
     save rel, dock-path/join(at, entry/name)
+    # the install's marker at the top of a version folder is the installer's, never a file of the package
+    fork test, is-equal(rel, <.term-digest>)
+      hold
+        turn next
     fork test, is-folder(entry)
       hold
         walk tree-lines(dir, rel)
@@ -317,15 +327,17 @@ test <OCI references: round trips versions through tags, and pins through refere
 
 # ---- the signed statement ----
 
-# the same literal is held by the package index's own reader, on the server side
+# the package index's own reader on the server side (mesh/deck/back/code/resource/package/oci.test.ts) holds the v1
+# literal until it moves (log.md, 1043)
 test <the signed statement: is byte for byte what the package index verifies>
   save links, make list
   links/push(record(make(list, <deck>, <@term/z>, <code>, <1.x.x>)))
   links/push(record(make(list, <deck>, <@term/base>, <code>, <0.0.x>)))
   save a, repeated(<a>, 64)
-  save b, repeated(<b>, 64)
-  save statement, artifact-face/deckStatement(record(make(list, <package>, <@term/demo>, <version>, <1.0.0>, <tag>, <1.0.0>, <commit>, <sha256:{a}>, <tree>, <sha256:{b}>, <link>, links)))
-  want hold, is-equal(statement, <\{"type":"application/vnd.cluesurf.term.deck.v1","package":"@term/demo","version":"1.0.0","tag":"1.0.0","commit":"sha256:{a}","tree":"sha256:{b}","link":[["@term/base","0.0.x"],["@term/z","1.x.x"]]\}>)
+  # the archive's fields given out of order: the statement writes digest, size, media type whatever order they come in
+  save archive, record(make(list, <mediaType>, <application/vnd.oci.image.layer.v1.tar+gzip>, <size>, 1234, <digest>, <sha256:{a}>))
+  save statement, artifact-face/deckStatement(record(make(list, <package>, <@term/demo>, <version>, <1.0.0>, <tag>, <1.0.0>, <link>, links, <archive>, archive)))
+  want hold, is-equal(statement, <\{"type":"application/vnd.cluesurf.term.deck.v2","package":"@term/demo","version":"1.0.0","tag":"1.0.0","link":[["@term/base","0.0.x"],["@term/z","1.x.x"]],"archive":\{"digest":"sha256:{a}","size":1234,"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip"\}\}>)
 
 # ---- OCI credentials ----
 
@@ -551,13 +563,12 @@ task publish
   take dir, like text
   take version, like text
   take signer, like dynamic
-  take referrer, like boolean
   like dynamic
   mark async
 
   save links, make list
   links/push(record(make(list, <deck>, <@term/base>, <code>, <1.x.x>)))
-  save ask, record(make(list, <referrer>, referrer, <dir>, dir, <package>, <@term/demo>, <version>, version, <target>, record(make(list, <kind>, <version>, <version>, version)), <link>, links, <transport>, fixture/transport, <repository>, demo-repository(fixture), <scope>, <@term>, <keysRepository>, <term>, <local>, layout-face/layoutObjectStore(record(make(list, <dir>, dock-path/join(fixture/work, <publisher-store>)))), <keypair>, signer, <author>, <tester>, <time>, time))
+  save ask, record(make(list, <dir>, dir, <package>, <@term/demo>, <version>, version, <link>, links, <transport>, fixture/transport, <repository>, demo-repository(fixture), <scope>, <@term>, <keysRepository>, <term>, <keypair>, signer))
   back wait publish-face/publishToOci(ask)
 
 task publish-refusal
@@ -570,7 +581,7 @@ task publish-refusal
 
   fork
     mark unsafe
-    publish(fixture, dir, version, signer, false)
+    publish(fixture, dir, version, signer)
     back <>
   halt take
     take cause
@@ -614,16 +625,20 @@ task install-ask
   take fixture, like publish-fixture
   take version, like dynamic
   take dest, like text
-  take local, like dynamic
   like dynamic
 
-  back record(make(list, <transport>, fixture/transport, <repository>, demo-repository(fixture)/name, <version>, version, <dest>, dest, <local>, local))
+  back record(make(list, <transport>, fixture/transport, <repository>, demo-repository(fixture)/name, <version>, version, <dest>, dest))
 
-task store-at
-  take dir, like text
-  like dynamic
+# the marker an install leaves at the top of the version folder, the empty text when there is none
+task marker-of
+  take dest, like text
+  like text
 
-  back layout-face/layoutObjectStore(record(make(list, <dir>, dir)))
+  save place, dock-path/join(dest, <.term-digest>)
+  fork test, dock-file/existsSync(place)
+    hold
+      back dock-file/readFileSync(place, <utf8>)
+  back <>
 
 task artifact-types
   take entries, like dynamic
@@ -638,53 +653,67 @@ task artifact-types
     out/push(one/artifactType)
   back out
 
-test <OCI publish and install: publishes, installs byte for byte, and attaches the signature referrer when asked>
+# a manifest's bytes with its archive layer listed twice
+bind with-second-layer
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<((secondManifest) => Buffer.from(JSON.stringify({ ...secondManifest, layers: [...secondManifest.layers, secondManifest.layers[0]] })))(JSON.parse(Buffer.from($bytes).toString("utf8")))>>
+
+test <OCI publish and install: publishes, installs byte for byte under the marker, and a second install fetches nothing>
   save got, publishing()
   save source, dock-path/join(got/work, <v1>)
   write-package(source, fixture-files())
-  save result, publish(got, source, <1.0.0>, got/keypair, true)
+  save result, publish(got, source, <1.0.0>, got/keypair)
   want hold, is-equal(result/unchanged, false)
   want hold, is-equal(result/keySet, <created>)
-  want hold, is-equal(result/referrer, <attached>)
-  want hold, is-above(result/artifact/loose, 0)
-  save referrers, wait got/transport/referrers(record(make(list, <repository>, demo-repository(got)/name, <digest>, result/digest)))
-  want hold, artifact-types(referrers)/includes(<application/vnd.cluesurf.term.signature.v1>)
+  want hold, is-equal(result/layers, 1)
+  want hold, is-equal(field-of(result/artifact/config, <type>), <application/vnd.cluesurf.term.deck.v2>)
   save version, read-version(got, <1.0.0>)
   save links, make list
   links/push(record(make(list, <deck>, <@term/base>, <code>, <1.x.x>)))
   want hold, same(version/config/link, links)
   want hold, is-equal(version/trust/source, <first-use>)
+  want hold, is-equal(version/manifest/archive/digest, version/config/archive/digest)
   save dest, dock-path/join(got/work, <installed>)
-  save local, store-at(dock-path/join(got/work, <client-store>))
-  save pulled, wait install-face/installOciVersion(install-ask(got, version, dest, local))
-  want hold, is-above(pulled/packsFetched, 0)
+  save pulled, wait install-face/installOciVersion(install-ask(got, version, dest))
+  want hold, is-equal(pulled/fetched, true)
   want hold, same-tree(dest, source)
-  # a second install of the same version fetches no pack: every object is already local
-  save again, wait install-face/installOciVersion(install-ask(got, version, dock-path/join(got/work, <again>), local))
-  want hold, is-equal(again/packsFetched, 0)
-  want hold, is-equal(again/looseFetched, 0)
+  want hold, is-equal(marker-of(dest), <{version/digest}\n>)
+  # a second install of the same version into the same folder fetches nothing: its marker names the manifest
+  save before, got/server/requests/length
+  save again, wait install-face/installOciVersion(install-ask(got, version, dest))
+  save after, got/server/requests/length
+  want hold, is-equal(again/fetched, false)
+  want hold, is-equal(after, before)
 
-# On GHCR, which lacks the referrers API, a referrer is an index TAGGED `sha256-<hex>`, listed beside every version
-test <OCI publish and install: attaches no signature referrer unless asked>
+# v1 attached a signature referrer on request, which GHCR (lacking the referrers API) listed as a `sha256-<hex>` tag
+# beside every version. v2 has none (decision 158 rule 3), and one gzip ustar layer
+test <OCI publish and install: writes no signature referrer, and exactly one archive layer>
   save got, publishing()
   save source, dock-path/join(got/work, <plain>)
   write-package(source, fixture-files())
-  save result, publish(got, source, <0.9.0>, got/keypair, false)
+  save result, publish(got, source, <0.9.0>, got/keypair)
   save referrers, wait got/transport/referrers(record(make(list, <repository>, demo-repository(got)/name, <digest>, result/digest)))
-  want hold, is-equal(result/referrer, <skipped>)
   want hold, is-equal(artifact-types(referrers)/length, 0)
+  save written, result/artifact/manifest/toString(<utf8>)
+  save manifest, json-of(written)
+  want hold, is-equal(manifest/layers/length, 1)
+  want hold, is-equal(manifest/layers/0/mediaType, <application/vnd.oci.image.layer.v1.tar+gzip>)
 
 test <OCI publish and install: treats an identical republish as a no-op, and refuses to overwrite a version>
   save got, publishing()
   save source, dock-path/join(got/work, <v1>)
-  want hold, is-equal(publish(got, source, <1.0.0>, got/keypair, false)/unchanged, true)
+  want hold, is-equal(publish(got, source, <1.0.0>, got/keypair)/unchanged, true)
   write-package(source, record(make(list, <code/one.ts>, <export const one = 11\n>)))
   want hold, text-contains(publish-refusal(got, source, <1.0.0>, got/keypair), <write-once>)
 
+# the files of 0.9.0 under the next version: the archive is the blob already there, only the config goes up
 test <OCI publish and install: uploads only what changed in the next version>
   save got, publishing()
-  save next, publish(got, dock-path/join(got/work, <v1>), <1.0.2>, got/keypair, false)
-  want hold, is-above(next/blobs/present, 0)
+  save next, publish(got, dock-path/join(got/work, <plain>), <1.0.2>, got/keypair)
+  want hold, is-equal(next/blobs/present, 1)
+  want hold, is-equal(next/blobs/uploaded, 1)
   want hold, is-below(next/bytes/uploaded, next/bytes/total)
 
 test <OCI publish and install: fails loudly when a tag moves under a pinned digest>
@@ -713,7 +742,7 @@ test <OCI publish and install: refuses a publisher outside the key set, until a 
   added/push(stranger/publicKey)
   save rotated, wait keys-face/rotateKeys(record(make(list, <transport>, got/transport, <repository>, <term>, <scope>, <@term>, <keypair>, got/keypair, <add>, added)))
   want hold, is-equal(rotated/sequence, 2)
-  publish(got, source, <1.0.4>, stranger, false)
+  publish(got, source, <1.0.4>, stranger)
   want hold, is-equal(read-version(got, <1.0.4>)/trust/source, <rotated>)
 
 task trusted-refusal
@@ -765,88 +794,60 @@ task install-refusal
 
   fork
     mark unsafe
-    wait install-face/installOciVersion(install-ask(fixture, version, dock-path/join(fixture/work, <tampered>), store-at(dock-path/join(fixture/work, <fresh-store>))))
+    wait install-face/installOciVersion(install-ask(fixture, version, dock-path/join(fixture/work, <tampered>)))
     back <>
   halt take
     take cause
     back <raised: {message-of(cause)}>
 
-test <OCI publish and install: refuses a pack the registry has tampered with>
+test <OCI publish and install: refuses an archive the registry has tampered with, and leaves no folder>
   save got, publishing()
   save version, read-version(got, <1.0.0>)
-  save pack, version/manifest/packs/0
-  save original, got/server/blobs/get(pack/digest)
-  tamper-blob(got/server, pack/digest, bytes-of(<not a pack>))
+  save archive, version/config/archive
+  save original, got/server/blobs/get(archive/digest)
+  tamper-blob(got/server, archive/digest, bytes-of(<not the archive>))
   save refused, install-refusal(got, version)
-  tamper-blob(got/server, pack/digest, original)
+  tamper-blob(got/server, archive/digest, original)
   want hold, is-unequal(refused, <>)
   want hold, not(dock-file/existsSync(dock-path/join(got/work, <tampered>)))
 
-task closure-refusal
-  take ask, like dynamic
+task manifest-refusal
+  take bytes, like dynamic
   like text
 
   fork
     mark unsafe
-    artifact-face/checkClosure(ask)
+    artifact-face/parseDeckManifest(bytes)
     back <>
   halt take
     take cause
     back <raised: {message-of(cause)}>
 
-test <OCI publish and install: holds the closure rule when a pack is dropped from the manifest>
+test <OCI publish and install: refuses a manifest that lists a layer beside the archive>
   save got, publishing()
   save version, read-version(got, <1.0.0>)
-  save waited-11, wait got/transport/getBlob(record(make(list, <repository>, demo-repository(got)/name, <digest>, version/manifest/files/digest, <limit>, 16777216)))
-  save files, json-of(waited-11/toString(<utf8>))
-  save closure, make list
-  walk files/packs
-    take pack, like dynamic
-    walk pack/objects
-      take object, like dynamic
-      closure/push(object/0)
-  save layers, make list
-  layers/push(version/manifest/files)
-  save at, 0
-  walk version/manifest/packs
-    take pack, like dynamic
-    fork test, is-above(at, 0)
-      hold
-        layers/push(pack)
-    save at, add(at, 1)
-  walk version/manifest/loose
-    take one, like dynamic
-    layers/push(one)
+  save doubled, with-second-layer(version/manifestBytes)
   close-oci-server(got/server)
-  want hold, text-contains(closure-refusal(record(make(list, <closure>, closure, <files>, files, <layers>, layers))), <does not list>)
+  want hold, text-contains(manifest-refusal(doubled), <exactly 1 layer>)
 
-task pack-refusal
+task layer-refusal
   like text
 
+  save archive, record(make(list, <digest>, transport-face/sha256Digest(bytes-of(<the archive>)), <size>, 11, <mediaType>, <application/vnd.oci.image.layer.v1.tar+gzip>))
+  save config, record(make(list, <archive>, archive))
   fork
     mark unsafe
-    artifact-face/openRemotePack(record(make(list, <bytes>, bytes-of(<junk>), <expect>, make list)))
+    artifact-face/checkArchiveLayer(record(make(list, <bytes>, bytes-of(<junk>), <config>, config)))
     back <>
   halt take
     take cause
     back <raised: {message-of(cause)}>
 
-test <OCI publish and install: refuses a pack that does not hold what the files layer placed in it>
-  want hold, is-unequal(pack-refusal(), <>)
-
-task manifest-refusal
-  like text
-
-  fork
-    mark unsafe
-    artifact-face/parseDeckManifest(bytes-of(<\{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"\}>))
-    back <>
-  halt take
-    take cause
-    back <raised: {message-of(cause)}>
+test <OCI publish and install: refuses a fetched archive that is not the signed one>
+  want hold, text-contains(layer-refusal(), <the fetched archive is>)
 
 test <OCI publish and install: refuses a manifest that is not a Term deck>
-  want hold, text-contains(manifest-refusal(), <not a Term deck>)
+  want hold, text-contains(manifest-refusal(bytes-of(<\{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"\}>)), <not a Term deck>)
 
 # ---- OCI image layout ----
 
@@ -861,12 +862,11 @@ task layout-publish
   take source, like text
   take transport, like dynamic
   take repository, like dynamic
-  take store, like text
   take keypair, like dynamic
   like dynamic
   mark async
 
-  back wait publish-face/publishToOci(record(make(list, <dir>, source, <package>, <@term/demo>, <version>, <1.0.0>, <target>, record(make(list, <kind>, <version>, <version>, <1.0.0>)), <link>, no-links(), <transport>, transport, <repository>, repository, <scope>, <@term>, <keysRepository>, <term>, <local>, store-at(store), <keypair>, keypair, <author>, <tester>, <time>, time)))
+  back wait publish-face/publishToOci(record(make(list, <dir>, source, <package>, <@term/demo>, <version>, <1.0.0>, <link>, no-links(), <transport>, transport, <repository>, repository, <scope>, <@term>, <keysRepository>, <term>, <keypair>, keypair)))
 
 task layout-read
   take transport, like dynamic
@@ -882,11 +882,10 @@ task layout-install
   take transport, like dynamic
   take version, like dynamic
   take dest, like text
-  take store, like text
   like dynamic
   mark async
 
-  back wait install-face/installOciVersion(record(make(list, <transport>, transport, <repository>, <term/demo>, <version>, version, <dest>, dest, <local>, store-at(store))))
+  back wait install-face/installOciVersion(record(make(list, <transport>, transport, <repository>, <term/demo>, <version>, version, <dest>, dest)))
 
 test <OCI image layout: publishes into a layout and installs from it, as a registry that is a directory>
   save work, scratch(<layout>)
@@ -894,7 +893,7 @@ test <OCI image layout: publishes into a layout and installs from it, as a regis
   write-package(source, fixture-files())
   save transport, layout-face/layoutTransport(record(make(list, <dir>, dock-path/join(work, <mirror>), <prefix>, <mirror.local>)))
   save repository, record(make(list, <host>, <mirror.local>, <namespace>, <term>, <name>, <term/demo>))
-  save result, layout-publish(source, transport, repository, dock-path/join(work, <store>), sign-face/generateKeypair())
+  save result, layout-publish(source, transport, repository, sign-face/generateKeypair())
   save index, json-of(dock-file/readFileSync(dock-path/join(work, <mirror>, <index.json>), <utf8>))
   save listed, false
   walk index/manifests
@@ -906,23 +905,23 @@ test <OCI image layout: publishes into a layout and installs from it, as a regis
   want hold, text-contains(dock-file/readFileSync(dock-path/join(work, <mirror>, <oci-layout>), <utf8>), <1.0.0>)
   save version, layout-read(transport, <mirror.local>, dock-path/join(work, <trust>), empty-record())
   save dest, dock-path/join(work, <dest>)
-  layout-install(transport, version, dest, dock-path/join(work, <client>))
+  layout-install(transport, version, dest)
   want hold, same-tree(dest, source)
 
 # A `.tree` file is stored as a record only when the record gives the file back. Term source is not a record: the data
 # grammar read its first top-level node and dropped the rest, and every installed `.tree` file came back cut to its first
-# line or block (object/version.ts `recordOf`, 2026-10-05). Several top-level nodes, comments, blank lines and a lean
-# file, each byte for byte
+# line or block (object/version.ts `recordOf`, 2026-10-05). v2 archives every file as its bytes, and this holds it:
+# several top-level nodes, comments, blank lines and a lean file, each byte for byte
 test <OCI image layout: installs Term source byte for byte>
   save work, scratch(<source>)
   save source, dock-path/join(work, <src>)
   write-package(source, record(make(list, <code/list.tree>, <load @term/base/list\n  find get\n\n# the first item, or none\ntask first\n  take items, like list\n\n  back get(items, 0)\n\ntask second\n  take items, like list\n\n  back get(items, 1)\n>, <code/form.tree>, <form point\n  link x, like number\n  link y, like number\n\nform line\n  link from, like point\n  link to, like point\n>, <code/role.tree>, <role code\nmark lean\n>, <deck.tree>, <deck @term/demo\n  mark \<1.0.0\>\n>)))
   save transport, layout-face/layoutTransport(record(make(list, <dir>, dock-path/join(work, <mirror>), <prefix>, <mirror.local>)))
   save repository, record(make(list, <host>, <mirror.local>, <namespace>, <term>, <name>, <term/demo>))
-  layout-publish(source, transport, repository, dock-path/join(work, <store>), sign-face/generateKeypair())
+  layout-publish(source, transport, repository, sign-face/generateKeypair())
   save version, layout-read(transport, <mirror.local>, dock-path/join(work, <trust>), empty-record())
   save dest, dock-path/join(work, <dest>)
-  layout-install(transport, version, dest, dock-path/join(work, <client>))
+  layout-install(transport, version, dest)
   want hold, same-tree(dest, source)
 
 test <OCI image layout: reads and writes the bare tags of a single-repository layout, the shape oras --oci-layout uses>
@@ -933,7 +932,7 @@ test <OCI image layout: reads and writes the bare tags of a single-repository la
   save transport, layout-face/layoutTransport(record(make(list, <dir>, dir, <bare>, true)))
   save keypair, sign-face/generateKeypair()
   save repository, record(make(list, <host>, <layout>, <namespace>, <term>, <name>, <term/demo>))
-  layout-publish(source, transport, repository, dock-path/join(work, <store>), keypair)
+  layout-publish(source, transport, repository, keypair)
   save index, json-of(dock-file/readFileSync(dock-path/join(dir, <index.json>), <utf8>))
   save names, make list
   walk index/manifests
@@ -949,7 +948,7 @@ test <OCI image layout: reads and writes the bare tags of a single-repository la
   save version, layout-read(transport, <layout>, dock-path/join(work, <trust>), record(make(list, <TERM_TRUSTED_KEYS>, <@term={keypair/publicKey}>)))
   want hold, is-equal(version/trust/source, <env>)
   save dest, dock-path/join(work, <dest>)
-  layout-install(transport, version, dest, dock-path/join(work, <client>))
+  layout-install(transport, version, dest)
   want hold, same-tree(dest, source)
 
 test <OCI image layout: ships an empty .tree file, and never the installed dependencies under the top-level link/>
@@ -958,10 +957,10 @@ test <OCI image layout: ships an empty .tree file, and never the installed depen
   write-package(source, record(make(list, <code/empty.tree>, <>, <code/link/kept.ts>, <export const kept = 1\n>, <link/@term/base/leak.ts>, <export const leak = 1\n>)))
   save transport, layout-face/layoutTransport(record(make(list, <dir>, dock-path/join(work, <layout>), <bare>, true)))
   save repository, record(make(list, <host>, <layout>, <namespace>, <term>, <name>, <term/demo>))
-  layout-publish(source, transport, repository, dock-path/join(work, <store>), sign-face/generateKeypair())
+  layout-publish(source, transport, repository, sign-face/generateKeypair())
   save version, layout-read(transport, <layout>, dock-path/join(work, <trust>), empty-record())
   save dest, dock-path/join(work, <dest>)
-  layout-install(transport, version, dest, dock-path/join(work, <client>))
+  layout-install(transport, version, dest)
   save paths, make list
   walk read-tree(dest)
     take line, like text
@@ -969,31 +968,38 @@ test <OCI image layout: ships an empty .tree file, and never the installed depen
   want hold, same(paths, make(list, <code/empty.tree>, <code/link/kept.ts>))
   want hold, is-equal(dock-file/readFileSync(dock-path/join(dest, <code/empty.tree>), <utf8>), <>)
 
+# the version walk (oci/version-files.tree, decision 154 section 2) keeps an included built folder and nothing else
+# of host/
 test <OCI image layout: ships an included built directory and nothing else from host/>
   save work, scratch(<include>)
   write-package(work, record(make(list, <code/line/base.tree>, <hook run\n>, <host/line/run.mjs>, <export \{\}\n>, <host/line/app.mjs>, <export \{\}\n>, <host/other.js>, <leak\n>, <host/cache/x.js>, <leak\n>)))
-  save files, wait version-face/readVersionFiles(record(make(list, <dir>, work, <store>, store-at(dock-path/join(work, <.store>)), <include>, make(list, <host/line>))))
+  save include, make list
+  include/push(<host/line>)
+  save entries, read-version-files(work, default-version-exclude(), include)
   save paths, make list
-  walk files
-    take file, like dynamic
-    paths/push(file/path)
+  walk entries
+    take entry, like dynamic
+    fork test, is-equal(entry/kind, <file>)
+      hold
+        paths/push(entry/path)
   want hold, same(paths, make(list, <code/line/base.tree>, <host/line/app.mjs>, <host/line/run.mjs>))
 
 task put-wrong
-  take store, like dynamic
+  take transport, like dynamic
   like text
   mark async
 
   fork
     mark unsafe
-    wait store/put(record(make(list, <id>, transport-face/sha256Digest(bytes-of(<a>)), <bytes>, bytes-of(<b>))))
+    wait transport/putBlob(record(make(list, <repository>, <term/demo>, <digest>, transport-face/sha256Digest(bytes-of(<a>)), <bytes>, bytes-of(<b>))))
     back <>
   halt take
     take cause
     back <raised: {message-of(cause)}>
 
-test <OCI image layout: never stores an object under the wrong digest>
-  want hold, text-contains(put-wrong(store-at(scratch(<verify>))), <verification>)
+test <OCI image layout: never stores a blob under the wrong digest>
+  save transport, layout-face/layoutTransport(record(make(list, <dir>, scratch(<verify>), <bare>, true)))
+  want hold, text-contains(put-wrong(transport), <verification>)
 
 # ---- lockfile key pin ----
 

@@ -48,3 +48,45 @@ task manifest-mark-of
     take problem
     back <>
   back manifest-mark(text)
+
+# a host answer that is a text or absent, as a text: the empty text when absent. Narrowed through `like unknown`, the
+# gradual seam, as work/build/deck-finding.tree text-or-nothing does
+task line-text-of
+  take value, like unknown
+  like text
+  mark private
+
+  sift value
+    case text
+      back value
+    miss
+      back <>
+
+# the folder the manifest at this path names as its command line (`line ./deck/call/code/line`), as written, the empty
+# text for none, a file that cannot be read or a text that does not read as a manifest. A console lowered from that
+# folder is this deck's command line, and answers --version with this deck's mark (term/compiler decision 018). Only a
+# text that holds the word is parsed, so a deck with no `line` costs one read
+task manifest-line-of
+  take file, like text
+  like text
+
+  save body, <>
+  fork
+    mark unsafe
+    save body, node-file/read-file-sync(file, <utf8>)
+  halt take
+    take problem
+    back <>
+  fork test, not(body/includes(<line>))
+    hold
+      back <>
+  save named, <>
+  fork
+    mark unsafe
+    save read, parse-manifest(body, make-grammars())
+    # `line` is a `need false` field: absent when the manifest names none
+    save named, line-text-of(read/line)
+  halt take
+    take problem
+    save named, <>
+  back named

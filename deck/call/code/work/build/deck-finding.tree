@@ -18,13 +18,15 @@ load ../small/manifest-file
 # the manifest's mark through the one reader a booted console reads it with (item term-self-host-001-1173)
 load ../small/manifest-mark
   find manifest-mark-of
+  find manifest-line-of
 
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
 
-# where a deck is: its declared name, the directory its manifest sits in, and the manifest's `mark` (the version a
-# console the compiler lowers answers `--version` with), the empty text for none
+# where a deck is: its declared name, the directory its manifest sits in, and `mark`, the version a console the
+# compiler lowers from a file of this directory answers `--version` with (term/compiler decision 018): the mark of the
+# nearest deck whose manifest's `line` names this directory, else this deck's own mark, the empty text for none
 form deck-place
   link name, like text
   link root, like text
@@ -39,11 +41,64 @@ form deck-finder
   link places, like hash, like text, like deck-place
   # the mark of each deck root read so far, so a manifest's mark is read once however many folders lie below it
   link marks, like hash, like text, like text
+  # the folder each directory's deck.tree names as its `line`, resolved, the empty text for none or no deck.tree there
+  link lines, like hash, like text, like text
 
 task make-deck-finder
   like deck-finder
 
-  back make(deck-finder, bind(asked, make hash), bind(places, make hash), bind(marks, make hash))
+  back make(deck-finder, bind(asked, make hash), bind(places, make hash), bind(marks, make hash), bind(lines, make hash))
+
+# the folder the deck.tree in this directory names as its command line, resolved against the directory, the empty
+# text for none, read once per finder
+task line-folder-at
+  take finder, like deck-finder
+  take at, like text
+  like text
+  mark private
+
+  fork test, not(finder/lines/has(at))
+    hold
+      save named, <>
+      save manifest-path, node-path/join(at, <deck.tree>)
+      fork test, node-file/exists-sync(manifest-path)
+        hold
+          save written, manifest-line-of(manifest-path)
+          fork test, is-unequal(written, <>)
+            hold
+              save named, node-path/resolve(at, written)
+      save finder/lines/{at}, named
+  back finder/lines/get(at)
+
+# THE MARK A CONSOLE LOWERED FROM `dir` SHOWS (term/compiler decision 018): the mark of the nearest deck at or above
+# `dir` whose manifest's `line` names `dir` (the Term root's deck.tree names ./deck/call/code/line, so the CLI answers
+# with the root's mark), else the mark of `dir`'s own deck, whose manifest is at `manifest-path` in `root`
+task console-mark-at
+  take finder, like deck-finder
+  take dir, like text
+  take root, like text
+  take manifest-path, like text
+  like text
+  mark private
+
+  # absolute, as a `line` is resolved
+  save target, node-path/resolve(dir)
+  save at, target
+  save going, true
+  walk test
+    hook test
+      going
+    hook hold
+      fork test, is-equal(line-folder-at(finder, at), target)
+        hold
+          back mark-at(finder, at, node-path/join(at, <deck.tree>))
+      save parent, node-path/dirname(at)
+      fork test, is-equal(parent, at)
+        hold
+          save going, false
+        miss
+          save at, parent
+  back mark-at(finder, root, manifest-path)
 
 # the mark of the manifest at this deck root, read once per finder
 task mark-at
@@ -107,7 +162,7 @@ task find-deck
             case some
               link declared
               save found, true
-              save place, make(deck-place, bind(name, declared), bind(root, at), bind(mark, mark-at(finder, at, manifest-path)))
+              save place, make(deck-place, bind(name, declared), bind(root, at), bind(mark, console-mark-at(finder, dir, at, manifest-path)))
               save going, false
             case none
               save nothing, 0

@@ -28,6 +28,11 @@ load ../cache/compile-store
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
+  # the child-run bind's text reads the global `process` (getBuiltinModule, env, kill, on, off), so this module says
+  # so: the port declares it `any`, as it was while home-folder.tree docked the global for the whole closure (until
+  # item 1435). Named as the global, so only the declaration is written. Without it tsc reads node's own types, and the
+  # spawned child is `never` (node-switch, window 2026-11-14T010853-m3)
+  load <global:process>, name process
 
 form folder-make
   link recursive, like boolean

@@ -133,7 +133,7 @@ task floor-items
   take item-state, like text
   like text
 
-  back <\{"item":[\{"id":"term-self-host-001-0721","state":"{item-state}"\}]\}>
+  back <\{"item":[\{"id":"term-self-host-001-1426","state":"{item-state}"\}]\}>
 
 # a checklist holding one item, 0001, in the state given and with the words given
 task floor-decide
@@ -151,15 +151,15 @@ task floor-baseline-code
   save done, run(<test>, floor-words(<-e {floor-baseline}>), home)
   back done/code
 
-# a repository holding the named F1 files and one port file, no baseline, and item 0721 in the state given
+# a repository holding the named F1 files and one port file, no baseline, and item 1426 in the state given
 task floor-bare
   take item-state, like text
   like text
 
   save home, temp-folder(<floor-classes->)
   floor-do(home, <git>, <init -q>)
-  floor-do(home, <mkdir>, <-p {floor-t}/deck/make/code/engine/backend {floor-t}/deck/make/code/view {floor-t}/deck/call/code {floor-t}/test/call {floor-t}/task/term deck/zone/test note/project/term/self-host/change/001-finish-self-host tmp>)
-  floor-do(home, <touch>, <{floor-t}/deck/make/code/engine/backend/runtime.ts {floor-t}/deck/make/code/view/reactive.ts {floor-t}/test/call/kept.ts>)
+  floor-do(home, <mkdir>, <-p {floor-t}/deck/make/code/engine/backend {floor-t}/deck/make/code/view {floor-t}/deck/call/code/browser {floor-t}/test/call {floor-t}/task/term deck/zone/test note/project/term/self-host/change/001-finish-self-host tmp>)
+  floor-do(home, <touch>, <{floor-t}/deck/make/code/engine/backend/runtime.ts {floor-t}/deck/make/code/view/reactive.ts {floor-t}/deck/call/code/browser/crypto.ts {floor-t}/deck/call/code/browser/path.ts {floor-t}/deck/call/code/browser/absent.ts {floor-t}/test/call/kept.ts>)
   floor-write(<{home}/{floor-checklist}>, floor-items(item-state))
   back home
 
@@ -267,7 +267,7 @@ test <an owed file is not new and never reaches port>
   save kept, floor-read(<{home}/{floor-baseline}>)
   want hold, floor-has(kept, <"files": 1,>)
   want hold, floor-has(kept, <"owed_files": 1,>)
-  want hold, floor-has(kept, <"item": "term-self-host-001-0721">)
+  want hold, floor-has(kept, <"item": "term-self-host-001-1426">)
 
 test <a row fails once its item closes or if it names no item>
   save home, floor-fixture(<open>)
@@ -275,16 +275,16 @@ test <a row fails once its item closes or if it names no item>
   floor-write(<{home}/{floor-checklist}>, floor-items(<done>))
   save closed, floor-run(home, <>)
   want hold, floor-has(closed, <exit 1\n>)
-  want hold, floor-has(closed, <launch-only.ts: its item term-self-host-001-0721 is done>)
+  want hold, floor-has(closed, <launch-only.ts: its item term-self-host-001-1426 is done>)
   save refused, floor-run(home, <--commit>)
   want hold, floor-has(refused, <exit 1\n>)
   want hold, not(floor-has(floor-read(<{home}/{floor-baseline}>), <launch-only.ts>))
   floor-write(<{home}/{floor-checklist}>, floor-items(<rejected>))
-  want hold, floor-has(floor-run(home, <>), <0721 is rejected>)
+  want hold, floor-has(floor-run(home, <>), <1426 is rejected>)
   floor-write(<{home}/{floor-checklist}>, <\{"item":[]\}>)
   save none, floor-run(home, <>)
   want hold, floor-has(none, <exit 1\n>)
-  want hold, floor-has(none, <0721 does not exist>)
+  want hold, floor-has(none, <1426 does not exist>)
 
 test <a row whose file has gone leaves, and is counted removed>
   save home, floor-fixture(<open>)

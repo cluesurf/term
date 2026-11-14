@@ -1121,8 +1121,9 @@ task taken-names
   push(out, <console-forwarded>)
   back out
 
-# THE LOWERING: the entry's command routes as the table, the match and the run, appended to the program. `name` is the
-# name the console is shown by (its deck's, as `term boot` names it), `mark` its version, the empty text for none
+# THE LOWERING: the entry's command routes as the table, the match and the run, appended to the program. The console is
+# shown by its program hook's name, and `name` (its deck's, as `term boot` names it) only when the entry docks more
+# than one route; `mark` is its version, the empty text for none (term/compiler decision 018)
 task lower-console
   take program, like list, like statement
   take file, like text
@@ -1238,8 +1239,16 @@ task lower-console
       bind async, waits
       bind span, at
 
+  # the name the console is shown by (term/compiler decision 018): its program hook's, the one route the entry docks
+  # (`hook term`), as node's dispatch prints it, else the name it was handed
+  save shown, name
+  fork test, is-equal(routes/length, 1)
+    hold
+      save program-route, get(routes, 0)
+      save shown, program-route/path
+
   # task run: the line decided, its outcome written, the task called, the exit code
-  save decided, call-of(<console-decide>, three(text-value(name, at), text-value(mark, at), variable(<console-routes>, at)), at)
+  save decided, call-of(<console-decide>, three(text-value(shown, at), text-value(mark, at), variable(<console-routes>, at)), at)
   save run-body, make list
   push(run-body, local(<decided>, decided, false, at))
   push(run-body, local(<code>, call-of(<console-answer>, one-value(variable(<decided>, at)), at), true, at))

@@ -1,13 +1,14 @@
 // pnpm check:term-oci: ORAS as the independent second implementation of the Term OCI artifact.
 //
-// A check that runs `term host` and then `term load` only shows that Term agrees with itself. This one puts ORAS,
-// which knows nothing about Term, on the other side of every exchange:
+// A check that runs `term host` and then `term load` only shows that Term agrees with itself. This one puts ORAS and
+// the system tar, which know nothing about Term, on the other side of every exchange. Artifact format v2 (decision 129
+// section 2 of the self-host change, decisions 154 and 158): one gzip ustar archive layer, signed in the config.
 //
 //   1. term publishes          oras manifest fetch   the bytes ORAS reads are the manifest Term wrote
-//   2. term publishes          oras pull             every layer lands under its title and hashes to its digest
-//   3. term publishes          oras discover         the signature referrer is attached
+//   2. term publishes          oras pull             the one layer lands under its title and hashes to its digest
+//   3. term publishes          tar -xzf              the pulled archive extracts to the package's files, byte for byte
 //   4. oras cp                 term installs         a layout ORAS wrote installs byte for byte
-//   5. oras push, by hand      term installs         an artifact ORAS built from loose files installs
+//   5. oras push, by hand      term installs         an artifact ORAS built from the archive and config files installs
 //
 // It runs against OCI image layouts on disk (`oras --oci-layout`), so it needs ORAS and no registry server. Without
 // `oras` on the PATH it prints SKIP and exits 0, or exits 1 under --require, because a check that cannot run has not
@@ -21,12 +22,15 @@ import path from 'path'
 import { promisify } from 'util'
 
 import { generateKeypair } from '../../deck/deck/code/object/sign'
-import { layoutObjectStore, layoutTransport } from '../../deck/deck/code/oci/layout'
+import { layoutTransport } from '../../deck/deck/code/oci/layout'
 import { installOciVersion, readOciVersion } from '../../deck/deck/code/oci/install'
 import { publishToOci } from '../../deck/deck/code/oci/publish'
 
 const run = promisify(execFile)
 const mustRun = process.argv.includes('--require')
+
+// the marker an install writes at the top of the version's folder (decision 154 section 3), never a package file
+const MARKER = '.term-digest'
 
 type Result = { name: string; ok: boolean; detail: string }
 
@@ -44,6 +48,10 @@ async function treeOf(dir: string): Promise<Map<string, string>> {
   const walk = async (at: string): Promise<void> => {
     for (const entry of await fs.readdir(path.join(dir, at), { withFileTypes: true })) {
       const rel = path.join(at, entry.name)
+
+      if (rel === MARKER) {
+        continue
+      }
 
       if (entry.isDirectory()) {
         await walk(rel)
@@ -117,19 +125,19 @@ async function main(): Promise<void> {
     dir: source,
     package: '@term/witness',
     version: '1.0.0',
-    target: { kind: 'version', version: '1.0.0' },
     link: [],
     transport,
     repository,
     scope: '@term',
     keysRepository: 'term',
-    local: layoutObjectStore({ dir: path.join(work, 'store') }),
     keypair,
-    author: 'witness',
-    time: '2026-01-01T00:00:00.000Z',
-    // `oras discover` below looks for it, and a publish attaches it only when asked (oci/publish.ts, step 7)
-    referrer: true,
   })
+
+  const manifest = JSON.parse(published.artifact.manifest.toString('utf8')) as {
+    artifactType: string
+    config: { mediaType: string; digest: string }
+    layers: { mediaType: string; digest: string; annotations: Record<string, string> }[]
+  }
 
   const install = async (input: { dir: string; reference: string; into: string }): Promise<string | undefined> => {
     const from = layoutTransport({ dir: input.dir, bare: true })
@@ -150,8 +158,13 @@ async function main(): Promise<void> {
       repository: 'term/witness',
       version,
       dest: input.into,
-      local: layoutObjectStore({ dir: path.join(work, `store-${path.basename(input.into)}`) }),
     })
+
+    const marker = await fs.readFile(path.join(input.into, MARKER), 'utf8')
+
+    if (marker !== `${version.digest}\n`) {
+      return `the install's marker reads ${JSON.stringify(marker)}, not the manifest digest ${version.digest}`
+    }
 
     return sameTree(await treeOf(source), await treeOf(input.into))
   }
@@ -165,28 +178,27 @@ async function main(): Promise<void> {
 
   const pulled = path.join(work, 'pulled')
 
-  await check('oras pull writes every layer under its title, each matching its digest', async () => {
+  await check('oras pull writes the one layer under its title, matching its digest', async () => {
     await oras(['pull', '--oci-layout', `${layout}:1.0.0`, '-o', pulled])
-    const manifest = JSON.parse(published.artifact.manifest.toString('utf8')) as {
-      layers: { digest: string; annotations: Record<string, string> }[]
+
+    if (manifest.layers.length !== 1) {
+      return `the manifest holds ${manifest.layers.length} layers, not the one archive`
     }
 
-    for (const layer of manifest.layers) {
-      const title = layer.annotations['org.opencontainers.image.title']!
-      const bytes = await fs.readFile(path.join(pulled, title))
+    const layer = manifest.layers[0]!
+    const title = layer.annotations['org.opencontainers.image.title']!
+    const bytes = await fs.readFile(path.join(pulled, title))
 
-      if (sha(bytes) !== layer.digest) {
-        return `${title} hashes to ${sha(bytes)}, not ${layer.digest}`
-      }
-    }
-
-    return undefined
+    return sha(bytes) === layer.digest ? undefined : `${title} hashes to ${sha(bytes)}, not ${layer.digest}`
   })
 
-  await check('oras discover sees the signature referrer', async () => {
-    const out = await oras(['discover', '--oci-layout', `${layout}:1.0.0`, '--format', 'json'])
+  await check('the system tar extracts the pulled archive to the package files, byte for byte', async () => {
+    const title = manifest.layers[0]!.annotations['org.opencontainers.image.title']!
+    const extracted = path.join(work, 'extracted')
+    await fs.mkdir(extracted, { recursive: true })
+    await run('tar', ['-xzf', path.join(pulled, title), '-C', extracted])
 
-    return out.includes('application/vnd.cluesurf.term.signature.v1') ? undefined : 'no signature referrer in oras discover'
+    return sameTree(await treeOf(source), await treeOf(extracted))
   })
 
   await check('a layout oras cp wrote installs byte for byte', async () => {
@@ -196,26 +208,21 @@ async function main(): Promise<void> {
     return install({ dir: copied, reference: '1.0.0', into: path.join(work, 'from-cp') })
   })
 
-  await check('an artifact oras push built from loose files installs', async () => {
+  await check('an artifact oras push built from the archive and config files installs', async () => {
     const pushed = path.join(work, 'pushed')
-    const manifest = JSON.parse(published.artifact.manifest.toString('utf8')) as {
-      config: { mediaType: string; digest: string }
-      layers: { mediaType: string; annotations: Record<string, string> }[]
-      annotations: Record<string, string>
-    }
     const configFile = path.join(work, 'config.json')
     await oras(['blob', 'fetch', '--oci-layout', `${layout}@${manifest.config.digest}`, '--output', configFile])
 
+    // the layer and config ORAS writes must be the signed ones (decision 158 rule 2): same bytes, same media types.
+    // The manifest's annotations are ORAS's own, and nothing reads them
     const args = [
       'push',
       '--oci-layout',
       `${pushed}:1.0.0`,
       '--artifact-type',
-      'application/vnd.cluesurf.term.deck.v1',
+      manifest.artifactType,
       '--config',
       `${configFile}:${manifest.config.mediaType}`,
-      '--annotation',
-      `surf.clue.term.commit=${manifest.annotations['surf.clue.term.commit']}`,
       '--disable-path-validation',
     ]
 

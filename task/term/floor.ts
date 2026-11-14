@@ -77,6 +77,22 @@ export const FLOOR_F1_FILES: ReadonlyArray<{ path: string; reason: string }> = [
     reason:
       'the signal runtime test/zone/run.ts and test/zone/run.tree load by path; its export shape is a contract with them',
   },
+  // decision 141: a module the browser compile's bundle aliases a Node builtin to, holding only Node's shape over Term
+  {
+    path: 'deck/call/code/browser/crypto.ts',
+    reason:
+      "Node's createHash shape for the browser compile over browser/digest.tree. Emitted ports import node:crypto by name and the bundle aliases it here, so the export shape is a contract with emitted code (D141)",
+  },
+  {
+    path: 'deck/call/code/browser/path.ts',
+    reason:
+      "Node's posix path module shape for the browser compile over browser/posix.tree. Emitted ports import node:path by name and the bundle aliases it here, so the export shape is a contract with emitted code (D141)",
+  },
+  {
+    path: 'deck/call/code/browser/absent.ts',
+    reason:
+      'the Node names the browser compile imports and never calls, each throwing. The bundle aliases them here by path (D141)',
+  },
 ]
 
 // D108 section 2: what the old walk could not see, by path from the repository root. asOf is fixed here and is never
@@ -107,51 +123,20 @@ const MOVED_IN: { item: string; files: ReadonlyArray<{ path: string; port: strin
 
 // D108 section 3: files outside `port`, each owed by a named item of change 001
 const OWED: ReadonlyArray<{ path: string; item: string }> = [
-  { path: 'deck/call/code/launch-only.ts', item: 'term-self-host-001-0721' },
+  // stays until port-build.ts retires (0721's deviation, decision 166), so the item that retires it owes it (1424)
+  { path: 'deck/call/code/launch-only.ts', item: 'term-self-host-001-1426' },
   { path: 'deck/call/code/census-keep.ts', item: 'term-self-host-001-0142' },
   { path: 'deck/make/code/check/hold-key-memo.ts', item: 'term-self-host-001-0748' },
-  // item 0934: new test .ts that break tests-are-.tree, each owed by its port to .tree, never admitted
-  { path: 'test/check/generic-bind.ts', item: 'term-self-host-001-1129' },
-  { path: 'test/compile/arm-type-native.ts', item: 'term-self-host-001-1130' },
-  { path: 'test/compile/value-store-native.ts', item: 'term-self-host-001-1131' },
-  // item 1132: test files added 11-06 to 11-08, each owed by its port to .tree. meet.sh rides with the boot.ts item, since
-  // the floor has no fixture class by path
-  { path: 'test/call/boot.ts', item: 'term-self-host-001-1134' },
-  { path: 'test/call/test-jobs.ts', item: 'term-self-host-001-1134' },
-  { path: 'test/call/report-apart-fixture/meet.sh', item: 'term-self-host-001-1134' },
-  { path: 'test/check/maybe-to-dynamic.ts', item: 'term-self-host-001-1135' },
-  { path: 'test/compile/found-dock-host.ts', item: 'term-self-host-001-1135' },
-  { path: 'test/compile/shape-is-kind.ts', item: 'term-self-host-001-1135' },
-  { path: 'test/compile/shape-type-of.ts', item: 'term-self-host-001-1135' },
-  ...[
-    'arm-fields',
-    'arm-shapes',
-    'borrow-shapes',
-    'cast-operand',
-    'closure-arm-link',
-    'closure-guard-exit',
-    'dynamic-empty-field',
-    'left-out-field',
-    'prelude-case',
-    'record-empty-field',
-    'slot-shapes',
-    'small-shapes',
-    'void-argument',
-  ].map(name => ({ path: `test/compile/rust-${name}.ts`, item: 'term-self-host-001-1133' })),
+  // the 32 rows whose files the person removed on 2026-11-13 (item 1376, tmp/self-host/0934/rm-list.txt) are gone
+  // with them: items 1129 to 1131, 1133 to 1135, 0557, 0560, 0567, 0570, 0573, 0575, 0677 and 0685
+  // decision 141 section 4: test .ts added after 1132's ruling, each owed by its port to .tree, never admitted
+  { path: 'test/call/port-trace-descriptor.ts', item: 'term-self-host-001-1234' },
   { path: 'test/compile/list-loose-native.ts', item: 'term-self-host-001-0708' },
   { path: 'test/call/boot-graph.ts', item: 'term-self-host-001-0602' },
   { path: 'test/call/build-entry-ask.ts', item: 'term-self-host-001-0602' },
   { path: 'test/call/test-turns.ts', item: 'term-self-host-001-0605' },
-  { path: 'test/call/unit-pool-once.ts', item: 'term-self-host-001-0685' },
-  { path: 'test/check/hold-key-memo.ts', item: 'term-self-host-001-0557' },
-  { path: 'test/check/none-owner.ts', item: 'term-self-host-001-0560' },
-  { path: 'test/check/unsettled-construction.ts', item: 'term-self-host-001-0567' },
   { path: 'test/compile/async-across-units.ts', item: 'term-self-host-001-0569' },
   { path: 'test/compile/carried-trace.ts', item: 'term-self-host-001-0569' },
-  { path: 'test/compile/feed-state-fresh.ts', item: 'term-self-host-001-0570' },
-  { path: 'test/compile/name-key-run.ts', item: 'term-self-host-001-0573' },
-  { path: 'test/compile/raise-memo.ts', item: 'term-self-host-001-0575' },
-  { path: 'test/compile/sift-call-subject.ts', item: 'term-self-host-001-0575' },
   { path: 'test/compile/exception-param.ts', item: 'term-self-host-001-0654' },
   { path: 'test/compile/free-element-native.ts', item: 'term-self-host-001-0654' },
   { path: 'test/compile/dynamic-native.ts', item: 'term-self-host-001-0708' },
@@ -163,7 +148,6 @@ const OWED: ReadonlyArray<{ path: string; item: string }> = [
   { path: 'test/compile/slot-raise.ts', item: 'term-self-host-001-0660' },
   { path: 'test/compile/cache-reclaimed.ts', item: 'term-self-host-001-0662' },
   { path: 'test/compile/slot-report.ts', item: 'term-self-host-001-0693' },
-  { path: 'test/server/store-clean.ts', item: 'term-self-host-001-0677' },
 ]
 
 // A whole package leaving the Term repository, owed by the item that moves it out: every file under the prefix is a

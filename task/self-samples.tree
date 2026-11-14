@@ -3,7 +3,9 @@
 # version, the loader's install of the older into a scratch home, and each command run as a person would, printed with
 # its command line. Ported from task/self-samples.ts (item term-self-host-001-0719), run by `term boot`.
 #
-# Needs the payload `pnpm run release --dry` writes. Writes nothing outside the system temp directory.
+# Needs the payload `pnpm run release --dry` writes. Writes nothing outside the system temp directory. @term/deck's
+# ports are loaded, never their faces (decision 157 rule 2, item term-self-host-001-1297): oci/toolchain-release,
+# oci/registry-transport, oci/key-trust and object/id-signing, called by position.
 # Run: node host/line.js boot task/self-samples.tree -- show --site <the term.surf public folder holding `load`>
 #
 # THE ROOT is TERM_ROOT when it is set, else the nearest folder at or above the working directory that holds
@@ -23,15 +25,24 @@ load @term/base/list
 load @term/base/text
   find trim
 
+load @term/deck/oci/toolchain-release
+  find current-platform
+  find publish-release
+
+load @term/deck/oci/registry-transport
+  find http-transport
+
+load @term/deck/oci/key-trust
+  find ensure-publisher
+
+load @term/deck/object/id-signing
+  find generate-keypair
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:os>, name node-os
   load <@term/call/code/need-load>, name need-load-module
-  load <@term/deck/code/object/sign>, name sign-module
-  load <@term/deck/code/oci/keys>, name keys-module
-  load <@term/deck/code/oci/release>, name release-module
-  load <@term/deck/code/oci/transport>, name transport-module
   load <@term/deck/test/oci-server>, name oci-server-module
 
 # ---- the host values Term has no word for ----
@@ -93,32 +104,25 @@ bind samples-file-bytes
   case node
     text <require("node:fs").readFileSync($file)>
 
-# the loopback registry's transport, signed in as the test server's one user
-bind samples-transport
-  take maker, like dynamic
-  take host, like text
+# the loopback registry's credentials, the test server's one user, as http-transport calls them
+bind samples-credentials
   like dynamic
   case node
-    text <<$maker({ host: $host, credentials: async () => ({ kind: "basic", username: "tester", password: "secret" }), retries: 0 })>>
+    text <<(async () => ({ kind: "basic", username: "tester", password: "secret" }))>>
 
-bind samples-ensure-publisher
-  take ensure, like dynamic
-  take transport, like dynamic
-  take keypair, like dynamic
+# none, for a port parameter left out (undefined)
+bind samples-nothing
   like dynamic
   case node
-    text <<$ensure({ transport: $transport, repository: "cluesurf/term/name", scope: "@term", keypair: $keypair })>>
+    text <undefined>
 
-bind samples-publish-release
-  take publish, like dynamic
-  take transport, like dynamic
-  take version, like text
+# one release's payloads: this platform's bytes
+bind samples-payloads
   take platform, like text
   take bytes, like dynamic
-  take keypair, like dynamic
   like dynamic
   case node
-    text <<$publish({ transport: $transport, repository: "cluesurf/term/code", package: "@term/code", version: $version, payloads: [{ platform: $platform, bytes: $bytes }], keypair: $keypair })>>
+    text <<[{ platform: $platform, bytes: $bytes }]>>
 
 # the environment every command runs in: a scratch home, the loopback registry, a 76 column terminal
 bind samples-environment
@@ -540,7 +544,7 @@ task write-samples
       read version
   save platform
     call samples-text-of
-      call release-module/current-platform
+      call current-platform
   save payload-file
     call node-path/join
       read term
@@ -563,32 +567,44 @@ task write-samples
     call samples-text-of
       read server/host
   save transport
-    call samples-transport
-      read transport-module/http-transport
+    call http-transport
       read host
+      call samples-credentials
+      call samples-nothing
+      call samples-nothing
+      call samples-nothing
+      call samples-nothing
+      code 0
+      call samples-nothing
   save keypair
-    call sign-module/generate-keypair
-  call samples-ensure-publisher
-    read keys-module/ensure-publisher
+    call generate-keypair
+  call ensure-publisher
     read transport
+    text <cluesurf/term/name>
+    text <@term>
     read keypair
-    wait true
-  call samples-publish-release
-    read release-module/publish-release
+  call publish-release
     read transport
+    text <cluesurf/term/code>
+    text <@term/code>
     read version
-    read platform
-    read version-payload
+    call samples-payloads
+      read platform
+      read version-payload
     read keypair
-    wait true
-  call samples-publish-release
-    read release-module/publish-release
+    call samples-nothing
+    call samples-nothing
+  call publish-release
     read transport
+    text <cluesurf/term/code>
+    text <@term/code>
     read next
-    read platform
-    read next-payload
+    call samples-payloads
+      read platform
+      read next-payload
     read keypair
-    wait true
+    call samples-nothing
+    call samples-nothing
   fork
     mark unsafe
     call run-commands

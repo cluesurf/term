@@ -613,6 +613,9 @@ const SUITES: Suite[] = [
   { name: 'call/emit-build rust', file: 'test/call/emit-build.ts', needs: ['rustc', 'cargo'], timeout: 900, slow: 40, env: { EMIT_BUILD_ONLY: 'rust' } },
   { name: 'call/emit-build swift', file: 'test/call/emit-build.ts', needs: ['swiftc'], timeout: 900, slow: 40, env: { EMIT_BUILD_ONLY: 'swift' } },
   { name: 'call/emit-build kotlin', file: 'test/call/emit-build.ts', needs: ['kotlinc', 'java'], timeout: 1200, slow: 60, env: { EMIT_BUILD_ONLY: 'kotlin' } },
+  // a forwarded verb of the native term against its node twin (item 0161): a probe console built for Rust, and the real
+  // host/native/term when `pnpm make:native` built it (its --version and --help equal node's, decision term/compiler 018)
+  { name: 'call/native-forward', file: 'test/call/native-forward.ts', needs: ['cargo'], timeout: 1500, slow: 120 },
   // task/port-build.ts's skip on a clone of the tree: an edited stdlib file, port and compiler file each make the skip
   // run write what a --full run writes, and --check still catches a stale or missing port (term-cli-in-term-0002). Five
   // full builds of 614 modules: 2988 s alone at load 6 to 9 once the printer keeper stopped compiling twice

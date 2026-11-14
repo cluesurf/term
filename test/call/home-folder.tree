@@ -1,0 +1,130 @@
+note <the toolchain's home folder: its names, and the one-time move of .base/@cluesurf/term to .base/@term/code>
+
+# The answers are what node gave with the module's node:fs, node:path, node:os and process docks, before item
+# term-self-host-001-1435 put it on @term/base, so the suite holds every backend to node's meaning. Each case builds
+# its own folder under the system's temporary directory with one `sh` run and leaves it there for the system to clear.
+# A case never reads the user's own home: user-home and user-front-dir are not called.
+
+load @term/call/work/small/home-folder
+  find home-folder
+  find home-posix
+  find previous-home
+  find legacy-home
+  find names-any-home
+  find project-home
+  find legacy-project-home
+  find release-folder
+  find front
+  find previous-front
+  find front-dir
+  find settle-front
+  find kept-at
+
+load @term/base/file/blocking
+  find exists, name path-exists
+  find read, name path-read
+  find path-kind
+  find resolve-real
+  find entry-kind
+
+load @term/base/process/run
+  find run
+
+load @term/base/list
+  find push
+
+# a new folder after `script` ran in it, its path as mktemp printed it
+task fixture
+  take script, like text
+  like text
+
+  save arguments, make list
+  push(arguments, <-c>)
+  push(arguments, <d=$(mktemp -d); cd "$d" || exit 1; {script}; printf %s "$d">)
+  save result, run(</bin/sh>, arguments)
+  back result/output
+
+# a path's own kind as text, links not followed, or `none` when nothing is there
+task own-kind
+  take path, like text
+  like text
+
+  fork
+    mark unsafe
+    save kind, path-kind(path)
+    sift kind
+      case file
+        back <file>
+      case directory
+        back <directory>
+      case link
+        back <link>
+      case other
+        back <other>
+  halt take
+    take error
+    back <none>
+
+task one-part
+  take part, like text
+  like list, like text
+
+  save parts, make list
+  push(parts, part)
+  back parts
+
+task no-parts
+  like list, like text
+
+  save parts, make list
+  back parts
+
+test <the folder's names, now and before>
+  want hold, and(and(is-equal(home-folder(), <@term/code>), is-equal(home-posix(), <.base/@term/code>)), and(and(is-equal(previous-home(), <@cluesurf/term>), is-equal(legacy-home(), <term>)), and(and(is-equal(front(), <call>), is-equal(previous-front(), <bin>)), is-equal(release-folder(</h/.base/@term/code>, <1.2.3>), </h/.base/@term/code/code/1.2.3>))))
+
+test <a path names the home by either name, with either separator>
+  want hold, and(and(names-any-home(<C:\\u\\.base\\@term\\code\\x>), names-any-home(</x/.base/@cluesurf/term/y>)), not(names-any-home(</x/.base/term/y>)))
+
+test <a project with no home answers the new path and makes nothing>
+  save root, fixture(<true>)
+  save parts, make list
+  push(parts, <a>)
+  push(parts, <b>)
+  save home, project-home(root, parts)
+  want hold, and(is-equal(home, <{root}/.base/@term/code/a/b>), not(path-exists(<{root}/.base>)))
+
+test <the old home moves whole, a link is left at its name, and the ignore rules are renamed>
+  save root, fixture(<mkdir -p .base/@cluesurf/term; printf %s kept \> .base/@cluesurf/term/memo.txt; printf '%s\\n' node_modules '!.base/@cluesurf/' '.base/@cluesurf/*' '!.base/@cluesurf/term/' '.base/@cluesurf/term/*' '!.base/@cluesurf/term/memory/' \> .gitignore>)
+  save home, project-home(root, no-parts())
+  save old, <{root}/.base/@cluesurf/term>
+  save new, <{root}/.base/@term/code>
+  want hold, and(and(is-equal(home, new), is-equal(path-read(<{new}/memo.txt>), <kept>)), and(and(is-equal(own-kind(old), <link>), is-equal(resolve-real(old), resolve-real(new))), is-equal(path-read(<{root}/.gitignore>), <node_modules\n!.base/@term/\n.base/@term/*\n!.base/@term/code/\n.base/@term/code/*\n!.base/@term/code/memory/\n>)))
+
+test <both homes there: the old one is merged in entry by entry, folders one level down, and left as a link>
+  save root, fixture(<mkdir -p .base/@cluesurf/term/sub .base/@term/code/sub; printf %s a \> .base/@cluesurf/term/a.txt; printf %s b \> .base/@cluesurf/term/sub/b.txt; printf %s c \> .base/@term/code/c.txt>)
+  save home, project-home(root, one-part(<x>))
+  save old, <{root}/.base/@cluesurf/term>
+  save new, <{root}/.base/@term/code>
+  want hold, and(and(is-equal(home, <{new}/x>), is-equal(path-read(<{new}/a.txt>), <a>)), and(and(is-equal(path-read(<{new}/sub/b.txt>), <b>), is-equal(path-read(<{new}/c.txt>), <c>)), and(is-equal(own-kind(old), <link>), is-equal(own-kind(<{old}/sub>), <directory>))))
+
+test <an entry both homes hold keeps the new one, and the old home stays a real folder holding what it kept>
+  save root, fixture(<mkdir -p .base/@cluesurf/term .base/@term/code; printf %s old \> .base/@cluesurf/term/shared.txt; printf %s new \> .base/@term/code/shared.txt>)
+  save home, project-home(root, no-parts())
+  save old, <{root}/.base/@cluesurf/term>
+  save new, <{root}/.base/@term/code>
+  want hold, and(and(is-equal(home, new), is-equal(path-read(<{new}/shared.txt>), <new>)), and(is-equal(own-kind(old), <directory>), is-equal(path-read(<{old}/shared.txt>), <old>)))
+
+test <the front's folder: bin while only bin is there, then bin moved to call with a link back>
+  save root, fixture(<mkdir bin; printf %s t \> bin/term>)
+  save before, front-dir(root)
+  settle-front(root)
+  save after, front-dir(root)
+  want hold, and(and(is-equal(before, <{root}/bin>), is-equal(after, <{root}/call>)), and(and(is-equal(own-kind(<{root}/call>), <directory>), is-equal(own-kind(<{root}/bin>), <link>)), is-equal(path-read(<{root}/bin/term>), <t>)))
+
+test <kept-at reads the old path only while the new one is missing and the old one is there>
+  save root, fixture(<printf %s x \> old.txt; printf %s y \> both.txt>)
+  want hold, and(and(is-equal(kept-at(<{root}/new.txt>, <{root}/old.txt>), <{root}/old.txt>), is-equal(kept-at(<{root}/both.txt>, <{root}/old.txt>), <{root}/both.txt>)), is-equal(kept-at(<{root}/new.txt>, <{root}/gone.txt>), <{root}/new.txt>))
+
+test <the legacy project home is .base/term, never moved>
+  save root, fixture(<true>)
+  want hold, and(is-equal(legacy-project-home(root, one-part(<x>)), <{root}/.base/term/x>), not(path-exists(<{root}/.base>)))

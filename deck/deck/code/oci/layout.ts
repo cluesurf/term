@@ -8,7 +8,6 @@ import {
   ociErrorOf,
   type OciTransport,
 } from './transport'
-import type { ObjectStore } from '../object/store'
 
 const p = port as unknown as Record<
   string,
@@ -36,7 +35,13 @@ export const layoutTransport = (input: {
     ) as OciTransport,
   )
 
-export const layoutObjectStore = (input: {
-  dir: string
-}): ObjectStore =>
-  lifted(p.layoutObjectStore!(input.dir) as ObjectStore)
+// OWED, not a shape: deck/deck/code/index.ts (decision 153, its last importers waiting on 1044 and 1278) still
+// re-exports this name, and an ES module that re-exports a name its source lacks fails to load. Artifact format v2
+// keeps no object store (decision 129), so nothing on the install or publish path calls it; it refuses
+export const layoutObjectStore = (_input: { dir: string }): never => {
+  throw ociErrorOf(
+    new Error(
+      'OCI artifact format v2 keeps no object store (decision 129): a layout is reached through layoutTransport',
+    ),
+  )
+}

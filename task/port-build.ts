@@ -86,13 +86,45 @@
 // stops the run and exits 1 with no manifest written, what a throw in one process does. `--stage-check`'s step 2 runs in
 // workers the same way. TERM_PORT_BUILD_HOLD, port-race's hook, means one process: the race it holds is that process's
 
+// THE UNITS (`--units`, spec-1339-separate-ports.md sections 1, 2 and 5, item term-self-host-001-1342, decision 162).
+// Every port is an ENTRY of `term make`'s separate build: stage0's compileSeparate compiles it unit by unit, a unit
+// being a strongly connected component of the module graph, against a store of unit answers keyed by content. Each
+// module of every closure is emitted ONCE, to `host/unit/<slug>.ts` (the slug its deck name plus its path in the deck,
+// make-plan's unitSlugOf), importing its siblings by `./<slug>`, with the native prelude ITS OWN emitted code docks
+// (portContent with the module's `declare const` lines as what the shims are used in). The port's path,
+// `deck/<d>/host/port/<path>.ts`, becomes an ENTRY SHIM re-exporting every public task, constant and type the old whole
+// port exported, each from the unit that defines it (make-plan's entryShimText), so every importer keeps its path and its
+// names. The `-run.ts` run entries and the printer keeper stay: a console's run entry imports its shim, and an entry
+// whose closure holds the printer compiles with printerKeeper's text after its own.
+//   A port module's unit is written by its own entry's compile (its keeper text is its own), a module no port names
+// (the stdlib, deck/host, mill) by every compile that reaches it, and a module two compiles emit otherwise is a
+// DISAGREE line and exit 1. A unit file no unit of a whole run wrote is removed (T-0425).
+//   THE STORE IS PORT-BUILD'S OWN (lead, 2026-11-13 10:20Z): `.base/@term/code/port-unit/<namespace>/`, the namespace a
+// hash of stage0's id and this script's fingerprint, and only the current namespace is kept. Never the machine store,
+// where cache-store keeps two namespaces per kind and port units would evict, and be evicted by, `term make` and other
+// clones. A moved fingerprint is a cold namespace, so a pin or an edit to this script compiles every unit once.
+//   THE MANIFEST is schema 3 (item term-self-host-001-1343, spec-1339 section 6): the run's stage0 id, its fingerprint,
+// one table of every observation the run's compiles made, a row per unit (its source, its interface, the interfaces it
+// imported, its file) and a row per shim. THE FAST PATH: a run whose stage0, fingerprint, entries, outputs and table
+// all still hold writes nothing and never loads stage0. Any other run hands every entry to the engine, which replays
+// each unit whose key holds and compiles the rest: the engine is the early cutoff, port-build keeps none of its own.
+// `--verify` reads the units: an entry is current only when every unit its closure reaches is, each recorded with the
+// interface of each unit it loads. Decision 038's per-module key is no skip key here
+//
+//   npx tsx task/port-build.ts --units          build every port as units and shims
+//   npx tsx task/port-build.ts --units --only dev/hmr   only those entries (their units must exist from a whole run)
+//   npx tsx task/port-build.ts --units --check          write nothing, exit 1 when an output is missing or stale
+//   npx tsx task/port-build.ts --units --stage-check    then step 2 through the working tree's compileSeparate
+//   npx tsx task/port-build.ts --verify --manifest <path>   verify against that manifest (a test's altered copy)
+//   npx tsx task/port-build.ts --units --reprint        this machine's print into a carried manifest, when all else holds
+
 // FIRST, before the compiler loads: the trace must see every read a compiler module makes, including while it loads
 import { adopt, beginModule, closeWindow, endModule, forgetOutside, observations, observe, openWindow, real, setRecording, sha, sightings, untraced, UNTRACKABLE } from './port-trace'
 import traced, { writeSync } from 'node:fs'
 import { fork, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { availableParallelism, totalmem } from 'node:os'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ParseMemo, WalkMemo } from '@term/make/code/compile/load'
 import { projectHome } from '@term/call/code/home'
@@ -110,6 +142,15 @@ type Compiler = {
   projectResolver: typeof import('@term/call/code/make').projectResolver
   projectLeanOf: typeof import('@term/call/code/role-of').projectLeanOf
   toCamel: typeof import('@term/make/code/compile/typescript').toCamel
+  // THE UNITS: the unit engine stage0 carries since item 1341 (spec-1339 section 3)
+  toPascal: typeof import('@term/make/code/compile/typescript').toPascal
+  projectRoleOf: typeof import('@term/call/code/role-of').projectRoleOf
+  compileSeparate: typeof import('@term/make/code/compile/separate').compileSeparate
+  CompileCache: typeof import('@term/make/code/compile/cache').CompileCache
+  diskCacheStore: typeof import('@term/call/code/cache-store').diskCacheStore
+  projectDeckOf: typeof import('@term/call/code/deck-of').projectDeckOf
+  unitSlugOf: typeof import('@term/call/code/make-plan').unitSlugOf
+  entryShimText: typeof import('@term/call/code/make-plan').entryShimText
 }
 // THE LINE LOCK (note/project/term/decision/002-make-line-lock.md): one port-build or make:line at a time, since this
 // compiles with whatever compiler is half edited in the working tree. Under make:line the token it passes down says
@@ -161,10 +202,34 @@ async function loadStage0(): Promise<{ id: string; compiler: Compiler }> {
     throw new Error(`stage0 ${pin.id} is not installed at ${file}. Pin it again from this working tree: ${command}`)
   }
 
-  return { id: pin.id, compiler: (await import(pathToFileURL(file).href)) as Compiler }
+  const compiler = (await import(pathToFileURL(file).href)) as Compiler
+
+  // THE UNITS need the engine a pin before item 1341 lacks
+  if (process.argv.includes('--units')) {
+    const lacking = ['compileSeparate', 'CompileCache', 'diskCacheStore', 'projectDeckOf', 'projectRoleOf', 'unitSlugOf', 'entryShimText', 'toPascal'].filter(
+      name => typeof (compiler as unknown as Record<string, unknown>)[name] !== 'function',
+    )
+
+    if (lacking.length > 0) {
+      throw new Error(`stage0 ${pin.id} exports no ${lacking.join(', ')}, which --units compiles with. Pin it again from this working tree: ${command}`)
+    }
+  }
+
+  return { id: pin.id, compiler }
 }
 
-const stage0 = process.argv.includes('--verify') ? undefined : await loadStage0()
+// `--units` loads it only when THE FAST PATH fails (unitsMain), and a units worker when it starts (portWorker)
+let stage0 = process.argv.includes('--verify') || process.argv.includes('--units') ? undefined : await loadStage0()
+
+// stage0 loaded now, with nothing it reads recorded: its id is the key of everything it compiles
+async function stage0Loaded(): Promise<{ id: string; compiler: Compiler }> {
+  if (stage0 === undefined) {
+    setRecording(false)
+    stage0 = await loadStage0()
+  }
+
+  return stage0
+}
 
 // the toolchain LIBRARIES whose ports TypeScript imports, each with the code subtrees it ports. Of `@term/call`,
 // `code/browser` is the browser compiler's in-memory disk, and `code/work/item` is a library, the terminal output
@@ -216,8 +281,10 @@ function commandRoutes(program: Program): DockRoute[] {
 // second import ships no second run state. A usage refusal comes back from it as data and `refuse-line` words it as
 // yargs did (decision cli-in-term/016 part 4); every other console's entry (boot-plan.tree `cli-run-text`) keeps the
 // dispatcher's own two lines.
-// Undefined when the module declares no hook; a task some route names that the port does not export is an error
-function runEntry(name: string, content: string, program: Program, toCamel: Compiler['toCamel']): { text: string } | { missing: string[] } | undefined {
+// Undefined when the module declares no hook; a task some route names that the port does not export is an error.
+// `exports` answers whether the port exports a task by its camel name: a whole port's text by its `export function`
+// lines, an entry shim's by the names it re-exports (THE UNITS)
+function runEntry(name: string, exports: (camel: string) => boolean, program: Program, toCamel: Compiler['toCamel']): { text: string } | { missing: string[] } | undefined {
   const routes = commandRoutes(program)
 
   if (routes.length === 0) {
@@ -241,7 +308,7 @@ function runEntry(name: string, content: string, program: Program, toCamel: Comp
 
   // the run entry's own three calls, tasks of the console (decision cli-in-term/018 part 3), checked like the routes'
   const own: Array<[string, string]> = ['start-console', 'refuse-console', 'fail-console'].map(task => [task, toCamel(task)])
-  const missing = [...tasks, ...own].filter(([, camel]) => !new RegExp(`^export (async )?function ${camel}\\(`, 'm').test(content)).map(([task]) => task)
+  const missing = [...tasks, ...own].filter(([, camel]) => !exports(camel)).map(([task]) => task)
 
   if (missing.length > 0) {
     return { missing }
@@ -283,6 +350,28 @@ function runEntry(name: string, content: string, program: Program, toCamel: Comp
       '',
     ].join('\n'),
   }
+}
+
+// a whole port's text exports a task by an `export function` line
+function exportsFunction(content: string): (camel: string) => boolean {
+  return camel => new RegExp(`^export (async )?function ${camel}\\(`, 'm').test(content)
+}
+
+// the value names an entry shim re-exports (`export { a, b as c } from '...'`), its type lines left out (THE UNITS)
+function shimValues(shim: string): Set<string> {
+  const names = new Set<string>()
+
+  for (const match of shim.matchAll(/^export \{ ([^}]*) \} from /gm)) {
+    for (const part of match[1]!.split(',')) {
+      const name = part.trim().split(/\s+as\s+/).pop()
+
+      if (name) {
+        names.add(name)
+      }
+    }
+  }
+
+  return names
 }
 
 // THE PRINTER'S RUN (decision term-cli-in-term-0240). A port is emitted whole, with its own copy of every module it
@@ -502,6 +591,19 @@ function readManifest(path: string): Manifest | undefined {
 // took 27 minutes so, item term-self-host-001-0453). The list, and why each is on it, is deck/call/code/launch-only.ts,
 // which build-graph.tree's env-text reads too (item term-self-host-001-0476)
 
+// The TERM_ variables that no compile port-build runs reads, so a value of one cannot change a byte it writes. Each in
+// the print made the same tree a cold units namespace from another caller (item term-self-host-001-1368):
+//   TERM_NATIVE_CACHE   where the native toolchains (gradle, the Rust and Swift kits) are fetched to. Read only at RUN
+//                       time by native-build.ts, cask.ts, compose.ts, work/native/building.tree, work/compose and
+//                       work/cask toolchain.tree, and the toolchain shell scripts, never by stage0's compile or the
+//                       unit engine. The queue gives every check one (m3-trial.mjs runOne) and make:line none, so a
+//                       check's port-build moved the print, emptied the units store and left the next make:line cold
+//                       (1344's probe tmp/self-host/1344/store/m3-env.sh, l1343g)
+// The queue's other check variables (TSX, LINE, TMPDIR) are no TERM_, SEED_ or NODE_ name, its TERM_DEPTH is removed
+// and launch-only anyway, and its NODE_OPTIONS is a heap flag (buildValue). Port-build's own list, not launch-only.ts:
+// that list says how a process was started, and this one says what a compile never reads
+const NOT_READ_BY_A_COMPILE = new Set(['TERM_NATIVE_CACHE'])
+
 async function fingerprint(stage0Id: string): Promise<string | undefined> {
   try {
     const { build } = await import('esbuild')
@@ -522,13 +624,15 @@ async function fingerprint(stage0Id: string): Promise<string | undefined> {
     hash.update(`schema ${SCHEMA}\nstage0 ${stage0Id}\nnode ${process.version} ${process.platform} ${process.arch}\n`)
 
     // the launch-only variables are left out: each says how this process was started, never what a compile writes.
-    // So is the launch-only part of one, NODE_OPTIONS's heap sizes (buildValue, item term-self-host-001-1017)
+    // So is the launch-only part of one, NODE_OPTIONS's heap sizes (buildValue, item term-self-host-001-1017), and so
+    // are the variables no compile reads (NOT_READ_BY_A_COMPILE below)
     for (const name of Object.keys(process.env).sort()) {
-      if (/^(TERM|SEED|NODE)_/.test(name) && !isLaunchOnly(name)) {
+      if (/^(TERM|SEED|NODE)_/.test(name) && !isLaunchOnly(name) && !NOT_READ_BY_A_COMPILE.has(name)) {
         const value = buildValue({ name, value: process.env[name] ?? '' })
 
         if (value !== undefined) {
-          hash.update(`env ${name}=${value}\n`)
+          // THE UNITS: a path inside this tree (TERM_STDLIB) names the same input in every clone of it
+          hash.update(`env ${name}=${units ? value.split(TERM).join('<root>') : value}\n`)
         }
       }
     }
@@ -548,12 +652,46 @@ async function fingerprint(stage0Id: string): Promise<string | undefined> {
 
     const files = [...Object.keys(result.metafile.inputs).map(input => join(TERM, input)), join(TERM, 'tsconfig.json')]
 
-    if (lock) {
-      files.push(lock)
+    if (!units) {
+      if (lock) {
+        files.push(lock)
+      }
+
+      for (const file of files.sort()) {
+        hash.update(`file ${file} ${sha(readFileSync(file))}\n`)
+      }
+
+      return hash.digest('hex')
     }
 
-    for (const file of files.sort()) {
-      hash.update(`file ${file} ${sha(readFileSync(file))}\n`)
+    // THE UNITS (trap T-1342): this script reaches call/code/home.ts, which imports the PORT home-ignore, and a run
+    // that turns a whole port into a shim and its units moved its own fingerprint, so the run after it was cold. Every
+    // input under a deck's host/port/ or under host/unit/ is OUTPUT of port-build: a port counts by its `.tree` source
+    // (what it is made from), a unit file not at all. And every path is said relative to this tree, the lockfile by
+    // its content alone, so a clone of the same content has the same print (THE FAST PATH after a carry, item 1327)
+    hash.update(`lock ${lock ? sha(readFileSync(lock)) : 'none'}\n`)
+
+    const said = new Set<string>()
+
+    for (const file of files) {
+      const at = relative(TERM, file).split(sep).join('/')
+      const port = /^deck\/([^/]+)\/host\/port\/(.+)\.ts$/.exec(at)
+
+      if (/^host\/unit\//.test(at) || /^deck\/[^/]+\/host\/unit\//.test(at)) {
+        continue
+      }
+
+      if (port) {
+        const source = join(TERM, 'deck', port[1]!, `${port[2]!.replace(/-run$/, '')}.tree`)
+
+        said.add(`source ${relative(TERM, source).split(sep).join('/')} ${existsSync(source) ? sha(readFileSync(source)) : 'none'}`)
+      } else {
+        said.add(`file ${at} ${sha(readFileSync(file))}`)
+      }
+    }
+
+    for (const line of [...said].sort()) {
+      hash.update(`${line}\n`)
     }
 
     return hash.digest('hex')
@@ -585,10 +723,13 @@ function ranges(indexes: number[]): [number, number][] {
 // @term/base/json's own dock already brought in: one file under two spellings, written twice, `const json` declared
 // twice, which esbuild refuses while `term make` (which writes no prelude) passes. So a shim is keyed by the FILE it
 // opens (device and inode), and a second path to a file already given reads as empty
+// `usedIn` (THE UNITS): the program is the docks of a whole closure, and a shim goes in only where the unit's own
+// emitted code docks it, which it says by its `declare const <name>: any` lines (compile/native.ts nativePrelude)
 export function portContent(
   program: Parameters<Compiler['nativePrelude']>[0],
   typescript: string,
   nativePrelude: Compiler['nativePrelude'] = stage0!.compiler.nativePrelude,
+  usedIn?: string,
 ): string {
   const given = new Set<string>()
   // through the TRACED `fs`: what the prelude reads is an input of the output like any file the compile read
@@ -606,7 +747,7 @@ export function portContent(
 
     given.add(file)
     return traced.readFileSync(path, 'utf8')
-  })
+  }, usedIn)
   // the emitted module declares each native global it calls (`declare const bit: any`) so it typechecks WITHOUT the
   // prelude, and the prelude defines it (`const bit = {...}`). Both in one file is TS2451 "Cannot redeclare", which
   // `tsc` reported on every port that docks a native until 2026-10-04, so the declaration of a name the prelude
@@ -629,6 +770,33 @@ export function portContent(
 // compiler package overwrote it and the next import threw `bit is not defined`)
 function portPath(root: string, file: string): string {
   return join(root, 'host', 'port', relative(root, file).replace(/\.tree$/, '.ts'))
+}
+
+// every file under a port deck's host/port/ (none when it is absent), untraced: port-build's own output
+function portFiles(dir: string): string[] {
+  const found: string[] = []
+  const walk = (at: string): void => {
+    for (const one of untraced(() => (existsSync(at) ? readdirSync(at, { withFileTypes: true }) : []))) {
+      if (one.isDirectory()) {
+        walk(join(at, one.name))
+      } else {
+        found.push(join(at, one.name))
+      }
+    }
+  }
+
+  walk(dir)
+  return found.sort()
+}
+
+// whether a process of this id is running (a temp file `<file>.<pid>` whose writer is gone is left over)
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
 }
 
 // a module's text as it is on disk now, or undefined when it is gone or shelved (`mark draft`, or the old `note draft`)
@@ -792,7 +960,7 @@ function compileTurn(root: string, file: string, print: string | undefined): Tur
   const content = printerExports(portContent(result.program, result.typescript))
   // only the CLI's own consoles get a run entry: a hook module elsewhere (deck/test/code/fixture/hunt-cli.tree, a
   // test fixture whose hooks name tasks it never defines) is a library like any other port
-  const run = basename(root) === 'call' ? runEntry(name, content, result.program, toCamel) : undefined
+  const run = basename(root) === 'call' ? runEntry(name, exportsFunction(content), result.program, toCamel) : undefined
   // the module's key ends with its prelude's reads
   const keys = endModule()
 
@@ -829,6 +997,1191 @@ function compileTurn(root: string, file: string, print: string | undefined): Tur
 
   lines.push(`  built ${relative(TERM, outPath)}`)
   return { tally: 'built', lines, keys, entry }
+}
+
+// THE UNITS: where the units go, and the store of unit answers port-build keeps for itself
+const UNIT_DIR = join(TERM, 'host', 'unit')
+const UNIT_STORE = projectHome(TERM, 'port-unit')
+// `--stage-check`'s step 2 compiles with the working tree's engine, against a store of its own, never stage0's
+const STAGE_UNIT_STORE = projectHome(TERM, 'port-unit-stage1')
+const units = process.argv.includes('--units')
+
+// THE MANIFEST, SCHEMA 3 (spec-1339 section 6, item term-self-host-001-1343). `stage0` and `fingerprint` key the whole
+// run. `table` is every observation the WHOLE run's compiles made (port-trace.ts), the key of THE FAST PATH, or the one
+// row that never holds after a run that saw a file move, failed or chose entries. One row per emitted file: a unit by
+// its slug (`sources`: the byte hash of its module's `.tree` as the run read it, `interface`: the engine's surface hash
+// of the unit as its importers see it, `imports`: that hash of each unit its module LOADS, by the load graph, since a
+// bind's inlined text or an erased type import leaves no import in the file, `out`: its file's hash), and an
+// entry shim by its path (`module` its source, `unit` its own unit, `text` the hash of the text it compiled, `out`, `run`
+// its run entry's hash). A schema 2 manifest is read as none, so the first --units run asks the engine
+const UNITS_SCHEMA = 3
+
+type UnitRow = { sources: Record<string, string>; interface: string; imports: Record<string, string>; out: string }
+type ShimRow = { module: string; unit: string; text: string; out: string; run?: string; failed?: true }
+type UnitsManifest = { schema: number; stage0: string; fingerprint: string; table: [string, string][]; units: Record<string, UnitRow>; shims: Record<string, ShimRow> }
+
+function readUnitsManifest(path: string): UnitsManifest | undefined {
+  try {
+    const manifest = JSON.parse(untraced(() => readFileSync(path, 'utf8'))) as UnitsManifest
+
+    if (manifest.schema !== UNITS_SCHEMA || !Array.isArray(manifest.table) || typeof manifest.units !== 'object' || typeof manifest.shims !== 'object') {
+      return undefined
+    }
+
+    return manifest
+  } catch {
+    return undefined
+  }
+}
+
+// one module a turn emitted: its slug and path under the root, its unit file's hash, whether this turn wrote it and
+// whether it is the entry's own, its interface hash as this compile's unit memo holds it ('' when no answer matched),
+// the units its module loads, and under --check whether the file on disk differs
+type UnitModule = { slug: string; module: string; out: string; wrote: boolean; own: boolean; face: string; imports: string[]; stale?: boolean }
+
+// one entry's turn under --units. `rows` are its compile's observations, `untrackable` that they cannot key a skip.
+// `built` the engine's units built (by id), `reused` the count it replayed, `unmatched` modules with no interface found
+type UnitsTurn = {
+  tally: 'built' | 'unchanged' | 'failed' | 'moved' | 'stale'
+  lines: string[]
+  unit?: string
+  text?: string
+  shim?: string
+  run?: string
+  modules?: UnitModule[]
+  built?: string[]
+  reused?: number
+  unmatched?: number
+  rows?: [string, string][]
+  untrackable?: boolean
+}
+
+// what one process keeps across the entries it compiles: the compiler (stage0, or stage1 in --stage-check's step 2),
+// the store, the unit answers of the run, the readers per deck, every port entry (whose own compile alone writes its
+// unit), and the interface hashes found so far in the unit memo
+type UnitWork = {
+  c: Compiler
+  store: string
+  cache: InstanceType<Compiler['CompileCache']>
+  memo: Map<string, unknown>
+  deckOf: ReturnType<Compiler['projectDeckOf']>
+  readers: Map<string, { resolve: ReturnType<Compiler['projectResolver']>; leanOf: ReturnType<Compiler['projectLeanOf']>; roleOf: ReturnType<Compiler['projectRoleOf']> }>
+  ports: Set<string>
+  faces: Map<string, Map<string, Set<string>>>
+  indexed: Set<unknown>
+}
+
+let unitWork: UnitWork | undefined
+
+// THE STORE IS NO INPUT: its entries are keyed by content the trace already holds, and its own reads and writes (a
+// write open marks a trace untrackable) are kept out of every observation
+function untracedStore<S extends object>(store: S): S {
+  return new Proxy(store, {
+    get(target, key) {
+      const value = Reflect.get(target, key) as unknown
+
+      return typeof value === 'function' ? (...args: unknown[]) => untraced(() => (value as (...a: unknown[]) => unknown).apply(target, args)) : value
+    },
+  })
+}
+
+function unitWorkOf(c: Compiler, store: string): UnitWork {
+  if (unitWork?.store === store && unitWork.c === c) {
+    return unitWork
+  }
+
+  unitWork = {
+    c,
+    store,
+    cache: new c.CompileCache(untracedStore(c.diskCacheStore(store, 'port-build'))),
+    memo: new Map(),
+    deckOf: c.projectDeckOf(),
+    readers: new Map(),
+    ports: new Set(portPlan(undefined).flatMap(({ files }) => files.map(({ file }) => file))),
+    faces: new Map(),
+    indexed: new Set(),
+  }
+
+  return unitWork
+}
+
+// a module's unit name: its deck's name and its path in the deck, flattened (make-plan unitSlugOf)
+function unitSlug(work: UnitWork, module: string): string {
+  const deck = work.deckOf(module)
+
+  return work.c.unitSlugOf(deck ? `${deck.name}/${relative(deck.root, module)}` : relative(TERM, module))
+}
+
+// THE INTERFACE OF AN EMITTED MODULE. The engine hands back no unit's interface hash, but every unit answer of the
+// process sits in its unit memo (separate-units.tree `unit-answer`: the build's files with their emits, and its
+// `interface-hash`), so a module's emit is found there by its code. Indexed once per answer
+type MemoAnswer = { build?: { form?: string; value?: { files?: { file?: string; emit?: { code?: unknown } }[]; interfaceHash?: unknown } } }
+
+function indexFaces(work: UnitWork): void {
+  for (const answer of work.memo.values()) {
+    if (work.indexed.has(answer)) {
+      continue
+    }
+
+    work.indexed.add(answer)
+
+    const build = (answer as MemoAnswer | undefined)?.build
+
+    if (build?.form !== 'some' || typeof build.value?.interfaceHash !== 'string') {
+      continue
+    }
+
+    for (const { file, emit } of build.value.files ?? []) {
+      if (typeof file !== 'string' || typeof emit?.code !== 'string') {
+        continue
+      }
+
+      const byCode = work.faces.get(file) ?? new Map<string, Set<string>>()
+      const faces = byCode.get(emit.code) ?? new Set<string>()
+
+      faces.add(build.value.interfaceHash)
+      byCode.set(emit.code, faces)
+      work.faces.set(file, byCode)
+    }
+  }
+}
+
+// a file written only when its bytes change, through a temporary name, so a reader never sees half of it
+function writeChanged(path: string, text: string): boolean {
+  if (existsSync(path) && readFileSync(path, 'utf8') === text) {
+    return false
+  }
+
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(`${path}.${process.pid}`, text)
+  real.renameSync(`${path}.${process.pid}`, path)
+  return true
+}
+
+// one entry through the engine, with the printer keeper where its closure holds the printer. `edges` are the load
+// graph of the entry's closure (the walk the compile shares), each module's direct loads: what a unit depends on,
+// which its emitted imports do not say (a bind's text is inlined, a type import is erased)
+function compileEntry(work: UnitWork, root: string, file: string, text: string): { result: ReturnType<Compiler['compileSeparate']>; edges: Map<string, string[]> } {
+  const c = work.c
+  const name = relative(TERM, file)
+  const readers = work.readers.get(root) ?? { resolve: c.projectResolver(root), leanOf: c.projectLeanOf(root), roleOf: c.projectRoleOf(root) }
+
+  work.readers.set(root, readers)
+
+  const parsed = runParseMemo(c.makeParseMemo)
+  const walked: WalkMemo = new Map()
+  const collected = c.collectModules({ file, text }, readers.resolve, parsed, undefined, walked)
+  const keep = name !== PRINTER && collected.sources.some(unit => unit.file.endsWith(`/${PRINTER}`))
+
+  const result = c.compileSeparate(
+    { file, text: keep ? `${text}${printerKeeper(readers.leanOf(file) === true)}` : text },
+    {
+      resolve: readers.resolve,
+      cache: work.cache,
+      modules: module => `./${unitSlug(work, module)}`,
+      roleOf: readers.roleOf,
+      leanOf: readers.leanOf,
+      deckOf: work.deckOf,
+      parsed,
+      units: work.memo,
+      walked: new Map(),
+      // a console's run entry reads its routes off the entry's docks and the stubs' parameter names
+      keepProgram: basename(root) === 'call',
+    },
+  )
+  // the keeper's text loads the printer
+  const printer = keep ? collected.sources.find(unit => unit.file.endsWith(`/${PRINTER}`))?.file : undefined
+  const edges = new Map(collected.edges)
+
+  if (printer !== undefined) {
+    edges.set(file, [...new Set([...(edges.get(file) ?? []), printer])])
+  }
+
+  return { result, edges }
+}
+
+type Compiled = Extract<ReturnType<Compiler['compileSeparate']>, { ok: true }>
+
+// a unit's file: the native prelude its own emitted code docks, then its code (the entry's own with the printer's
+// is-run-open export)
+function unitContent(c: Compiler, result: Compiled, code: string, own: boolean): string {
+  return portContent(
+    result.natives as Program,
+    own ? printerExports(code) : code,
+    c.nativePrelude,
+    code
+      .split('\n')
+      .filter(line => /^declare const [A-Za-z_$][\w$]*\s*:/.test(line))
+      .join('\n'),
+  )
+}
+
+// an entry's shim and, for a console, its run entry
+function shimOf(work: UnitWork, root: string, file: string, result: Compiled): { shimPath: string; shim: string; run?: { text: string } | { missing: string[] } } {
+  const c = work.c
+  const shimPath = portPath(root, file)
+  const unitOf = (module: string): string => {
+    const path = relative(dirname(shimPath), join(UNIT_DIR, unitSlug(work, module))).split(sep).join('/')
+
+    return path.startsWith('./') || path.startsWith('../') ? path : `./${path}`
+  }
+  const shim = c.entryShimText(result.exports, c.toCamel, c.toPascal, unitOf)
+  const values = shimValues(shim)
+  const run = basename(root) === 'call' ? runEntry(relative(TERM, file), camel => values.has(camel), [...(result.surface ?? []), ...result.docks] as Program, c.toCamel) : undefined
+
+  return { shimPath, shim, ...(run ? { run } : {}) }
+}
+
+// ONE ENTRY'S TURN under --units, in whichever process compiles it. Its compile is traced (THE FAST PATH's table), and
+// THE WRITE-TIME CHECK holds as for a whole port: the entry's text and every module of its closure are read again once
+// it is done, and one that changed compiles the entry again from fresh readers, at most ATTEMPTS times
+function unitsTurn(root: string, file: string, store: string): UnitsTurn {
+  const work = unitWorkOf(stage0!.compiler, store)
+  const c = work.c
+  const name = relative(TERM, file)
+  let text = sourceOf(file)
+
+  if (text === undefined) {
+    return goneTurn(name) as UnitsTurn
+  }
+
+  const lines: string[] = []
+  let result!: ReturnType<Compiler['compileSeparate']>
+  let edges!: Map<string, string[]>
+  let keys!: string[]
+  let changed: string | undefined
+  let untrackable = false
+
+  for (let attempt = 1; ; attempt++) {
+    // a second attempt reads every file afresh, so its window holds the closure as this compile read it
+    if (attempt > 1) {
+      openWindow()
+    }
+
+    beginModule()
+    setRecording(true)
+
+    let gone = false
+
+    try {
+      // THE ENTRY'S OWN TEXT THROUGH THE TRACE: the engine is handed the text, never reads it, so a port no other
+      // module loads would be in no row of the table and an edit to it would leave the fast path holding
+      // (item 1343, clone l1343e: deck/make/code/check/hold-walk.tree)
+      const own = (() => {
+        try {
+          return traced.readFileSync(file, 'utf8')
+        } catch {
+          return undefined
+        }
+      })()
+
+      if (own === undefined || shelvedText(own)) {
+        gone = true
+      } else {
+        text = own
+        ;({ result, edges } = compileEntry(work, root, file, text))
+      }
+    } finally {
+      setRecording(false)
+    }
+
+    if (gone) {
+      endModule()
+      return goneTurn(name) as UnitsTurn
+    }
+
+    const read = attempt > 1 ? closeWindow() : undefined
+
+    keys = endModule()
+    untrackable ||= keys.includes(UNTRACKABLE) || attempt > 1
+    changed = sourceOf(file) === text ? undefined : file
+
+    if (changed === undefined && result.ok) {
+      for (const module of result.modules.keys()) {
+        const first = read ? read.get(module) : sightings([`read\0${module}`]).rows[0]?.[1]
+
+        if (first !== undefined && observe('read', module) !== first) {
+          changed = module
+          break
+        }
+      }
+    }
+
+    if (changed === undefined || attempt === ATTEMPTS) {
+      break
+    }
+
+    lines.push(`  again ${name}  (${relative(TERM, changed)} changed while it compiled)`)
+    work.readers.clear()
+
+    const now = sourceOf(file)
+
+    if (now === undefined) {
+      return goneTurn(name) as UnitsTurn
+    }
+
+    text = now
+  }
+
+  let { rows } = sightings(keys)
+
+  if (changed !== undefined) {
+    lines.push(`  MOVED ${name}  (${relative(TERM, changed)} changed while it compiled, ${ATTEMPTS} times: its port is left as it was, run port-build again)`)
+    return { tally: 'moved', lines, rows, untrackable: true }
+  }
+
+  if (!result.ok) {
+    return { tally: 'failed', lines: [...lines, `  FAIL  ${name}`, ...result.diagnostics.slice(0, 3).map(d => `        ${d.name}: ${d.message}`)], rows, untrackable }
+  }
+
+  indexFaces(work)
+
+  // each unit's text, its native prelude's reads of the runtime shims traced too: they are inputs of the file
+  beginModule()
+  setRecording(true)
+
+  let contents: string[]
+
+  try {
+    contents = [...result.modules].map(([module, emit]) => unitContent(c, result, emit.code, module === file))
+  } finally {
+    setRecording(false)
+  }
+
+  const preludeKeys = endModule()
+
+  untrackable ||= preludeKeys.includes(UNTRACKABLE)
+  rows = sightings([...new Set([...keys, ...preludeKeys])]).rows
+
+  const modules: UnitModule[] = []
+  let wrote = false
+  let stale = false
+  let unmatched = 0
+  let at = 0
+
+  for (const [module, emit] of result.modules) {
+    const slug = unitSlug(work, module)
+    const own = module === file
+    const content = contents[at++]!
+    const path = join(UNIT_DIR, `${slug}.ts`)
+    // a port's unit is its own entry's to write (the keeper text is its own), or anyone's while it is missing
+    const mine = own || !work.ports.has(module) || !existsSync(path)
+    const changed = !check && mine && writeChanged(path, content)
+    const differs = check && mine && !(existsSync(path) && readFileSync(path, 'utf8') === content)
+    const faces = work.faces.get(module)?.get(emit.code)
+
+    if (faces === undefined) {
+      unmatched++
+    }
+
+    wrote ||= changed && own
+    stale ||= differs
+    modules.push({
+      slug,
+      module: relative(TERM, module),
+      out: sha(content),
+      wrote: changed,
+      own,
+      face: faces === undefined ? '' : [...faces].sort().join(','),
+      imports: [...new Set((edges.get(module) ?? []).map(dep => unitSlug(work, dep)))].filter(dep => dep !== slug).sort(),
+      ...(differs ? { stale: true } : {}),
+    })
+  }
+
+  const { shimPath, shim, run } = shimOf(work, root, file, result)
+
+  if (run && 'missing' in run) {
+    return { tally: 'failed', lines: [...lines, `  FAIL  ${name}`, `        run-entry: the shim exports no task for ${run.missing.join(', ')}, which a hook names`], rows, untrackable }
+  }
+
+  const runPath = shimPath.replace(/\.ts$/, '-run.ts')
+
+  if (check) {
+    const held = (path: string, want: string): boolean => existsSync(path) && readFileSync(path, 'utf8') === want
+
+    if (!held(shimPath, shim) || (run && !held(runPath, run.text))) {
+      stale = true
+      lines.push(`  STALE ${relative(TERM, shimPath)}`)
+    }
+  } else {
+    wrote = writeChanged(shimPath, shim) || wrote
+
+    if (run) {
+      wrote = writeChanged(runPath, run.text) || wrote
+    }
+
+    if (wrote) {
+      lines.push(`  built ${relative(TERM, shimPath)}`)
+    }
+  }
+
+  return {
+    tally: stale ? 'stale' : wrote ? 'built' : 'unchanged',
+    lines,
+    unit: unitSlug(work, file),
+    text: sha(text),
+    shim: sha(shim),
+    ...(run ? { run: sha(run.text) } : {}),
+    modules,
+    built: result.built,
+    reused: result.reused.length,
+    unmatched,
+    rows,
+    untrackable,
+  }
+}
+
+// a path the table never keys: port-build's own outputs and stores, whose content is a function of the rest
+function outputPath(path: string): boolean {
+  return [UNIT_DIR, UNIT_STORE, STAGE_UNIT_STORE, projectHome(TERM, 'port-build.json')].some(dir => path === dir || path.startsWith(`${dir}${sep}`)) || /[\\/]host[\\/]port[\\/]/.test(path)
+}
+
+// THE FAST PATH (spec-1339 section 6): the same stage0 and fingerprint, the same entries, every output on disk the one
+// the last run wrote, and every observation the last run's compiles made still seeing the same thing. Then nothing is
+// compiled and the engine is never loaded. The answer says why not, the first reason found, cheapest checks first
+function fastPath(previous: UnitsManifest | undefined, plan: { root: string; files: { file: string; text: string }[] }[], stage0Id: string, print: string): string | undefined {
+  if (previous === undefined) {
+    return 'no schema 3 manifest'
+  }
+
+  if (full) {
+    return '--full'
+  }
+
+  if (previous.stage0 !== stage0Id) {
+    return `stage0 is ${stage0Id.slice(0, 8)}, the last run's ${previous.stage0.slice(0, 8)}`
+  }
+
+  if (previous.fingerprint !== print) {
+    return 'the fingerprint moved'
+  }
+
+  const hashOf = (path: string): string | undefined => untraced(() => (existsSync(path) ? sha(readFileSync(path)) : undefined))
+  const chosen = new Set<string>()
+
+  for (const { root, files } of plan) {
+    for (const { file } of files) {
+      const shimPath = portPath(root, file)
+      const key = relative(TERM, shimPath)
+      const row = previous.shims[key]
+
+      chosen.add(key)
+
+      if (row === undefined || row.failed || row.module !== relative(TERM, file)) {
+        return `${relative(TERM, file)} has no good row`
+      }
+
+      if (hashOf(shimPath) !== row.out || (row.run !== undefined && hashOf(shimPath.replace(/\.ts$/, '-run.ts')) !== row.run)) {
+        return `${key} is not what the last run wrote`
+      }
+    }
+  }
+
+  if (only === undefined && Object.keys(previous.shims).some(key => !chosen.has(key))) {
+    return 'a port was removed or shelved'
+  }
+
+  // a file under a port deck's host/port/ the last run did not write (a shelved port's shim from before the removal
+  // existed, item 1370, or one carried in): the engine's whole run removes it
+  if (only === undefined) {
+    const wrote = new Set(Object.entries(previous.shims).flatMap(([key, row]) => (row.run === undefined ? [key] : [key, key.replace(/\.ts$/, '-run.ts')])))
+    const stray = Object.keys(DECKS)
+      .flatMap(deck => portFiles(join(TERM, 'deck', deck, 'host', 'port')))
+      .find(path => !wrote.has(relative(TERM, path)))
+
+    if (stray !== undefined) {
+      return `${relative(TERM, stray)} is no output of the last run`
+    }
+  }
+
+  for (const [slug, row] of Object.entries(previous.units)) {
+    if (hashOf(join(UNIT_DIR, `${slug}.ts`)) !== row.out) {
+      return `host/unit/${slug}.ts is not what the last run wrote`
+    }
+  }
+
+  if (only === undefined && existsSync(UNIT_DIR)) {
+    const stray = readdirSync(UNIT_DIR).find(entry => !previous.units[entry.replace(/\.ts$/, '')] || !entry.endsWith('.ts'))
+
+    if (stray !== undefined) {
+      return `host/unit/${stray} is no unit of the last run`
+    }
+  }
+
+  for (const [key, saw] of previous.table) {
+    if (key === UNTRACKABLE) {
+      return 'the last run cannot key a skip (it saw a file move, failed, or chose entries)'
+    }
+
+    const cut = key.indexOf('\0')
+
+    if (observe(key.slice(0, cut), key.slice(cut + 1)) !== saw) {
+      return `${key.slice(0, cut)} ${relative(TERM, key.slice(cut + 1))} moved`
+    }
+  }
+
+  return undefined
+}
+
+// `--units --reprint` (item 1367's copy-back, asked of 1368 to 1370): THIS machine's fingerprint into a manifest another
+// machine wrote, compiling nothing and never loading stage0. The fingerprint hashes the node version, and the M3's node
+// (v22.14.0) is not this Mac's, so a manifest the queue carries back from the M3 holds a print this Mac never computes,
+// and the first `make:port` here read 'the fingerprint moved' and built every unit cold. The reprint is written only
+// when EVERY other key of the fast path holds here (stage0, the entries, every shim, run entry and unit file the
+// manifest names, no stray output, every row of the table), so the built files are exactly what this Mac's fast path
+// would accept but for the node version. Anything else is refused, exit 1, nothing written. Never with --only, --check
+// or --full. Prints `PRINT <hex>`, this machine's fingerprint, either way
+const reprint = process.argv.includes('--reprint')
+
+function reprintUnits(plan: { root: string; files: { file: string; text: string }[] }[], previous: UnitsManifest | undefined, manifestPath: string, stage0Id: string, print: string): void {
+  console.log(`PRINT ${print}`)
+
+  const refuse = (why: string): void => {
+    console.log(`term port-build --units --reprint: REFUSED, ${why}; nothing written`)
+    process.exitCode = 1
+  }
+
+  if (only !== undefined || check || full) {
+    return refuse('--reprint takes no --only, --check or --full')
+  }
+
+  if (previous === undefined) {
+    return refuse('no schema 3 manifest')
+  }
+
+  const why = fastPath(previous, plan, stage0Id, previous.fingerprint)
+
+  if (why !== undefined) {
+    return refuse(`a key other than the fingerprint moved: ${why}`)
+  }
+
+  if (previous.fingerprint === print) {
+    console.log(`term port-build --units --reprint: the manifest already holds this print ${print.slice(0, 12)}, nothing written`)
+    return
+  }
+
+  writeFileSync(`${manifestPath}.${process.pid}`, JSON.stringify({ ...previous, fingerprint: print } satisfies UnitsManifest))
+  real.renameSync(`${manifestPath}.${process.pid}`, manifestPath)
+  console.log(
+    `term port-build --units --reprint: fingerprint ${previous.fingerprint.slice(0, 12)} to ${print.slice(0, 12)}, every other key holds ` +
+      `(${previous.table.length} observations, ${Object.keys(previous.units).length} units, ${Object.keys(previous.shims).length} shims), the engine not loaded`,
+  )
+}
+
+// THE UNITS, the whole run: THE FAST PATH, or every chosen entry to the engine, longest closure first, then the manifest,
+// the summary and the removal of unit files no unit wrote. Under --check nothing is written and a differing output is
+// STALE. Under --stage-check, step 2 follows (stageTwoUnits)
+async function unitsMain(plan: { root: string; files: { file: string; text: string }[] }[], print: string | undefined, stage0Id: string | undefined, lock: { free: () => void } | undefined, jobs: number): Promise<void> {
+  if (print === undefined || stage0Id === undefined) {
+    throw new Error('port-build --units: no stage0 pin or no compiler fingerprint, so no store namespace: refusing to compile')
+  }
+
+  // nothing port-build observed before this, loading included, is a key: stage0 and the fingerprint are
+  setRecording(false)
+  forgetOutside()
+
+  const started = Date.now()
+  const manifestPath = projectHome(TERM, 'port-build.json')
+  const previous = readUnitsManifest(manifestPath)
+
+  if (reprint) {
+    reprintUnits(plan, previous, manifestPath, stage0Id, print)
+    return
+  }
+
+  const entries = plan.reduce((sum, one) => sum + one.files.length, 0)
+  const why = fastPath(previous, plan, stage0Id, print)
+
+  if (why === undefined) {
+    console.log(
+      `term port-build --units: fast path, ${entries} entries and ${Object.keys(previous!.units).length} units current, ${previous!.table.length} observations hold, ` +
+        `the engine not loaded, ${((Date.now() - started) / 1000).toFixed(1)} s`,
+    )
+    console.log(`term port-build: 0 built, ${entries} unchanged, 0 failed`)
+
+    if (stageCheck && !check) {
+      await stageTwoUnits(plan, lock, jobs)
+    }
+
+    return
+  }
+
+  console.log(`  fast path: no, ${why}`)
+
+  const { id } = await stage0Loaded()
+  const namespace = sha(`stage0 ${id}\nport-build ${print}`).slice(0, 32)
+  const store = join(UNIT_STORE, namespace)
+  let dropped = 0
+
+  // only the current namespace is kept: one that is not is a stage0 or a port-build nobody runs here any more
+  for (const old of existsSync(UNIT_STORE) ? readdirSync(UNIT_STORE) : []) {
+    if (old !== namespace && !check) {
+      traced.rmSync(join(UNIT_STORE, old), { recursive: true, force: true })
+      dropped++
+    }
+  }
+
+  console.log(`  units store ${relative(TERM, store)}${existsSync(store) ? '' : ' (new)'}${dropped > 0 ? `, ${dropped} old namespace(s) removed` : ''}`)
+
+  const order = plan.flatMap(({ root, files }) => files.map(({ file }) => ({ root, file, name: relative(TERM, file) })))
+  const turns: (UnitsTurn | undefined)[] = []
+  const counts = { built: 0, unchanged: 0, failed: 0, moved: 0, stale: 0 }
+  const fresh: Record<string, ShimRow> = {}
+  const failed = new Set<string>()
+  // every unit text a compile made, by slug: its module, the texts and who made each, whether written, the entry's own
+  // text, the interfaces importers saw and the entry's own, and the units its module loads
+  type Seen = { module: string; outs: Map<string, string[]>; written: boolean; own?: string; faces: Set<string>; ownFace?: string; imports?: string[]; ownImports?: string[] }
+  const seen = new Map<string, Seen>()
+  const staleUnits = new Set<string>()
+  // THE RUN'S TABLE: every observation of every compile, each with what it saw; `drift` once two saw one apart, or a
+  // compile could not be traced
+  const runTable = new Map<string, string>()
+  let drift = false
+  const engineBuilt: string[] = []
+  let reused = 0
+  let unmatched = 0
+  let taken = 0
+
+  const take = (at: number, turn: UnitsTurn): void => {
+    const { name, root, file } = order[at]!
+
+    turn.lines.forEach(line => console.log(line))
+    counts[turn.tally]++
+    drift ||= turn.untrackable === true
+
+    for (const [key, saw] of turn.rows ?? []) {
+      const held = runTable.get(key)
+
+      if (held === undefined) {
+        runTable.set(key, saw)
+      } else if (held !== saw) {
+        drift = true
+      }
+    }
+
+    if (turn.tally === 'failed' || turn.tally === 'moved') {
+      failed.add(relative(TERM, portPath(root, file)))
+    }
+
+    if (turn.shim !== undefined && turn.unit !== undefined) {
+      fresh[relative(TERM, portPath(root, file))] = { module: name, unit: turn.unit, text: turn.text!, out: turn.shim, ...(turn.run ? { run: turn.run } : {}) }
+    }
+
+    for (const one of turn.modules ?? []) {
+      const it: Seen = seen.get(one.slug) ?? { module: one.module, outs: new Map(), written: false, faces: new Set() }
+      const by = it.outs.get(one.out) ?? []
+
+      by.push(name)
+      it.outs.set(one.out, by)
+      it.written ||= one.wrote
+
+      if (one.own) {
+        it.own = one.out
+        it.ownFace = one.face
+        it.ownImports = one.imports
+      } else {
+        it.faces.add(one.face)
+        it.imports ??= one.imports
+      }
+
+      if (one.stale) {
+        staleUnits.add(one.slug)
+      }
+
+      seen.set(one.slug, it)
+    }
+
+    // `--explain`: each unit the engine built for this entry, by its id
+    for (const id of explain ? (turn.built ?? []) : []) {
+      console.log(`  unit built ${id}  (for ${name})`)
+    }
+
+    engineBuilt.push(...(turn.built ?? []))
+    reused += turn.reused ?? 0
+    unmatched += turn.unmatched ?? 0
+  }
+
+  const arrive = (at: number, turn: UnitsTurn): void => {
+    turns[at] = turn
+
+    for (; turns[taken]; taken++) {
+      take(taken, turns[taken]!)
+      turns[taken] = undefined
+    }
+  }
+
+  // LONGEST FIRST, by the number of units the last manifest says the entry's closure holds (none known: the biggest)
+  const closure = new Map<string, number>()
+  const sizeOf = (slug: string): number => {
+    let size = closure.get(slug)
+
+    if (size === undefined) {
+      const reached = new Set<string>([slug])
+      const queue = [slug]
+
+      while (queue.length > 0) {
+        for (const dep of Object.keys(previous?.units[queue.pop()!]?.imports ?? {})) {
+          if (!reached.has(dep)) {
+            reached.add(dep)
+            queue.push(dep)
+          }
+        }
+      }
+
+      size = reached.size
+      closure.set(slug, size)
+    }
+
+    return size
+  }
+  const size = (at: number): number => {
+    const row = previous?.shims[relative(TERM, portPath(order[at]!.root, order[at]!.file))]
+
+    return row === undefined ? Number.MAX_SAFE_INTEGER : sizeOf(row.unit)
+  }
+  const all = order.map((_, at) => at)
+
+  if (jobs === 1 || all.length < 2) {
+    for (const at of all) {
+      arrive(at, unitsTurn(order[at]!.root, order[at]!.file, store))
+    }
+  } else {
+    const sizes = new Map(all.map(at => [at, size(at)]))
+    const longestFirst = [...all].sort((a, b) => sizes.get(b)! - sizes.get(a)! || a - b)
+
+    await fanOut<UnitsTurn>(
+      jobs,
+      [],
+      longestFirst.map(at => ({ at, name: order[at]!.name, job: { root: order[at]!.root, file: order[at]!.file, store, units: true } })),
+      arrive,
+    )
+  }
+
+  // A MODULE TWO COMPILES EMIT OTHERWISE: one no port names must read the same from every entry; a port's own text may
+  // differ from another entry's emit only by its keeper, so it is counted, never refused
+  let disagree = 0
+  let keeperOnly = 0
+  const ports = new Set(order.map(({ name }) => name))
+
+  for (const [slug, one] of seen) {
+    if (one.outs.size < 2) {
+      continue
+    }
+
+    if (ports.has(one.module) && one.own !== undefined) {
+      keeperOnly++
+      continue
+    }
+
+    disagree++
+    console.log(`  DISAGREE host/unit/${slug}.ts  (${one.module}: ${one.outs.size} texts, ${[...one.outs.values()].map(by => `${by.length} from ${by[0]}`).join('; ')})`)
+  }
+
+  for (const slug of [...staleUnits].sort()) {
+    console.log(`  STALE host/unit/${slug}.ts`)
+  }
+
+  // the unit files no unit of this run wrote or made: a shelved, moved or deleted module (T-0425). Only after a whole
+  // run that left nothing failed or moved, and never under --only or --check
+  const whole = only === undefined && counts.failed === 0 && counts.moved === 0
+  let removed = 0
+
+  if (whole && !check && existsSync(UNIT_DIR)) {
+    for (const entry of readdirSync(UNIT_DIR)) {
+      if (!seen.has(entry.replace(/\.ts$/, '')) || !entry.endsWith('.ts')) {
+        traced.rmSync(join(UNIT_DIR, entry), { force: true })
+        removed++
+      }
+    }
+  }
+
+  // the entry shims and run entries no entry of this run wrote, by the same rule (item term-self-host-001-1370): a
+  // shelved or deleted port's shim under a port deck's host/port/ kept importing a unit file the lines above removed.
+  // A file there is port-build's output and nothing else (portPath), so one that is no current shim, and no current
+  // shim's `-run.ts`, has no source. Also a `<file>.<pid>` temp file left by a process killed between its write and its
+  // rename (writeChanged), whose process is gone
+  const removedShims: string[] = []
+
+  if (whole && !check) {
+    const keep = new Set<string>()
+
+    for (const [key, row] of Object.entries(fresh)) {
+      keep.add(key)
+
+      if (row.run !== undefined) {
+        keep.add(key.replace(/\.ts$/, '-run.ts'))
+      }
+    }
+
+    for (const deck of Object.keys(DECKS)) {
+      for (const path of portFiles(join(TERM, 'deck', deck, 'host', 'port'))) {
+        const key = relative(TERM, path)
+        const temp = /\.ts\.(\d+)$/.exec(path)
+
+        if (temp ? !alive(Number(temp[1])) : path.endsWith('.ts') && !keep.has(key)) {
+          traced.rmSync(path, { force: true })
+          removedShims.push(key)
+        }
+      }
+    }
+
+    for (const key of removedShims) {
+      console.log(`  removed ${key}  (no entry of this run wrote it)`)
+    }
+  }
+
+  // the interface of a unit as its importers saw it (a port's own entry adds its keeper, which no importer sees), and
+  // its imports as its written file has them
+  const faceOf = (one: Seen): string => (one.faces.size > 0 ? [...one.faces].sort().join(';') : (one.ownFace ?? ''))
+  const unitRows: Record<string, UnitRow> = whole ? {} : { ...(previous?.units ?? {}) }
+  let largest = { slug: '', bytes: 0 }
+  let foreign = 0
+
+  for (const [slug, one] of seen) {
+    const path = join(UNIT_DIR, `${slug}.ts`)
+    const bytes = existsSync(path) ? readFileSync(path) : undefined
+
+    if (bytes === undefined) {
+      continue
+    }
+
+    // a name no unit of this run (or, not whole, of the last) has is not a unit: it is counted and left out
+    const named = (ports.has(one.module) && one.ownImports) || one.imports || one.ownImports || []
+    const imports = named.filter(dep => seen.has(dep) || (!whole && previous?.units[dep] !== undefined))
+
+    foreign += named.length - imports.length
+
+    const source = runTable.get(`read\0${join(TERM, one.module)}`)
+
+    unitRows[slug] = {
+      sources: { [one.module]: source ?? sha(readFileSync(join(TERM, one.module))) },
+      interface: faceOf(one),
+      imports: Object.fromEntries(imports.map(dep => [dep, seen.has(dep) ? faceOf(seen.get(dep)!) : (unitRows[dep]?.interface ?? '')])),
+      out: sha(bytes),
+    }
+
+    if (bytes.length > largest.bytes) {
+      largest = { slug, bytes: bytes.length }
+    }
+  }
+
+  // the shims: this run's, and where it was not whole, the last run's for the entries it did not reach, a failed or
+  // moved one marked failed
+  const shimRows: Record<string, ShimRow> = {}
+
+  for (const [key, row] of Object.entries(previous?.shims ?? {})) {
+    if (failed.has(key)) {
+      shimRows[key] = { ...row, failed: true }
+    } else if (!whole && fresh[key] === undefined) {
+      shimRows[key] = row
+    }
+  }
+
+  Object.assign(shimRows, fresh)
+
+  const table: [string, string][] = drift || !whole ? [[UNTRACKABLE, 'never']] : [...runTable].filter(([key]) => !outputPath(key.slice(key.indexOf('\0') + 1)))
+
+  if (!check) {
+    try {
+      mkdirSync(dirname(manifestPath), { recursive: true })
+      writeFileSync(
+        `${manifestPath}.${process.pid}`,
+        JSON.stringify({ schema: UNITS_SCHEMA, stage0: id, fingerprint: print, table, units: unitRows, shims: shimRows } satisfies UnitsManifest),
+      )
+      real.renameSync(`${manifestPath}.${process.pid}`, manifestPath)
+    } catch {
+      // a manifest that cannot be written only means the next run asks the engine and --verify reads less
+    }
+  }
+
+  const distinct = new Set(engineBuilt).size
+  const written = [...seen.values()].filter(one => one.written).length
+
+  console.log(
+    `term port-build --units: ${order.length} entries in ${Math.round((Date.now() - started) / 1000)} s, ${seen.size} units (${written} written, ${removed} removed, ${removedShims.length} port files removed, largest host/unit/${largest.slug}.ts ${largest.bytes} bytes), ` +
+      `engine ${engineBuilt.length} unit builds (${distinct} distinct units) and ${reused} replays, ${keeperOnly} port units whose own text differs from another entry's emit, ${disagree} disagree, ` +
+      `${unmatched} emits with no interface found, ${foreign} loads naming no unit, table ${table[0]?.[0] === UNTRACKABLE ? 'never holds' : `${table.length} rows`}`,
+  )
+  console.log(
+    `term port-build: ${counts.built} built, ${counts.unchanged} unchanged${check ? `, ${counts.stale} stale` : ''}, ${counts.failed} failed${counts.moved > 0 ? `, ${counts.moved} moved` : ''}`,
+  )
+
+  if (counts.failed > 0 || counts.moved > 0 || counts.stale > 0 || disagree > 0 || staleUnits.size > 0) {
+    process.exitCode = 1
+  }
+
+  if (stageCheck && !check) {
+    if (process.exitCode === 1) {
+      console.log('term port-build --stage-check: step 2 not run, step 1 did not build every port')
+      return
+    }
+
+    await stageTwoUnits(plan, lock, jobs)
+  }
+}
+
+// one entry's turn in --stage-check's step 2 under --units: the files step 1 would write for it, each with its hash
+type StageUnitsTurn = { tally: 'same' | 'failed' | 'gone'; lines: string[]; files: [string, string][] }
+
+// the entry compiled with the working tree's engine (stage1), each file step 1 would write for it written under
+// tmp/self-host/stage-check/
+function stageUnitsTurn(c: Compiler, root: string, file: string, store: string): StageUnitsTurn {
+  const work = unitWorkOf(c, store)
+  const name = relative(TERM, file)
+  const text = sourceOf(file)
+
+  if (text === undefined) {
+    return { tally: 'gone', lines: [], files: [] }
+  }
+
+  const { result } = compileEntry(work, root, file, text)
+
+  if (!result.ok) {
+    return { tally: 'failed', lines: [`  FAIL   ${name}  (stage1 cannot compile it: ${result.diagnostics[0]?.name ?? ''} ${result.diagnostics[0]?.message ?? ''})`], files: [] }
+  }
+
+  const files: [string, string][] = []
+  const put = (path: string, content: string): void => {
+    const at = relative(TERM, path)
+    const scratch = join(STAGE_SCRATCH, at)
+
+    mkdirSync(dirname(scratch), { recursive: true })
+    writeFileSync(scratch, content)
+    files.push([at, sha(content)])
+  }
+
+  for (const [module, emit] of result.modules) {
+    const own = module === file
+
+    if (own || !work.ports.has(module)) {
+      put(join(UNIT_DIR, `${unitSlug(work, module)}.ts`), unitContent(c, result, emit.code, own))
+    }
+  }
+
+  const { shimPath, shim, run } = shimOf(work, root, file, result)
+
+  put(shimPath, shim)
+
+  if (run && 'text' in run) {
+    put(shimPath.replace(/\.ts$/, '-run.ts'), run.text)
+  }
+
+  return { tally: 'same', lines: [], files }
+}
+
+// STEP 2 of `--stage-check` under --units (decision 030 section 1, 036, spec-1339 section 7 step 4): every chosen entry
+// compiled again through the working tree's compileSeparate, which resolves to the shims and units step 1 wrote
+// (stage1), and every file step 1 writes for it held byte for byte against step 1's. Step 1's files are hashed while the
+// lock is held, then the lock is freed. Its store is its own, namespaced by step 1's output, only the current kept
+async function stageTwoUnits(plan: { root: string; files: { file: string; text: string }[] }[], lock: { free: () => void } | undefined, jobs: number): Promise<void> {
+  setRecording(false)
+
+  const step1 = new Map<string, string>()
+  const hashOf = (path: string): void => {
+    if (existsSync(path)) {
+      step1.set(relative(TERM, path), sha(readFileSync(path)))
+    }
+  }
+
+  for (const entry of existsSync(UNIT_DIR) ? readdirSync(UNIT_DIR).sort() : []) {
+    hashOf(join(UNIT_DIR, entry))
+  }
+
+  const order: { root: string; file: string }[] = []
+
+  for (const { root, files } of plan) {
+    for (const { file } of files) {
+      const shimPath = portPath(root, file)
+
+      hashOf(shimPath)
+      hashOf(shimPath.replace(/\.ts$/, '-run.ts'))
+      order.push({ root, file })
+    }
+  }
+
+  lock?.free()
+
+  const namespace = sha([...step1].map(([path, hash]) => `${path} ${hash}`).join('\n')).slice(0, 32)
+  const store = join(STAGE_UNIT_STORE, namespace)
+
+  for (const old of existsSync(STAGE_UNIT_STORE) ? readdirSync(STAGE_UNIT_STORE) : []) {
+    if (old !== namespace) {
+      traced.rmSync(join(STAGE_UNIT_STORE, old), { recursive: true, force: true })
+    }
+  }
+
+  const counts = { failed: 0, gone: 0 }
+  const made = new Map<string, Set<string>>()
+  const turns: (StageUnitsTurn | undefined)[] = []
+  let taken = 0
+
+  const arrive = (at: number, turn: StageUnitsTurn): void => {
+    turns[at] = turn
+
+    for (; turns[taken]; taken++) {
+      const one = turns[taken]!
+
+      one.lines.forEach(line => console.log(line))
+
+      if (one.tally !== 'same') {
+        counts[one.tally]++
+      }
+
+      for (const [path, hash] of one.files) {
+        made.set(path, (made.get(path) ?? new Set()).add(hash))
+      }
+
+      turns[taken] = undefined
+    }
+  }
+
+  if (jobs === 1 || order.length < 2) {
+    const c = await workingCompiler()
+
+    order.forEach(({ root, file }, at) => arrive(at, stageUnitsTurn(c, root, file, store)))
+  } else {
+    await fanOut<StageUnitsTurn>(
+      jobs,
+      ['--stage-two'],
+      order.map(({ root, file }, at) => ({ at, name: relative(TERM, file), job: { root, file, store, units: true } })),
+      arrive,
+    )
+  }
+
+  let same = 0
+  let differ = 0
+
+  for (const [path, hashes] of [...made].sort(([a], [b]) => a.localeCompare(b))) {
+    const theirs = step1.get(path)
+
+    if (hashes.size === 1 && theirs !== undefined && hashes.has(theirs)) {
+      same++
+      continue
+    }
+
+    differ++
+
+    const before = existsSync(join(TERM, path)) ? readFileSync(join(TERM, path), 'utf8') : ''
+    const after = readFileSync(join(STAGE_SCRATCH, path), 'utf8')
+
+    console.log(`  DIFFER ${path}  (${hashes.size > 1 ? `stage1 emits it ${hashes.size} ways, ` : ''}${firstDifference(before, after)})`)
+  }
+
+  console.log(
+    `term port-build --stage-check: step 2 ${same} same, ${differ} differ, ${counts.failed} failed (units and shims, stage1 output in ${relative(TERM, STAGE_SCRATCH)})`,
+  )
+
+  if (differ > 0 || counts.failed > 0) {
+    process.exitCode = 1
+  }
+}
+
+// `--verify` of a schema 3 manifest, compiler-free and sound (spec-1339 section 6): an entry is current when its shim and
+// run entry are the ones the last build wrote from its source as it is now, and every unit its closure reaches is
+// current: its file the one written, its module's `.tree` the one read, and each unit it loads recorded with the
+// interface it was built against. A unit whose own source changed makes every entry reaching it stale, since whether
+// its interface moved is the compiler's to say
+function verifyUnits(plan: { root: string; files: { file: string; text: string }[] }[], manifest: UnitsManifest): void {
+  const hashOf = (path: string): string | undefined => untraced(() => (existsSync(path) ? sha(readFileSync(path)) : undefined))
+  const own = new Map<string, string | undefined>()
+  const ownProblem = (slug: string): string | undefined => {
+    if (own.has(slug)) {
+      return own.get(slug)
+    }
+
+    const row = manifest.units[slug]
+    let problem: string | undefined
+
+    if (row === undefined) {
+      problem = `no build has recorded host/unit/${slug}.ts`
+    } else if (hashOf(join(UNIT_DIR, `${slug}.ts`)) !== row.out) {
+      problem = `host/unit/${slug}.ts is not the one the last build wrote`
+    } else {
+      for (const [file, hash] of Object.entries(row.sources)) {
+        if (hashOf(join(TERM, file)) !== hash || sourceOf(join(TERM, file)) === undefined) {
+          problem = `${file} changed after host/unit/${slug}.ts was built`
+          break
+        }
+      }
+
+      for (const [dep, face] of problem === undefined ? Object.entries(row.imports) : []) {
+        const theirs = manifest.units[dep]
+
+        if (theirs === undefined) {
+          problem = `host/unit/${slug}.ts imports host/unit/${dep}.ts, which no build has recorded`
+          break
+        }
+
+        if (theirs.interface !== face) {
+          problem = `host/unit/${slug}.ts was built against another interface of host/unit/${dep}.ts`
+          break
+        }
+      }
+    }
+
+    own.set(slug, problem)
+    return problem
+  }
+  // the first unit of the closure that is not current, breadth first from the entry's own
+  const closureProblem = (slug: string): string | undefined => {
+    const reached = new Set([slug])
+    const queue = [slug]
+
+    for (let at = 0; at < queue.length; at++) {
+      const problem = ownProblem(queue[at]!)
+
+      if (problem !== undefined) {
+        return problem
+      }
+
+      for (const dep of Object.keys(manifest.units[queue[at]!]!.imports)) {
+        if (!reached.has(dep)) {
+          reached.add(dep)
+          queue.push(dep)
+        }
+      }
+    }
+
+    return undefined
+  }
+  let good = 0
+  let bad = 0
+
+  for (const { root, files } of plan) {
+    for (const { file, text } of files) {
+      const name = relative(TERM, file)
+      const shimPath = portPath(root, file)
+      const row = manifest.shims[relative(TERM, shimPath)]
+      const out = hashOf(shimPath)
+      const problem =
+        row === undefined
+          ? 'no build has recorded it: run port-build'
+          : row.failed
+            ? 'its last build failed: run port-build to see why'
+            : out === undefined
+              ? 'its port is missing'
+              : row.text !== sha(text)
+                ? 'its source changed after its port was built'
+                : row.out !== out
+                  ? 'its port is not the one the last build wrote'
+                  : row.run !== undefined && hashOf(shimPath.replace(/\.ts$/, '-run.ts')) !== row.run
+                    ? 'its run entry is not the one the last build wrote'
+                    : closureProblem(row.unit)
+
+      if (problem === undefined) {
+        good++
+      } else {
+        bad++
+        console.log(`  STALE ${name}  (${problem})`)
+      }
+    }
+  }
+
+  console.log(`term port-build --verify: ${good} current, ${bad} stale`)
+
+  if (bad > 0 || good === 0) {
+    process.exitCode = 1
+  }
 }
 
 // THE JOBS: `work` handed out to at most `count` workers, each `arrive`d by its place as it finishes. The promise settles
@@ -965,6 +2318,49 @@ function verifyPorts(plan: { root: string; files: { file: string; text: string }
   }
 }
 
+// every port module of DECKS, by deck, each with its text, `mark draft` files left out; `filter` keeps only the modules
+// whose path holds it
+function portPlan(filter: string | undefined): { root: string; files: { file: string; text: string }[] }[] {
+  const plan: { root: string; files: { file: string; text: string }[] }[] = []
+
+  for (const [deck, subtrees] of Object.entries(DECKS)) {
+    const root = join(TERM, 'deck', deck)
+    const files: string[] = []
+
+    for (const subtree of subtrees) {
+      if (subtree.endsWith('/*/**')) {
+        folders(join(root, subtree.slice(0, -5)), files)
+      } else if (subtree.endsWith('/*')) {
+        shallow(join(root, subtree.slice(0, -2)), files)
+      } else {
+        trees(join(root, subtree), files)
+      }
+    }
+
+    const chosen: { file: string; text: string }[] = []
+
+    for (const file of files) {
+      const text = untraced(() => readFileSync(file, 'utf8'))
+
+      // `mark draft` (or the old `note draft`) shelves a file out of every build, this one included, and out of the
+      // progress total, which counts what is compiled or skipped. The marker counts anywhere in the file (port-shelved.ts)
+      if (shelvedText(text)) {
+        continue
+      }
+
+      if (filter === undefined || relative(TERM, file).includes(filter)) {
+        chosen.push({ file, text })
+      }
+    }
+
+    if (chosen.length > 0) {
+      plan.push({ root, files: chosen })
+    }
+  }
+
+  return plan
+}
+
 async function main(): Promise<void> {
   // `moved`: modules left unwritten because their sources kept changing while they compiled (THE WRITE-TIME CHECK)
   const counts = { built: 0, unchanged: 0, stale: 0, failed: 0, moved: 0 }
@@ -976,10 +2372,14 @@ async function main(): Promise<void> {
   // `--verify` writes nothing, so it waits for no one
   const lock = verify ? undefined : await holdLineLock(`port-build${only === undefined ? '' : ` --only ${only}`}`)
 
-  const manifestPath = projectHome(TERM, 'port-build.json')
-  const print = stage0 === undefined ? undefined : await fingerprint(stage0.id)
+  // `--manifest <path>` (with --verify only): read that manifest, a test's altered copy
+  const manifestAt = process.argv.indexOf('--manifest')
+  const manifestPath = verify && manifestAt >= 0 ? resolve(process.argv[manifestAt + 1]!) : projectHome(TERM, 'port-build.json')
+  // under --units stage0 is not loaded yet (THE FAST PATH), and its pin names it
+  const stage0Id = stage0?.id ?? (units && !verify ? readPin()?.id : undefined)
+  const print = stage0Id === undefined ? undefined : await fingerprint(stage0Id)
   // the last manifest, whose entries this run keeps where it writes none of its own; under `--full` none is skipped
-  const previous = print === undefined ? undefined : readManifest(manifestPath)
+  const previous = print === undefined || units ? undefined : readManifest(manifestPath)
   const old = full ? undefined : previous
   setRecording(true)
 
@@ -1012,49 +2412,26 @@ async function main(): Promise<void> {
   const left = new Map<string, boolean>()
 
   // every module first, so the progress has its total before the first one compiles
-  const plan: { root: string; files: { file: string; text: string }[] }[] = []
-  const every = new Set<string>()
-
-  for (const [deck, subtrees] of Object.entries(DECKS)) {
-    const root = join(TERM, 'deck', deck)
-    const files: string[] = []
-
-    for (const subtree of subtrees) {
-      if (subtree.endsWith('/*/**')) {
-        folders(join(root, subtree.slice(0, -5)), files)
-      } else if (subtree.endsWith('/*')) {
-        shallow(join(root, subtree.slice(0, -2)), files)
-      } else {
-        trees(join(root, subtree), files)
-      }
-    }
-
-    const chosen: { file: string; text: string }[] = []
-
-    for (const file of files) {
-      const text = untraced(() => readFileSync(file, 'utf8'))
-
-      // `mark draft` (or the old `note draft`) shelves a file out of every build, this one included, and out of the
-      // progress total, which counts what is compiled or skipped. The marker counts anywhere in the file (port-shelved.ts)
-      if (shelvedText(text)) {
-        continue
-      }
-
-      every.add(relative(TERM, file))
-
-      if (only === undefined || relative(TERM, file).includes(only)) {
-        chosen.push({ file, text })
-      }
-    }
-
-    if (chosen.length > 0) {
-      plan.push({ root, files: chosen })
-    }
-  }
+  const plan = portPlan(only)
+  const every = new Set(portPlan(undefined).flatMap(({ files }) => files.map(({ file }) => relative(TERM, file))))
 
   if (verify) {
     setRecording(false)
-    verifyPorts(plan, readManifest(manifestPath))
+
+    // a schema 3 manifest is verified through its units, whatever flags this run has
+    const unitsManifest = readUnitsManifest(manifestPath)
+
+    if (unitsManifest) {
+      verifyUnits(plan, unitsManifest)
+    } else {
+      verifyPorts(plan, readManifest(manifestPath))
+    }
+
+    return
+  }
+
+  if (units) {
+    await unitsMain(plan, print, stage0Id, lock, jobs)
     return
   }
 
@@ -1361,7 +2738,7 @@ function stageTurn(c: Compiler, root: string, file: string, one: { out?: string;
   }
 
   const content = printerExports(portContent(result.program, result.typescript, c.nativePrelude))
-  const run = basename(root) === 'call' ? runEntry(name, content, result.program, c.toCamel) : undefined
+  const run = basename(root) === 'call' ? runEntry(name, exportsFunction(content), result.program, c.toCamel) : undefined
   const runText = run && 'text' in run ? run.text : undefined
   const outPath = join(STAGE_SCRATCH, relative(TERM, portPath(root, file)))
 
@@ -1447,9 +2824,14 @@ async function stageTwo(plan: { root: string; files: { file: string; text: strin
 async function portWorker(): Promise<void> {
   const two = process.argv.includes('--stage-two')
 
+  // THE UNITS: stage0 waits for the first job's process, which is this one
+  if (units && !two) {
+    await stage0Loaded()
+  }
+
   forgetOutside()
 
-  if (two) {
+  if (two || units) {
     setRecording(false)
   }
 
@@ -1459,8 +2841,14 @@ async function portWorker(): Promise<void> {
   }
 
   process.on('disconnect', () => process.exit(0))
-  process.on('message', (job: { root: string; file: string; print?: string; one?: { out?: string; run?: string } }) => {
+  process.on('message', (job: { root: string; file: string; print?: string; one?: { out?: string; run?: string }; store?: string; units?: true }) => {
     try {
+      // THE UNITS: each turn traces its own compile, and step 2 of --stage-check compiles with stage1
+      if (job.units) {
+        send({ answer: c ? stageUnitsTurn(c, job.root, job.file, job.store!) : unitsTurn(job.root, job.file, job.store!) })
+        return
+      }
+
       if (c) {
         send({ answer: stageTurn(c, job.root, job.file, job.one!) })
         return

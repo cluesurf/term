@@ -14,7 +14,8 @@ note <term:boot fetches and verifies a pinned stage0 from a loopback registry, a
 #      `fixpoint ts ... identical` (a smoke run). It needs TERM_BOOT_PAYLOAD, a real release payload, and TERM_BOOT_OUT,
 #      where it goes. These are the original's --only, --payload and --out flags, since a test file takes no flags
 #
-# release.ts, transport.ts, keys.ts and sign.ts are docked as oci-release.test.tree docks them. The registry answers from
+# The ports are loaded, never their faces (decision 157 rule 2, item term-self-host-001-1297): oci/toolchain-release,
+# oci/registry-transport, oci/key-trust and object/id-signing, called by position. The registry answers from
 # this process, so every term:boot is a child run without blocking (process/run is async). The fixture is made once, by
 # the first test, and kept in `boot-now`, and the last test closes the registry.
 
@@ -60,11 +61,21 @@ load @term/base/text
   find contains, name text-contains
   find substring
 
+load @term/deck/oci/toolchain-release
+  find current-platform
+  find release-route
+  find publish-release
+
+load @term/deck/oci/registry-transport
+  find http-transport
+
+load @term/deck/oci/key-trust
+  find ensure-publisher
+
+load @term/deck/object/id-signing
+  find generate-keypair
+
 dock load
-  load <@term/deck/code/oci/release>, name release-face
-  load <@term/deck/code/oci/transport>, name transport-face
-  load <@term/deck/code/oci/keys>, name keys-face
-  load <@term/deck/code/object/sign>, name sign-face
   load <node:crypto>, name boot-crypto
   load <node:fs>, name boot-fs
   load <node:path>, name boot-path
@@ -93,32 +104,15 @@ form basic-credential
   link username, like text
   link password, like text
 
-form transport-ask
-  link host, like text
-  link credentials, like dynamic
-  link retries, like number
-
-form route-ask
-  link package, like text
-  link env, like dynamic
-
-form publisher-ask
-  link transport, like dynamic
-  link repository, like dynamic
-  link scope, like dynamic
-  link keypair, like dynamic
+# host value: none, for a port parameter left out (undefined)
+bind boot-nothing
+  like dynamic
+  case node
+    text <undefined>
 
 form release-payload
   link platform, like text
   link bytes, like dynamic
-
-form release-publish
-  link transport, like dynamic
-  link repository, like text
-  link package, like text
-  link version, like text
-  link payloads, like list, like release-payload
-  link keypair, like dynamic
 
 # a file a payload packs, under its term/ folder
 form packed-file
@@ -283,7 +277,7 @@ task prepared
     hold
       back boot-now
   save boot-now/made, true
-  save boot-now/platform, platform-text(release-face/current-platform())
+  save boot-now/platform, platform-text(current-platform())
   fork test, is-equal(boot-now/platform, <>)
     hold
       back boot-now
@@ -302,18 +296,18 @@ task prepared
   save unpacked, run(<tar>, make(list,<-xzf>, with-stage0, <-C>, listed, <term/host/compile.mjs>))
   save boot-now/stage0-id, sha-of(<{listed}/term/host/compile.mjs>)
   save boot-now/server, start-oci-server()
-  save transport, transport-face/http-transport(make(transport-ask, bind(host, boot-now/server/host), bind(credentials, tester-credentials), bind(retries, 0)))
-  save route, release-face/release-route(make(route-ask, bind(package, package-name), bind(env, registry-env(<oci://{boot-now/server/host}/cluesurf/term>))))
-  save keypair, sign-face/generate-keypair()
-  save stranger, sign-face/generate-keypair()
+  save transport, http-transport(boot-now/server/host, tester-credentials, boot-nothing(), boot-nothing(), boot-nothing(), boot-nothing(), 0, boot-nothing())
+  save route, release-route(package-name, registry-env(<oci://{boot-now/server/host}/cluesurf/term>))
+  save keypair, generate-keypair()
+  save stranger, generate-keypair()
   save boot-now/stranger, stranger/public-key
-  save founded, wait keys-face/ensure-publisher(make(publisher-ask, bind(transport, transport), bind(repository, route/keys-repository), bind(scope, route/scope), bind(keypair, keypair)))
+  save founded, ensure-publisher(transport, route/keys-repository, route/scope, keypair)
   save repository, <{route/repository/name}>
   save boot-now/repository, repository
   save with-payload, make(list,make(release-payload, bind(platform, boot-now/platform), bind(bytes, boot-fs/read-file-sync(with-stage0))))
-  save published, wait release-face/publish-release(make(release-publish, bind(transport, transport), bind(repository, repository), bind(package, package-name), bind(version, version), bind(payloads, with-payload), bind(keypair, keypair)))
+  save published, publish-release(transport, repository, package-name, version, with-payload, keypair, boot-nothing(), boot-nothing())
   save without-payload, make(list,make(release-payload, bind(platform, boot-now/platform), bind(bytes, boot-fs/read-file-sync(without-stage0))))
-  save bare, wait release-face/publish-release(make(release-publish, bind(transport, transport), bind(repository, repository), bind(package, package-name), bind(version, bare-version), bind(payloads, without-payload), bind(keypair, keypair)))
+  save bare, publish-release(transport, repository, package-name, bare-version, without-payload, keypair, boot-nothing(), boot-nothing())
   save boot-now/index, <{published/index}>
   save boot-now/bare-index, <{bare/index}>
   save boot-now/pinned, boot-file(<boot.tree>, <boot\n  code \<{version}\>\n  site \<{site-of(boot-now/index)}\>\n>)

@@ -15,8 +15,9 @@ note <`term self check | update | back` and the version dispatch end to end, aga
 # the last left on disk, so it runs once, from the first test that asks, and records each check's verdict as it was
 # then: <held>, or what the step printed. Test n reads verdict n. A raise ends the sequence where it stood, and the
 # tests after it fail naming the raise. Every child runs through `env` (decision 111) and asynchronously, since the
-# registry answers in this process. object/sign, oci/keys, oci/release, oci/transport of @term/deck and need-load's
-# file list of @term/call are docked as the original imported them (decision 106).
+# registry answers in this process. @term/deck's ports are loaded, never their faces (decision 157 rule 2, item
+# term-self-host-001-1297): object/id-signing, oci/key-trust, oci/toolchain-release and oci/registry-transport, called
+# by position. need-load's file list of @term/call is docked as the original imported it (decision 106).
 
 load @term/base/environment
   find variable
@@ -55,11 +56,20 @@ load ../support/running
 load ../support/judging
   find make-record
 
+load @term/deck/oci/toolchain-release
+  find current-platform
+  find publish-release
+
+load @term/deck/oci/registry-transport
+  find http-transport
+
+load @term/deck/oci/key-trust
+  find ensure-publisher
+
+load @term/deck/object/id-signing
+  find generate-keypair
+
 dock load
-  load <@term/deck/code/object/sign>, name sign-face
-  load <@term/deck/code/oci/keys>, name keys-face
-  load <@term/deck/code/oci/release>, name release-face
-  load <@term/deck/code/oci/transport>, name transport-face
   load <@term/call/code/need-load>, name need-face
   load <node:crypto>, name self-crypto
   load <node:fs>, name self-file
@@ -90,6 +100,12 @@ bind days-back
   like dynamic
   case node
     text <new Date(Date.now() - $count * 24 * 60 * 60 * 1000)>
+
+# host value: none, for a port parameter left out (undefined)
+bind self-nothing
+  like dynamic
+  case node
+    text <undefined>
 
 bind raised-words
   take cause, like dynamic
@@ -322,7 +338,7 @@ task run-steps
   like void
   mark async
 
-  save platform, platform-text(release-face/current-platform())
+  save platform, platform-text(current-platform())
   save payload-file, self-path/join(term-root(), <tmp>, <release>, version, <term-{platform}.tar.gz>)
   fork test, or(is-equal(platform, <>), not(is-there(payload-file)))
     hold
@@ -337,9 +353,9 @@ task run-steps
   save now/server, start-oci-server()
   save now/served, true
   save now/host, now/server/host
-  save transport, transport-face/http-transport(make-record(make(list, <host>, now/host, <credentials>, tester-credentials, <retries>, 0)))
-  save keypair, sign-face/generate-keypair()
-  wait keys-face/ensure-publisher(make-record(make(list, <transport>, transport, <repository>, <cluesurf/term/name>, <scope>, <@term>, <keypair>, keypair)))
+  save transport, http-transport(now/host, tester-credentials, self-nothing(), self-nothing(), self-nothing(), self-nothing(), 0, self-nothing())
+  save keypair, generate-keypair()
+  ensure-publisher(transport, <cluesurf/term/name>, <@term>, keypair)
   walk make(list, version, next)
     take one, like text
     save bytes, first-bytes
@@ -348,7 +364,7 @@ task run-steps
         save bytes, next-bytes
     save payloads, make list
     payloads/push(make-record(make(list, <platform>, platform, <bytes>, bytes)))
-    wait release-face/publish-release(make-record(make(list, <transport>, transport, <repository>, <cluesurf/term/code>, <package>, <@term/code>, <version>, one, <payloads>, payloads, <keypair>, keypair)))
+    publish-release(transport, <cluesurf/term/code>, <@term/code>, one, payloads, keypair, self-nothing(), self-nothing())
   # a fresh machine: its own HOME, trust pins and store, pointed at the loopback registry
   save home, temp-folder(<term-self->)
   save now/home, home
