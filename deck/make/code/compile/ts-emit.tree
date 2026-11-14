@@ -3008,11 +3008,15 @@ task emit-statement
         case some
           link clause
           save caught, to-camel(clause/name)
+          # the handler reads a value with `form`, `note` and `flow` (term/compiler decision 021 point 10a as amended by
+          # 1486): the prelude's `__termCaught` passes a Term raise, decorates a host value in place or wraps it. It
+          # rides in the exception prelude, which the flow flag brings
+          save st/flow-used, true
           # the guarded call the raise came out through is the last frame it gains
-          save appended, <>
+          save appended, < {caught} = __termCaught({caught});>
           fork test, st/site-local
             hold
-              save appended, < __termFrame({caught}, __site);>
+              save appended, <{appended} __termFrame({caught}, __site);>
           save handler, < catch ({caught}: any) \{ if ({caught}?.name === "__TermStop") throw {caught};{appended}{substring(emit-block(clause/body, depth, st, facts), 1)}>
         case none
           save nothing, 0

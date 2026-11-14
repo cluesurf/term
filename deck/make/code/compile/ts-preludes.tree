@@ -503,7 +503,12 @@ task exception-prelude
   push(lines, <\}>)
   # THE FRAMES (term/hive decision 001): a frame text holds one frame, or several a line apart where a task was
   # inlined into its caller (compile/frames.tree); past the limit a frame adds nothing
+  # A host value a guard decorated (__termCaught) keeps its frames waiting until its flow is first read: they go on the
+  # list its `term.caught.sites` symbol holds, never through its flow, whose first read formats the host's stack
   push(lines, <export function __termFrame(raised: unknown, site: string): void \{>)
+  push(lines, <  if (site === "") return>)
+  push(lines, <  const sites = typeof raised === "object" && raised !== null ? Reflect.get(raised, Symbol.for("term.caught.sites")) : undefined>)
+  push(lines, <  if (Array.isArray(sites)) \{ for (const frame of site.split(String.fromCharCode(10))) if (sites.length \< {frame-limit()}) sites.push(frame); return \}>)
   push(lines, <  const flow = (raised as \{ flow?: unknown \} | null)?.flow>)
   push(lines, <  if (site === "" || !Array.isArray(flow)) return>)
   push(lines, <  if (site.indexOf(String.fromCharCode(10)) \< 0) \{ if (flow.length \< {frame-limit()}) flow.push(site); return \}>)
@@ -517,6 +522,60 @@ task exception-prelude
   # a call outside every task that passes a raise out, which no task's catch frames
   push(lines, <export function __termTop\<T\>(site: string, call: () =\> T): T \{>)
   push(lines, <  try \{ return call() \} catch (raised) \{ __termFrame(raised, site); throw raised \}>)
+  push(lines, <\}>)
+  # A GUARD'S CAUGHT VALUE (term/compiler decision 021 point 10a as amended by 1486): what a guard's handler reads, a
+  # value with `form`, `note` and `flow` as on Kotlin and Swift. A Term raise passes as it is: this unit's class, or
+  # another unit's, told by its own text `form` and `note` (each unit has its own class, trap T-1467), or a value this
+  # helper already decorated (its marker). A host object that can take them is decorated in place, every property
+  # non-enumerable so `console.error`, inspect, JSON and every reader of its host fields see it as before. Anything
+  # else (a primitive, a frozen object, one with a `form`, `note` or `flow` of its own) is wrapped, `base` the raw
+  # value. `defect` is exactly printer-input.tree is-bug-kind's host set. Neither arm tells the hive: no raise was made
+  push(lines, <export function __termCaught(raised: unknown): unknown \{>)
+  push(lines, <  if (raised instanceof TermException) return raised>)
+  push(lines, <  const mark = Symbol.for("term.caught")>)
+  push(lines, <  const held = (typeof raised === "object" && raised !== null) || typeof raised === "function">)
+  push(lines, <  if (held) \{>)
+  push(lines, <    const seen = raised as object>)
+  push(lines, <    if (Reflect.get(seen, mark) === true) return raised>)
+  push(lines, <    if (typeof Object.getOwnPropertyDescriptor(seen, "form")?.value === "string" && typeof Object.getOwnPropertyDescriptor(seen, "note")?.value === "string") return raised>)
+  push(lines, <  \}>)
+  push(lines, <  const box = held ? (raised as object) : undefined>)
+  push(lines, <  const kinds = [TypeError, ReferenceError, RangeError, SyntaxError, EvalError, URIError]>)
+  push(lines, <  const form = box !== undefined && Reflect.get(box, "expected") !== true && kinds.some(kind =\> raised instanceof kind) ? "defect" : "failure">)
+  push(lines, <  const message = box !== undefined ? Reflect.get(box, "message") : undefined>)
+  push(lines, <  let note = "">)
+  push(lines, <  try \{ note = typeof message === "string" ? message : String(raised) \} catch \{ note = Object.prototype.toString.call(raised) \}>)
+  # the frames of its `stack`, one per `    at <frame>` line. Read only when asked: reading a host Error's stack formats
+  # it (time on every catch) and fixes it before node records the line it shows over an uncaught error, so a decorated
+  # Error thrown on unhandled printed `node:internal/modules/run_main` where node printed the throwing call (1484 try2)
+  push(lines, <  const frames = (): string[] =\> \{>)
+  push(lines, <    const found: string[] = []>)
+  push(lines, <    const stack = box !== undefined ? Reflect.get(box, "stack") : undefined>)
+  push(lines, <    if (typeof stack === "string") for (const line of stack.split(String.fromCharCode(10))) if (line.startsWith("    at ") && found.length \< {frame-limit()}) found.push(line.slice(7))>)
+  push(lines, <    return found>)
+  push(lines, <  \}>)
+  push(lines, <  if (box !== undefined && Object.isExtensible(box) && !("form" in box) && !("note" in box) && !("flow" in box)) \{>)
+  push(lines, <    try \{>)
+  push(lines, <      // flow is a real list once read: the stack's frames, then the frames the raise gained since (__termFrame)>)
+  push(lines, <      const sitesKey = Symbol.for("term.caught.sites")>)
+  push(lines, <      const sites: string[] = []>)
+  push(lines, <      const settle = (flow: unknown): void =\> \{ Object.defineProperty(box, "flow", \{ value: flow, writable: true, configurable: true, enumerable: false \}); Object.defineProperty(box, sitesKey, \{ value: undefined, writable: true, configurable: true, enumerable: false \}) \}>)
+  push(lines, <      Object.defineProperty(box, "form", \{ value: form, writable: true, configurable: true, enumerable: false \})>)
+  push(lines, <      Object.defineProperty(box, "note", \{ value: note, writable: true, configurable: true, enumerable: false \})>)
+  push(lines, <      Object.defineProperty(box, sitesKey, \{ value: sites, writable: true, configurable: true, enumerable: false \})>)
+  push(lines, <      Object.defineProperty(box, "flow", \{ get: (): string[] =\> \{ const flow = frames(); for (const site of sites) if (flow.length \< {frame-limit()}) flow.push(site); settle(flow); return flow \}, set: (flow: unknown): void =\> settle(flow), configurable: true, enumerable: false \})>)
+  push(lines, <      Object.defineProperty(box, mark, \{ value: true, writable: false, configurable: true, enumerable: false \})>)
+  push(lines, <      return raised>)
+  push(lines, <    \} catch \{>)
+  push(lines, <      // an exotic object (a proxy) that refused a property: wrapped below>)
+  push(lines, <    \}>)
+  push(lines, <  \}>)
+  push(lines, <  const code = box !== undefined && typeof Reflect.get(box, "code") === "string" ? String(Reflect.get(box, "code")) : "">)
+  push(lines, <  const wrapped = Object.create(TermException.prototype) as TermException>)
+  push(lines, <  Object.assign(wrapped, \{ host: "", form, note, code, time: Date.now(), link: \{\}, base: raised, flow: frames(), name: TermException.name \})>)
+  push(lines, <  Object.defineProperty(wrapped, "message", \{ value: note, writable: true, configurable: true, enumerable: false \})>)
+  push(lines, <  Object.defineProperty(wrapped, mark, \{ value: true, writable: false, configurable: true, enumerable: false \})>)
+  push(lines, <  return wrapped>)
   push(lines, <\}>)
   # a raise nothing caught, as every backend prints it: its form and note, a frame a line, on standard error, exit 1
   push(lines, <export function __termUnhandled(raised: unknown): void \{>)
