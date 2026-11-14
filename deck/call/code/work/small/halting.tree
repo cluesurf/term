@@ -11,7 +11,14 @@
 #
 # THE PATTERNS ARE WRITTEN OUT BY CHARACTER (self-host traps T024): a `ps` line is read as the original's
 # `^\s*(\d+)\s+(\d+)\s+(.*)$` reads it, with JavaScript's `\s` (draft-mark.tree `is-space`), `.` stopping at the four
-# line ends, and `$` at the end of the text only. Every number is read by the host's `Number`, as the original read it.
+# line ends, and `$` at the end of the text only. Every number is read as JavaScript's `Number` reads it, as the original
+# read it, written in Term (`whole-number-of`, the reading work/halt.tree's port-of does for --port).
+#
+# Nothing here is a host call (item term-self-host-001-1436, decision 167): the programs run through @term/base's
+# process/run (async, so the handler and every task that runs one is async, under halt's async verb), a process is
+# signalled with process/signal, and files, links, paths, this process and the platform come from @term/base. Two
+# differences from node's execSync: a run's limit sends TERM and then KILL 2 s later where execSync sent KILL at once,
+# and a program's standard error is captured where execSync passed it on to the terminal.
 
 load @term/call/draft-mark
   find is-space
@@ -24,6 +31,18 @@ load @term/base/text
   find last-index-of
   find char-code-at
   find char-count
+  find starts-with, name text-starts-with
+  find ends-with, name text-ends-with
+  find replace, name text-replace
+
+load @term/base/text/number
+  find parse-integer
+  find parse-float
+
+load @term/base/float
+  find round-down
+  find is-finite
+  find to-number
 
 load @term/base/list
   find get
@@ -45,12 +64,31 @@ load @term/call/work/output/printer
 load @term/call/work/item/event
   find tally
 
-dock load
-  load <node:child_process>, name child
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
-  load <node:process>, name node-process
-  load <global:Number>, name host-number
+load @term/base/process/run
+  find run, name run-process
+
+load @term/base/process/signal
+  find send-signal
+
+load @term/base/process/current
+  find read, name read-process
+
+load @term/base/machine
+  find read-platform
+
+# existsSync and realpathSync, each node's own call on node
+load @term/base/file/blocking
+  find exists, name file-exists
+  find resolve-real
+
+# readlink, the empty text where the path is no link
+load @term/base/file/link
+  find read, name read-link
+
+load @term/base/path
+  find join, name path-join
+  find directory, name path-directory
+  find resolve-path
 
 form process-row
   link pid, like number
@@ -68,15 +106,6 @@ form service-row
   link pid, like number
   link verb, like text
   link project, like maybe, like text
-
-form run-ask
-  link encoding, like text
-
-# a run on a short leash: `lsof`, the last resort, can block in the kernel on a mount that stopped answering
-form leashed-ask
-  link encoding, like text
-  link timeout, like number
-  link kill-signal, like text
 
 form open-ask
   link verb, like text
@@ -110,13 +139,94 @@ task boot-markers
   out/push(<.base/@cluesurf/term/boot/>)
   back out
 
-# the host's `Number` of a text
-task host-number-of
+# The whole number JavaScript's `Number(value)` answers, or 0 when it answers none (NaN, an infinity or a fraction).
+# Every caller keeps only a number above 0 or reads digits alone, so 0 for "none" loses nothing. White space around the
+# value is passed over, as Number passes over it. The same reading as work/halt.tree's port-of, which this module cannot
+# load (halt.tree loads this one)
+task whole-number-of
   take value, like text
   like number
   mark private
 
-  back host-number/call(<>, value)
+  save entry, trim(value)
+  fork test, or(text-starts-with(entry, <0x>), text-starts-with(entry, <0X>))
+    hold
+      back radix-number(substring(entry, 2), 16)
+  fork test, or(text-starts-with(entry, <0o>), text-starts-with(entry, <0O>))
+    hold
+      back radix-number(substring(entry, 2), 8)
+  fork test, or(text-starts-with(entry, <0b>), text-starts-with(entry, <0B>))
+    hold
+      back radix-number(substring(entry, 2), 2)
+  back decimal-number(entry)
+
+# the digits after a radix prefix, which JavaScript reads with no sign: anything parse-integer refuses is 0
+task radix-number
+  take digits, like text
+  take radix, like number
+  like number
+  mark private
+
+  fork test, or(text-starts-with(digits, <+>), text-starts-with(digits, <->))
+    hold
+      back 0
+  fork
+    mark unsafe
+    back parse-integer(digits, radix)
+  halt take
+    take problem
+    back 0
+
+# a decimal entry as JavaScript reads one: an optional sign, digits with an optional point (`80.`, `.5`) and an
+# optional exponent. parse-float reads the same grammar but for a leading `+` and a point with no digits on one side,
+# so those are written its way first. A whole finite answer is the number, anything else 0
+task decimal-number
+  take entry, like text
+  like number
+  mark private
+
+  save written, entry
+  fork test, text-starts-with(written, <+>)
+    hold
+      save written, substring(written, 1)
+  fork test, text-starts-with(written, <.>)
+    hold
+      save written, <0{written}>
+  save written, text-replace(written, <.e>, <e>)
+  save written, text-replace(written, <.E>, <E>)
+  fork test, text-ends-with(written, <.>)
+    hold
+      save written, substring(written, 0, subtract(char-count(written), 1))
+  fork
+    mark unsafe
+    save value, parse-float(written)
+    fork test, and(is-finite(value), is-equal(round-down(value), value))
+      hold
+        back to-number(value)
+    back 0
+  halt take
+    take problem
+    back 0
+
+# A program run to its end, and what it wrote to standard output, as execSync answered it: one that could not start,
+# that its limit (milliseconds, 0 for none) ended, or that exited other than 0 raises, as execSync threw
+task run-output
+  take command, like text
+  take arguments, like list, like text
+  take limit, like number
+  like text
+  mark async
+  mark private
+
+  save result
+    call run-process
+      bind command, command
+      bind argument-list, arguments
+      bind limit, limit
+  fork test, is-unequal(result/code, 0)
+    hold
+      halt <{command} exited with code {result/code}>
+  back result/output
 
 # the code unit of one code point, for the class tests
 task point-code
@@ -216,8 +326,8 @@ task read-process-row
         hold
           back make none
       save at, add(at, 1)
-  save pid, host-number-of(points-text(points, pid-start, pid-end))
-  save parent, host-number-of(points-text(points, parent-start, parent-end))
+  save pid, whole-number-of(points-text(points, pid-start, pid-end))
+  save parent, whole-number-of(points-text(points, parent-start, parent-end))
   save command, points-text(points, command-start, size)
   save row, make(process-row, bind(pid, pid), bind(parent, parent), bind(command, command))
   back make(some, row)
@@ -238,14 +348,18 @@ task read-process-table
         save skipped, 0
   back out
 
-# the process table, or none when `ps` cannot be run
+# the process table, or none when `ps` cannot be run. Not private: test/call/halting-run.tree reads it on every backend
 task process-table
   like list, like process-row
-  mark private
+  mark async
 
+  save args, make list
+  args/push(<-ax>)
+  args/push(<-o>)
+  args/push(<pid=,ppid=,command=>)
   fork
     mark unsafe
-    save text, child/exec-sync(<ps -ax -o pid=,ppid=,command=>, make(run-ask, bind(encoding, <utf8>)))
+    save text, run-output(<ps>, args, 0)
     back read-process-table(text)
   halt take
     take error
@@ -349,6 +463,7 @@ task find-boots
 
 task boots
   like list, like boot-row
+  mark async
   mark private
 
   back find-boots(process-table())
@@ -457,11 +572,15 @@ task names-browser-env
 task services
   take here, like text
   like list, like service-row
+  mark async
   mark private
 
   save out, make list
-  save own, node-process/pid
-  walk process-table()
+  save own, read-process()/id
+  # the table saved first: a walk straight over an awaited list does not build on rust (E0277, the shared list is
+  # walked as it came back)
+  save table, process-table()
+  walk table
     take one
     save verb, verb-of(one/command)
     fork test, and(is-unequal(verb, <>), is-unequal(one/pid, own))
@@ -477,6 +596,7 @@ task project-of-cwd
   take pid, like number
   take here, like text
   like maybe, like text
+  mark async
   mark private
 
   fork test, is-equal(here, <>)
@@ -495,7 +615,7 @@ task platform-name
   like text
   mark private
 
-  back node-process/platform
+  back read-platform()
 
 # A process's working folder as the kernel holds it, or the empty text where it cannot say. Never `lsof` first: it
 # stats every mount, and a hard network mount that stopped answering (a NAS share, once) holds it in the kernel,
@@ -506,13 +626,14 @@ task platform-name
 task cwd-of
   take pid, like number
   like text
+  mark async
   mark private
 
   save platform, platform-name()
   fork test, is-equal(platform, <linux>)
     hold
       back linux-cwd(pid)
-  fork test, and(is-equal(platform, <darwin>), node-file/exists-sync(</usr/bin/perl>))
+  fork test, and(is-equal(platform, <darwin>), file-exists(</usr/bin/perl>))
     hold
       back darwin-cwd(pid)
   back lsof-cwd(pid)
@@ -520,11 +641,12 @@ task cwd-of
 task linux-cwd
   take pid, like number
   like text
+  mark async
   mark private
 
   fork
     mark unsafe
-    save found, node-file/readlink-sync(</proc/{pid}/cwd>)
+    save found, read-link(</proc/{pid}/cwd>)
     back found
   halt take
     take error
@@ -533,6 +655,7 @@ task linux-cwd
 task darwin-cwd
   take pid, like number
   like text
+  mark async
   mark private
 
   save script, <<my $b = "\0" x 2352; syscall(336, 2, $ARGV[0] + 0, 9, 0, $b, 2352) == 2352 or exit 1; print unpack("Z*", substr($b, 152, 1024));>>
@@ -542,26 +665,35 @@ task darwin-cwd
   args/push(<{pid}>)
   fork
     mark unsafe
-    save found, child/exec-file-sync(</usr/bin/perl>, args, make(run-ask, bind(encoding, <utf8>)))
+    save found, run-output(</usr/bin/perl>, args, 0)
     back found
   halt take
     take error
     back <>
 
+# the short leash `lsof` runs on, in milliseconds: it can block in the kernel on a mount that stopped answering
 task leash
-  like leashed-ask
+  like number
   mark private
 
-  back make(leashed-ask, bind(encoding, <utf8>), bind(timeout, 3000), bind(kill-signal, <SIGKILL>))
+  back 3000
 
 task lsof-cwd
   take pid, like number
   like text
+  mark async
   mark private
 
+  save args, make list
+  args/push(<-a>)
+  args/push(<-p>)
+  args/push(<{pid}>)
+  args/push(<-d>)
+  args/push(<cwd>)
+  args/push(<-Fn>)
   fork
     mark unsafe
-    save text, child/exec-sync(<lsof -a -p {pid} -d cwd -Fn>, leash())
+    save text, run-output(<lsof>, args, leash())
     walk split(text, <\n>)
       take line
       fork test, line/starts-with(<n>)
@@ -577,15 +709,17 @@ task project-of
   take from, like text
   like maybe, like text
 
-  save at, node-path/resolve(from)
+  # node's path.resolve: `from` read from this process's working folder, normalized
+  save at, resolve-path(read-process()/directory, from)
   walk test
     hook test, true
     hook hold
-      fork test, node-file/exists-sync(node-path/join(at, <deck.tree>))
+      fork test, file-exists(path-join(at, <deck.tree>))
         hold
           back make(some, at)
-      save up, node-path/dirname(at)
-      fork test, is-equal(up, at)
+      save up, path-directory(at)
+      # node's dirname of the root is the root; a platform that answers the empty text there ends the walk too
+      fork test, or(is-equal(up, at), is-equal(up, <>))
         hold
           back make none
       save at, up
@@ -599,9 +733,9 @@ task read-port-pids
   save out, make list
   walk split(text, <\n>)
     take line
-    # `Number(line.trim())`: the host's `Number` passes over the same white space `trim` removes
-    save pid, host-number-of(line)
-    fork test, and(host-number/is-integer(pid), is-above(pid, 0))
+    # `Number(line.trim())` kept when `Number.isInteger` and above 0: whole-number-of answers 0 for every other
+    save pid, whole-number-of(line)
+    fork test, is-above(pid, 0)
       hold
         out/push(pid)
   back out
@@ -652,7 +786,7 @@ task netstat-pid
           save digits, substring(word, add(colon, 1))
           fork test, and(is-unequal(digits, <>), is-equal(leading-digits(digits), digits))
             hold
-              back host-number-of(digits)
+              back whole-number-of(digits)
       save at, add(at, 1)
   back -1
 
@@ -707,7 +841,7 @@ task read-ss-pids
         save digits, leading-digits(get(parts, at))
         fork test, is-unequal(digits, <>)
           hold
-            push-new(out, host-number-of(digits))
+            push-new(out, whole-number-of(digits))
         save at, add(at, 1)
   fork test, and(is-above(rows, 0), is-equal(out/length, 0))
     hold
@@ -717,24 +851,36 @@ task read-ss-pids
 task netstat-pids
   take port, like number
   like maybe, like list, like number
+  mark async
   mark private
 
+  save args, make list
+  args/push(<-anv>)
+  args/push(<-p>)
+  args/push(<tcp>)
   fork
     mark unsafe
-    save text, child/exec-sync(<netstat -anv -p tcp>, make(run-ask, bind(encoding, <utf8>)))
+    save text, run-output(<netstat>, args, 0)
     back read-netstat-pids(text, port)
   halt take
     take error
     back make none
 
+# `ss -Hltnp sport = :<port>`, its filter as the shell split it: three words
 task ss-pids
   take port, like number
   like maybe, like list, like number
+  mark async
   mark private
 
+  save args, make list
+  args/push(<-Hltnp>)
+  args/push(<sport>)
+  args/push(<=>)
+  args/push(<:{port}>)
   fork
     mark unsafe
-    save text, child/exec-sync(<ss -Hltnp sport = :{port}>, make(run-ask, bind(encoding, <utf8>)))
+    save text, run-output(<ss>, args, 0)
     back read-ss-pids(text)
   halt take
     take error
@@ -743,11 +889,17 @@ task ss-pids
 task lsof-pids
   take port, like number
   like list, like number
+  mark async
   mark private
 
+  save args, make list
+  args/push(<-nP>)
+  args/push(<-iTCP:{port}>)
+  args/push(<-sTCP:LISTEN>)
+  args/push(<-t>)
   fork
     mark unsafe
-    save text, child/exec-sync(<lsof -nP -iTCP:{port} -sTCP:LISTEN -t>, leash())
+    save text, run-output(<lsof>, args, leash())
     back read-port-pids(text)
   halt take
     # lsof exits non-zero when nothing is listening
@@ -760,6 +912,7 @@ task lsof-pids
 task pids-on-port
   take port, like number
   like list, like number
+  mark async
   mark private
 
   save platform, platform-name()
@@ -778,19 +931,13 @@ task pids-on-port
       save asked, true
   back lsof-pids(port)
 
-# SIGTERM a pid, answering false when it is already gone
+# SIGTERM a pid, answering false when it is already gone or may not be signalled (process.kill threw for both)
 task stop-pid
   take pid, like number
   like boolean
   mark private
 
-  fork
-    mark unsafe
-    node-process/kill(pid, <SIGTERM>)
-    back true
-  halt take
-    take error
-    back false
+  back send-signal(pid, <terminate>)
 
 # a folder's real path, or the folder itself when it cannot be resolved
 task real-folder
@@ -800,7 +947,7 @@ task real-folder
 
   fork
     mark unsafe
-    save found, node-file/realpath-sync(folder)
+    save found, resolve-real(folder)
     back found
   halt take
     take error
@@ -876,12 +1023,14 @@ task read-remote-mounts
 task other-remote-mounts
   take here, like text
   like list, like text
+  mark async
   mark private
 
   save mounts, make list
+  save none-given, make list
   fork
     mark unsafe
-    save text, child/exec-sync(<mount>, make(run-ask, bind(encoding, <utf8>)))
+    save text, run-output(<mount>, none-given, 0)
     save mounts, read-remote-mounts(text)
   halt take
     take error
@@ -955,8 +1104,9 @@ task close-halt
 task call-halt
   take ports, like list, like number
   like void
+  mark async
 
-  save root, node-process/cwd()
+  save root, read-process()/directory
   fork test, is-above(ports/length, 0)
     hold
       save facts, make list
@@ -967,14 +1117,16 @@ task call-halt
       save stopped, 0
       # a program a `term boot` started is stopped through its boot, as bare `halt` does
       save owner, make hash
-      walk boots()
+      save running-boots, boots()
+      walk running-boots
         take one
         save program-key, <{one/program}>
         save owner/{program-key}, one/target
       walk ports
         take port
         save pids, make list
-        walk pids-on-port(port)
+        save listening, pids-on-port(port)
+        walk listening
           take pid
           save key, <{pid}>
           fork test, owner/has(key)
@@ -1005,6 +1157,7 @@ task call-halt
 task halt-project
   take root, like text
   like void
+  mark async
   mark private
 
   save project, project-of(root)
@@ -1029,7 +1182,8 @@ task halt-project
   fork test, inside
     hold
       save remotes, other-remote-mounts(here)
-  walk boots()
+  save running-boots, boots()
+  walk running-boots
     take one
     fork test, or(not(inside), is-boot-of(one/project, here, remotes))
       hold
@@ -1043,7 +1197,8 @@ task halt-project
         report-stop(<term boot>, pid)
   # the project's browser server and `term work` too, by where each was started; outside a project, every one
   save running, make list
-  walk services(here)
+  save found-services, services(here)
+  walk found-services
     take one
     fork test, not(contains(targets, one/pid))
       hold

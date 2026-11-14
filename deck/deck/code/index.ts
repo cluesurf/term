@@ -106,40 +106,10 @@ export type {
   InstallConfig,
 } from './form'
 
-// The object-graph publish path, built on @term/base. This is the real one; the
-// tarball path below it is legacy and goes once this has published for real.
-export {
-  buildRelease,
-  reachableFromCommit,
-  RELEASE_BRANCH,
-} from './object/release'
-export type { Release } from './object/release'
-export { buildVersion, readVersionFiles } from './object/version'
-export type { BuiltVersion } from './object/version'
-export {
-  datasetOfFiles,
-  filesOfDataset,
-  fileRecord,
-  fileOfRecord,
-  markOfPath,
-} from './object/dataset'
-export type { PackageFile } from './object/dataset'
-export {
-  restoreFiles,
-  restoreVersion,
-  safeJoin,
-} from './object/restore'
-export { publishPackage } from './object/publish'
-export { installPackage } from './object/install'
-export { localObjectStore } from './object/store'
-export type { ObjectStore } from './object/store'
-export { directRegistry } from './object/registry'
-export { memoryRefStore } from './object/refs'
-export { httpRegistry } from './object/http'
-export { serveRegistry } from './object/serve'
+// The signing keys of the OCI path (decision 129 section 4: of the object store only
+// id-signing stays).
 export { generateKeypair, signId, verifyId } from './object/sign'
 export type { Keypair } from './object/sign'
-export { objectKey, toneOfId, tonePath } from './object/tone'
 
 // The OCI registry path: the default for `@term` (note/project/term/registry/18-oci-registry-default.md).
 export {

@@ -125,7 +125,6 @@ task banner-sections
   push(sections, section-of(<Check and Prove>, check))
 
   save systems, make list
-  push(systems, command-of(<term base>, <The base record system>))
   push(systems, command-of(<term zone>, <Secrets and environment>))
   push(sections, section-of(<Systems>, systems))
 

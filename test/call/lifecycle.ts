@@ -231,24 +231,6 @@ ok(
   molded,
 )
 
-// `base`: makes a repository and reports it coherent
-const repo = tempDir('term-base-')
-const inited = term(repo, 'base', 'init')
-
-ok(
-  '`base init` creates a repository',
-  existsSync(join(repo, '.base')),
-  inited,
-)
-
-const checked = term(repo, 'base', 'check')
-
-ok(
-  '`base check` reports a fresh repository coherent',
-  /No missing chunks/.test(checked),
-  checked,
-)
-
 // `halt`: reports honestly when nothing is running, AND says `term`, not `seed`.
 //
 // The naming half is not cosmetic. 94 strings across 27 files told the reader to run the old binary name, and the

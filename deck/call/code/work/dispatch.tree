@@ -78,10 +78,6 @@ load @term/call/work/completion
   find complete-line
   find print-completions
 
-# `term base project`, the base lane's port (work/base/repository.tree), since term-cli-in-term-0068
-load @term/call/work/base/repository
-  find call-base-project
-
 # the home's move (home.ts `settle`), the toolchain's version (show.ts `termVersion`) and the fuzz child of `term hunt`
 # (hunt.ts `runHuntFuzzChild`): the small and tool lanes' ports, since term-cli-in-term-0069
 load @term/call/work/small/home-folder
@@ -734,45 +730,6 @@ task start-line
     case some
       save nothing, 0
   back make line-start, done(false), exit(0), words(kept)
-
-# an entry of the JSON a host ask is built from: `"name":"value"`, or nothing for a value left out
-task text-entry
-  take entries, like list, like text
-  take name, like text
-  take value, like text
-  like void
-  fork test, is-unequal(value, <>)
-    hold
-      entries/push <"{name}":{text-or-empty(host-json/stringify(value))}>
-
-# `term base project <commit>`: what a projection would write, and with --into --write, write it. The one command no
-# verb file binds (work/base-verbs.tree has the other thirteen), so it is here until a verb item moves it there.
-# line.ts left `mapping`, `into` and `repository` out when they were not given, and callBaseProject reads an absent
-# mapping as "work the schema out" (call-base-project reads it the same), so the ask is built without the empty ones. A throw ends the run as every
-# command's does (`fail-line`)
-task base-project
-  take commit, like text
-  take mapping, like text
-  take into, like text
-  take write, like boolean
-  take repository, like text
-  like void
-  save entries, make list
-  text-entry(entries, <root>, text-or-empty(host-process/cwd()))
-  text-entry(entries, <commit>, commit)
-  text-entry(entries, <mapping>, mapping)
-  text-entry(entries, <into>, into)
-  entries/push <"commitWrite":{write}>
-  text-entry(entries, <repository>, repository)
-  save json, <>
-  walk entries
-    take entry
-    fork test, is-equal(json, <>)
-      hold
-        save json, entry
-      miss
-        save json, <{json},{entry}>
-  call-base-project(host-json/parse(<\{{json}\}>))
 
 # A command's task threw: the run ends through the output library, exit 1, or 70 for a bug in Term (line.ts's
 # yargs `fail` and `main().catch`)

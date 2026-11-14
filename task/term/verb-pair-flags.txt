@@ -10,18 +10,18 @@
 # build, since a take the console drops answers as if it were never given.
 
 # ---- base ----
-empty base log main
-empty base diff a b
-empty base show a b
-empty base list a
-empty base status main
-empty base commit message --branch main --author pair
-empty base checkout a
-empty base merge a --into main --author pair
-empty base export a --out exported
-empty base import source.json --form x --key k --mark m --branch main --author pair --message imported
-empty base project a --mapping m --into i --repository r
-empty base tag v1 a --branch main
+# retired with the term base verbs (change 001 decision 129): empty base log main
+# retired with the term base verbs (change 001 decision 129): empty base diff a b
+# retired with the term base verbs (change 001 decision 129): empty base show a b
+# retired with the term base verbs (change 001 decision 129): empty base list a
+# retired with the term base verbs (change 001 decision 129): empty base status main
+# retired with the term base verbs (change 001 decision 129): empty base commit message --branch main --author pair
+# retired with the term base verbs (change 001 decision 129): empty base checkout a
+# retired with the term base verbs (change 001 decision 129): empty base merge a --into main --author pair
+# retired with the term base verbs (change 001 decision 129): empty base export a --out exported
+# retired with the term base verbs (change 001 decision 129): empty base import source.json --form x --key k --mark m --branch main --author pair --message imported
+# retired with the term base verbs (change 001 decision 129): empty base project a --mapping m --into i --repository r
+# retired with the term base verbs (change 001 decision 129): empty base tag v1 a --branch main
 
 # ---- packages ----
 empty wake other

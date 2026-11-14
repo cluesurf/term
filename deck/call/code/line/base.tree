@@ -64,24 +64,8 @@ load @term/call/work/app-verbs
   find test, name test-verb
   find walk, name walk-verb
 
-load @term/call/work/base-verbs
-  find base-check
-  find base-checkout
-  find base-commit
-  find base-diff
-  find base-export
-  find base-init
-  find base-list
-  find base-log
-  find base-merge
-  find base-show
-  find base-status
-  find base-tag
-
-# `base project`, which no verb file binds yet (work/dispatch.tree says why it is there), and the three calls the run
-# entry makes, reached through tasks of this file (start-console, at the end)
+# the calls the run entry makes, reached through tasks of this file (start-console, at the end)
 load @term/call/work/dispatch
-  find base-project
   find start-line
   find fail-line
   find refuse-line
@@ -125,9 +109,6 @@ load @term/call/work/lint
 
 load @term/call/work/look
   find look
-
-load @term/call/work/machine
-  find base-import
 
 load @term/call/work/make
   find make, name make-verb
@@ -230,150 +211,6 @@ hook term
   take version
     like boolean
     code v
-
-  # The base record system
-  hook base
-    # STATED, not inferred. The file header above would otherwise become this command's help text: comments attach
-    # to the next node and a blank line does not break the run, so the first statement in a file inherits whatever
-    # is written above it. An explicit `note` wins, which is why this one command has one.
-    note <The base record system>
-    # Create a repository here
-    hook init
-      task base-init
-    # Commits per branch, newest first
-    hook log
-      # one branch, or omit for all
-      slot branch
-        like text
-      task base-log
-    # Field-level changes between two commits
-    hook diff
-      slot to
-        like text
-        need true
-      # omit to diff from empty
-      slot from
-        like text
-      task base-diff
-    # One record in canonical form, which is what is hashed
-    hook show
-      slot commit
-        like text
-        need true
-      slot mark
-        like text
-        need true
-      task base-show
-    # Every record at a commit
-    hook list
-      slot commit
-        like text
-        need true
-      task base-list
-    # Whether the repository is coherent
-    hook check
-      task base-check
-    # What the working files would change
-    hook status
-      slot branch
-        like text
-        bind <main>
-      task base-status
-    # Commit the working files onto a branch
-    hook commit
-      slot message
-        like text
-        need true
-      take branch
-        like text
-        bind <main>
-      take author
-        like text
-        bind <anonymous>
-      task base-commit
-    # Write a commit back out as .tree files
-    hook checkout
-      slot commit
-        like text
-        need true
-      task base-checkout
-    # Merge a branch into another
-    hook merge
-      slot from
-        like text
-        need true
-      take into
-        like text
-        bind <main>
-      take author
-        like text
-        bind <anonymous>
-      task base-merge
-    # Write the working tree at a commit as .tree files
-    hook export
-      slot commit
-        like text
-        need true
-      take out
-        like text
-        need true
-      task base-export
-    # Bring a csv, tsv, json or jsonl file, or a directory of them, in as records
-    hook import
-      slot source
-        like text
-        need true
-      # the record form these rows are instances of
-      take form
-        like text
-        need true
-      # a column that identifies a row in the source. The mark is found or created against it, so a
-      # re-import updates rather than duplicates
-      take key
-        like text
-      # a column that already holds a uuid version 4, used as the mark
-      take mark
-        like text
-      take branch
-        like text
-        bind <main>
-      take author
-        like text
-        bind <import>
-      take message
-        like text
-      task base-import
-    # What a projection would write, and with --into --write, write it
-    hook project
-      slot commit
-        like text
-        need true
-      # a mapping file, for an existing schema. Left out, the schema is worked out from the records and
-      # the tables are created
-      take mapping
-        like text
-      # a Postgres connection url to write the projection into
-      take into
-        like text
-      # actually write. Without it nothing is touched
-      take write
-        like boolean
-        bind code false
-      # the name this projection is bookkept under. Defaults to the directory name
-      take repository
-        like text
-      task base-project
-    # Name a commit, so it can be cited
-    hook tag
-      slot name
-        like text
-        need true
-      slot commit
-        like text
-      take branch
-        like text
-        bind <main>
-      task base-tag
 
   # Scaffold a new Term project
   hook wake

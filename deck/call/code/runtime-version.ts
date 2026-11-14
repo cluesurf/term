@@ -10,14 +10,14 @@
 // The driver line that hands `boot` its page directory or dev URL is NOT an input: it differs between a dev build and
 // a release of the same binary surface, and a dev URL must not make two identical natives incompatible.
 import { createHash } from 'node:crypto'
-import { TONE_ALPHABET } from '@cluesurf/save/canon/mark'
 import { askTool } from '@term/call/code/work/small/tool-asking'
 
 import * as port from '@term/call/code/runtime-frame'
 
 // THE FRAMING AND THE TONE are Term since 2026-10-06, call/code/runtime-frame.tree: every field length-prefixed, the
-// sources sorted by name, and the digest in the tone alphabet. This face hashes the frame with node's sha256, which is
-// synchronous where Term's is not, and asks the toolchain for its version.
+// sources sorted by name, and the digest in the tone alphabet (@term/base/tone's, through the port's tone-alphabet).
+// This face hashes the frame with node's sha256, which is synchronous where Term's is not, and asks the toolchain for
+// its version.
 
 export type RuntimeVersionInput = {
   // the cask target: macos, ios, android, linux, windows
@@ -64,7 +64,7 @@ export function toneOf(hex: string): string {
     throw new Error(`toneOf: not hex: ${bad}`)
   }
 
-  return port.toneOf(hex, TONE_ALPHABET)
+  return port.toneOf(hex, port.toneAlphabet())
 }
 
 const toolchains = new Map<string, string>()

@@ -11,7 +11,7 @@ empty --help
 empty --version
 
 # every verb's help
-empty base --help
+# retired with the term base verbs (change 001 decision 129): empty base --help
 empty wake --help
 empty load --help
 empty save --help
@@ -51,20 +51,20 @@ empty zone --help
 empty fill --help
 
 # every subcommand's help
-empty base init --help
-empty base log --help
-empty base diff --help
-empty base show --help
-empty base list --help
-empty base check --help
-empty base status --help
-empty base commit --help
-empty base checkout --help
-empty base merge --help
-empty base export --help
-empty base import --help
-empty base project --help
-empty base tag --help
+# retired with the term base verbs (change 001 decision 129): empty base init --help
+# retired with the term base verbs (change 001 decision 129): empty base log --help
+# retired with the term base verbs (change 001 decision 129): empty base diff --help
+# retired with the term base verbs (change 001 decision 129): empty base show --help
+# retired with the term base verbs (change 001 decision 129): empty base list --help
+# retired with the term base verbs (change 001 decision 129): empty base check --help
+# retired with the term base verbs (change 001 decision 129): empty base status --help
+# retired with the term base verbs (change 001 decision 129): empty base commit --help
+# retired with the term base verbs (change 001 decision 129): empty base checkout --help
+# retired with the term base verbs (change 001 decision 129): empty base merge --help
+# retired with the term base verbs (change 001 decision 129): empty base export --help
+# retired with the term base verbs (change 001 decision 129): empty base import --help
+# retired with the term base verbs (change 001 decision 129): empty base project --help
+# retired with the term base verbs (change 001 decision 129): empty base tag --help
 empty self list --help
 empty self find --help
 empty self load --help
@@ -79,8 +79,8 @@ empty self back --help
 empty self skill --help
 
 # one real run of each verb
-empty base init
-empty base check
+# retired with the term base verbs (change 001 decision 129): empty base init
+# retired with the term base verbs (change 001 decision 129): empty base check
 empty wake demo
 hello load --offline
 hello save
@@ -143,13 +143,13 @@ empty zone call dev node -e x
 # The zone row is a `mark pass` command, which yargs ran rather than answered (term-cli-in-term-0144)
 empty SHELL=/bin/zsh --get-yargs-completions term ''
 empty SHELL=/bin/zsh --get-yargs-completions term ma
-empty SHELL=/bin/zsh --get-yargs-completions term base ''
+# retired with the term base verbs (change 001 decision 129): empty SHELL=/bin/zsh --get-yargs-completions term base ''
 empty SHELL=/bin/zsh --get-yargs-completions term make --
 empty SHELL=/bin/zsh --get-yargs-completions term self p
 empty SHELL=/bin/zsh --get-yargs-completions term make --back ''
 empty SHELL=/bin/bash --get-yargs-completions term ''
 empty SHELL=/bin/bash --get-yargs-completions term ma
-empty SHELL=/bin/bash --get-yargs-completions term base ''
+# retired with the term base verbs (change 001 decision 129): empty SHELL=/bin/bash --get-yargs-completions term base ''
 empty SHELL=/bin/bash --get-yargs-completions term make --
 empty SHELL=/bin/bash --get-yargs-completions term self p
 empty SHELL=/bin/bash --get-yargs-completions term zone ''
@@ -165,8 +165,8 @@ empty walk --color not-a-choice
 empty --color not-a-choice
 empty walk --back not-a-choice --log x --color y
 empty --version --color not-a-choice
-empty base export a
-empty base show
+# retired with the term base verbs (change 001 decision 129): empty base export a
+# retired with the term base verbs (change 001 decision 129): empty base show
 # a global option ending the line with no value: yargs gave --color its default (auto) and --log the empty text
 empty walk --color
 empty walk --log

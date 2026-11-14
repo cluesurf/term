@@ -3,7 +3,7 @@
 // The logic is Term; this file only converts shapes for TypeScript callers.
 // The original is kept byte for byte at deck/term/deck/term/tmp/retired/make/deck-oci-release.
 import * as port from '@term/deck/code/oci/toolchain-release'
-import { ociErrorOf, type OciTransport } from './transport'
+import { lift, liftAsync, type OciTransport } from './transport'
 import type { Keypair } from '../object/sign'
 import type { OciRoute } from './client'
 
@@ -11,22 +11,6 @@ const p = port as unknown as Record<
   string,
   (...args: unknown[]) => unknown
 >
-
-function lift<T>(work: () => T): T {
-  try {
-    return work()
-  } catch (error) {
-    throw ociErrorOf(error)
-  }
-}
-
-async function liftAsync<T>(work: () => Promise<T>): Promise<T> {
-  try {
-    return await work()
-  } catch (error) {
-    throw ociErrorOf(error)
-  }
-}
 
 export const RELEASE_ARTIFACT_TYPE = p.releaseArtifactType!() as string
 export const RELEASE_CONFIG_MEDIA_TYPE =
@@ -52,6 +36,13 @@ export type ReleaseEntry = {
   manifest: string
   size: number
 }
+
+type Published = {
+  index: string
+  entries: (ReleaseEntry & { layer: string })[]
+}
+type Read = { config: ReleaseConfig; layer: string; size: number }
+type Listed = { digest: string; platforms: string[] } | undefined
 
 export const releaseRoute = (input: {
   package: string
@@ -102,10 +93,7 @@ export const publishRelease = (input: {
   keypair: Keypair
   annotations?: Record<string, string>
   log?: (message: string) => void
-}): Promise<{
-  index: string
-  entries: (ReleaseEntry & { layer: string })[]
-}> =>
+}): Promise<Published> =>
   liftAsync(
     () =>
       p.publishRelease!(
@@ -117,24 +105,21 @@ export const publishRelease = (input: {
         input.keypair,
         input.annotations,
         input.log,
-      ) as Promise<{
-        index: string
-        entries: (ReleaseEntry & { layer: string })[]
-      }>,
+      ) as Promise<Published>,
   )
 
 export const readReleaseIndex = (input: {
   transport: OciTransport
   repository: string
   version: string
-}): Promise<{ digest: string; platforms: string[] } | undefined> =>
+}): Promise<Listed> =>
   liftAsync(
     () =>
       p.readReleaseIndex!(
         input.transport,
         input.repository,
         input.version,
-      ) as Promise<{ digest: string; platforms: string[] } | undefined>,
+      ) as Promise<Listed>,
   )
 
 export const readRelease = (input: {
@@ -143,7 +128,7 @@ export const readRelease = (input: {
   package: string
   version: string
   platform: string
-}): Promise<{ config: ReleaseConfig; layer: string; size: number }> =>
+}): Promise<Read> =>
   liftAsync(
     () =>
       p.readRelease!(
@@ -152,9 +137,5 @@ export const readRelease = (input: {
         input.package,
         input.version,
         input.platform,
-      ) as Promise<{
-        config: ReleaseConfig
-        layer: string
-        size: number
-      }>,
+      ) as Promise<Read>,
   )

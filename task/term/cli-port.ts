@@ -300,8 +300,8 @@ async function main(): Promise<void> {
     const expect: [string[], string, string][] = [
       // `hook make` binds line/base.tree's wrapper `make-project`, which takes make's options (cli-in-term-0011)
       [['make'], 'make', 'make-project'],
-      [['base', 'commit', 'hello'], 'base commit', 'base-commit'],
-      [['base', 'log'], 'base log', 'base-log'],
+      [['self', 'list'], 'self list', 'self-list'],
+      [['base', 'log'], '', ''],
       [['seek', '--format', 'json'], 'seek', 'seek'],
       [['zone', 'call', 'npm', 'run', 'dev'], 'zone', 'zone'],
       [['wash', 'tail'], 'wash', 'wash'],

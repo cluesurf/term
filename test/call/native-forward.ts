@@ -304,7 +304,7 @@ if (!existsSync(real)) {
   const PINNED_NATIVE = 'term [command]'
   const firstLine = (text: string): string => text.slice(0, Math.max(0, text.indexOf('\n')))
   const afterFirst = (text: string): string => text.slice(text.indexOf('\n') + 1)
-  for (const words of [['--version'], ['make', '--help'], ['base', '--help'], ['--help']]) {
+  for (const words of [['--version'], ['make', '--help'], ['self', '--help'], ['--help']]) {
     const ask = { words, cwd: empty, env }
     const twin = await run(['node', LINE], ask)
     const native = await run([real], ask)
@@ -319,7 +319,9 @@ if (!existsSync(real)) {
     }
     ok(`real: term ${shown} stderr equals node's`, native.err === twin.err, `node ${JSON.stringify(twin.err)}\nnative ${JSON.stringify(native.err)}`)
   }
-  for (const words of [['base', 'status']]) {
+  // a forwarded verb that refuses in an empty folder (`term base status` was this case until the base verbs left
+  // Term, change 001 decision 129)
+  for (const words of [['note']]) {
     const ask = { words, cwd: empty, env }
     const twin = await run(['node', LINE], ask)
     const native = await run([real], ask)

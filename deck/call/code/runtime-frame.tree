@@ -6,7 +6,11 @@
 #
 # Ported from deck/call/code/runtime-version.ts (self-hosting, 2026-10-06), which stays as the face: it hashes the frame
 # with node's sha256 (Term's is asynchronous, and the face is not) and asks the toolchain for its version. The tone
-# alphabet is handed in from @cluesurf/save, the one place it is written.
+# alphabet is @term/base/tone's, the one place it is written (decision 129 section 4, item 1044): `tone-alphabet` reads
+# it back from tone-encode.
+
+load @term/base/tone
+  find tone-encode
 
 load @term/base/list
   find list
@@ -143,6 +147,13 @@ task frame
     push(out, field(source/name))
     push(out, field(source/text))
   back join(out, <>)
+
+# the 16 letters of the tone alphabet in nibble order, @term/base/tone's own: the sixteen hex digits re-lettered by
+# tone-encode, its dashes taken out
+task tone-alphabet
+  like text
+
+  back join(split(tone-encode(<0123456789abcdef>), <->), <>)
 
 # a sha256's hexadecimal digits in the tone alphabet, eight groups of eight, never truncated. The empty text when a
 # character is no hexadecimal digit, which the face refuses

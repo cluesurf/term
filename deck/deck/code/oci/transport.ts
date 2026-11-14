@@ -1,10 +1,6 @@
-// A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): deck/deck/code/oci/transport.ts's exports, with
-// their shapes, answered by deck/deck/code/oci/registry-transport.tree.
-// The logic is Term; this file only converts shapes for TypeScript callers.
-// The original is kept byte for byte at deck/term/deck/term/tmp/retired/make/deck-oci-transport.
-// The port raises oci-failure (decision 007); this face maps that carrier back to the original class, so a TypeScript
-// caller that tests `instanceof OciError` or reads `.status` and `.message` sees what it saw, until the TypeScript
-// callers (call/code, task/, the deck's tests) move to the form.
+// A FACE (term-cli-in-term-0115): transport.ts's exports in their shapes, answered by registry-transport.tree. It turns
+// the port's oci-failure carrier (decision 007) into the original class, reading which value is one, its message and
+// status by oci-failure.tree's tasks (decision 153 rule 3). Original: tmp/retired/make/deck-oci-transport.
 import * as port from '@term/deck/code/oci/registry-transport'
 import type { OciCredentials } from './auth'
 
@@ -33,40 +29,27 @@ export type FetchedManifest = {
 
 export type BlobOutcome = 'present' | 'mounted' | 'uploaded'
 
+type In<T> = { repository: string } & T
+
 export type OciTransport = {
   label: string
-  hasBlob(input: {
-    repository: string
-    digest: string
-  }): Promise<boolean>
-  getBlob(input: {
-    repository: string
-    digest: string
-    size?: number
-    limit: number
-  }): Promise<Buffer>
-  putBlob(input: {
-    repository: string
-    digest: string
-    bytes: Buffer
-    mountFrom?: string
-  }): Promise<BlobOutcome>
-  getManifest(input: {
-    repository: string
-    reference: string
-  }): Promise<FetchedManifest | undefined>
-  putManifest(input: {
-    repository: string
-    reference: string
-    bytes: Buffer
-    mediaType: string
-  }): Promise<{ digest: string; subjectAccepted: boolean }>
+  hasBlob(input: In<{ digest: string }>): Promise<boolean>
+  getBlob(
+    input: In<{ digest: string; size?: number; limit: number }>,
+  ): Promise<Buffer>
+  putBlob(
+    input: In<{ digest: string; bytes: Buffer; mountFrom?: string }>,
+  ): Promise<BlobOutcome>
+  getManifest(
+    input: In<{ reference: string }>,
+  ): Promise<FetchedManifest | undefined>
+  putManifest(
+    input: In<{ reference: string; bytes: Buffer; mediaType: string }>,
+  ): Promise<{ digest: string; subjectAccepted: boolean }>
   listTags(input: { repository: string }): Promise<string[]>
-  referrers(input: {
-    repository: string
-    digest: string
-    artifactType?: string
-  }): Promise<Descriptor[] | undefined>
+  referrers(
+    input: In<{ digest: string; artifactType?: string }>,
+  ): Promise<Descriptor[] | undefined>
 }
 
 export class OciError extends Error {
@@ -79,30 +62,15 @@ export class OciError extends Error {
   }
 }
 
-/** The port's oci-failure carrier as the original's class; anything else as it is. */
+/** The port's oci-failure carrier as the original's class (status -1 as none); anything else as it is. */
 export function ociErrorOf(error: unknown): unknown {
-  const caught = error as {
-    form?: unknown
-    link?: { thing?: unknown; status?: unknown }
-  } | null
-
-  if (
-    caught !== null &&
-    typeof caught === 'object' &&
-    caught.form === 'oci-failure'
-  ) {
-    const status = caught.link?.status
-
-    return new OciError(
-      String(caught.link?.thing ?? ''),
-      typeof status === 'number' ? status : undefined,
-    )
-  }
-
-  return error
+  if (!p.isOciFailure!(error)) return error
+  const status = p.ociFailureStatus!(error) as number
+  const message = p.ociFailureMessage!(error) as string
+  return new OciError(message, status === -1 ? undefined : status)
 }
 
-function lift<T>(work: () => T): T {
+export function lift<T>(work: () => T): T {
   try {
     return work()
   } catch (error) {
@@ -110,7 +78,7 @@ function lift<T>(work: () => T): T {
   }
 }
 
-async function liftAsync<T>(work: () => Promise<T>): Promise<T> {
+export async function liftAsync<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work()
   } catch (error) {
@@ -121,22 +89,13 @@ async function liftAsync<T>(work: () => Promise<T>): Promise<T> {
 /** Every method of a host record a port made (a transport, an object store), its oci-failure seen as an OciError. */
 export function liftRecord<T extends object>(made: T): T {
   const out: Record<string, unknown> = {}
-
   for (const [name, value] of Object.entries(made)) {
+    const call = value as (...a: unknown[]) => unknown
     out[name] =
       typeof value === 'function'
-        ? async (...args: unknown[]) => {
-            try {
-              return await (value as (...a: unknown[]) => unknown)(
-                ...args,
-              )
-            } catch (error) {
-              throw ociErrorOf(error)
-            }
-          }
+        ? (...args: unknown[]) => liftAsync(async () => call(...args))
         : value
   }
-
   return out as T
 }
 
@@ -147,11 +106,9 @@ export const verifyDigest = (input: {
   digest: string
   bytes: Buffer
   what: string
-}): void =>
-  lift(
-    () =>
-      p.verifyDigest!(input.digest, input.bytes, input.what) as void,
-  )
+}): void => {
+  lift(() => p.verifyDigest!(input.digest, input.bytes, input.what))
+}
 
 export const assertRepository = (repository: string): void =>
   lift(() => p.assertRepository!(repository) as void)
@@ -188,15 +145,5 @@ export function httpTransport(input: {
         input.env,
       ) as OciTransport,
   )
-
-  return {
-    label: made.label,
-    hasBlob: asked => liftAsync(() => made.hasBlob(asked)),
-    getBlob: asked => liftAsync(() => made.getBlob(asked)),
-    putBlob: asked => liftAsync(() => made.putBlob(asked)),
-    getManifest: asked => liftAsync(() => made.getManifest(asked)),
-    putManifest: asked => liftAsync(() => made.putManifest(asked)),
-    listTags: asked => liftAsync(() => made.listTags(asked)),
-    referrers: asked => liftAsync(() => made.referrers(asked)),
-  }
+  return liftRecord(made)
 }

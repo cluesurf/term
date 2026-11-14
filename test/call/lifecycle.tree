@@ -71,9 +71,6 @@ form lifecycle-state
   link linted, like text
   link recalled, like text
   link molded, like text
-  link inited, like text
-  link has-base, like boolean
-  link base-checked, like text
   link halted, like text
   link noted, like text
   link held, like text
@@ -89,7 +86,7 @@ form lifecycle-state
   link washed-boot, like boolean
   link absolute-viewed, like text
 
-host lifecycle-now, make(lifecycle-state, bind(made, false), bind(root, <>), bind(woke, <>), bind(has-manifest, false), bind(has-boot, false), bind(deck-name, <>), bind(checked-form, <>), bind(shown-code, <>), bind(built, <>), bind(host-boot, false), bind(host-deck, true), bind(timed, <>), bind(shown, <>), bind(looked, <>), bind(rolled, <>), bind(has-roll, false), bind(formatted-once, <>), bind(formatted-twice, <>), bind(clean-lint, <>), bind(linted, <>), bind(recalled, <>), bind(molded, <>), bind(inited, <>), bind(has-base, false), bind(base-checked, <>), bind(halted, <>), bind(noted, <>), bind(held, <>), bind(filled, <>), bind(viewed, <>), bind(unviewed, <>), bind(tested, <>), bind(hunted, <>), bind(hunted-empty-code, -1), bind(hunted-empty, <>), bind(sought, <>), bind(booted, <>), bind(washed-boot, true), bind(absolute-viewed, <>))
+host lifecycle-now, make(lifecycle-state, bind(made, false), bind(root, <>), bind(woke, <>), bind(has-manifest, false), bind(has-boot, false), bind(deck-name, <>), bind(checked-form, <>), bind(shown-code, <>), bind(built, <>), bind(host-boot, false), bind(host-deck, true), bind(timed, <>), bind(shown, <>), bind(looked, <>), bind(rolled, <>), bind(has-roll, false), bind(formatted-once, <>), bind(formatted-twice, <>), bind(clean-lint, <>), bind(linted, <>), bind(recalled, <>), bind(molded, <>), bind(halted, <>), bind(noted, <>), bind(held, <>), bind(filled, <>), bind(viewed, <>), bind(unviewed, <>), bind(tested, <>), bind(hunted, <>), bind(hunted-empty-code, -1), bind(hunted-empty, <>), bind(sought, <>), bind(booted, <>), bind(washed-boot, true), bind(absolute-viewed, <>))
 
 host ugly-text, <task a\n  call b\n    code 1\n    code 2\n>
 
@@ -180,10 +177,6 @@ task the-steps
   save lifecycle-now/recalled, term-in(root, make list(<mind>))
   write-file(<{root}/data.tree>, data-text)
   save lifecycle-now/molded, term-in(root, make list(<mold>, <data.tree>, <--json>))
-  save repo, temp-folder(<term-base->)
-  save lifecycle-now/inited, term-in(repo, make list(<base>, <init>))
-  save lifecycle-now/has-base, file-exists(<{repo}/.base>)
-  save lifecycle-now/base-checked, term-in(repo, make list(<base>, <check>))
   save lifecycle-now/halted, term-in(root, make list(<halt>))
   save lifecycle-now/noted, term-in(root, make list(<note>))
   save lifecycle-now/held, term-in(root, make list(<hold>))
@@ -290,12 +283,6 @@ test <`mold` converts a data file to JSON, keeping the types>
   save state, the-steps()
   want hold, said(state/molded, <<"name"\s*:\s*"ada">>)
   want hold, said(state/molded, <<"age"\s*:\s*36>>)
-
-test <`base init` creates a repository>
-  want hold, the-steps()/has-base
-
-test <`base check` reports a fresh repository coherent>
-  want hold, said(the-steps()/base-checked, <No missing chunks>)
 
 # in a project it asks only about that project's boots (guides: commands/halt, 2026-10-04)
 test <`halt` reports when nothing is running>

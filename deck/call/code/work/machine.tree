@@ -1,25 +1,8 @@
-load @term/call/work/home
-  find root, name project-root
-
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
-
 # The machinery verbs: the parts of the CLI that are not commands but the things commands stand on.
 #
 # WHAT THIS FILE IS HONEST ABOUT. Each of these docks a TypeScript module that CANNOT be Term today, and the
 # reason is different for each, so each is named rather than lumped under "not ported yet":
 #
-#   base-import     `@term/base`'s import machinery, 214 TypeScript files below it
-#   base-engine     a Postgres driver loaded lazily at the moment a projection is written. The driver is `pg`,
-#                   an npm package, and the laziness is a dynamic `import()`. Term has neither.
 #   build-parallel  a pool of `worker_threads`, each running the bundled Term worker (now loaded, see below)
 #
 # cache-store and test-run were docked here too, behind four forwarding tasks no verb called (project-cache,
@@ -33,55 +16,16 @@ load @term/call/work/tint
 #
 # Ported from deck/call/code/{base-import,base-engine,build-parallel,cache-store,test-run}.ts (cli-in-term-0004).
 # build-parallel is the workers lane's port (work/workers/file-pool.tree), loaded since term-cli-in-term-0066: its
-# worker is the Term worker entry make:line bundles as host/build-worker.mjs (decision 003).
+# worker is the Term worker entry make:line bundles as host/build-worker.mjs (decision 003). base-import and
+# base-engine left with the `term base` verbs (change 001 decision 129, item term-self-host-001-0936).
 
 load @term/call/work/workers/file-pool
   find compile-project-parallel
-
-# `term base import` runs the base lane's port (work/base/data-import.tree), since term-cli-in-term-0068
-load @term/call/work/base/data-import
-  find call-base-import
-  find import-ask
-
-dock load
-  load <node:process>, name node-process
 
 form parallel-ask
   link concurrency, like number
   link env, like text
   link platform, like text
-
-# `term base import <source>`: read records in and commit them
-task base-import
-  mark async
-  take source, like text
-  take form, like text
-  take key, like text
-  take mark, like text
-  take branch, like text
-  take author, like text
-  take message, like text
-
-  like void
-
-  # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root, call project-root
-  fork
-    mark unsafe
-    call call-base-import
-      make import-ask
-        bind root, read root
-        bind source, read source
-        bind form, read form
-        bind key, read key
-        bind mark, read mark
-        bind branch, read branch
-        bind author, read author
-        bind message, read message
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
 
 # a project built across a pool of workers, which is what a big package takes
 task build-parallel

@@ -1,0 +1,159 @@
+note <term halt reads the process table, ps rows, boots, verbs, listeners and mounts as halt.ts read them>
+
+# The answers are what node gave with the module's node:child_process, node:fs, node:path, node:process and Number
+# docks, before item term-self-host-001-1436 put it on @term/base, so the suite holds every backend to node's meaning.
+# Every case is a reader over text it is handed, apart from project-of, which walks a folder made with one `sh` run under
+# the system's temporary directory and left there for the system to clear.
+
+load @term/call/work/small/halting
+  find read-process-row
+  find read-process-table
+  find names-boot-word
+  find find-boots
+  find verb-of
+  find read-port-pids
+  find read-netstat-pids
+  find read-ss-pids
+  find read-remote-mounts
+  find project-of
+  find process-row
+
+load @term/base/process/run
+  find run
+
+load @term/base/list
+  find push
+
+# a ps line as `<pid>|<parent>|<command>`, or `none`
+task row-text
+  take line, like text
+  like text
+
+  sift read-process-row(line)
+    case some
+      link row
+      back <{row/pid}|{row/parent}|{row/command}>
+    case none
+      back <none>
+
+# numbers, each followed by a comma
+task numbers-text
+  take numbers, like list, like number
+  like text
+
+  save out, <>
+  walk numbers
+    take each
+    save out, <{out}{each},>
+  back out
+
+task maybe-numbers-text
+  take found, like maybe, like list, like number
+  like text
+
+  sift found
+    case some
+      link numbers
+      back <some:{numbers-text(numbers)}>
+    case none
+      back <none>
+
+task texts-text
+  take texts, like list, like text
+  like text
+
+  save out, <>
+  walk texts
+    take each
+    save out, <{out}{each},>
+  back out
+
+task maybe-text
+  take found, like maybe, like text
+  like text
+
+  sift found
+    case some
+      link value
+      back value
+    case none
+      back <none>
+
+task row
+  take pid, like number
+  take parent, like number
+  take command, like text
+  like process-row
+
+  back make(process-row, bind(pid, pid), bind(parent, parent), bind(command, command))
+
+# a new folder after `script` ran in it, its path as the shell's $PWD holds it once there (normalized, links kept)
+task fixture
+  take script, like text
+  like text
+
+  save arguments, make list
+  push(arguments, <-c>)
+  push(arguments, <d=$(mktemp -d); cd "$d" || exit 1; {script}; printf %s "$PWD">)
+  save result, run(</bin/sh>, arguments)
+  back result/output
+
+test <a ps row: pid, parent and the rest, white space as JavaScript's \s>
+  want hold, and(and(is-equal(row-text(<  123   45 node /x/run.mjs --a>), <123|45|node /x/run.mjs --a>), is-equal(row-text(<\t7\t8\t>), <7|8|>)), is-equal(row-text(<007 0 sh>), <7|0|sh>))
+
+test <a line that is no ps row: no digits, no space after the parent, a line end in the command>
+  want hold, and(and(is-equal(row-text(<abc>), <none>), is-equal(row-text(<12 34>), <none>)), and(is-equal(row-text(<1 2 a\rb>), <none>), is-equal(row-text(<>), <none>)))
+
+test <the table keeps the lines that are rows, in order>
+  save rows, read-process-table(<1 0 init\nbad\n 22 1 sh -c x\n>)
+  save pids, make list
+  walk rows
+    take one
+    pids/push(one/pid)
+  want hold, is-equal(numbers-text(pids), <1,22,>)
+
+test <the word boot with a boundary on both sides>
+  want hold, and(and(and(names-boot-word(<term boot>), names-boot-word(<boot-x>)), and(not(names-boot-word(<reboot>)), not(names-boot-word(<booting>)))), not(names-boot-word(<x_boot>)))
+
+test <a boot program, its project, and its boot as the process to stop>
+  save table, make list
+  table/push(row(10, 5, <node /p/one/.base/@term/code/boot/abc/run.mjs>))
+  table/push(row(11, 99, <node /q/.base/@cluesurf/term/boot/x/run.mjs>))
+  table/push(row(5, 1, <node /h/line.js boot>))
+  table/push(row(12, 1, <node /r/.base/@term/code/boot/z/serve.js>))
+  table/push(row(13, 5, <node /s/.base/@term/code/boot/y/run.mjs --x>))
+  save out, <>
+  walk find-boots(table)
+    take one
+    save out, <{out}{one/program}\>{one/target}@{one/project},>
+  want hold, is-equal(out, <10\>5@/p/one,11\>11@/q,13\>5@/s,>)
+
+test <the verb of a feed, work or browser boot command line>
+  want hold, and(and(is-equal(verb-of(<node /x/host/line.js feed --port 1>), <feed>), is-equal(verb-of(<node need.mjs work>), <work>)), and(is-equal(verb-of(<term boot --env browser -p 3>), <boot>), is-equal(verb-of(<term  work>), <work>)))
+
+test <no verb: a plain boot, a word ending in term, a longer word, a flag first>
+  want hold, and(and(is-equal(verb-of(<term boot -p 3>), <>), is-equal(verb-of(<myterm feed>), <>)), and(is-equal(verb-of(<term feeder>), <>), is-equal(verb-of(<term --env=browser boot>), <>)))
+
+test <lsof -t lines read as Number reads them, whole numbers above 0 kept>
+  want hold, is-equal(numbers-text(read-port-pids(<123\n 45 \n0x10\nabc\n-3\n1.5\n1e2\n\n>)), <123,45,16,100,>)
+
+test <netstat listeners on the port by their process:pid column, once each>
+  save text, <Active Internet connections (including servers)\nProto Recv-Q Send-Q  Local Address          Foreign Address        (state)      rxbytes txbytes process:pid\ntcp4       0      0  *.4982                 *.*                    LISTEN      131072  131072  node:12345     0\ntcp6       0      0  *.4982                 *.*                    LISTEN      131072  131072  node:12345     0\ntcp4       0      0  *.14982                *.*                    LISTEN      131072  131072  node:777       0\ntcp4       0      0  127.0.0.1.4982         127.0.0.1.50000        ESTABLISHED 1       2       node:888       0\n>
+  want hold, is-equal(maybe-numbers-text(read-netstat-pids(text, 4982)), <some:12345,>)
+
+test <a netstat listener with no pid column is none, so the caller asks elsewhere>
+  want hold, is-equal(maybe-numbers-text(read-netstat-pids(<tcp4 0 0 *.4982 *.* LISTEN 1 2 3\n>, 4982)), <none>)
+
+test <ss listeners by every pid= they name, none when a row names none>
+  save both, read-ss-pids(<LISTEN 0 511 *:4982 *:* users:(("node",pid=321,fd=20),("node",pid=322,fd=20))\n>)
+  save hidden, read-ss-pids(<LISTEN 0 511 *:4982 *:*\n>)
+  want hold, and(and(is-equal(maybe-numbers-text(both), <some:321,322,>), is-equal(maybe-numbers-text(hidden), <none>)), is-equal(maybe-numbers-text(read-ss-pids(<>)), <some:>))
+
+test <the network mounts in macOS's and Linux's mount tables>
+  save mac, read-remote-mounts(<//u@nas/Data on /Volumes/Data (smbfs, nodev, nosuid, mounted by u)\n/dev/disk3s1 on / (apfs, local, journaled)\nmap auto_home on /System/Volumes/Data/home (autofs, automounted, nobrowse)\n>)
+  save linux, read-remote-mounts(<server:/x on /mnt/x type nfs4 (rw,relatime)\n/dev/sda1 on / type ext4 (rw)\nhost:/y on /mnt/y type fuse.sshfs (rw)\n>)
+  want hold, and(is-equal(texts-text(mac), </Volumes/Data,>), is-equal(texts-text(linux), </mnt/x,/mnt/y,>))
+
+test <the project is the nearest folder up holding deck.tree, the path normalized first>
+  save root, fixture(<mkdir -p a/b/c a/deck-less; printf %s x \> deck.tree; printf %s y \> a/b/deck.tree>)
+  want hold, and(and(is-equal(maybe-text(project-of(<{root}/a/b/c>)), <{root}/a/b>), is-equal(maybe-text(project-of(<{root}/a/deck-less>)), root)), and(is-equal(maybe-text(project-of(<{root}/a/./b/c/../>)), <{root}/a/b>), is-equal(maybe-text(project-of(<{root}/a/b/c/>)), <{root}/a/b>)))

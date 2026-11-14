@@ -1,0 +1,22 @@
+note <term halt runs ps through @term/base and finds this very process in its table>
+
+# Item term-self-host-001-1436 moved halting.tree's programs onto @term/base's process/run. This case runs the real
+# `ps` on each backend, as `term halt` does, and finds the test's own process in the rows read from it: its pid, a
+# parent above 0, and a command that is not empty.
+
+load @term/call/work/small/halting
+  find process-table
+
+load @term/base/process/current
+  find read, name read-process
+
+test <the process table holds this process, with its parent and its command>
+  save own, <{read-process()/id}>
+  save found, false
+  save table, process-table()
+  walk table
+    take one
+    fork test, and(is-equal(<{one/pid}>, own), and(is-above(one/parent, 0), is-unequal(one/command, <>)))
+      hold
+        save found, true
+  want hold, found

@@ -5,8 +5,8 @@
 # call/code/runtime-version.ts (term-cli-in-term-0040), whole.
 #
 # The framing and the tone are call/code/runtime-frame.tree. This module hashes the frame with node's sha256, which is
-# synchronous where Term's is not, reads the tone alphabet from @cluesurf/save (the one place it is written), and asks
-# the toolchain for its version. The driver line that hands `boot` its page directory or dev URL is NOT an input: it
+# synchronous where Term's is not, takes the tone alphabet from runtime-frame's tone-alphabet (@term/base/tone's, the
+# one place it is written), and asks the toolchain for its version. The driver line that hands `boot` its page directory or dev URL is NOT an input: it
 # differs between a dev build and a release of the same binary surface.
 
 load @term/call/runtime-frame
@@ -14,12 +14,12 @@ load @term/call/runtime-frame
   find frame
   find not-hex
   find tone-of, name tone-in-alphabet
+  find tone-alphabet
 
 load ../small/tool-asking
   find ask-tool
 
 dock load
-  load <@cluesurf/save/canon/mark>, name tone-mark
   load <node:crypto>, name node-crypto
 
 # ---- the host's values ----
@@ -31,13 +31,6 @@ bind stamp-sha256
   like text
   case node
     text <$crypto.createHash("sha256").update($value).digest("hex")>
-
-# TONE_ALPHABET, read by its exact name (a dock read of an UPPER_SNAKE name loses its underscores)
-bind stamp-alphabet
-  take module, like dynamic
-  like text
-  case node
-    text <$module.TONE_ALPHABET>
 
 # `throw new Error(message)`
 bind stamp-refuse
@@ -96,7 +89,7 @@ task tone-of
   fork test, is-unequal(bad, <>)
     hold
       stamp-refuse(<toneOf: not hex: {bad}>)
-  back tone-in-alphabet(hex, stamp-alphabet(tone-mark))
+  back tone-in-alphabet(hex, tone-alphabet())
 
 # The native compiler's version line for a target, read once per process. A toolchain that is not installed answers
 # `none`, which still hashes, so a version computed without the compiler can never equal one computed with it

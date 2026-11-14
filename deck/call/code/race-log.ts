@@ -17,7 +17,8 @@ import {
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { projectHome } from './home'
-import { dashInEights, hexToTone } from '../../deck/code/object/tone'
+// the 8x8 tone shape: runtime-frame's tone-of over @term/base/tone's alphabet (item 1044)
+import * as frame from '@term/call/code/runtime-frame'
 
 // the shape a record is stored in. A change to it is a new version directory, never an edit of old records
 export const RACE_VERSION = 'v1'
@@ -74,8 +75,9 @@ export type RaceRecord = {
 
 // sha256 of a value's stable JSON, in the 8x8 tone shape
 export function toneDigest(value: unknown): string {
-  return dashInEights(
-    hexToTone(createHash('sha256').update(stable(value)).digest('hex')),
+  return frame.toneOf(
+    createHash('sha256').update(stable(value)).digest('hex'),
+    frame.toneAlphabet(),
   )
 }
 
