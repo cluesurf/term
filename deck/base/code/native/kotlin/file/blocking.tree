@@ -45,3 +45,45 @@ task blocking-real
   send back
     call blocking/real-path
       read path
+
+# the path's own kind with links not followed, or the empty text when not even a link is there
+task blocking-kind
+  take path, like text
+  like text
+  send back
+    call blocking/kind-path
+      read path
+
+task blocking-rename
+  take from, like text
+  take to, like text
+  like boolean
+  send back
+    call blocking/rename-path
+      read from
+      read to
+
+task blocking-remove-folder
+  take path, like text
+  like boolean
+  send back
+    call blocking/remove-folder-path
+      read path
+
+task blocking-link
+  take target, like text
+  take at, like text
+  like boolean
+  send back
+    call blocking/link-path
+      read target
+      read at
+
+task blocking-write
+  take path, like text
+  take body, like text
+  like boolean
+  send back
+    call blocking/write-path
+      read path
+      read body

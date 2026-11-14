@@ -37,10 +37,11 @@ export type Roll = {
   [declared: string]: RollEntry[]
 }
 
-// the deck a source file belongs to: its name (`@term/base`) and its root directory, from the nearest `deck.tree`
+// the deck a source file belongs to: its name (`@term/base`) and its root directory, from the nearest `deck.tree`, and
+// the manifest's `mark` where the lookup reads one (call/code/deck-of.ts does, on first ask), the empty text for none
 export type DeckOf = (
   file: string,
-) => { name: string; root: string } | undefined
+) => { name: string; root: string; readonly mark?: string } | undefined
 
 export type RollOptions = {
   // absent means the deck is read off the path (`.../link/@scope/name/...`), and `@local` for the entry's own files

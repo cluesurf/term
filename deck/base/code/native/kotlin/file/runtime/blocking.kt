@@ -79,4 +79,67 @@ object blocking {
     } catch (error: kotlin.Exception) {
       path
     }
+
+  // the path's own kind, links not followed (lstat), or "" when not even a link is there
+  fun kindPath(path: String): String =
+    try {
+      val own =
+        Files.readAttributes(
+          Paths.get(path),
+          java.nio.file.attribute.BasicFileAttributes::class.java,
+          LinkOption.NOFOLLOW_LINKS,
+        )
+
+      when {
+        own.isSymbolicLink -> "link"
+        own.isDirectory -> "directory"
+        own.isRegularFile -> "file"
+        else -> "other"
+      }
+    } catch (error: kotlin.Exception) {
+      ""
+    }
+
+  // an atomic move is rename(2) on unix: a file or an empty folder at `to` is replaced, as node's renameSync
+  fun renamePath(from: String, to: String): Boolean =
+    try {
+      Files.move(Paths.get(from), Paths.get(to), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+      true
+    } catch (error: kotlin.Exception) {
+      false
+    }
+
+  // rmdir(2), never recursive: Files.delete would remove a file too, so anything that is not a folder itself is refused
+  // first, and a folder that holds anything throws
+  fun removeFolderPath(path: String): Boolean =
+    try {
+      val at = Paths.get(path)
+
+      if (!Files.isDirectory(at, LinkOption.NOFOLLOW_LINKS)) {
+        false
+      } else {
+        Files.delete(at)
+        true
+      }
+    } catch (error: kotlin.Exception) {
+      false
+    }
+
+  // a symbolic link with the target written as given
+  fun linkPath(target: String, at: String): Boolean =
+    try {
+      Files.createSymbolicLink(Paths.get(at), Paths.get(target))
+      true
+    } catch (error: kotlin.Exception) {
+      false
+    }
+
+  // the whole text as UTF-8, the file made or cut, as node's writeFileSync
+  fun writePath(path: String, body: String): Boolean =
+    try {
+      Files.write(Paths.get(path), body.toByteArray(Charsets.UTF_8))
+      true
+    } catch (error: kotlin.Exception) {
+      false
+    }
 }

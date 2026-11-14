@@ -72,7 +72,6 @@ load ../oci/oci-routing
   find oci-route-of
   find transport-for
   find trust-dir
-  find local-store
   find store-transport
 
 load ../oci/version-installing
@@ -360,12 +359,13 @@ task install-oci
       save trusted-at, trust-dir()
       save version, read-oci-version(transport, route/repository/name, resolved/name, digest, route/scope, route/keys-repository, host, trusted-at, expect, linking-nothing(), warn-indented)
 
-      save objects, local-store()
+      # online, the store under TERM_STORE keeps the config, the archive and the tagged manifest, which an offline
+      # install reads as a registry. No object store: the version is one archive, unpacked under a marker
       save cache, linking-nothing()
       fork test, not(is-present(config/offline))
         hold
           save cache, store-transport(host)
-      install-oci-version(transport, route/repository/name, version, deck-dir, objects, cache, linking-nothing())
+      install-oci-version(transport, route/repository/name, version, deck-dir, cache)
 
       fs-promise/mkdir(node-path/dirname(marker), make(folder-ask, bind(recursive, true)))
       fs-promise/write-file(marker, <{digest}\n>)

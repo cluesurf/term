@@ -1,17 +1,36 @@
-note <term load end to end over OCI: a project whose deck.tree routes a third-party scope to its own registry, installed as the CLI runs it, then again offline from the store alone>
+note <term load end to end over OCI: a project whose deck.tree routes a third-party scope to its own registry, installed as the CLI runs it, then again offline from the store alone, and the v2 install's marker, skip and refusals>
 
-# Ported from oci-install.test.ts by statement (item 0581). code/package/install.ts, code/package/lock.ts,
-# code/package/manifest.ts, code/oci/client.ts, code/oci/publish.ts, code/oci/layout.ts, code/oci/transport.ts and
-# code/object/sign.ts are the subjects, docked. The original published @alice/demo once in a beforeAll and its second
-# test installed offline from the store the first test filled: here each test that reaches the registry starts its own
+# Ported from oci-install.test.ts by statement (item 0581), rewritten for OCI format v2 (item term-self-host-001-1290,
+# decisions 154 and 158). code/package/install.ts, code/package/lock.ts, code/package/manifest.ts, code/oci/client.ts
+# and code/oci/transport.ts are docked; the v2 publish (oci/oci-publishing.tree), the keys (object/id-signing.tree) and
+# the v2 install (oci/version-installing.tree) are loaded as Term. Each test that reaches the registry starts its own
 # (oci-server.tree), in a temporary folder of its own with TERM_STORE and TERM_TRUST_DIR pointed into it, and the
-# offline test installs online first, as the first test did, before it installs offline. Each gathers what it asserts,
-# then restores the variables, closes the registry and removes the folder before its first want.
+# offline test installs online first before it installs offline. Each gathers what it asserts, then restores the
+# variables, closes the registry and removes the folder before its first want. The refusals that need a hostile
+# archive hand install-oci-version a transport of the test's own that serves those bytes, under a config whose archive
+# names them, so only the refusal under test can stop the install.
 
 load ./oci-server
   find start-oci-server
   find close-oci-server
   find oci-server
+  find tamper-blob
+
+load ../code/oci/oci-publishing
+  find publish-to-oci
+
+load ../code/oci/version-installing
+  find read-oci-version
+  find install-oci-version
+
+load ../code/oci/archive
+  find write-archive
+
+load ../code/oci/oci-failure
+  find oci-failure-message
+
+load ../code/object/id-signing
+  find generate-keypair
 
 load @term/base/environment
   find variable, name variable-of
@@ -27,10 +46,7 @@ dock load
   load <@term/deck/code/package/lock>, name lock-face
   load <@term/deck/code/package/manifest>, name manifest-face
   load <@term/deck/code/oci/client>, name client-face
-  load <@term/deck/code/oci/layout>, name layout-face
-  load <@term/deck/code/oci/publish>, name publish-face
   load <@term/deck/code/oci/transport>, name transport-face
-  load <@term/deck/code/object/sign>, name sign-face
 
 bind folder-options
   take seed, like number
@@ -63,7 +79,154 @@ bind cause-message
   case node
     text <String($cause?.message ?? $cause)>
 
+bind nothing-given
+  like dynamic
+  case node
+    text <undefined>
+
+bind no-links
+  like dynamic
+  case node
+    text <[]>
+
+bind empty-env
+  like dynamic
+  case node
+    text <<({})>>
+
+bind field-of
+  take record, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$record[$name]>
+
+bind holds-text
+  take value, like text
+  take part, like text
+  like boolean
+  case node
+    text <$value.includes($part)>
+
+# every file under a folder as one comparable text, path, executable bit and the bytes' hex in path order, the
+# install's marker `.term-digest` at the top left out
+bind folder-summary
+  take dir, like text
+  like text
+  case node
+    text <<((summaryFs, summaryPath, summaryRoot) => { const summaryRows = []; const summaryWalk = (summaryAt) => { for (const summaryName of summaryFs.readdirSync(summaryPath.join(summaryRoot, summaryAt)).sort()) { const summaryRel = summaryAt === "" ? summaryName : summaryAt + "/" + summaryName; if (summaryRel === ".term-digest") continue; const summaryStat = summaryFs.statSync(summaryPath.join(summaryRoot, summaryRel)); if (summaryStat.isDirectory()) summaryWalk(summaryRel); else summaryRows.push(summaryRel + "|" + ((summaryStat.mode & 0o100) !== 0) + "|" + summaryFs.readFileSync(summaryPath.join(summaryRoot, summaryRel)).toString("hex")) } }; summaryWalk(""); return summaryRows.join("\n") })(process.getBuiltinModule("node:fs"), process.getBuiltinModule("node:path"), $dir)>>
+
+# the marker's text, the empty text when there is none
+bind marker-text
+  take dir, like text
+  like text
+  case node
+    text <<((markerFs, markerPlace) => (markerFs.existsSync(markerPlace) ? markerFs.readFileSync(markerPlace, "utf8") : ""))(process.getBuiltinModule("node:fs"), process.getBuiltinModule("node:path").join($dir, ".term-digest"))>>
+
+# what is left beside `dest` after an install: `dest` itself and any staging folder named after it
+bind leftovers
+  take dest, like text
+  like number
+  case node
+    text <<((leftFs, leftPath, leftDest) => (leftFs.existsSync(leftPath.dirname(leftDest)) ? leftFs.readdirSync(leftPath.dirname(leftDest)).filter(leftName => leftName === leftPath.basename(leftDest) || leftName.startsWith(leftPath.basename(leftDest) + ".tmp-")).length : 0))(process.getBuiltinModule("node:fs"), process.getBuiltinModule("node:path"), $dest)>>
+
+bind write-executable
+  take place, like text
+  take value, like text
+  like void
+  case node
+    text <<process.getBuiltinModule("node:fs").writeFileSync($place, $value, { mode: 0o755 })>>
+
+bind put-manifest-by-digest
+  take transport, like dynamic
+  take repository, like text
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<$transport.putManifest({ repository: $repository, reference: "sha256:" + process.getBuiltinModule("node:crypto").createHash("sha256").update($bytes).digest("hex"), bytes: $bytes, mediaType: "application/vnd.oci.image.manifest.v1+json" })>>
+
+bind get-manifest
+  take transport, like dynamic
+  take repository, like text
+  take reference, like text
+  like dynamic
+  case node
+    text <<$transport.getManifest({ repository: $repository, reference: $reference })>>
+
+# a manifest's bytes with its layer's media type changed, digest and size kept, so only rule 2 step 3 can refuse it
+bind relayered
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<((layerManifest) => Buffer.from(JSON.stringify({ ...layerManifest, layers: [{ ...layerManifest.layers[0], mediaType: "application/vnd.oci.image.layer.v1.tar" }] })))(JSON.parse(Buffer.from($bytes).toString("utf8")))>>
+
+bind digest-of
+  take bytes, like dynamic
+  like text
+  case node
+    text <<"sha256:" + process.getBuiltinModule("node:crypto").createHash("sha256").update($bytes).digest("hex")>>
+
+bind expect-key
+  take key, like text
+  like dynamic
+  case node
+    text <<({ key: $key })>>
+
+# ---- a hostile archive, served by a transport of the test's own ----
+
+bind one-entry
+  take path, like text
+  take value, like text
+  like dynamic
+  case node
+    text <<[{ path: $path, kind: "file", executable: false, bytes: Buffer.from($value, "utf8") }]>>
+
+# the ustar bytes with the first header's name set to `name`, checksum made right again
+bind tar-with-name
+  take bytes, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <<((nameBytes) => { nameBytes.fill(0, 0, 100); nameBytes.write($name, 0, "utf8"); nameBytes.fill(32, 148, 156); const nameSum = nameBytes.subarray(0, 512).reduce((nameAt, nameByte) => nameAt + nameByte, 0); nameBytes.write(nameSum.toString(8).padStart(6, "0"), 148, "latin1"); nameBytes[154] = 0; nameBytes[155] = 32; return nameBytes })(Buffer.from($bytes))>>
+
+# the ustar bytes with the first header's type flag set to `flag`, checksum made right again
+bind tar-with-flag
+  take bytes, like dynamic
+  take flag, like text
+  like dynamic
+  case node
+    text <<((flagBytes) => { flagBytes.write($flag, 156, "latin1"); flagBytes.fill(32, 148, 156); const flagSum = flagBytes.subarray(0, 512).reduce((flagAt, flagByte) => flagAt + flagByte, 0); flagBytes.write(flagSum.toString(8).padStart(6, "0"), 148, "latin1"); flagBytes[154] = 0; flagBytes[155] = 32; return flagBytes })(Buffer.from($bytes))>>
+
+bind gzip-of
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<Buffer.from(process.getBuiltinModule("node:zlib").gzipSync($bytes))>>
+
+# a gzip whose trailer states 4 GiB less one byte, an inflation no limit admits
+bind stated-huge
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<((hugeZip) => { hugeZip.writeUInt32LE(4294967295, hugeZip.length - 4); return hugeZip })(Buffer.from($bytes))>>
+
+# a version as read-oci-version answers it, its signed archive naming `bytes` (or claiming `size` bytes when given)
+bind fake-version
+  take bytes, like dynamic
+  take size, like dynamic
+  like dynamic
+  case node
+    text <<({ digest: "sha256:" + "0".repeat(64), manifest: {}, manifestBytes: Buffer.alloc(0), config: { package: "@alice/demo", version: "1.0.2", tag: "1.0.2", archive: { digest: "sha256:" + process.getBuiltinModule("node:crypto").createHash("sha256").update($bytes).digest("hex"), size: $size ?? $bytes.length, mediaType: "application/vnd.oci.image.layer.v1.tar+gzip" } }, configBytes: Buffer.alloc(0) })>>
+
+# a transport that serves `bytes` for every blob and counts the asks
+bind fake-transport
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<({ label: "fake", asked: 0, async getBlob() { this.asked += 1; return $bytes } })>>
+
 host demo-text, <export const demo = 1\n>
+host other-key, <MCowBQYDK2VwAyEAb3RoZXIga2V5IG90aGVyIGtleSBvdGhlciBrZXkgb3Q=>
 host variable-names, make list(<TERM_STORE>, <TERM_TRUST_DIR>)
 
 form basic-credential
@@ -76,32 +239,10 @@ form transport-ask
   link credentials, like dynamic
   link retries, like number
 
-form version-target
-  link kind, like text
-  link version, like text
-
 form oci-repository
   link host, like text
   link namespace, like text
   link name, like text
-
-form layout-ask
-  link dir, like text
-
-form publish-ask
-  link dir, like text
-  link package, like text
-  link version, like text
-  link target, like version-target
-  link link, like list, like text
-  link transport, like dynamic
-  link repository, like oci-repository
-  link scope, like text
-  link keys-repository, like text
-  link local, like dynamic
-  link keypair, like dynamic
-  link author, like text
-  link time, like text
 
 form install-ask
   link root, like text
@@ -139,6 +280,9 @@ form install-fixture
   link server, like oci-server
   link work, like text
   link kept, like list, like kept-variable
+  link source, like text
+  link transport, like dynamic
+  link published, like dynamic
 
 task tester-credentials
   like basic-credential
@@ -146,8 +290,8 @@ task tester-credentials
 
   back make(basic-credential, bind(kind, <basic>), bind(username, <tester>), bind(password, <secret>))
 
-# a registry holding @alice/demo 1.0.2, published from a folder of one file, the store and trust folders in a
-# temporary folder of the test's own, as the original's beforeAll left them
+# a registry holding @alice/demo 1.0.2, published as v2 from a folder of a source file, a file a folder deeper and an
+# executable, the store and trust folders in a temporary folder of the test's own
 task open-install
   like install-fixture
   mark async
@@ -161,16 +305,15 @@ task open-install
   set-variable(<TERM_STORE>, install-path/join(work, <store>))
   set-variable(<TERM_TRUST_DIR>, install-path/join(work, <trust>))
   host source, install-path/join(work, <demo>)
-  install-file/mkdir-sync(install-path/join(source, <code>), folder-options(0))
+  install-file/mkdir-sync(install-path/join(source, <code>, <deep>), folder-options(0))
+  install-file/mkdir-sync(install-path/join(source, <bin>), folder-options(0))
   install-file/write-file-sync(install-path/join(source, <code>, <demo.ts>), demo-text)
+  install-file/write-file-sync(install-path/join(source, <code>, <deep>, <more.tree>), <task more\n>)
+  write-executable(install-path/join(source, <bin>, <run>), <#!/bin/sh\n>)
   host transport, transport-face/http-transport(make(transport-ask, bind(host, server/host), bind(credentials, tester-credentials), bind(retries, 0)))
-  host local, layout-face/layout-object-store(make(layout-ask, bind(dir, install-path/join(work, <publisher>))))
-  host target, make(version-target, bind(kind, <version>), bind(version, <1.0.2>))
   host repository, make(oci-repository, bind(host, server/host), bind(namespace, <alice>), bind(name, <alice/demo>))
-  host links, make list
-  host asked, make(publish-ask, bind(dir, source), bind(package, <@alice/demo>), bind(version, <1.0.2>), bind(target, target), bind(link, links), bind(transport, transport), bind(repository, repository), bind(scope, <@alice>), bind(keys-repository, <alice/name>), bind(local, local), bind(keypair, sign-face/generate-keypair()), bind(author, <alice>), bind(time, <2026-01-01T00:00:00.000Z>))
-  host published, wait publish-face/publish-to-oci(asked)
-  back make(install-fixture, bind(server, server), bind(work, work), bind(kept, kept))
+  host published, publish-to-oci(source, <@alice/demo>, <1.0.2>, no-links(), transport, repository, <@alice>, <alice/name>, generate-keypair(), nothing-given(), nothing-given(), nothing-given(), nothing-given())
+  back make(install-fixture, bind(server, server), bind(work, work), bind(kept, kept), bind(source, source), bind(transport, transport), bind(published, published))
 
 # the variables as they were, the registry closed and the folder removed
 task close-install
@@ -259,6 +402,50 @@ task scopes-refusal
     save message, cause-message(cause)
   back message
 
+# @alice/demo read from the fixture's registry at `reference`, with the lockfile's `expect` (none for no pins)
+task read-demo
+  take open, like install-fixture
+  take reference, like text
+  take expect, like dynamic
+  like dynamic
+  mark async
+
+  back read-oci-version(open/transport, <alice/demo>, <@alice/demo>, reference, <@alice>, <alice/name>, open/server/host, install-path/join(open/work, <trust>), expect, empty-env(), nothing-given())
+
+# what reading @alice/demo at `reference` raised, the empty text when it read
+task read-refusal
+  take open, like install-fixture
+  take reference, like text
+  take expect, like dynamic
+  like text
+  mark async
+
+  save message, <>
+  fork
+    mark unsafe
+    save read, read-demo(open, reference, expect)
+  halt take
+    take cause
+    save message, oci-failure-message(cause)
+  back message
+
+# what installing `version` at `dest` over `transport` raised, the empty text when it installed
+task install-refusal
+  take transport, like dynamic
+  take version, like dynamic
+  take dest, like text
+  like text
+  mark async
+
+  save message, <>
+  fork
+    mark unsafe
+    save done, install-oci-version(transport, <alice/demo>, version, dest, nothing-given())
+  halt take
+    take cause
+    save message, oci-failure-message(cause)
+  back message
+
 test <term load over OCI: routes a base line, installs, and pins the digest and the key in lock.tree>
   host open, open-install()
   host dir, project(open)
@@ -315,3 +502,87 @@ test <term load over OCI: refuses one scope routed to two registries>
   host manifest, read-manifest(<deck @me/app\n  code \<1.0.0\>\n  host \<oci://a.example/x\>\n    link @alice/one, code \<1.0.x\>\n  host \<oci://b.example/y\>\n    link @alice/two, code \<1.0.x\>\n>)
   host refusal, scopes-refusal(manifest)
   want hold, refusal/includes(<two registries>)
+
+test <install-oci-version: the package folder byte for byte plus the marker, and a second install fetches nothing>
+  host open, open-install()
+  host version, read-demo(open, <1.0.2>, nothing-given())
+  host dest, install-path/join(open/work, <installed>, <1.0.2>)
+  host first, install-oci-version(open/transport, <alice/demo>, version, dest, nothing-given())
+  host same, is-equal(folder-summary(dest), folder-summary(open/source))
+  host files, folder-summary(dest)
+  host marker, marker-text(dest)
+  host digest, version/digest
+  host before, open/server/requests/length
+  host second, install-oci-version(open/transport, <alice/demo>, version, dest, nothing-given())
+  host after, open/server/requests/length
+  host left, leftovers(dest)
+  close-install(open)
+  want hold, same
+  want hold, holds-text(files, <bin/run|true|>)
+  want hold, holds-text(files, <code/deep/more.tree|false|>)
+  want hold, is-equal(marker, <{digest}\n>)
+  want hold, is-equal(first/fetched, true)
+  want hold, is-above(first/bytes, 0)
+  want hold, is-equal(second/fetched, false)
+  want hold, is-equal(after, before)
+  want hold, is-equal(left, 1)
+
+test <install-oci-version: refuses a .. path, a link, a .term-digest entry, a digest mismatch, an oversize layer and an oversize inflation, and leaves no folder>
+  host work, install-file/mkdtemp-sync(install-path/join(install-os/tmpdir(), <term-oci-refuse->))
+  host dest, install-path/join(work, <installed>, <1.0.2>)
+  host tar, write-archive(one-entry(<code/base.tree>, <task hello\n>))
+
+  host up, gzip-of(tar-with-name(tar, <../escape.tree>))
+  host up-said, install-refusal(fake-transport(up), fake-version(up, nothing-given()), dest)
+
+  host link, gzip-of(tar-with-flag(tar, <2>))
+  host link-said, install-refusal(fake-transport(link), fake-version(link, nothing-given()), dest)
+
+  host marked, gzip-of(tar-with-name(tar, <.term-digest>))
+  host marked-said, install-refusal(fake-transport(marked), fake-version(marked, nothing-given()), dest)
+
+  host good, gzip-of(tar)
+  host other, gzip-of(write-archive(one-entry(<code/base.tree>, <task other\n>)))
+  host mismatch-said, install-refusal(fake-transport(other), fake-version(good, nothing-given()), dest)
+
+  host oversize, fake-transport(good)
+  host oversize-said, install-refusal(oversize, fake-version(good, 67108865), dest)
+
+  host huge, stated-huge(good)
+  host huge-said, install-refusal(fake-transport(huge), fake-version(huge, nothing-given()), dest)
+
+  host good-said, install-refusal(fake-transport(good), fake-version(good, nothing-given()), dest)
+  host good-files, folder-summary(dest)
+  host left, leftovers(dest)
+  install-file/rm-sync(work, folder-options(0))
+
+  want hold, is-equal(up-said, <archive path ../escape.tree has an empty, . or .. segment>)
+  want hold, holds-text(link-said, <only files and directories are allowed>)
+  want hold, is-equal(marked-said, <archive path .term-digest is the install marker, which no package carries>)
+  want hold, holds-text(mismatch-said, <the fetched archive is>)
+  want hold, is-equal(oversize-said, <the archive of @alice/demo@1.0.2 is 67108865 bytes, over the limit of 67108864>)
+  want hold, is-equal(oversize/asked, 0)
+  want hold, is-equal(huge-said, <archive layer states 4294967295 bytes, over the limit of 269484032>)
+  # the same install with the honest archive goes through, so each refusal above was its own
+  want hold, is-equal(good-said, <>)
+  want hold, is-equal(good-files, <code/base.tree|false|7461736b2068656c6c6f0a>)
+  want hold, is-equal(left, 1)
+
+test <read-oci-version: refuses a manifest whose layer is not the signed archive and a signer outside the pin, and an install refuses a tampered archive>
+  host open, open-install()
+  host fetched, wait get-manifest(open/transport, <alice/demo>, <1.0.2>)
+  host forged, relayered(fetched/bytes)
+  host put, wait put-manifest-by-digest(open/transport, <alice/demo>, forged)
+  host layer-said, read-refusal(open, digest-of(forged), nothing-given())
+  host key-said, read-refusal(open, <1.0.2>, expect-key(other-key))
+  host version, read-demo(open, <1.0.2>, nothing-given())
+  host archive, field-of(field-of(version/config, <archive>), <digest>)
+  tamper-blob(open/server, archive, <not the archive>)
+  host dest, install-path/join(open/work, <tampered>, <1.0.2>)
+  host tamper-said, install-refusal(open/transport, version, dest)
+  host left, leftovers(dest)
+  close-install(open)
+  want hold, holds-text(layer-said, <is not the signed archive>)
+  want hold, holds-text(key-said, <is signed by a different key than lock.tree pins>)
+  want hold, not(is-equal(tamper-said, <>))
+  want hold, is-equal(left, 0)

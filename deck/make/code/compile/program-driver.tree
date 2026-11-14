@@ -192,6 +192,12 @@ form driver-given
     like task
       take file, like text
       like maybe, like roll-deck
+  # the mark of the deck a file belongs to, read by the same lookup (its manifest's `mark` as a booted console reads it,
+  # work/small/manifest-mark.tree), the empty text for none. Only a console's lowering asks (item 1173)
+  link mark-of
+    like task
+      take file, like text
+      like text
   # the build's own deck lookup as the roll takes it (compile/roll.ts `DeckOf`), absent when the build has none
   link host-deck-of, like dynamic
   # the per-module URL and the emitted files' set, as the per-module emit takes them
@@ -657,7 +663,8 @@ task run-program
   # name (decision 138 rules 2 and 3, item term-self-host-001-1121). Node keeps its dock-route records (item 1122)
   fork test, is-equal(input/env, <rust>)
     hold
-      save lowered, lower-console(run/program, input/file, input/scopes, console-name(input/file, deck-of), <>)
+      save mark-of, given/mark-of
+      save lowered, lower-console(run/program, input/file, input/scopes, console-name(input/file, deck-of), mark-of(input/file))
       fork test, is-above(lowered/refusals/length, 0)
         hold
           back driver-refusal(run, lowered/refusals)

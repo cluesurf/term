@@ -1,0 +1,30 @@
+note <the formatter over part 16 of 16 of the .tree files: meaning, imports and comments kept, and a second pass changes nothing>
+
+# Ported from sweep.ts by statement (item term-self-host-001-0669). Part 16 of 16: sweep-verdicts.tree holds the
+# four properties and deals the files round the parts, so the 16 parts together check every file the original checked.
+
+load ./sweep-verdicts
+  find verdicts-of-part
+  find sweep-verdict
+
+host verdicts, verdicts-of-part(16, 16)
+
+test <meaning preserved>
+  take one, like sweep-verdict
+    walk verdicts
+  want hold, is-equal(one/meaning, <>)
+
+test <imports preserved>
+  take one, like sweep-verdict
+    walk verdicts
+  want hold, is-equal(one/imports, <>)
+
+test <comments kept>
+  take one, like sweep-verdict
+    walk verdicts
+  want hold, is-equal(one/comments, <>)
+
+test <idempotent>
+  take one, like sweep-verdict
+    walk verdicts
+  want hold, is-equal(one/stable, <>)

@@ -5,7 +5,7 @@
 # The fixture is built by one `sh` run through `process/run`, each test on a directory of its own, because the gate's
 # Swift link has no NIO libraries and so cannot link any program that loads the asynchronous file modules (`file`,
 # `file/temporary`, `file/link`). The directories sit under the system's temporary directory and are left for it to
-# clear: nothing here removes a file.
+# clear: nothing here removes a file, and the one folder removed is the fixture's own empty `inner`.
 
 load @term/base/file/blocking
   find read, name read-path
@@ -14,6 +14,11 @@ load @term/base/file/blocking
   find list, name list-path
   find resolve-real
   find entry-kind
+  find path-kind
+  find rename-path
+  find remove-empty-folder
+  find make-folder-link
+  find write-path
 
 load @term/base/exception
   find absence
@@ -40,6 +45,41 @@ task make-fixture
       text </bin/sh>
       read arguments
   send back, read result/output
+
+# the same, with `full`, a folder holding `kept.txt`, beside the empty `inner`: for the calls that change the disk
+task make-work-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); printf %s 'a😀b' \> "$d/plain.txt"; mkdir "$d/inner" "$d/full"; printf %s x \> "$d/full/kept.txt"; ln -s "$d/plain.txt" "$d/shortcut"; ln -s "$d/nowhere" "$d/dangling"; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# a path's own kind as text, or the `thing` of the absence it raised
+task own-kind
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save kind
+      call path-kind
+        read path
+    send back
+      call kind-text
+        read kind
+  halt take
+    take problem
+    fork case, read problem
+      case absence
+        send back, read thing
+      case failure
+        send back, text <failure>
 
 task kind-text
   take kind, like entry-kind
@@ -295,3 +335,202 @@ test <read, stat, list and resolve-real raise absence naming a path that is not 
           call read-absent
             read dangling
           read dangling
+
+test <path-kind names each path itself, links not followed, a link to nothing included>
+  save dir
+    call make-work-fixture
+  want hold
+    call and
+      call and
+        call is-equal
+          call own-kind
+            text <{{dir}}/plain.txt>
+          text <file>
+        call is-equal
+          call own-kind
+            text <{{dir}}/inner>
+          text <directory>
+      call and
+        call is-equal
+          call own-kind
+            text <{{dir}}/shortcut>
+          text <link>
+        call is-equal
+          call own-kind
+            text <{{dir}}/dangling>
+          text <link>
+
+test <path-kind raises absence naming a path where not even a link is>
+  save dir
+    call make-work-fixture
+  save missing
+    text <{{dir}}/missing>
+  want hold
+    call is-equal
+      call own-kind
+        read missing
+      read missing
+
+test <rename-path moves a file that reads back whole, and a missing source or a folder that holds anything answers false>
+  save dir
+    call make-work-fixture
+  save moved
+    call rename-path
+      text <{{dir}}/plain.txt>
+      text <{{dir}}/moved.txt>
+  save nothing
+    call rename-path
+      text <{{dir}}/missing>
+      text <{{dir}}/other.txt>
+  save onto
+    call rename-path
+      text <{{dir}}/moved.txt>
+      text <{{dir}}/full>
+  want hold
+    call and
+      call and
+        call is-equal
+          read moved
+          true
+        call is-equal
+          call exists-path
+            text <{{dir}}/plain.txt>
+          false
+      call and
+        call and
+          call is-equal
+            call read-path
+              text <{{dir}}/moved.txt>
+            text <a😀b>
+          call is-equal
+            read nothing
+            false
+        call and
+          call is-equal
+            read onto
+            false
+          call exists-path
+            text <{{dir}}/full/kept.txt>
+
+test <remove-empty-folder removes an empty folder only, never one that holds a file or a file itself>
+  save dir
+    call make-work-fixture
+  save empty
+    call remove-empty-folder
+      text <{{dir}}/inner>
+  save held
+    call remove-empty-folder
+      text <{{dir}}/full>
+  save plain
+    call remove-empty-folder
+      text <{{dir}}/plain.txt>
+  want hold
+    call and
+      call and
+        call is-equal
+          read empty
+          true
+        call is-equal
+          call own-kind
+            text <{{dir}}/inner>
+          text <{{dir}}/inner>
+      call and
+        call and
+          call is-equal
+            read held
+            false
+          call exists-path
+            text <{{dir}}/full/kept.txt>
+        call and
+          call is-equal
+            read plain
+            false
+          call exists-path
+            text <{{dir}}/plain.txt>
+
+test <make-folder-link links a folder by a relative target, which stat follows and path-kind does not, and a taken path answers false>
+  save dir
+    call make-work-fixture
+  save made
+    call make-folder-link
+      text <inner>
+      text <{{dir}}/door>
+  save taken
+    call make-folder-link
+      text <inner>
+      text <{{dir}}/plain.txt>
+  save through
+    call stat-path
+      text <{{dir}}/door>
+  want hold
+    call and
+      call and
+        call is-equal
+          read made
+          true
+        call is-equal
+          call own-kind
+            text <{{dir}}/door>
+          text <link>
+      call and
+        call and
+          call is-equal
+            call kind-text
+              read through/kind
+            text <directory>
+          call is-equal
+            call resolve-real
+              text <{{dir}}/door>
+            call resolve-real
+              text <{{dir}}/inner>
+        call and
+          call is-equal
+            read taken
+            false
+          call is-equal
+            call read-path
+              text <{{dir}}/plain.txt>
+            text <a😀b>
+
+test <write-path writes a new file whole, cuts a longer one to the new text, and a missing folder answers false>
+  save dir
+    call make-work-fixture
+  save fresh
+    call write-path
+      text <{{dir}}/new.txt>
+      text <x😀y>
+  save cut
+    call write-path
+      text <{{dir}}/plain.txt>
+      text <z>
+  save lost
+    call write-path
+      text <{{dir}}/nowhere/new.txt>
+      text <q>
+  want hold
+    call and
+      call and
+        call and
+          call is-equal
+            read fresh
+            true
+          call is-equal
+            call read-path
+              text <{{dir}}/new.txt>
+            text <x😀y>
+        call and
+          call is-equal
+            read cut
+            true
+          call is-equal
+            call read-path
+              text <{{dir}}/plain.txt>
+            text <z>
+      call and
+        call is-equal
+          read lost
+          false
+        call is-equal
+          call exists-path
+            text <{{dir}}/nowhere>
+          false

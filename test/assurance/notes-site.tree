@@ -1,0 +1,621 @@
+note <the notes demo as a web app: the node host over real HTTP, and the Worker term cast writes>
+
+# Ported from notes-site.ts by statement (item term-self-host-001-0647, decision 116), one test per `ok` in its order
+# (term-assurance-demo-0002, note/project/term/assurance/mvp.md). notes/code/site.tree serves the model's `step`, `replay`
+# and `view` and permit.tree's `grant-delete` on page routes with methods (decision 001 of note/project/term/site-framework).
+#
+# 1. The source is compiled for the node host against the real stdlib, @term/site and @term/face through
+#    test/support/compiling (the project's resolver, deck, roles and lean marks, `roll` and no tree shaking, as
+#    test/site/body.ts builds: the exception kinds `expose` reads for a 400 are registered by `wakeHive` only when the roll
+#    is kept). The emitted program and its prelude are bundled by esbuild's command line under test/tmp/, where hono
+#    resolves, imported in this process, booted on a port, and spoken to over real HTTP: create, list, show, edit and
+#    delete; a hostile title comes back escaped; a change without a permit is refused (403), one from nobody 401; another
+#    person's note is not shown; a body of the wrong type answers 415 and one that does not fit the form 400.
+# 2. `term cast` (the `term` under test, @term/test/self) builds it for Cloudflare in a copy of the package, and the Worker
+#    it writes, imported in this process, answers a GET, a POST and a refusal.
+#
+# The person is the header `x-person` (and `x-rank: admin`): the demo has no sign-in (site.tree says so). Each part is one
+# sequence of requests on one server's state, so it runs once, from the first test that asks, and records every answer
+# by its step; each test reads the answers it holds to. A step the sequence never reached (a refused compile, a missing
+# Worker) answers status 0 and says why, so its tests fail naming it, where the original printed fewer lines.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+  find file-text
+
+load ../support/temp
+  find temp-folder
+  find remove-at-exit
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-match
+  find find-matches
+
+load @term/base/text
+  find contains, name text-contains
+  find ends-with
+
+load @term/base/list
+  find list
+
+dock load
+  load <node:fs>, name site-fs
+  load <node:path>, name site-path
+
+host notes-root, <test/assurance/notes>
+host site-file, <test/assurance/notes/code/site.tree>
+host site-port, 38571
+
+# ---- host words: HTTP, a module imported, a form body ----
+
+# host value: a form body as an HTML form posts it, spaces as `+`
+bind form-body
+  take title, like text
+  like text
+  case node
+    text <("title=" + encodeURIComponent($title).replace(/%20/g, "+"))>
+
+bind new-headers
+  take seed, like number
+  like dynamic
+  case node
+    text <new Headers()>
+
+# host value: no body at all, which fetch sends for a request that has none
+bind no-body
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+# host native: a request to the node host, redirects not followed
+bind node-response
+  take url, like text
+  take method, like text
+  take headers, like dynamic
+  take body, like dynamic
+  like dynamic
+  mark async
+  case node
+    text <(await fetch($url, \{ method: $method, headers: $headers, body: $body, redirect: "manual" \}))>
+
+# host native: the same request handed to the Worker's fetch, never a network
+bind worker-response
+  take worker, like dynamic
+  take url, like text
+  take method, like text
+  take headers, like dynamic
+  take body, like dynamic
+  like dynamic
+  mark async
+  case node
+    text <(await $worker.fetch(new Request($url, \{ method: $method, headers: $headers, body: $body, redirect: "manual" \})))>
+
+bind status-of
+  take response, like dynamic
+  like number
+  case node
+    text <$response.status>
+
+bind header-of
+  take response, like dynamic
+  take name, like text
+  like text
+  case node
+    text <($response.headers.get($name) ?? "")>
+
+bind body-of
+  take response, like dynamic
+  like text
+  mark async
+  case node
+    text <(await $response.text())>
+
+# host value: a module imported from its absolute path
+bind imported
+  take path, like text
+  like dynamic
+  mark async
+  case node
+    text <import(new URL(`file://$\{$path\}`).href)>
+
+bind wake-hive
+  take module, like dynamic
+  like void
+  case node
+    text <$module.wakeHive?.()>
+
+bind booted
+  take module, like dynamic
+  take port, like number
+  like dynamic
+  mark async
+  case node
+    text <(await $module.boot("", $port))>
+
+bind has-fetch
+  take worker, like dynamic
+  like boolean
+  case node
+    text <(typeof $worker?.fetch === "function")>
+
+bind paused
+  take ms, like number
+  like void
+  mark async
+  case node
+    text <<(await new Promise((done) => setTimeout(done, $ms)))>>
+
+# ---- what the sequences saw ----
+
+form site-reply
+  link status, like number
+  link location, like text
+  link allow, like text
+  link body, like text
+
+form site-state
+  mark shared
+  link node-ran, like boolean
+  link compiled, like boolean
+  link said, like text
+  link emitted, like text
+  link node-stop, like text
+  link cast-ran, like boolean
+  link cast-code, like number
+  link cast-said, like text
+  link app, like boolean
+  link fetch, like boolean
+  link cast-stop, like text
+  link answers, like hash, like text, like site-reply
+
+host site, make(site-state, bind(node-ran, false), bind(compiled, false), bind(said, <>), bind(emitted, <>), bind(node-stop, <>), bind(cast-ran, false), bind(cast-code, -1), bind(cast-said, <>), bind(app, false), bind(fetch, false), bind(cast-stop, <>), bind(answers, make hash))
+
+task answer-from
+  take response, like dynamic
+  like site-reply
+  mark async
+
+  host body, body-of(response)
+  back make(site-reply,bind(status, status-of(response)), bind(location, header-of(response, <location>)), bind(allow, header-of(response, <allow>)), bind(body, body))
+
+# the headers of one request: the person asking, their rank, the body's type, each left out when empty
+task headers-of
+  take person, like text
+  take rank, like text
+  take type, like text
+  like dynamic
+
+  host headers, new-headers(0)
+  fork test, is-unequal(type, <>)
+    hold
+      headers/set(<content-type>, type)
+  fork test, is-unequal(person, <>)
+    hold
+      headers/set(<x-person>, person)
+  fork test, is-unequal(rank, <>)
+    hold
+      headers/set(<x-rank>, rank)
+  back headers
+
+# one request to the node host, recorded as `step`
+task ask-node
+  take step, like text
+  take path, like text
+  take method, like text
+  take person, like text
+  take type, like text
+  take body, like dynamic
+  take rank, like text, fall <>
+  like site-reply
+  mark async
+
+  host response, node-response(<http://localhost:{site-port}{path}>, method, headers-of(person, rank, type), body)
+  host seen, answer-from(response)
+  save site/answers/{step}, seen
+  back seen
+
+task ask-worker
+  take step, like text
+  take worker, like dynamic
+  take path, like text
+  take method, like text
+  take person, like text
+  take type, like text
+  take body, like dynamic
+  like site-reply
+  mark async
+
+  host response, worker-response(worker, <http://worker.test{path}>, method, headers-of(person, <>, type), body)
+  host seen, answer-from(response)
+  save site/answers/{step}, seen
+  back seen
+
+# ---- 2. the node host, over HTTP ----
+
+host form-type, <application/x-www-form-urlencoded>
+host json-type, <application/json>
+host hostile, <\<script\>alert("x")\</script\> & 'q'>
+
+task bundle-and-boot
+  take out, like compile-outcome
+  like text
+  mark async
+
+  host code, out/emitted
+  host prelude, prelude-text(out, <node>, code)
+  make-folder(<test/tmp>)
+  host dir, remove-at-exit(site-path/resolve(site-fs/mkdtemp-sync(<test/tmp/notes-site->)))
+  write-file(<{dir}/app.ts>, <{prelude}\n{code}>)
+  host built, run(<node_modules/.bin/esbuild>, make list(<{dir}/app.ts>, <--bundle>, <--format=esm>, <--platform=node>, <--external:hono>, <--external:@hono/node-server>, <--outfile={dir}/app.mjs>, <--log-level=error>))
+  fork test, is-unequal(built/code, 0)
+    hold
+      back <esbuild exit {built/code}: {built/error}>
+  host module, imported(<{dir}/app.mjs>)
+  wake-hive(module)
+  booted(module, site-port)
+  paused(300)
+  back <>
+
+# each sequence takes a seed, so term test never reads it as a test (T-0978)
+task node-session
+  take seed, like number
+  like boolean
+  mark async
+
+  fork test, site/node-ran
+    hold
+      back site/compiled
+  save site/node-ran, true
+  host choice, make(compile-choice, bind(file, site-file), bind(project, notes-root), bind(project-env, <node>), bind(env, <node>), bind(project-deck, true), bind(roll, true), bind(tree-shake, <false>), bind(project-role, true), bind(project-lean, true))
+  host out, compile-text(file-text(site-file), choice)
+  save site/compiled, out/ok
+  save site/said, out/messages/join(< | >)
+  fork test, not(out/ok)
+    hold
+      save site/node-stop, <site.tree did not compile>
+      back false
+  save site/emitted, out/emitted
+  host booting, bundle-and-boot(out)
+  fork test, is-unequal(booting, <>)
+    hold
+      save site/node-stop, booting
+      back true
+  host none, no-body(0)
+  # create, list, show
+  host made, ask-node(<made>, </notes>, <POST>, <3>, form-type, form-body(<buy bread>))
+  host where, made/location
+  ask-node(<list>, </notes>, <GET>, <3>, <>, none)
+  ask-node(<shown>, where, <GET>, <3>, <>, none)
+  # isolation, through the routes
+  ask-node(<other-list>, </notes>, <GET>, <4>, <>, none)
+  ask-node(<other-page>, where, <GET>, <4>, <>, none)
+  ask-node(<nobody-list>, </notes>, <GET>, <>, <>, none)
+  # edit, by POST (an HTML form) and by PATCH
+  ask-node(<edited>, where, <POST>, <3>, form-type, form-body(<buy rye bread>))
+  ask-node(<patched>, where, <PATCH>, <3>, json-type, <\{"title":"buy rye bread and milk"\}>)
+  ask-node(<after-edit>, where, <GET>, <3>, <>, none)
+  # a hostile title, in the list and on its page
+  host evil, ask-node(<evil>, </notes>, <POST>, <3>, form-type, form-body(hostile))
+  ask-node(<evil-list>, </notes>, <GET>, <3>, <>, none)
+  ask-node(<evil-page>, evil/location, <GET>, <3>, <>, none)
+  ask-node(<evil-path>, </notes/x&y'z>, <DELETE>, <3>, <>, none)
+  # without a permit
+  ask-node(<forged>, where, <DELETE>, <4>, <>, none)
+  ask-node(<forged-edit>, where, <PATCH>, <4>, json-type, <\{"title":"mine now"\}>)
+  ask-node(<anonymous>, where, <DELETE>, <>, <>, none)
+  ask-node(<anonymous-make>, </notes>, <POST>, <>, form-type, form-body(<who am i>))
+  ask-node(<still-there>, where, <GET>, <3>, <>, none)
+  # a bad body
+  ask-node(<plain>, </notes>, <POST>, <3>, <text/plain>, <title=x>)
+  ask-node(<misfit>, </notes>, <POST>, <3>, json-type, <\{"name":"no title field"\}>)
+  ask-node(<broken>, </notes>, <POST>, <3>, json-type, <\{"title": >)
+  ask-node(<empty>, </notes>, <POST>, <3>, form-type, <title=>)
+  # a method no task serves
+  ask-node(<put>, </notes>, <PUT>, <3>, <>, <>)
+  # delete, by the owner through the HTML form route, and by an admin through DELETE
+  ask-node(<removed>, <{where}/delete>, <POST>, <3>, <>, none)
+  ask-node(<after-delete>, </notes>, <GET>, <3>, <>, none)
+  ask-node(<page-after>, where, <GET>, <3>, <>, none)
+  ask-node(<again>, where, <DELETE>, <3>, <>, none)
+  ask-node(<by-admin>, evil/location, <DELETE>, <9>, <>, none, <admin>)
+  ask-node(<owner-after-admin>, </notes>, <GET>, <3>, <>, none)
+  back true
+
+# ---- 1. term cast, Cloudflare ----
+
+task copy-notes
+  take root, like text
+  like void
+
+  make-folder(<{root}/code>)
+  site-fs/copy-file-sync(<{notes-root}/deck.tree>, <{root}/deck.tree>)
+  site-fs/copy-file-sync(<{notes-root}/role.tree>, <{root}/role.tree>)
+  walk site-fs/readdir-sync(<{notes-root}/code>)
+    take name, like text
+    fork test, ends-with(name, <.tree>)
+      hold
+        site-fs/copy-file-sync(<{notes-root}/code/{name}>, <{root}/code/{name}>)
+
+task cast-session
+  take seed, like number
+  like boolean
+  mark async
+
+  fork test, site/cast-ran
+    hold
+      back is-equal(site/cast-code, 0)
+  save site/cast-ran, true
+  host root, temp-folder(<notes-cast->)
+  copy-notes(root)
+  host environment
+    make hash
+      save <NO_COLOR>, <1>
+  host ran, run-self(make(list, <cast>), root, 400000, environment)
+  save site/cast-code, ran/code
+  save site/cast-said, <{ran/output}{ran/error}>
+  host app, <{root}/work/app.mjs>
+  fork test, not(file-exists(app))
+    hold
+      save site/cast-stop, <the cast wrote no work/app.mjs>
+      back false
+  save site/app, true
+  host module, imported(app)
+  wake-hive(module)
+  host worker, booted(module, 0)
+  save site/fetch, has-fetch(worker)
+  fork test, not(site/fetch)
+    hold
+      save site/cast-stop, <its Worker exports no fetch>
+      back false
+  host none, no-body(0)
+  ask-worker(<worker-made>, worker, </notes>, <POST>, <3>, form-type, form-body(<from the worker>))
+  ask-worker(<worker-listed>, worker, </notes>, <GET>, <3>, <>, none)
+  ask-worker(<worker-nobody>, worker, </notes>, <POST>, <>, form-type, form-body(<x>))
+  back true
+
+# the answer a step recorded, or status 0 and why the sequence never reached it
+task seen
+  take step, like text
+  like site-reply
+
+  fork test, site/answers/has(step)
+    hold
+      back site/answers/{step}
+  back make(site-reply,bind(status, 0), bind(location, <>), bind(allow, <>), bind(body, <{step} never ran: {site/node-stop}{site/cast-stop}>))
+
+task node-seen
+  take step, like text
+  like site-reply
+  mark async
+
+  node-session(0)
+  back seen(step)
+
+task worker-seen
+  take step, like text
+  like site-reply
+  mark async
+
+  cast-session(0)
+  back seen(step)
+
+task is-note-path
+  take path, like text
+  like boolean
+
+  back matches(make(pattern, <<^/notes/\d+$>>), path)
+
+task count-of
+  take written, like text
+  take input, like text
+  like number
+
+  back find-matches(make(pattern, written), input)/length
+
+# the page's <body>, or the whole page when it has none
+task body-part
+  take page, like text
+  like text
+
+  host found, find-match(make(pattern, <<<body>[\s\S]*</body>>>), page)
+  sift found
+    case some
+      back found/value/text
+    case none
+      back page
+
+# ---- the node host ----
+
+test <notes/code/site.tree compiles for the node host>
+  node-session(0)
+  want hold, site/compiled
+  want hold, is-unequal(site/emitted, <>)
+
+# the emitted names: a task named in two files is split by file (`view` beside the dom's `view` is `viewIn00`)
+test <the list draws model.tree's `view` of its `replay` of the events taken>
+  node-session(0)
+  want hold, matches(make(pattern, <<rowsOf\(view\w*\(replay\(eventsOf\(log\)\), asker\)>>), site/emitted)
+
+test <`replay` runs model.tree's `step`>
+  node-session(0)
+  want hold, matches(make(pattern, <<function replay\(es: Events\): Shelf \{[\s\S]{0,400}?step\w*\(replay\(>>), site/emitted)
+
+# a raising call records its Term frame in `__site` first (term/hive decision 001): `(__site = "<frame>", call)`
+test <edit and delete ask permit.tree's `grant-delete` for the note's permit>
+  node-session(0)
+  want hold, is-equal(count-of(<<const p: Permit = (\(__site = "[^"]*", )?grantDelete\(asker, at, whose\)>>, site/emitted), 2)
+
+test <and delete spends that permit as the erase event>
+  node-session(0)
+  want hold, matches(make(pattern, <<log\.push\((eraseBy\(p\)|\{ form: "erase", who: p\.person\.id, rank: p\.person\.rank, id: p\.note \})\)>>), site/emitted)
+
+test <POST /notes writes a note and answers 303 to it>
+  host made, node-seen(<made>)
+  want hold, is-equal(made/status, 303)
+  want hold, is-note-path(made/location)
+
+test <GET /notes lists the note, linked to its page>
+  host where, node-seen(<made>)/location
+  host list, seen(<list>)
+  want hold, is-equal(list/status, 200)
+  want hold, text-contains(list/body, <buy bread>)
+  want hold, text-contains(list/body, <href="{where}">)
+
+test <GET /notes/:id shows the note with its edit and delete forms>
+  host where, node-seen(<made>)/location
+  host shown, seen(<shown>)
+  want hold, is-equal(shown/status, 200)
+  want hold, text-contains(shown/body, <buy bread>)
+  want hold, text-contains(shown/body, <action="{where}/delete">)
+
+test <another person's list and the note's page, asked by them, do not show it>
+  host other-list, node-seen(<other-list>)
+  host other-page, seen(<other-page>)
+  want hold, is-above(other-list/status, 0)
+  want hold, is-above(other-page/status, 0)
+  want hold, not(text-contains(other-list/body, <buy bread>))
+  want hold, not(text-contains(other-page/body, <buy bread>))
+
+test <a request from nobody sees no notes>
+  host nobody, node-seen(<nobody-list>)
+  want hold, is-above(nobody/status, 0)
+  want hold, not(text-contains(nobody/body, <buy bread>))
+
+test <POST /notes/:id by its owner retitles it and answers 303>
+  host where, node-seen(<made>)/location
+  host edited, seen(<edited>)
+  want hold, is-equal(edited/status, 303)
+  want hold, is-equal(edited/location, where)
+
+test <PATCH /notes/:id with a JSON body retitles it too>
+  want hold, is-equal(node-seen(<patched>)/status, 303)
+
+test <the page shows the new title>
+  want hold, text-contains(node-seen(<after-edit>)/body, <buy rye bread and milk>)
+
+test <a title holding \<script\> is escaped in the list>
+  host listed, node-seen(<evil-list>)/body
+  want hold, text-contains(listed, <&lt;script&gt;>)
+  want hold, not(text-contains(listed, <\<script\>alert>))
+
+test <and on its page as text>
+  host page, node-seen(<evil-page>)/body
+  want hold, matches(make(pattern, <<<h1><span[^>]*>&lt;script&gt;alert\("x"\)&lt;\/script&gt; &amp; 'q'<\/span><\/h1>>>), body-part(page))
+
+# in a double-quoted attribute only `"` and `&` can end or change it, and the node serializer's `escapeAttr` escapes both:
+# the `<script>` stays inside the value, inert
+test <and in the edit field, inside a value attribute whose quotes and ampersands are escaped>
+  host page, node-seen(<evil-page>)/body
+  want hold, text-contains(body-part(page), <value="\<script\>alert(&quot;x&quot;)\</script\> &amp; 'q'">)
+
+test <and the page holds no script element but the host's own>
+  host page, node-seen(<evil-page>)/body
+  want hold, is-above(node-seen(<evil-page>)/status, 0)
+  want hold, is-equal(count-of(<<<script[ >]>>, page), add(count-of(<<value="<script>>>, body-part(page)), 2))
+
+# a URL percent-encodes `<`, `>` and `"` in a path, and leaves `&` and `'` as written: those reach the refusal page
+test <a refusal page puts the path it names through escape-html>
+  host refused, node-seen(<evil-path>)
+  want hold, is-equal(refused/status, 404)
+  want hold, text-contains(refused/body, <x&amp;y&#39;z>)
+  want hold, not(text-contains(refused/body, <x&y'z>))
+
+test <DELETE of another person's note by a member is refused 403: grant-delete gives no permit>
+  want hold, is-equal(node-seen(<forged>)/status, 403)
+
+test <PATCH of another person's note by a member is refused 403>
+  want hold, is-equal(node-seen(<forged-edit>)/status, 403)
+
+test <DELETE from nobody is refused 401>
+  want hold, is-equal(node-seen(<anonymous>)/status, 401)
+
+test <POST /notes from nobody is refused 401>
+  want hold, is-equal(node-seen(<anonymous-make>)/status, 401)
+
+test <after the refusals the note is still there, with its title>
+  want hold, text-contains(node-seen(<still-there>)/body, <buy rye bread and milk>)
+
+test <a text/plain body answers 415>
+  want hold, is-equal(node-seen(<plain>)/status, 415)
+
+test <a JSON body that does not fit the form answers 400>
+  want hold, is-equal(node-seen(<misfit>)/status, 400)
+
+test <a JSON body that does not parse answers 400>
+  want hold, is-equal(node-seen(<broken>)/status, 400)
+
+test <an empty title answers 400>
+  want hold, is-equal(node-seen(<empty>)/status, 400)
+
+test <PUT /notes answers 405 naming GET, HEAD, POST>
+  host put, node-seen(<put>)
+  want hold, is-equal(put/status, 405)
+  want hold, is-equal(put/allow, <GET, HEAD, POST>)
+
+test <POST /notes/:id/delete by its owner erases it and answers 303 to the list>
+  host removed, node-seen(<removed>)
+  want hold, is-equal(removed/status, 303)
+  want hold, is-equal(removed/location, </notes>)
+
+test <the erased note is in neither the list nor its page (law 4, through the routes)>
+  host listed, node-seen(<after-delete>)
+  host page, seen(<page-after>)
+  want hold, is-above(listed/status, 0)
+  want hold, is-above(page/status, 0)
+  want hold, not(text-contains(listed/body, <buy rye bread>))
+  want hold, not(text-contains(page/body, <buy rye bread>))
+
+test <deleting it again answers 404>
+  want hold, is-equal(node-seen(<again>)/status, 404)
+
+test <an admin may delete another person's note: 303>
+  want hold, is-equal(node-seen(<by-admin>)/status, 303)
+
+test <and it is gone from its owner's list>
+  host listed, node-seen(<owner-after-admin>)
+  want hold, is-above(listed/status, 0)
+  want hold, not(text-contains(listed/body, <&lt;script&gt;>))
+
+# ---- the Worker term cast writes ----
+
+test <`term cast` builds the notes site for a Cloudflare Worker, exit 0>
+  cast-session(0)
+  want hold, is-equal(site/cast-code, 0)
+  want hold, matches(make(pattern, <Cast to a Cloudflare Worker>), site/cast-said)
+
+test <its Worker exports `fetch`>
+  cast-session(0)
+  want hold, site/app
+  want hold, site/fetch
+
+test <the Worker answers a POST to /notes with 303 to the new note>
+  host made, worker-seen(<worker-made>)
+  want hold, is-equal(made/status, 303)
+  want hold, is-note-path(made/location)
+
+test <and draws the list with the note on GET>
+  host listed, worker-seen(<worker-listed>)
+  want hold, is-equal(listed/status, 200)
+  want hold, text-contains(listed/body, <from the worker>)
+
+test <and refuses a POST from nobody with 401>
+  want hold, is-equal(worker-seen(<worker-nobody>)/status, 401)

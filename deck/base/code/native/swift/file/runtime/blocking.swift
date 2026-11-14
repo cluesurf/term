@@ -93,4 +93,54 @@ enum blocking {
 
     return out
   }
+
+  // the path's own kind, links not followed (lstat), or "" when not even a link is there
+  static func kindPath(_ path: String) -> String {
+    #if canImport(Darwin)
+    var info = Darwin.stat()
+    #else
+    var info = Glibc.stat()
+    #endif
+
+    guard lstat(path, &info) == 0 else { return "" }
+
+    return entryKind(info.st_mode)
+  }
+
+  // the C calls, spelled through their module so no task of the emitted program can shadow them: rename(2) replaces
+  // a file or an empty folder at `to` as node's renameSync, rmdir(2) is never recursive, symlink(2) writes the target
+  // as given
+  static func renamePath(_ from: String, _ to: String) -> Bool {
+    #if canImport(Darwin)
+    return Darwin.rename(from, to) == 0
+    #else
+    return Glibc.rename(from, to) == 0
+    #endif
+  }
+
+  static func removeFolderPath(_ path: String) -> Bool {
+    #if canImport(Darwin)
+    return Darwin.rmdir(path) == 0
+    #else
+    return Glibc.rmdir(path) == 0
+    #endif
+  }
+
+  static func linkPath(_ target: String, _ at: String) -> Bool {
+    #if canImport(Darwin)
+    return Darwin.symlink(target, at) == 0
+    #else
+    return Glibc.symlink(target, at) == 0
+    #endif
+  }
+
+  // the whole text as UTF-8, the file made or cut, as node's writeFileSync (not atomic: no temporary file beside it)
+  static func writePath(_ path: String, _ body: String) -> Bool {
+    do {
+      try body.write(toFile: path, atomically: false, encoding: .utf8)
+      return true
+    } catch {
+      return false
+    }
+  }
 }

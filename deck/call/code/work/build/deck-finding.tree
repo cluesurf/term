@@ -15,14 +15,20 @@ load @term/base/maybe
 load ../small/manifest-file
   find manifest-name-of
 
+# the manifest's mark through the one reader a booted console reads it with (item term-self-host-001-1173)
+load ../small/manifest-mark
+  find manifest-mark-of
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
 
-# where a deck is: its declared name and the directory its manifest sits in
+# where a deck is: its declared name, the directory its manifest sits in, and the manifest's `mark` (the version a
+# console the compiler lowers answers `--version` with), the empty text for none
 form deck-place
   link name, like text
   link root, like text
+  link mark, like text
 
 # one project's answers, kept for every lookup made through it
 form deck-finder
@@ -31,11 +37,26 @@ form deck-finder
   link asked, like hash, like text, like boolean
   # the deck found above a directory, for the directories that have one
   link places, like hash, like text, like deck-place
+  # the mark of each deck root read so far, so a manifest's mark is read once however many folders lie below it
+  link marks, like hash, like text, like text
 
 task make-deck-finder
   like deck-finder
 
-  back make(deck-finder, bind(asked, make hash), bind(places, make hash))
+  back make(deck-finder, bind(asked, make hash), bind(places, make hash), bind(marks, make hash))
+
+# the mark of the manifest at this deck root, read once per finder
+task mark-at
+  take finder, like deck-finder
+  take root, like text
+  take manifest-path, like text
+  like text
+  mark private
+
+  fork test, not(finder/marks/has(root))
+    hold
+      save finder/marks/{root}, manifest-mark-of(manifest-path)
+  back finder/marks/get(root)
 
 # the declared name of the manifest at this path, or nothing when it is not a manifest
 task manifest-name-at
@@ -72,7 +93,7 @@ task find-deck
           back make(some, finder/places/get(dir))
       back make none
   save found, false
-  save place, make(deck-place, bind(name, <>), bind(root, <>))
+  save place, make(deck-place, bind(name, <>), bind(root, <>), bind(mark, <>))
   save at, dir
   save going, true
   walk test
@@ -86,7 +107,7 @@ task find-deck
             case some
               link declared
               save found, true
-              save place, make(deck-place, bind(name, declared), bind(root, at))
+              save place, make(deck-place, bind(name, declared), bind(root, at), bind(mark, mark-at(finder, at, manifest-path)))
               save going, false
             case none
               save nothing, 0

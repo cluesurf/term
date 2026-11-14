@@ -1,0 +1,304 @@
+note <what the format sweep holds each file to: the verdicts its parts read, and no test of its own>
+
+# Ported from sweep.ts by statement (item term-self-host-001-0669, decision 116). The formatter, the mill's meaning and the
+# import reader are the subject (decision 106), docked as the original imported them. Four properties per file:
+#
+#   MEANING PRESERVED  the mill's program for the file (format/meaning program-of, spans dropped) is the same before and
+#                      after formatting, the file milled with its own `mark lean`. A file the formatter's own meaning check
+#                      refused (returned as written) fails here too, as it failed the original
+#   IMPORTS PRESERVED  the `load` paths the file names are the same before and after, since a load never becomes a mill
+#                      statement and the meaning compare is blind to it
+#   COMMENTS KEPT      every word of every comment, in order. Compared as words, since a long comment is re-wrapped
+#   IDEMPOTENT         formatting the formatted text changes nothing
+#
+# The files are every .tree under deck/ and test/ in the order the folders list them, node_modules, .base, dot entries and
+# build output `host` left out (the @term/host package, which carries a deck.tree, kept), test/parser/file/ left out (its
+# fixtures are not Term source). A file the parser or the mill refuses has no meaning to preserve and is left out, as the
+# original skipped it. Each walked test holds one case per file that mills, so the four of them count four per file, the
+# original's four `pass` per checked file. The original's memo (test/memo.ts) is not ported: every file is checked on every
+# run, as TERM_MEMO=off ran it. Its KNOWN_MEANING and KNOWN_UNSTABLE baselines are empty, so every file must hold all four.
+#
+# The original took 42 minutes on the M3 with every file checked, past the 300 s term test gives one file (T-0652), so the
+# sweep is cut into parts: sweep.tree and sweep-part-<n>.tree each hold the four tests over the files dealt to them, and
+# this file holds what they share. It has no test line, so term test does not collect it.
+
+dock load
+  load <@term/make/code/format/format>, name format-module
+  load <@term/make/code/format/meaning>, name meaning-module
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/call/code/role-of>, name role-module
+  load <node:fs>, name sweep-fs
+  load <node:path>, name sweep-path
+
+load @term/base/text
+  find ends-with
+  find starts-with
+  find trim-start
+  find split
+  find replace-all
+
+load @term/base/list
+  find list
+
+load ../support/walking
+  find kind-of
+  find field-of
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+# host value: the formatter's options, a record shaped for the docked face
+bind format-options
+  take lean, like boolean
+  take role, like dynamic
+  like dynamic
+  case node
+    text <(\{ lean: $lean, role: $role \})>
+
+host root, sweep-path/resolve(<.>)
+
+# each file's role and `mark lean`, as the build reads them
+host role-of, role-module/project-role-of(root)
+host lean-of, role-module/project-lean-of(root)
+
+task is-folder
+  take path, like text
+  like boolean
+
+  host status, sweep-fs/stat-sync(path)
+  back status/is-directory()
+
+# every .tree under a folder, relative to the root, in the order the folder lists them
+task tree-files-under
+  take folder, like text
+  take out, like list, like text
+  like void
+
+  fork test, not(sweep-fs/exists-sync(folder))
+    hold
+      back
+  walk sweep-fs/readdir-sync(folder)
+    take entry, like text
+    fork test, or(or(is-equal(entry, <node_modules>), is-equal(entry, <.base>)), starts-with(entry, <.>))
+      hold
+        turn next
+    host path, sweep-path/join(folder, entry)
+    fork test, and(is-equal(entry, <host>), not(sweep-fs/exists-sync(sweep-path/join(path, <deck.tree>))))
+      hold
+        turn next
+    fork test, is-folder(path)
+      hold
+        tree-files-under(path, out)
+        turn next
+    fork test, ends-with(entry, <.tree>)
+      hold
+        out/push(path)
+
+task text-of
+  take file, like text
+  like text
+
+  back sweep-fs/read-file-sync(file, <utf8>)
+
+# the mill's program for a text, spans dropped, or undefined when it does not parse or mill
+task program-of
+  take file, like text
+  take text, like text
+  take lean, like boolean
+  like dynamic
+
+  host parsed, parser-tree/parse(source-of(file, text))
+  fork test, not(parsed/ok)
+    hold
+      back field-of(parsed, <missing>)
+  back meaning-module/program-of(parsed/tree, file, lean)
+
+task is-absent
+  take value, like dynamic
+  like boolean
+
+  back is-equal(kind-of(value), <undefined>)
+
+# the words of one comment: its leading `#`s dropped, then split at blanks
+task comment-words-into
+  take text, like text
+  take words, like list, like text
+  like void
+
+  save rest, trim-start(text)
+  walk test
+    hook test, starts-with(rest, <#>)
+    hook hold
+      save rest, rest/slice(1)
+  walk split(replace-all(replace-all(replace-all(rest, <\t>, < >), <\r>, < >), <\n>, < >), < >)
+    take piece, like text
+    fork test, is-unequal(piece, <>)
+      hold
+        words/push(piece)
+
+task comment-words-under
+  take node, like dynamic
+  take words, like list, like text
+  like void
+
+  fork test, is-unequal(kind-of(node), <object>)
+    hold
+      back
+  host comments, field-of(node, <comments>)
+  fork test, is-equal(kind-of(comments), <list>)
+    hold
+      walk comments
+        take comment, like dynamic
+        comment-words-into(comment/text, words)
+  host nodes, field-of(node, <nodes>)
+  fork test, is-equal(kind-of(nodes), <list>)
+    hold
+      walk nodes
+        take child, like dynamic
+        comment-words-under(child, words)
+
+# every word of every comment, in order: COMMENTS KEPT. The formatter dropped the comment above a line that opens with a
+# literal (`# the second` over `2`) until 2026-10-03
+task comment-words
+  take file, like text
+  take text, like text
+  like list, like text
+
+  host words, make list
+  host parsed, parser-tree/parse(source-of(file, text))
+  fork test, parsed/ok
+    hold
+      walk parsed/tree/nodes
+        take node, like dynamic
+        comment-words-under(node, words)
+  back words
+
+# what one format came to, an exception included
+form formatted
+  link threw, like boolean
+  link text, like text
+  link refused, like text
+
+bind refusal-of
+  take report, like dynamic
+  like text
+  case node
+    text <$report.refused ?? "">
+
+bind message-of
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause).slice(0, 160)>
+
+task format-of
+  take file, like text
+  take text, like text
+  take lean, like boolean
+  take role, like dynamic
+  like formatted
+
+  fork
+    mark unsafe
+    host report, format-module/format-report(source-of(file, text), format-options(lean, role))
+    back make(formatted, bind(threw, false), bind(text, report/text), bind(refused, refusal-of(report)))
+  halt take
+    take cause
+    back make(formatted, bind(threw, true), bind(text, <>), bind(refused, message-of(cause)))
+
+# one file's four verdicts, each <> when the property holds, else the original's failure line
+form sweep-verdict
+  link meaning, like text
+  link imports, like text
+  link comments, like text
+  link stable, like text
+
+task same-text
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+
+  back is-equal(a, b)
+
+# the verdicts of one file into out, nothing when the file does not parse or mill
+task verdict-into
+  take label, like text
+  take out, like list, like sweep-verdict
+  like void
+
+  host file, sweep-path/join(root, label)
+  host text, text-of(file)
+  host lean, lean-of(file)
+  host role, role-of(file)
+  host before, program-of(file, text, lean)
+  fork test, is-absent(before)
+    hold
+      back
+  host once, format-of(file, text, lean, role)
+  fork test, once/threw
+    hold
+      host threw, <{label}: the formatter threw: {once/refused}>
+      out/push(make(sweep-verdict, bind(meaning, threw), bind(imports, threw), bind(comments, threw), bind(stable, threw)))
+      back
+  # MEANING PRESERVED, and the formatter's own check never refused its layout
+  host after, program-of(file, once/text, lean)
+  save meaning, <>
+  fork test, or(is-absent(after), not(same-text(after, before)))
+    hold
+      save meaning, <{label}: formatting changed the mill Program>
+      fork test, is-absent(after)
+        hold
+          save meaning, <{meaning} (the formatted file does not compile)>
+  fork test, is-unequal(once/refused, <>)
+    hold
+      save meaning, <{label}: the formatter's meaning check refused its own layout ({once/refused}) {meaning}>
+  # IMPORTS PRESERVED
+  host imports-before, meaning-module/imports-of(file, text)
+  host imports-after, meaning-module/imports-of(file, once/text)
+  save imports, <>
+  fork test, not(same-text(imports-before, imports-after))
+    hold
+      save imports, <{label}: formatting changed the import paths\n    before {imports-before}\n    after  {imports-after}>
+  # COMMENTS KEPT
+  save comments, <>
+  fork test, not(is-equal(comment-words(file, text), comment-words(file, once/text)))
+    hold
+      save comments, <{label}: formatting dropped or reordered a comment>
+  # IDEMPOTENT
+  host twice, format-of(file, once/text, lean, role)
+  save stable, <>
+  fork test, twice/threw
+    hold
+      save stable, <{label}: the formatter threw on its own output: {twice/refused}>
+    miss
+      fork test, not(is-equal(twice/text, once/text))
+        hold
+          save stable, <{label}: formatting is not idempotent>
+  out/push(make(sweep-verdict, bind(meaning, meaning), bind(imports, imports), bind(comments, comments), bind(stable, stable)))
+
+# the verdicts of part `part` (from 1) of `parts`: the files under deck/ and test/, test/parser/file/ left out, dealt
+# round the parts in order, so the parts together check every file once
+task verdicts-of-part
+  take part, like number
+  take parts, like number
+  like list, like sweep-verdict
+
+  host files, make list
+  tree-files-under(<deck>, files)
+  tree-files-under(<test>, files)
+  host out, make list
+  save at, 0
+  walk files
+    take label, like text
+    fork test, starts-with(label, <test/parser/file/>)
+      hold
+        turn next
+    fork test, is-equal(modulo(at, parts), subtract(part, 1))
+      hold
+        verdict-into(label, out)
+    save at, add(at, 1)
+  back out

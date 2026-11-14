@@ -207,9 +207,9 @@ form compile-state
   link parsed, like parse-memo
 
 # ONE COMPILE, as compile.ts's options asked for it. `source` is the file's text, none to read the file. Each lookup
-# answers for a file: its deck (none), its role (`<>`), whether its role carries `mark lean` (false). `optimize` false is
-# the editor path. `env` and `budget` are `<>` for none, `tree-shake` none for the build's default, and `roll-only` and
-# `roll-fast` read with `roll`
+# answers for a file: its deck (none), its role (`<>`), whether its role carries `mark lean` (false), its deck's mark
+# (`<>`). `optimize` false is the editor path. `env` and `budget` are `<>` for none, `tree-shake` none for the build's
+# default, and `roll-only` and `roll-fast` read with `roll`
 form compile-request
   link file, like text
   link source
@@ -230,6 +230,12 @@ form compile-request
     like task
       take file, like text
       like boolean
+  # the mark of the deck a file belongs to (its manifest's `mark`, as compile.ts givenOf reads `deckOf(file)?.mark`),
+  # the empty text for none. Only a console's lowering asks (item 1173)
+  link mark-of
+    like task
+      take file, like text
+      like text
   link library, like boolean, fall false
   link optimize, like boolean, fall true
   link env, like text, fall <>
@@ -371,7 +377,14 @@ task no-lean
 
   back false
 
-# A REQUEST FOR ONE TEXT, every option at what compile.ts took for an absent one: no resolver, no deck, role or lean
+task no-mark
+  take file, like text
+  like text
+
+  back <>
+
+# A REQUEST FOR ONE TEXT, every option at what compile.ts took for an absent one: no resolver, no deck, role, lean or
+# mark
 task text-request
   take file, like text
   take text, like text
@@ -384,6 +397,7 @@ task text-request
       bind deck-of, no-deck
       bind role-of, no-role
       bind lean-of, no-lean
+      bind mark-of, no-mark
 
 # ---- host shapes the TypeScript phases still read ----
 
@@ -1190,6 +1204,7 @@ task given-of
     make driver-given
       bind deck-of, request/deck-of
       bind host-deck-of, entry-host-deck-of(request/deck-of)
+      bind mark-of, request/mark-of
       bind modules-url, entry-absent(0)
       bind emit-only, entry-absent(0)
       bind switches, state/switches

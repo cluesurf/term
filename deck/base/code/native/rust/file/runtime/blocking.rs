@@ -93,4 +93,52 @@ mod blocking {
             Err(_) => path,
         }
     }
+
+    // the path's own kind, links not followed (lstat), or "" when not even a link is there
+    pub fn kind_path(path: String) -> String {
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) => {
+                let kind = meta.file_type();
+
+                if kind.is_symlink() {
+                    "link".to_string()
+                } else if kind.is_dir() {
+                    "directory".to_string()
+                } else if kind.is_file() {
+                    "file".to_string()
+                } else {
+                    "other".to_string()
+                }
+            }
+            Err(_) => String::new(),
+        }
+    }
+
+    // rename(2): a file or an empty folder at `to` is replaced, as node's renameSync
+    pub fn rename_path(from: String, to: String) -> bool {
+        std::fs::rename(&from, &to).is_ok()
+    }
+
+    // rmdir(2), never recursive: a folder that holds anything, or a path that is not a folder, is refused
+    pub fn remove_folder_path(path: String) -> bool {
+        std::fs::remove_dir(&path).is_ok()
+    }
+
+    // a symbolic link with the target written as given. Windows has no junction in std, so it is a folder link there,
+    // which needs the privilege a junction does not
+    pub fn link_path(target: String, at: String) -> bool {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&target, &at).is_ok()
+        }
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_dir(&target, &at).is_ok()
+        }
+    }
+
+    // the whole text as UTF-8, the file made or cut, as node's writeFileSync
+    pub fn write_path(path: String, body: String) -> bool {
+        std::fs::write(&path, body.as_bytes()).is_ok()
+    }
 }

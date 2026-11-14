@@ -11,6 +11,12 @@
 # decided here in Term before the binding runs, as [../file.tree](../file.tree) does for `read`: node threw its own
 # error and the other three read a missing file as the empty text. `exists` never raises.
 #
+# `path-kind` asks the path itself with links not followed, so a link to nothing is a `link`, and it raises `absence`
+# only when not even a link is there. The four that change the disk (`rename-path`, `remove-empty-folder`,
+# `make-folder-link`, `write-path`) never raise: each answers whether it was made, so a caller that tries and carries
+# on (the toolchain's home-folder move, which must not fail a command's start) needs no guard. Added by item 1439 for
+# deck/call's work/small/home-folder.tree, which settles `.base/@term/code` on every command's start and cannot wait.
+#
 # Browser: there is no file system there, so this module has no browser binding.
 
 mark unstable
@@ -21,6 +27,11 @@ load @term/base/native/{platform}/file/blocking
   find blocking-stat
   find blocking-list
   find blocking-real
+  find blocking-kind
+  find blocking-rename
+  find blocking-remove-folder
+  find blocking-link
+  find blocking-write
 
 load @term/base/exception
   find absence
@@ -148,3 +159,69 @@ task resolve-real
   send back
     call blocking-real
       read path
+
+# the kind of the path itself, a symbolic link NOT followed (node's `lstat`): a link is `link` whatever it points at, a
+# link to nothing included. A path where not even a link is raises `absence`, its `thing` the path. The binding answers
+# the empty text for that, since `exists` follows links and would call a link to nothing absent
+task path-kind
+  take path, like text
+  like entry-kind
+  save raw
+    call blocking-kind
+      read path
+  fork test
+    hook test
+      call is-equal
+        read raw
+        text <>
+    hook hold
+      halt absence
+        bind thing, read path
+  send back
+    call from-text
+      read raw
+      make other
+
+# one rename of `from` to `to` (node's `renameSync`, atomic on one file system): a file at `to` or an empty folder there
+# is replaced. True when it was made. A missing `from`, a folder at `to` that is not empty, another file system or a
+# refusal answers false and changes nothing
+task rename-path
+  take from, like text
+  take to, like text
+  like boolean
+  send back
+    call blocking-rename
+      read from
+      read to
+
+# one EMPTY folder removed (node's `rmdirSync`, never recursive): true when it was. A folder that holds anything, a
+# file, a link or nothing at all answers false and is left as it is
+task remove-empty-folder
+  take path, like text
+  like boolean
+  send back
+    call blocking-remove-folder
+      read path
+
+# a link at `at` to the folder `target` (node's `symlinkSync` with the `junction` type): a symbolic link, its target
+# written as given (a relative target is read from the link's own folder), and on Windows a junction, whose target
+# must be absolute. True when it was made. A path already at `at` answers false
+task make-folder-link
+  take target, like text
+  take at, like text
+  like boolean
+  send back
+    call blocking-link
+      read target
+      read at
+
+# the whole file written as UTF-8 text (node's `writeFileSync`), made when it is not there and cut to the new text when
+# it is. True when it was written. A missing folder or a refusal answers false
+task write-path
+  take path, like text
+  take body, like text
+  like boolean
+  send back
+    call blocking-write
+      read path
+      read body

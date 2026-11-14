@@ -7,7 +7,8 @@
 // both. The tasks answer what they were handed as the exit code (greet its times, count its word count), so a call is
 // witnessed by its handed values. Only the refusal's clock (time of day and elapsed time) is masked. The emitted
 // program reaches no compiler module (item 0160), and the Rust binary spawns neither stty nor date before a call route
-// or the version runs (decision 149, item 1273).
+// or the version runs (decision 149, item 1273). The deck has a mark, so --version prints it on both (the lowering
+// reads it through the compiler's deck lookup, item 1173).
 // Run: npx tsx test/compile/console-native.ts
 
 import { spawnSync } from 'node:child_process'
@@ -74,7 +75,8 @@ const out = mkdtempSync(join(tmpdir(), 'term-console-native-'))
 const project = join(out, 'project')
 mkdirSync(join(project, 'code'), { recursive: true })
 mkdirSync(join(project, 'link', '@term'), { recursive: true })
-writeFileSync(join(project, 'deck.tree'), 'deck @probe/tool\n')
+const MARK = '1.2.3'
+writeFileSync(join(project, 'deck.tree'), `deck @probe/tool\n  mark <${MARK}>\n`)
 writeFileSync(join(project, 'code', 'base.tree'), CONSOLE)
 for (const name of ['base', 'call']) symlinkSync(join(TERM, 'deck', name), join(project, 'link', '@term', name))
 const cwd = join(out, 'cwd')
@@ -126,11 +128,10 @@ if (cargo.status !== 0) {
   }
 }
 
-// --version is item 1173's (the mark a lowered console is built with), so it is not asked here. Each line's exit code
-// is node's as it answers today; a global flag before the command (-q) is only compared, never pinned, since its
-// answer is the node dispatcher's and no item here decides it
+// Each line's exit code is node's as it answers today; a global flag before the command (-q) is only compared, never
+// pinned, since its answer is the node dispatcher's and no item here decides it. --version answers the deck's mark
 const lines: [string[], number | null][] = [
-  [['--help'], 0], [['-h'], 0], [['greet', '--help'], 0], [['count', '--help'], 0], [[], 2],
+  [['--version'], 0], [['--help'], 0], [['-h'], 0], [['greet', '--help'], 0], [['count', '--help'], 0], [[], 2],
   [['frobnicate'], 2], [['gret'], 2], [['greet'], 2], [['greet', 'bob', '--times', 'x'], 2], [['greet', 'bob', '--zzz'], 2],
   [['greet', 'bob'], 1], [['greet', 'bob', '--times', '3'], 3], [['-q', 'greet', 'bob', '--times', '5'], null],
   [['greet', '--name', 'al', '--times', '7'], 7],
@@ -151,8 +152,10 @@ if (boot.status === 0) {
     const shown = words.length ? words.join(' ') : '(bare)'
     const n = runOne(['node', nodeRun], words)
     if (code !== null) ok(`node: ${shown} exits ${code}`, n.code === code, `exit ${n.code}\n${n.out}${n.err}`)
+    if (shown === '--version') ok(`node: --version prints the mark ${MARK}`, n.out.includes(MARK), n.out)
     if (!rustBin) continue
     const r = runOne([rustBin], words)
+    if (shown === '--version') ok(`rust: --version prints the mark ${MARK}`, r.out.includes(MARK), r.out)
     ok(`rust: ${shown} exit equals node's`, r.code === n.code, `node ${n.code}, rust ${r.code}`)
     ok(`rust: ${shown} stdout equals node's`, r.out === n.out, `node:\n${n.out}\nrust:\n${r.out}`)
     ok(`rust: ${shown} stderr equals node's`, r.err === n.err, `node:\n${n.err}\nrust:\n${r.err}`)

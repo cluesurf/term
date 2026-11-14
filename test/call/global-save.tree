@@ -4,7 +4,8 @@
 # must keep byte for byte (zone's binding lives at ~/.base/@term/zone/zone.tree). HOME points into a temporary
 # folder, TERM_STORE and TERM_TRUST_DIR beside it, and the registry is this process's own (deck/deck/test/oci-server.tree),
 # holding @alice/demo 1.0.2, a deck whose `line` names its console. So no real home, store, key, token or registry is
-# read. The user manifest routes the alice scope to the registry with a base line, written before the first save.
+# read. The user manifest routes the alice scope to the registry with a base line, written before the first save. The
+# version is published as OCI format v2 by oci/oci-publishing.tree (item term-self-host-001-1290).
 
 load @term/call/work/small/global-saving
   find call-save-global
@@ -25,13 +26,26 @@ load @term/base/environment
 load ../support/temp
   find temp-folder
 
+load @term/deck/oci/oci-publishing
+  find publish-to-oci
+
+load @term/deck/object/id-signing
+  find generate-keypair
+
 dock load
   load <node:fs>, name saving-file
   load <node:path>, name saving-path
-  load <@term/deck/code/oci/layout>, name saving-layout
-  load <@term/deck/code/oci/publish>, name saving-publish
   load <@term/deck/code/oci/transport>, name saving-transport
-  load <@term/deck/code/object/sign>, name saving-sign
+
+bind saving-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind saving-no-links
+  like dynamic
+  case node
+    text <[]>
 
 bind saving-folder-options
   take seed, like number
@@ -65,32 +79,10 @@ form saving-transport-ask
   link credentials, like dynamic
   link retries, like number
 
-form saving-target
-  link kind, like text
-  link version, like text
-
 form saving-repository
   link host, like text
   link namespace, like text
   link name, like text
-
-form saving-layout-ask
-  link dir, like text
-
-form saving-publish-ask
-  link dir, like text
-  link package, like text
-  link version, like text
-  link target, like saving-target
-  link link, like list, like text
-  link transport, like dynamic
-  link repository, like saving-repository
-  link scope, like text
-  link keys-repository, like text
-  link local, like dynamic
-  link keypair, like dynamic
-  link author, like text
-  link time, like text
 
 form saving-kept
   link name, like text
@@ -128,12 +120,8 @@ task open-saving
   saving-file/write-file-sync(saving-path/join(source, <deck.tree>), <deck @alice/demo\n  mark \<1.0.2\>\n  line ./code/line\n>)
   saving-file/write-file-sync(saving-path/join(source, <code>, <line>, <base.tree>), <hook demo\n  task show\n>)
   host transport, saving-transport/http-transport(make(saving-transport-ask, bind(host, server/host), bind(credentials, saving-credentials), bind(retries, 0)))
-  host local, saving-layout/layout-object-store(make(saving-layout-ask, bind(dir, saving-path/join(work, <publisher>))))
-  host target, make(saving-target, bind(kind, <version>), bind(version, <1.0.2>))
   host repository, make(saving-repository, bind(host, server/host), bind(namespace, <alice>), bind(name, <alice/demo>))
-  host links, make list
-  host asked, make(saving-publish-ask, bind(dir, source), bind(package, <@alice/demo>), bind(version, <1.0.2>), bind(target, target), bind(link, links), bind(transport, transport), bind(repository, repository), bind(scope, <@alice>), bind(keys-repository, <alice/name>), bind(local, local), bind(keypair, saving-sign/generate-keypair()), bind(author, <alice>), bind(time, <2026-01-01T00:00:00.000Z>))
-  host published, wait saving-publish/publish-to-oci(asked)
+  host published, publish-to-oci(source, <@alice/demo>, <1.0.2>, saving-no-links(), transport, repository, <@alice>, <alice/name>, generate-keypair(), saving-nothing(), saving-nothing(), saving-nothing(), saving-nothing())
   host base, saving-path/join(work, <home>, <.base>)
   saving-file/mkdir-sync(base, saving-folder-options(0))
   # the package's folder is already there, holding the user's own file, as ~/.base/@term/zone holds zone.tree

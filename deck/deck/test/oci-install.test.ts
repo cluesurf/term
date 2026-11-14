@@ -1,20 +1,25 @@
 // `term load` end to end over OCI: a project whose deck.tree routes a third-party scope to its own registry with a
 // `host` group, installed through `install()` exactly as the CLI runs it, then again offline from the store alone.
+// The version is published as OCI format v2 by the oci-publishing port (item term-self-host-001-1290), positionally:
+// publish-to-oci(dir, package, version, link, transport, repository, scope, keys-repository, keypair, annotations,
+// include, concurrency, log).
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
 
+import * as publishing from '@term/deck/code/oci/oci-publishing'
+import * as signing from '@term/deck/code/object/id-signing'
 import { install, hostScopeRegistries } from '../code/package/install'
 import { loadLockfile } from '../code/package/lock'
 import { parseManifest, writeManifest } from '../code/package/manifest'
 import { ociRouteOf } from '../code/oci/client'
-import { generateKeypair } from '../code/object/sign'
-import { layoutObjectStore } from '../code/oci/layout'
-import { publishToOci } from '../code/oci/publish'
 import { httpTransport } from '../code/oci/transport'
 import { startOciServer, type OciServer } from './oci-server'
+
+const publishToOci = (publishing as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)['publishToOci']!
+const generateKeypair = (signing as unknown as Record<string, () => unknown>)['generateKeypair']!
 
 describe('term load over OCI', () => {
   let server: OciServer
@@ -31,25 +36,25 @@ describe('term load over OCI', () => {
     await fs.mkdir(path.join(source, 'code'), { recursive: true })
     await fs.writeFile(path.join(source, 'code', 'demo.ts'), 'export const demo = 1\n')
 
-    await publishToOci({
-      dir: source,
-      package: '@alice/demo',
-      version: '1.0.2',
-      target: { kind: 'version', version: '1.0.2' },
-      link: [],
-      transport: httpTransport({
+    await publishToOci(
+      source,
+      '@alice/demo',
+      '1.0.2',
+      [],
+      httpTransport({
         host: server.host,
         credentials: async () => ({ kind: 'basic', username: 'tester', password: 'secret' }),
         retries: 0,
       }),
-      repository: { host: server.host, namespace: 'alice', name: 'alice/demo' },
-      scope: '@alice',
-      keysRepository: 'alice/name',
-      local: layoutObjectStore({ dir: path.join(work, 'publisher') }),
-      keypair: generateKeypair(),
-      author: 'alice',
-      time: '2026-01-01T00:00:00.000Z',
-    })
+      { host: server.host, namespace: 'alice', name: 'alice/demo' },
+      '@alice',
+      'alice/name',
+      generateKeypair(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    )
   })
 
   afterAll(async () => {

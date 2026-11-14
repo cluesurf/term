@@ -6,7 +6,8 @@ note <install-into: the one install, into a project's link folder or, given none
 # `write-link` adds the link and `install-into` installs it with no link folder and the user folder as the store: the
 # release is unpacked at `<user>/@alice/demo/code/1.0.2`, as term keeps its own, the folder stays real and the user's
 # file is kept byte for byte, beside lock.tree, and no `link/` folder is made. `drop-link` takes the line out again.
-# TERM_STORE and TERM_TRUST_DIR point into the test's own folder, so no real home, store or key is read.
+# TERM_STORE and TERM_TRUST_DIR point into the test's own folder, so no real home, store or key is read. The registry's
+# version is published as OCI format v2 by oci/oci-publishing.tree (item term-self-host-001-1290).
 
 load ./oci-server
   find start-oci-server
@@ -21,6 +22,12 @@ load ../code/package/installing
 load ../code/package/grammar-reading
   find make-grammars
 
+load ../code/oci/oci-publishing
+  find publish-to-oci
+
+load ../code/object/id-signing
+  find generate-keypair
+
 load @term/base/environment
   find variable, name variable-of
   find has-variable
@@ -31,10 +38,17 @@ dock load
   load <node:fs>, name global-file
   load <node:os>, name global-os
   load <node:path>, name global-path
-  load <@term/deck/code/oci/layout>, name global-layout
-  load <@term/deck/code/oci/publish>, name global-publish
   load <@term/deck/code/oci/transport>, name global-transport
-  load <@term/deck/code/object/sign>, name global-sign
+
+bind global-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind global-no-links
+  like dynamic
+  case node
+    text <[]>
 
 bind global-folder-options
   take seed, like number
@@ -63,32 +77,10 @@ form global-transport-ask
   link credentials, like dynamic
   link retries, like number
 
-form global-target
-  link kind, like text
-  link version, like text
-
 form global-repository
   link host, like text
   link namespace, like text
   link name, like text
-
-form global-layout-ask
-  link dir, like text
-
-form global-publish-ask
-  link dir, like text
-  link package, like text
-  link version, like text
-  link target, like global-target
-  link link, like list, like text
-  link transport, like dynamic
-  link repository, like global-repository
-  link scope, like text
-  link keys-repository, like text
-  link local, like dynamic
-  link keypair, like dynamic
-  link author, like text
-  link time, like text
 
 form global-kept
   link name, like text
@@ -124,12 +116,8 @@ task open-global
   global-file/mkdir-sync(global-path/join(source, <code>), global-folder-options(0))
   global-file/write-file-sync(global-path/join(source, <code>, <demo.ts>), global-demo-text)
   host transport, global-transport/http-transport(make(global-transport-ask, bind(host, server/host), bind(credentials, global-credentials), bind(retries, 0)))
-  host local, global-layout/layout-object-store(make(global-layout-ask, bind(dir, global-path/join(work, <publisher>))))
-  host target, make(global-target, bind(kind, <version>), bind(version, <1.0.2>))
   host repository, make(global-repository, bind(host, server/host), bind(namespace, <alice>), bind(name, <alice/demo>))
-  host links, make list
-  host asked, make(global-publish-ask, bind(dir, source), bind(package, <@alice/demo>), bind(version, <1.0.2>), bind(target, target), bind(link, links), bind(transport, transport), bind(repository, repository), bind(scope, <@alice>), bind(keys-repository, <alice/name>), bind(local, local), bind(keypair, global-sign/generate-keypair()), bind(author, <alice>), bind(time, <2026-01-01T00:00:00.000Z>))
-  host published, wait global-publish/publish-to-oci(asked)
+  host published, publish-to-oci(source, <@alice/demo>, <1.0.2>, global-no-links(), transport, repository, <@alice>, <alice/name>, generate-keypair(), global-nothing(), global-nothing(), global-nothing(), global-nothing())
   host user, global-path/join(work, <user>)
   global-file/mkdir-sync(user, global-folder-options(0))
   global-file/write-file-sync(global-path/join(user, <deck.tree>), <deck global\n  mark \<0.0.0\>\n  base alice, \<{server/host}/alice\>\n>)

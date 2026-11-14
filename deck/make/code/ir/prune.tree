@@ -27,13 +27,17 @@
 
 load @term/base/list
   find list
+  find get
 
 load @term/base/text
   find contains
+  find split
 
 load ../compile/node
   find statement
   find native-kind
+  find expression
+  find statement-span
 
 load ../compile/node-reach
   find reach-statements
@@ -221,6 +225,403 @@ task binding-finds
               save seen/{found/name}, true
               push(out, found/name)
   back out
+
+# ---- the shake of a console lowered for Rust (decision 109 rule 1, item term-self-host-001-0800) ----
+#
+# A console compile/console-lower.tree lowered for Rust is entered at its `run` alone, and its routes are already its
+# table and its match, so its shake drops more than definitions: a dock, a bind or a module-level value no kept
+# statement names goes too, and so does every route dock. The Rust emitter writes nothing for a route dock, and a
+# module value on Rust is built on its first read, so one nobody reads never ran. Without this every `dock load` of the
+# closure stayed and seeded the search, and rustc read the docks and the closures of the verbs the match forwards.
+
+# whether a console's shake may drop a statement: a definition, a dock, a bind, a module value or a route dock
+task is-console-prunable
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      back true
+    case record-type
+      back true
+    case native
+      back true
+    case bind
+      back true
+    case let
+      back true
+    case dock
+      back true
+    miss
+      back false
+
+# every name a statement defines, as a console's shake and the console lowering reach it: a task's (and its form's,
+# for a method), a form's and each of its cases', a dock's alias, a bind's, a module value's. None for anything else
+task console-defined-names
+  take one, like statement
+  like list, like text
+
+  save out, make list
+  sift one
+    case function
+      push(out, name)
+      sift method
+        case some
+          link owner
+          push(out, owner/name)
+        case none
+          save nothing, 0
+    case record-type
+      push(out, name)
+      walk variants
+        take variant
+        push(out, variant/name)
+    case native
+      push(out, alias)
+    case bind
+      push(out, name)
+    case let
+      push(out, name)
+    miss
+      save nothing, 0
+  back out
+
+# every name a statement mentions, anywhere inside it, as the shake reads it, and for a path such as `os/hostname` (a
+# dock's task) its first part too, the dock's alias
+task console-mentions
+  take one, like statement
+  like list, like text
+
+  save out, make list
+  walk names-of(one)
+    take name
+    push(out, name)
+    fork test, contains(name, </>)
+      hold
+        save parts, split(name, </>)
+        save head, get(parts, 0)
+        push(out, head)
+  back out
+
+# the names a statement binds inside itself: a task's parameters, its `save` locals, a walk's item and index, a match
+# arm's links, a guard's caught name and a closure's parameters. Inside the statement each shadows a definition of the
+# same name, so a variable of one of these names reads it and names no definition. (The gate's binding marks a
+# module-level value `local` too, so its `binding` cannot tell them apart.)
+task own-names
+  take reached-statements, like list, like statement
+  take reached-expressions, like list, like expression
+  like hash, like text, like boolean
+  mark private
+
+  save own, make hash
+  walk reached-statements
+    take each
+    sift each
+      case function
+        walk each/params
+          take param
+          save own/{param/name}, true
+      case let
+        save own/{each/name}, true
+      case for-each
+        save own/{each/item}, true
+        save index-name, each/index
+        save own/{index-name}, true
+      case match
+        walk each/cases
+          take arm
+          walk arm/binds
+            take bound
+            save own/{bound}, true
+      case guard
+        sift each/catch
+          case some
+            link caught
+            save own/{caught/name}, true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk reached-expressions
+    take each
+    sift each
+      case closure
+        walk each/params
+          take param
+          save own/{param/name}, true
+      miss
+        save nothing, 0
+  back own
+
+# THE CONSOLE'S REFERENCES, split by what each can name. A name read as a value (a variable, a call's task, a dock's
+# path) names a task, a dock, a bind or a module value; a name read as a type (a `like`, a `make`, a match arm, an
+# instance's mask and target) names a form or one of its cases. A field's, a parameter's or a local's name names
+# nothing. prune-to-reachable reads every name a statement holds as naming anything, which over a whole console keeps
+# almost all of it: the console's `run` named a form's case `run` (work/need/version-choice.tree), whose form named
+# the case `hold`, which named the verb `hold`, and so every verb's closure stayed (item 0800, 1,663 binds with no rust
+# case kept). Each key is `v:<name>` or `t:<name>`
+task console-references
+  take one, like statement
+  like list, like text
+
+  save single, make list
+  push(single, one)
+  save skip, make list
+  push(skip, <span>)
+  save reached, reach-statements(single, skip)
+  save own, own-names(reached/statements, reached/expressions)
+  save out, make list
+  walk reached/expressions
+    take each
+    sift each
+      case variable
+        # a parameter or a local names nothing: `note(note)` in a lean `make route` read the parameter `note`, which
+        # kept the verb `note` and the package manager behind it
+        fork test, own/has(each/name)
+          hold
+            turn next
+        push(out, <v:{each/name}>)
+        fork test, contains(each/name, </>)
+          hold
+            save parts, split(each/name, </>)
+            push(out, <v:{get(parts, 0)}>)
+      case call
+        # a method called on its receiver, `items/get(0)`, names the method by its bare name. A field read names nothing
+        sift each/callee
+          case member
+            link name
+            push(out, <v:{name}>)
+          miss
+            save nothing, 0
+      case record
+        push(out, <t:{each/name}>)
+        fork test, contains(each/name, </>)
+          hold
+            walk split(each/name, </>)
+              take part
+              push(out, <t:{part}>)
+      miss
+        save nothing, 0
+  walk reached/types
+    take each
+    sift each
+      case named
+        push(out, <t:{each/name}>)
+      miss
+        save nothing, 0
+  walk reached/statements
+    take each
+    sift each
+      case match
+        walk each/cases
+          take arm
+          push(out, <t:{arm/label}>)
+        walk each/exception-arms
+          take arm
+          push(out, <t:{arm/label}>)
+      case instance
+        push(out, <t:{each/mask}>)
+        push(out, <t:{each/target}>)
+        walk each/methods
+          take method
+          push(out, <v:{method}>)
+      case mask
+        walk each/methods
+          take method
+          push(out, <v:{method}>)
+      miss
+        save nothing, 0
+  back out
+
+# the keys a definition is reached by, `v:` for a value and `t:` for a form: a task by its name (a method by its bare
+# name and its form's too), a form by its name and each case's, a dock by its alias as either (a host type is read as a type), a bind and a
+# module value by name
+task console-definition-keys
+  take one, like statement
+  like list, like text
+
+  save out, make list
+  sift one
+    case function
+      push(out, <v:{one/name}>)
+      # a method is defined under its form's and its own name joined, and called by its bare name until the checker's
+      # receiver dispatch, after the shake (as prune-to-reachable indexes it)
+      sift one/method
+        case some
+          link owner
+          push(out, <v:{owner/name}>)
+          push(out, <t:{owner/form}>)
+        case none
+          save nothing, 0
+    case record-type
+      push(out, <t:{one/name}>)
+      walk one/variants
+        take variant
+        push(out, <t:{variant/name}>)
+    case native
+      push(out, <v:{one/alias}>)
+      push(out, <t:{one/alias}>)
+    case bind
+      push(out, <v:{one/name}>)
+    case let
+      push(out, <v:{one/name}>)
+    miss
+      save nothing, 0
+  back out
+
+# The program a lowered console keeps: what `roots` reach through console-references, where a dock, a bind and a module
+# value are definitions too, and every statement that is none of these. A root is read as both a value and a form
+task prune-console
+  take program, like list, like statement
+  take roots, like list, like text
+  like list, like statement
+
+  save state
+    make prune-state
+      bind index, make hash
+      bind reachable, make hash
+      bind queue, make list
+  walk program
+    take one
+    fork test, is-console-prunable(one)
+      hold
+        walk console-definition-keys(one)
+          take defined
+          index-definition(state, defined, one)
+  save rooted, make hash
+  walk roots
+    take root
+    save as-value, <v:{root}>
+    save as-form, <t:{root}>
+    push(state/queue, as-value)
+    push(state/queue, as-form)
+    save rooted/{as-value}, true
+    save rooted/{as-form}, true
+  walk program
+    take one
+    fork test, not(is-console-prunable(one))
+      hold
+        walk console-references(one)
+          take key
+          push(state/queue, key)
+  walk test
+    hook test, is-above(state/queue/length, 0)
+    hook hold
+      save key, state/queue/pop()
+      fork test, not(state/reachable/has(key))
+        hold
+          save state/reachable/{key}, true
+          fork test, state/index/has(key)
+            hold
+              walk state/index/get(key)
+                take definition
+                walk console-references(definition)
+                  take mentioned
+                  fork test, not(state/reachable/has(mentioned))
+                    hold
+                      push(state/queue, mentioned)
+  # what is kept but the docks, and every name each file's kept statements read
+  save keeps, make list
+  save file-reads, make hash
+  walk program
+    take one
+    save kept, true
+    fork test, is-console-prunable(one)
+      hold
+        save kept, false
+        walk console-definition-keys(one)
+          take defined
+          fork test, or(state/reachable/has(defined), rooted/has(defined))
+            hold
+              save kept, true
+    sift one
+      case native
+        save kept, false
+      miss
+        save nothing, 0
+    push(keeps, kept)
+    fork test, kept
+      hold
+        save file, statement-file(one)
+        walk console-references(one)
+          take key
+          save read-key, <{file}|{key}>
+          save file-reads/{read-key}, true
+          save any-key, <*|{key}>
+          save file-reads/{any-key}, true
+  # A DOCK IS KEPT ONLY WHERE A KEPT STATEMENT READS IT, never for a root's name: as a value only in its own file (its
+  # alias is scoped to its module, and 18 deck/call modules dock @term/make/code/compile/native as `native-module`),
+  # and a `dock type` (a host type) as a type in any file, since other modules find it (file/watch.tree reads
+  # native/rust's `watch-dock`). A module dock read as a type is a form of the same name (compile/native-env.tree)
+  # A kept host type keeps every dock of its file: its path names the file's module dock (native/rust's
+  # `watch_file::Watcher` is the `watch-file` dock's)
+  save type-files, make hash
+  walk program
+    take one
+    sift one
+      case native
+        fork test, is-type-dock(one)
+          hold
+            save as-form, <*|t:{one/alias}>
+            fork test, file-reads/has(as-form)
+              hold
+                save type-file, statement-file(one)
+                save type-files/{type-file}, true
+      miss
+        save nothing, 0
+  save out, make list
+  save at, 0
+  walk program
+    take one
+    save kept, get(keeps, at)
+    save at, add(at, 1)
+    sift one
+      case native
+        save file, statement-file(one)
+        save as-value, <{file}|v:{one/alias}>
+        save kept, or(file-reads/has(as-value), type-files/has(file))
+      miss
+        save nothing, 0
+    fork test, kept
+      hold
+        push(out, one)
+  back out
+
+# whether a dock is a `dock type`, a host type other modules may find
+task is-type-dock
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case native
+      sift one/kind
+        case some
+          link written-kind
+          sift written-kind
+            case type
+              back true
+            miss
+              back false
+        case none
+          back false
+    miss
+      back false
+
+# the file a statement is written in, the empty text for none
+task statement-file
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
 
 # Return a program holding only the reachable `function` / `record-type` definitions, and every statement that is
 # neither, starting from `roots`

@@ -88,9 +88,6 @@ load @term/deck/oci/oci-failure
 load @term/deck/object/id-signing
   find generate-keypair
 
-load @term/deck/object/local-store
-  find local-object-store
-
 load @term/call/work/item/event
   find item-field
   find tally
@@ -151,22 +148,10 @@ bind is-https
   case node
     text <Boolean($value?.startsWith("https://"))>
 
-# `manifest.mind?.[0]?.name ?? 'unknown'`
-bind first-author
-  take manifest, like dynamic
-  like dynamic
-  case node
-    text <($manifest.mind?.[0]?.name ?? "unknown")>
-
 bind now-ms
   like number
   case node
     text <Date.now()>
-
-bind now-iso
-  like text
-  case node
-    text <new Date().toISOString()>
 
 bind parse-json
   take text, like dynamic
@@ -219,21 +204,18 @@ bind publish-clock
   case node
     text <(() =\> new Date())>
 
-# what every build of the artifact shares. `package` and `link` are the library's own keys
+# what every build of the artifact shares. `package` and `link` are the library's own keys. A version holds no time,
+# author or message (decision 154 section 1), so the same files under the same key build the same manifest
 bind common-of
   take dir, like dynamic
   take name, like text
   take version, like dynamic
   take links, like list, like dynamic
-  take local, like dynamic
-  take author, like dynamic
-  take time, like text
-  take message, like text
   take annotations, like dynamic
   take include, like list, like text
   like dynamic
   case node
-    text <(\{ dir: $dir, package: $name, version: $version, target: \{ kind: "version", version: $version \}, link: $links, local: $local, author: $author, time: $time, message: $message, annotations: $annotations, include: $include \})>
+    text <(\{ dir: $dir, package: $name, version: $version, link: $links, annotations: $annotations, include: $include \})>
 
 # a dependency as the signed config spells it: the JSON key `code` holds its constraint, which the signature covers
 bind link-of
@@ -588,8 +570,8 @@ task rotate-key-set
   report(make(rotate-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <rotate>), bind(subject, <key set of {route/scope}>), bind(duration, subtract(now-ms(), started)), bind(counts, counts), bind(facts, facts), bind(fields, fields)))
   close-run(make(plain-close, bind(verdict, <Key set rotated>)))
 
-# `--ping`: announce the version the registry already holds, and build and push nothing. A rebuild cannot repeat a
-# push that landed, because a build carries its own time, so it is a new digest under a write-once tag
+# `--ping`: announce the version the registry already holds, and build and push nothing. A rebuild of changed files
+# cannot repeat a push that landed: it is a new digest under a write-once tag
 task ping-held
   take name, like text
   take version, like dynamic
@@ -638,19 +620,14 @@ task build-dry
     hold
       save keypair, generate-keypair()
   save started, now-ms()
-  # the chunking is the port's own when none is given, as the face passed none
-  save built, build-oci-artifact(common/dir, common/package, common/version, common/target, common/link, common/local, keypair, common/author, common/time, common/message, nothing(), common/annotations, common/include)
-  save release, built/release
+  save built, build-oci-artifact(common/dir, common/package, common/version, common/link, keypair, common/annotations, common/include)
   save artifact, built/artifact
   save target, <{route/registry/host}/{route/repository/name}:{artifact/config/tag}>
   save counts, make list
-  counts/push(count(release/files/length, <files>, <file>))
-  counts/push(count(release/closure/length, <objects>, <object>))
-  counts/push(count(artifact/packed, <packed>))
-  counts/push(count(artifact/files/packs/length, <packs>, <pack>))
-  counts/push(count(artifact/loose, <loose>))
+  counts/push(count(artifact/entries, <entries>, <entry>))
+  counts/push(count(1, <layers>, <layer>))
   save fields, make list
-  fields/push(field(<commit>, release/commit))
+  fields/push(field(<archive>, <{artifact/archive/size} B>))
   fields/push(field(<digest>, artifact/digest))
   report(make(build-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <{name}@{version}>), bind(duration, subtract(now-ms(), started)), bind(bytes, artifact/manifest/length), bind(counts, counts), bind(fields, fields)))
   save said, <There is no term.surf token (TERM_TOKEN or the auth file), so the ping would be anonymous.>
@@ -674,8 +651,8 @@ task push-version
   save keypair, load-publish-keypair(make(mint-ask, bind(mint, true)))
   save started, now-ms()
   save transport, transport-for(route/registry/host, false)
-  # no chunking, concurrency or referrer choice is given, so each is the port's own, as the face passed none
-  save result, publish-to-oci(common/dir, common/package, common/version, common/target, common/link, transport, route/repository, route/scope, route/keys-repository, common/local, keypair, common/author, common/time, common/message, nothing(), common/annotations, common/include, nothing(), nothing(), push-log)
+  # no concurrency is given, so it is the port's own
+  save result, publish-to-oci(common/dir, common/package, common/version, common/link, transport, route/repository, route/scope, route/keys-repository, keypair, common/annotations, common/include, nothing(), push-log)
   fork test, is-truthy(result/unchanged)
     hold
       report(make(skip-item, bind(glyph, <skipped>), bind(verb, <push>), bind(subject, <{name}@{version}>), bind(duration, subtract(now-ms(), started)), bind(facts, one-text(<already published>)), bind(fields, one-field(field(<digest>, result/digest)))))
@@ -737,7 +714,6 @@ task publish
           # the fields callBoot was not handed are undefined, as they were
           call-boot(make(boot-ask, bind(root, root), bind(mode, nothing()), bind(entry, entry), bind(env, nothing()), bind(port, nothing()), bind(remote, nothing()), bind(remote-token, nothing()), bind(args, nothing()), bind(out, node-path/join(root, <host>, <line>))))
           include/push(<host/line>)
-  save local, local-object-store()
   save links, make list
   walk manifest/link
     take dependency
@@ -754,7 +730,7 @@ task publish
   walk annotations-of(text-or-empty(source), text-or-empty(manifest/lock), text-or-empty(manifest/head), list-or-empty(manifest/make))
     take one
     entries/push(pair-of(one/key, one/value))
-  save common, common-of(root, name, version, links, local, first-author(manifest), now-iso(), <{name} {version}>, record-of(entries), include)
+  save common, common-of(root, name, version, links, record-of(entries), include)
   fork test, input/dryRun
     hold
       build-dry(name, version, route, common)

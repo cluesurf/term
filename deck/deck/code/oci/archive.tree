@@ -5,14 +5,16 @@
 #   write-archive(entries)        the POSIX ustar bytes: every entry in path order, then two zero blocks
 #   read-archive(bytes, limit)    the entries back, every rule below checked, no file over `limit` bytes in all
 #   pack-archive(entries)         write-archive, gzipped by @term/base/gzip (the same bytes on every backend)
-#   unpack-archive(bytes, limit)  gunzipped, then read-archive
+#   unpack-archive(bytes, limit)  gunzipped under a bound (gunzip-within), then read-archive
 #
 # An entry is a host record { path, kind, executable, bytes }: `kind` is `file` or `directory`, `path` is relative and
 # written with `/`, a directory's without the trailing slash, `bytes` a Buffer (empty for a directory).
 #
 # THE PATH RULES, held the same way on both sides, so an archive this writes is one it reads, and a hostile one writes
 # nowhere outside the version's folder: a path is not empty, is at most 255 bytes of UTF-8, does not start with `/`,
-# holds no `\` and no `:`, and no segment of it is empty, `.` or `..`. Two entries never share a path.
+# holds no `\` and no `:`, and no segment of it is empty, `.` or `..`. Two entries never share a path. The path
+# `.term-digest` is the marker an install writes at the top of a version's folder (decision 154 section 3), so no archive
+# may carry or forge one.
 #
 # WHAT A READ REFUSES: a header whose checksum is wrong or whose magic is not `ustar\0` `00`, any entry that is not a
 # regular file or a directory (a hard or symbolic link, a device, a fifo, a pax or GNU extension header), a size that
@@ -26,7 +28,7 @@ load ./oci-failure
 
 load @term/base/gzip
   find gzip
-  find gunzip
+  find gunzip-within
 
 bind archive-nothing
   like dynamic
@@ -260,6 +262,20 @@ bind archive-kind-word
   case node
     text <<({ 49: "hard link", 50: "symbolic link", 51: "character device", 52: "block device", 54: "fifo", 55: "contiguous file", 120: "pax header", 103: "pax global header", 76: "GNU long name", 75: "GNU long link" })[$flag] ?? `entry of type ${$flag}`>>
 
+# whether a caught gunzip refusal is the output bound, not a malformed stream (gzip-mismatch's reason, @term/base/gzip)
+bind archive-passed-limit
+  take problem, like dynamic
+  like boolean
+  case node
+    text <<String($problem?.link?.reason ?? "").startsWith("the output passes the limit")>>
+
+# the marker an install writes at the top of a version's folder, holding the manifest digest (decision 154 section 3).
+# Refused as an archive path on write and on read
+task archive-marker
+  like text
+
+  back <.term-digest>
+
 # the path rules (see the head of this file). Raises oci-failure naming the path and the rule it breaks
 task check-archive-path
   take path, like text
@@ -282,6 +298,10 @@ task check-archive-path
     hold
       halt oci-failure
         bind thing, <archive path {path} holds a backslash or a colon>
+  fork test, is-equal(path, archive-marker())
+    hold
+      halt oci-failure
+        bind thing, <archive path {path} is the install marker, which no package carries>
   save segments, archive-segments(path)
   save count, archive-length(segments)
   save at, 0
@@ -532,16 +552,30 @@ bind archive-without-slash
   case node
     text <$path.slice(0, -1)>
 
-# the entries as the artifact's one layer: ustar, gzipped the same on every backend
+# the entries as the artifact's one layer: ustar, gzipped the same on every backend. gzip calls @term/base/bit, a dock
+# of the bit shim on rust, swift and kotlin, so there it can raise failure (decision 014 of term/compiler), which this
+# signature does not carry: the guard turns it into oci-failure. Only gzip is guarded, so write-archive's own path
+# refusals pass through as they are (item term-self-host-001-1443)
 task pack-archive
   take entries, like dynamic
   like dynamic
   halt oci-failure
 
-  back archive-buffer(gzip(write-archive(entries)))
+  save tar, write-archive(entries)
+  save packed, archive-nothing()
+  fork
+    mark unsafe
+    save packed, archive-buffer(gzip(tar))
+  halt take
+    take problem
+    halt oci-failure
+      bind thing, <archive layer could not be gzipped>
+  back packed
 
-# the artifact's layer read back. The trailer's stated size is held to `limit` before anything is inflated, and the
-# inflated bytes after, since a hostile writer can state a small size and inflate a large one
+# the artifact's layer read back. The trailer's stated size is held to `limit` first, a fast refusal, and the inflating
+# is bounded by gunzip-within, which stops the moment the output would pass the bound, since a hostile writer can state
+# a small size and inflate a large one (decision 154 section 4). The bound is `limit` of file data plus 1 MiB for the
+# headers and padding
 task unpack-archive
   take bytes, like dynamic
   take limit, like number
@@ -559,14 +593,19 @@ task unpack-archive
       halt oci-failure
         bind thing, <archive layer states {stated} bytes, over the limit of {room}>
   save raw, archive-nothing()
+  save over, false
   fork
     mark unsafe
-    save raw, archive-buffer(gunzip(bytes))
+    save raw, archive-buffer(gunzip-within(bytes, room))
   halt take
     take problem
-    halt oci-failure
-      bind thing, <archive layer is not gzip>
-  fork test, is-above(archive-length(raw), room)
+    fork test, archive-passed-limit(problem)
+      hold
+        save over, true
+      miss
+        halt oci-failure
+          bind thing, <archive layer is not gzip>
+  fork test, over
     hold
       halt oci-failure
         bind thing, <archive layer inflates past the limit of {room}>

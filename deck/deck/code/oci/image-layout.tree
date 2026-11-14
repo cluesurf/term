@@ -945,7 +945,9 @@ task layout-transport
 
 # Term's local object store, kept in an OCI layout's blob directory. An object id is its digest, so this is the same
 # `blobs/sha256/<hex>` file a registry transport over the layout reads. Every put is verified and atomic, and every
-# get is re-hashed, so a corrupted file on disk is refused rather than checked out
+# get is re-hashed, so a corrupted file on disk is refused rather than checked out. No install reads it since OCI format
+# v2 (item term-self-host-001-1290, decision 154): it stays only while oci-routing.tree's local-store answers
+# object/local-store.tree, and goes with object/ (item 1044)
 task layout-object-store
   take dir, like text
   like dynamic

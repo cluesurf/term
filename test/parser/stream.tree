@@ -1,0 +1,199 @@
+note <the streaming reader and the whole-file reader agree, on every .tree in the repository>
+
+# Ported from stream.ts by statement (item term-self-host-001-0676, decision 116). The reader and the parser are the subject
+# (decision 106). A streaming reader is only worth having if it is the SAME reader: the groups walk-groups reports are held
+# against the top-level groups parse gives for the same file, each printed by the parser's own print-tree, so the compare is
+# on structure. Any disagreement is a second grammar (note/project/term/one-parser.md).
+#
+# Two more properties the unit decision rests on (note/project/term/feed/decision/tree-stream-unit.md): a consumer can stop
+# after any group and the reader does no work past it, and a source ending mid-construct yields kink, never end.
+#
+# The files are every .tree under deck/ and test/parser/file/ in the order the folders list them, node_modules, host and
+# dot entries left out, as the original walked them. A file the parser refuses has no groups to agree about and is left
+# out, as the original skipped it: the walked test holds one case per file that parses.
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/parser/stream>, name parser-stream
+  load <node:fs>, name stream-fs
+  load <node:path>, name stream-path
+
+load @term/base/text
+  find ends-with
+  find starts-with
+
+load @term/base/list
+  find list
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+# one group as print-tree prints a whole tree, so the two sides compare directly
+form printed-root
+  link kind, like text
+  link nodes, like list, like dynamic
+
+task shape-of
+  take group, like dynamic
+  like text
+
+  back parser-tree/print-tree(make(printed-root, bind(kind, <root>), bind(nodes, make list(group))))
+
+task is-folder
+  take path, like text
+  like boolean
+
+  host status, stream-fs/stat-sync(path)
+  back status/is-directory()
+
+# every .tree under a folder, in the order the folder lists them
+task tree-files-under
+  take folder, like text
+  take out, like list, like text
+  like void
+
+  fork test, not(stream-fs/exists-sync(folder))
+    hold
+      back
+  walk stream-fs/readdir-sync(folder)
+    take entry, like text
+    fork test, or(or(is-equal(entry, <node_modules>), is-equal(entry, <host>)), starts-with(entry, <.>))
+      hold
+        turn next
+    host path, stream-path/join(folder, entry)
+    fork test, is-folder(path)
+      hold
+        tree-files-under(path, out)
+        turn next
+    fork test, ends-with(entry, <.tree>)
+      hold
+        out/push(path)
+
+task text-of
+  take file, like text
+  like text
+
+  back stream-fs/read-file-sync(file, <utf8>)
+
+# the files the parser reads whole, the ones the original went on to compare, each with what its stream said against its
+# whole parse, read once
+form compared
+  mark shared
+  link files, like list, like text
+  link said, like hash, like text, like text
+
+task compare-files
+  take seed, like number
+  like compared
+
+  host all, make list
+  tree-files-under(<deck>, all)
+  tree-files-under(<test/parser/file>, all)
+  host out, make(compared, bind(files, make list), bind(said, make hash))
+  walk all
+    take file, like text
+    host text, text-of(file)
+    host whole, parser-tree/parse(source-of(file, text))
+    fork test, whole/ok
+      hold
+        out/files/push(file)
+        save out/said/{file}, disagreement-of(file, text, whole)
+  back out
+
+host held, compare-files(0)
+host parsed, held/files
+
+# what one stream reported: the kind of each result in order, and each group printed
+form streamed
+  link kinds, like list, like text
+  link shapes, like list, like text
+
+# the stream of a text; with `stop` the consumer answers false to the first result and takes nothing more
+task stream-of
+  take file, like text
+  take text, like text
+  take stop, like boolean
+  like streamed
+
+  host kinds, make list
+  host shapes, make list
+  call parser-stream/walk-groups
+    source-of(file, text)
+    task
+      take result, like dynamic
+      like boolean
+      kinds/push(result/kind)
+      fork test, is-equal(result/kind, <group>)
+        hold
+          shapes/push(shape-of(result/group))
+      back not(stop)
+  back make(streamed, bind(kinds, kinds), bind(shapes, shapes))
+
+task holds-kind
+  take kinds, like list, like text
+  take kind, like text
+  like boolean
+
+  walk kinds
+    take one, like text
+    fork test, is-equal(one, kind)
+      hold
+        back true
+  back false
+
+# what the stream of a file that parses whole says against the whole parse: <> when they agree, else the first difference,
+# as the original's three failures: streamed as truncated, a different number of groups, a group that is not identical
+task disagreement-of
+  take file, like text
+  take text, like text
+  take whole, like dynamic
+  like text
+
+  host seen, stream-of(file, text, false)
+  fork test, holds-kind(seen/kinds, <kink>)
+    hold
+      back <parses whole, so it must not stream as truncated>
+  host whole-shapes, make list
+  walk whole/tree/nodes
+    take group, like dynamic
+    whole-shapes/push(shape-of(group))
+  fork test, not(is-equal(seen/shapes/length, whole-shapes/length))
+    hold
+      back <streamed {seen/shapes/length} groups, whole {whole-shapes/length}>
+  save at, 0
+  walk whole-shapes
+    take shape, like text
+    fork test, not(is-equal(get(seen/shapes, at), shape))
+      hold
+        back <group {add(at, 1)} is not identical\n--- streamed ---\n{get(seen/shapes, at)}\n--- whole ---\n{shape}>
+    save at, add(at, 1)
+  back <>
+
+test <the stream gives the same groups as the whole parse>
+  take file, like text
+    walk parsed
+  want hold, is-equal(held/said/{file}, <>)
+
+test <more than 500 files compared>
+  want hold, is-above(parsed/length, 500)
+
+# STOPPING EARLY: counting what the consumer was handed proves it, since a reader that ignored the stop would hand all three
+# groups and still pass a test that looked only at the first
+test <a consumer can take one group and stop>
+  host taken, stream-of(<x.tree>, <load @term/base/code/list\n  find get\n\ntask a\n  call b\n\ntask c\n  call d\n>, true)
+  want hold, is-equal(taken/kinds, make list(<group>))
+  want hold, starts-with(get(taken/shapes, 0), <load>)
+
+test <a source ending mid-construct reports kink, not end>
+  host cut, stream-of(<x.tree>, <task a\n  save s, text \<unclosed\n>, false)
+  want hold, holds-kind(cut/kinds, <kink>)
+  want hold, not(holds-kind(cut/kinds, <end>))
+
+test <a file ending in a comment ends cleanly>
+  host commented, stream-of(<x.tree>, <task a\n  call b\n\n# a trailing note\n>, false)
+  want hold, holds-kind(commented/kinds, <end>)
+  want hold, not(holds-kind(commented/kinds, <kink>))

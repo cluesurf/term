@@ -1,6 +1,20 @@
 load @term/base/text
   find split
   find trim
+  find starts-with
+  find ends-with
+  find substring
+  find replace
+  find char-count
+
+load @term/base/text/number
+  find parse-integer
+  find parse-float
+
+load @term/base/float
+  find round-down
+  find is-finite
+  find to-number
 
 # `term halt [--port <list>]` -- stop running `term boot` servers: the ones on the ports listed, or without a list
 # this project's (every one, outside a project).
@@ -13,12 +27,11 @@ load @term/base/text
 load @term/call/work/small/halting
   find call-halt
 
-dock load
-  load <global:global>, name host-global
-
-# line.ts: `String(port).split(',').map(p => Number(p.trim())).filter(p => Number.isInteger(p) && p > 0)`. JavaScript's
-# Number reads a port as line.ts did (`0x10` is 16, an empty entry is 0 and dropped). An empty list is what an
-# absent `--port` gives too: callHalt reads `ports?.length` (call-halt its length), so the two take one branch
+# line.ts: `String(port).split(',').map(p => Number(p.trim())).filter(p => Number.isInteger(p) && p > 0)`. An entry
+# is read as JavaScript's Number reads it, written once in Term so every backend agrees (item
+# term-self-host-001-1380): `0x10` is 16, `0o17` 15, `0b101` 5, `+80` and `8e1` and `80.` and `80.0` are 80, and an
+# empty entry, a sign before a radix prefix, a fraction or anything else is dropped. An empty list is what an absent
+# `--port` gives too: callHalt reads `ports?.length` (call-halt its length), so the two take one branch
 task ports-of
   take port, like text
 
@@ -28,14 +41,11 @@ task ports-of
 
   walk split(port, <,>)
     take site, name entry
-    save value, host-global/Number(trim(entry))
+    save value, port-of(trim(entry))
     fork test
-      host-global/Number/isInteger(value)
+      is-above value, code 0
       hold
-        fork test
-          is-above value, code 0
-          hold
-            found/push(value)
+        found/push(value)
   back found
 
 task halt
@@ -45,3 +55,68 @@ task halt
   like void
 
   call-halt(ports-of(port))
+
+# the whole number JavaScript's Number(entry) answers, or 0 when it answers none (NaN, an infinity or a fraction)
+task port-of
+  take entry, like text
+  like number
+  mark private
+
+  fork test, or(starts-with(entry, <0x>), starts-with(entry, <0X>))
+    hold
+      back radix-port(substring(entry, 2), 16)
+  fork test, or(starts-with(entry, <0o>), starts-with(entry, <0O>))
+    hold
+      back radix-port(substring(entry, 2), 8)
+  fork test, or(starts-with(entry, <0b>), starts-with(entry, <0B>))
+    hold
+      back radix-port(substring(entry, 2), 2)
+  back decimal-port(entry)
+
+# the digits after a radix prefix, which JavaScript reads with no sign: anything parse-integer refuses is 0
+task radix-port
+  take digits, like text
+  take radix, like number
+  like number
+  mark private
+
+  fork test, or(starts-with(digits, <+>), starts-with(digits, <->))
+    hold
+      back 0
+  fork
+    mark unsafe
+    back parse-integer(digits, radix)
+  halt take
+    take problem
+    back 0
+
+# a decimal entry as JavaScript reads one: an optional sign, digits with an optional point (`80.`, `.5`) and an
+# optional exponent. parse-float reads the same grammar but for a leading `+` and a point with no digits on one side,
+# so those are written its way first. A whole finite answer is the number, anything else 0
+task decimal-port
+  take entry, like text
+  like number
+  mark private
+
+  save written, entry
+  fork test, starts-with(written, <+>)
+    hold
+      save written, substring(written, 1)
+  fork test, starts-with(written, <.>)
+    hold
+      save written, <0{written}>
+  save written, replace(written, <.e>, <e>)
+  save written, replace(written, <.E>, <E>)
+  fork test, ends-with(written, <.>)
+    hold
+      save written, substring(written, 0, subtract(char-count(written), 1))
+  fork
+    mark unsafe
+    save value, parse-float(written)
+    fork test, and(is-finite(value), is-equal(round-down(value), value))
+      hold
+        back to-number(value)
+    back 0
+  halt take
+    take problem
+    back 0

@@ -69,7 +69,7 @@ import {
   keepOverloadBound,
   overloadBound,
 } from '@term/make/code/check/overload'
-import type { Roll, RollEntry } from '@term/make/code/compile/roll'
+import type { DeckOf, Roll, RollEntry } from '@term/make/code/compile/roll'
 import type { Tally } from '@term/make/code/check/holds'
 import { checkerSwitches } from '@term/make/code/check/strict'
 import type { CoverTarget } from '@term/make/code/ir/cover'
@@ -337,14 +337,17 @@ function requestOf(
   const cache = options?.cache
   const cover = options?.cover
   const census = censusOf()
+  const deckOf: DeckOf | undefined = options?.deckOf
 
   return {
     file: source.file,
     source: some(source.text),
     resolver: none,
-    deckOf: deckTask(options?.deckOf),
+    deckOf: deckTask(deckOf),
     roleOf: (file: string) => options?.roleOf?.(file) ?? '',
     leanOf: (file: string) => options?.leanOf?.(file) ?? false,
+    // the mark of a file's deck, from the same lookup, as givenOf reads it: only a console's lowering asks (item 1173)
+    markOf: (file: string) => deckOf?.(file)?.mark ?? '',
     library: options?.library === true,
     optimize: options?.optimize !== false,
     env: options?.env ?? '',
@@ -740,14 +743,14 @@ function readingOf(options?: CompileOptions): CompileReading {
 // checker's switches, check/overload.ts's two tables (module state the checker reads after the gate), node identity,
 // ir/simplify.ts's host-global test and the run's state
 function givenOf(
-  deckOf:
-    | ((file: string) => { name: string; root: string } | undefined)
-    | undefined,
+  deckOf: DeckOf | undefined,
   modulesUrl: ((file: string) => string) | undefined,
   emitOnly: Set<string> | undefined,
 ): DriverGiven {
   return {
     deckOf: deckTask(deckOf),
+    // the mark of a file's deck, read from the same lookup, only when a console is lowered (item 1173)
+    markOf: (file: string) => deckOf?.(file)?.mark ?? '',
     hostDeckOf: deckOf,
     // the emitter spells an acronym word upper case (compile/program-driver.tree `modules-url`)
     modulesURL: modulesUrl,

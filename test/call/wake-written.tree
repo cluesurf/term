@@ -1,0 +1,123 @@
+note <term wake writes a new project's four files as before, keeps a file already there, and writes nothing over a deck.tree>
+
+# Item term-self-host-001-1437 moved work/small/scaffold.tree's folder, listing and write calls into binds with a case
+# for every backend, and its paths onto @term/base/path. The answers are what term wake wrote before that change, on
+# node: the texts are wake-files' own, the folder is the name trimmed under the root.
+
+load @term/call/work/small/scaffold
+  find call-wake
+
+load @term/call/wake-files
+  find deck-tree
+  find boot-tree
+  find readme
+  find gitignore
+
+load @term/base/file/temporary
+  find make, name make-temporary
+
+load @term/base/file/blocking
+  find read, name read-text-now
+  find exists, name on-disk
+
+load @term/base/file
+  find write, name store-text
+
+load @term/base/file/directory
+  find make, name ensure-folder
+  find remove, name remove-folder
+
+load @term/base/path
+  find join, name join-under
+  find file-name
+
+# a file's text, or `missing`
+task text-at
+  take place, like text
+  like text
+
+  fork test, on-disk(place)
+    hold
+      back read-text-now(place)
+  back <missing>
+
+# wake `name` in a new folder that already holds `held` (a file name, or the empty text for none) with the text
+# `mine`, and answer whether each of the four files reads as written, kept or missing, and whether test/ is there
+task woken
+  take name, like text
+  take folder, like text
+  take held, like text
+  like text
+  mark async
+
+  save root, make-temporary(<directory>, <wake->)
+  save target, root
+  fork test, is-unequal(folder, <>)
+    hold
+      save target, join-under(root, folder)
+  fork test, is-unequal(held, <>)
+    hold
+      ensure-folder(target)
+      store-text(join-under(target, held), <mine>)
+  call-wake(root, name)
+  save label, file-name(target)
+  save out, <>
+  save deck, text-at(join-under(target, <deck.tree>))
+  save out, <{out}deck {state-of(deck, deck-tree(label))}>
+  save boot, text-at(join-under(target, <code/boot.tree>))
+  save out, <{out}, boot {state-of(boot, boot-tree())}>
+  save read-me, text-at(join-under(target, <readme.md>))
+  save out, <{out}, readme {state-of(read-me, readme(label))}>
+  save ignore, text-at(join-under(target, <.gitignore>))
+  save out, <{out}, ignore {state-of(ignore, gitignore())}>
+  save tests, <no test folder>
+  fork test, on-disk(join-under(target, <test>))
+    hold
+      save tests, <test folder>
+  remove-folder(root)
+  back <{out}, {tests}>
+
+# `written` when the file holds what wake writes, `kept` when it holds `mine`, else `missing`
+task state-of
+  take found, like text
+  take wanted, like text
+  like text
+
+  fork test, is-equal(found, wanted)
+    hold
+      back <written>
+  fork test, is-equal(found, <mine>)
+    hold
+      back <kept>
+  back <missing>
+
+# wake a name under a plain file, which no folder can be made under: nothing written and the file left as it was
+task under-a-file
+  take name, like text
+  like text
+  mark async
+
+  save root, make-temporary(<directory>, <wake->)
+  store-text(join-under(root, <plain>), <mine>)
+  call-wake(root, <plain/{name}>)
+  save out, <{text-at(join-under(root, <plain>))} {text-at(join-under(root, <plain/{name}/deck.tree>))}>
+  remove-folder(root)
+  back out
+
+test <a named project gets its folder, four files and test/>
+  want hold, is-equal woken(<demo>, <demo>, <>), <deck written, boot written, readme written, ignore written, test folder>
+
+test <the name is trimmed as JavaScript trims it>
+  want hold, is-equal woken(<  spaced\t>, <spaced>, <>), <deck written, boot written, readme written, ignore written, test folder>
+
+test <no name scaffolds the folder the command ran in>
+  want hold, is-equal woken(<>, <>, <>), <deck written, boot written, readme written, ignore written, test folder>
+
+test <a readme already there is the author's and is kept>
+  want hold, is-equal woken(<demo>, <demo>, <readme.md>), <deck written, boot written, readme kept, ignore written, test folder>
+
+test <a deck.tree already there stops the scaffold before any write>
+  want hold, is-equal woken(<demo>, <demo>, <deck.tree>), <deck kept, boot missing, readme missing, ignore missing, no test folder>
+
+test <a folder that cannot be made writes nothing>
+  want hold, is-equal under-a-file(<sub>), <mine missing>

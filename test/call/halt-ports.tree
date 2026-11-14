@@ -1,0 +1,46 @@
+note <term halt reads --port as line.ts did: each comma-separated entry through JavaScript's Number, whole numbers above 0 kept>
+
+# The answers are node's own `String(port).split(',').map(p => Number(p.trim())).filter(p => Number.isInteger(p) && p
+# > 0)` on each input, so the suite holds every backend to it (item term-self-host-001-1380).
+
+load @term/call/work/halt
+  find ports-of
+
+# the ports read from `port`, each followed by a comma
+task ports-text
+  take port, like text
+  like text
+
+  save out, <>
+  walk ports-of(port)
+    take site, name each
+    save out, <{out}{each},>
+  back out
+
+task reads
+  take port, like text
+  take want, like text
+  like boolean
+
+  back is-equal(ports-text(port), want)
+
+test <one port>
+  want hold, reads(<80>, <80,>)
+
+test <two ports, spaces trimmed, an empty entry dropped>
+  want hold, and(reads(<80,443>, <80,443,>), and(reads(< 80 , 443 >, <80,443,>), reads(<80,,443>, <80,443,>)))
+
+test <nothing, zero and a negative are dropped>
+  want hold, and(reads(<>, <>), and(reads(<0>, <>), reads(<-5>, <>)))
+
+test <radix prefixes read as JavaScript reads them>
+  want hold, and(reads(<0x10,0X1f>, <16,31,>), reads(<0o17,0b101>, <15,5,>))
+
+test <a sign before a radix prefix, or a bare prefix, is dropped>
+  want hold, reads(<-0x10,+0x10,0x,0x-1>, <>)
+
+test <a plus sign, an exponent and a bare point>
+  want hold, reads(<+80,8e1,80.,80.0,.5e1,8.e1,007>, <80,80,80,80,5,80,7,>)
+
+test <fractions, words and infinities are dropped>
+  want hold, reads(<80.5,abc,Infinity,1e400,5e-1>, <>)

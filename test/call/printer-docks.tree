@@ -1,0 +1,59 @@
+note <the printer reaches the home folder, a file's lines, a tool's name and its crash log through @term/base>
+
+# Item term-self-host-001-1434: work/output/printer.tree read these through node's os, fs and path docks. The answers
+# are what node's own os.homedir, fs.readFileSync, path.basename, path.join, fs.mkdirSync and fs.writeFileSync gave.
+
+load @term/call/work/output/printer
+  find show-path
+  find source-lines
+  find write-crash-log
+  find no-value
+
+load @term/base/environment
+  find variable
+
+load @term/base/environment/path
+  find known-directory
+
+load @term/base/file/directory
+  find remove, name remove-directory
+
+load @term/base/path
+  find file-name
+
+load @term/base/text
+  find starts-with
+  find ends-with
+
+load @term/base/list
+  find get
+
+load @term/base/time
+  find now
+
+# a folder of its own under the system's temporary folder, for one test
+task scratch
+  take name, like text
+  like text
+
+  back <{known-directory(<temporary>)}/term-1434-{name}-{now()}>
+
+test <a path under the home folder is shown under ~>
+  want hold, is-equal(show-path(<{variable(<HOME>)}/a/b.tree>, <>), <~/a/b.tree>)
+
+test <the home folder itself is ~>
+  want hold, is-equal(show-path(variable(<HOME>), <>), <~>)
+
+test <a file that is not there has no lines>
+  want hold, is-equal(source-lines(<{scratch(<none>)}/x.tree>, no-value())/length, 0)
+
+test <a tool is named by the last part of its path>
+  want hold, is-equal(file-name(</usr/local/bin/cargo>), <cargo>)
+
+test <a crash log is written under the root's .term folder and its lines read back>
+  save root, scratch(<crash>)
+  save where, write-crash-log(<boom>, root)
+  save lines, source-lines(where, no-value())
+  save first, get(lines, 0)
+  remove-directory(root)
+  want hold, and(starts-with(where, <{root}/.term/crash->), and(ends-with(where, <.log>), and(is-equal(lines/length, 2), is-equal(first, <undefined>))))

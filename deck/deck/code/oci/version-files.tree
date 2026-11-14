@@ -1,0 +1,213 @@
+# The files a published version carries, walked from the package folder as the archive entries oci/archive.tree
+# writes (decision 154 section 2, item term-self-host-001-1289). Taken from object/package-version.tree's walk
+# (default-version-exclude, include-path, has-name, is-included, leads-to, walk-folder, read-version-files) without the
+# record and chunk parts, so 1044 removes object/ with nothing here to rescue: a file is read as bytes.
+#
+#   default-version-exclude()                  the names a published package never carries
+#   read-version-files(dir, exclude, include)  every entry, `{ path, kind, executable, bytes }`, sorted by path in
+#                                              UTF-16 order
+#
+# The walk is the original's: dotfiles are skipped (but `.treeignore`), `link/` at the top is never shipped (where
+# `term load` links dependencies), an excluded name ships only when an inclusion names it or leads into it, and an
+# EMPTY directory is an entry of its own so an install makes it.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+
+form folder-ask
+  link with-file-types, like boolean
+
+# what one walk carries down: the entries found so far are pushed into `files`
+form files-walk
+  link exclude, like list, like text
+  link include, like list, like text
+  link files, like list, like dynamic
+
+bind files-is-executable
+  take mode, like number
+  like boolean
+  case node
+    text <(($mode & 0o111) !== 0)>
+
+bind files-file-entry
+  take path, like text
+  take executable, like boolean
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<({ path: $path, kind: "file", executable: $executable, bytes: $bytes })>>
+
+bind files-folder-entry
+  take path, like text
+  like dynamic
+  case node
+    text <<({ path: $path, kind: "directory", executable: false, bytes: Buffer.alloc(0) })>>
+
+bind files-sorted
+  take files, like list, like dynamic
+  like void
+  case node
+    text <<$files.sort(function (a, b) { return a.path < b.path ? -1 : a.path > b.path ? 1 : 0 })>>
+
+# files and directories a published package never carries. `.term-digest` is the marker an install writes (decision
+# 154 section 3)
+task default-version-exclude
+  like list, like text
+
+  back split(<node_modules .git host tmp .base .term-digest>, < >)
+
+# a root-relative path as an inclusion names it: without a leading `./` or trailing `/`s
+task include-path
+  take at, like text
+  like text
+  mark private
+
+  save path, at
+  fork test, starts-with(path, <./>)
+    hold
+      save path, substring(path, 2, char-count(path))
+  walk test
+    hook test, ends-with(path, </>)
+    hook hold
+      save path, substring(path, 0, subtract(char-count(path), 1))
+  back path
+
+task has-name
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# shipped by an inclusion: the path an inclusion names, or one inside it
+task is-included
+  take include, like list, like text
+  take at, like text
+  like boolean
+  mark private
+
+  walk include
+    take keep
+    fork test, or(is-equal(at, keep), starts-with(at, <{keep}/>))
+      hold
+        back true
+  back false
+
+# a directory an inclusion is inside of
+task leads-to
+  take include, like list, like text
+  take at, like text
+  like boolean
+  mark private
+
+  walk include
+    take keep
+    fork test, starts-with(keep, <{at}/>)
+      hold
+        back true
+  back false
+
+# one file read into its entry: its bytes and whether any execute bit is set
+task read-file-entry
+  take full, like text
+  take at, like text
+  take walking, like files-walk
+  like void
+  mark private
+
+  save data, fs-promise/read-file(full)
+  save stat, fs-promise/stat(full)
+  walking/files/push(files-file-entry(at, files-is-executable(stat/mode), data))
+
+# a directory walked into the entry list; `partial` is a directory walked only because an included path is inside it,
+# and nothing else in it ships
+task walk-folder
+  take dir, like text
+  take prefix, like text
+  take partial, like boolean
+  take walking, like files-walk
+  like void
+  mark private
+
+  # the directory entries the host answers (seam decision 004)
+  save entries, like list, like dynamic
+    fs-promise/readdir(dir, make(folder-ask, bind(with-file-types, true)))
+
+  walk entries
+    take entry
+    save name, entry/name
+    save relative, name
+    fork test, not(is-equal(prefix, <>))
+      hold
+        save relative, <{prefix}/{name}>
+
+    fork test, and(partial, and(not(is-included(walking/include, relative)), not(leads-to(walking/include, relative))))
+      hold
+        turn next
+
+    # `link/` at the top is where `term load` links installed dependencies, and a package never carries another's
+    # install; a `code/link/` deeper down is source and ships
+    fork test, or(has-name(walking/exclude, name), and(is-equal(prefix, <>), is-equal(name, <link>)))
+      hold
+        fork test, not(is-included(walking/include, relative))
+          hold
+            fork test, and(entry/is-directory(), leads-to(walking/include, relative))
+              hold
+                walk-folder(node-path/join(dir, name), relative, true, walking)
+            turn next
+
+    # dotfiles are skipped, as the tarball publisher skips them
+    fork test, and(starts-with(name, <.>), not(is-equal(name, <.treeignore>)))
+      hold
+        turn next
+
+    save full, node-path/join(dir, name)
+
+    fork test, entry/is-directory()
+      hold
+        save before, walking/files/length
+        walk-folder(full, relative, and(partial, not(is-included(walking/include, relative))), walking)
+        # an EMPTY directory would vanish from an archive of files: it is an entry so an install makes it
+        fork test, is-equal(walking/files/length, before)
+          hold
+            walking/files/push(files-folder-entry(relative))
+        turn next
+
+    fork test, entry/is-file()
+      hold
+        read-file-entry(full, relative, walking)
+
+# a package folder walked into the entries its version's archive holds, sorted by path
+task read-version-files
+  take dir, like text
+  take exclude, like list, like text
+  take include, like list, like text
+  like list, like dynamic
+
+  save kept, make list
+  walk include
+    take at
+    kept/push(include-path(at))
+  save files, make list
+  save walking, make(files-walk, bind(exclude, exclude), bind(include, kept), bind(files, files))
+  walk-folder(dir, <>, false, walking)
+  files-sorted(files)
+  back files

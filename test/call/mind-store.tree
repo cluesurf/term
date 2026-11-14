@@ -1,0 +1,122 @@
+note <term mind writes the project's memory as before: a fact's file, the index, a replaced fact and a forgotten one>
+
+# Item term-self-host-001-1437 moved work/small/memory.tree's files and paths onto @term/base. The answers are the
+# files term mind wrote before that change, on node: the fact file is mind-words fact-text, the index one line a name.
+
+load @term/call/work/small/memory
+  find call-mind
+
+load @term/base/maybe
+  find maybe
+  find some
+
+load @term/base/file/temporary
+  find make, name make-temporary
+
+load @term/base/file/blocking
+  find read, name read-text-now
+  find exists, name on-disk
+
+load @term/base/file/directory
+  find remove, name remove-folder
+
+load @term/base/path
+  find join, name join-under
+
+# the memory folder of a project at `root`
+task memory-at
+  take root, like text
+  like text
+
+  back join-under(root, <.base/@term/code/memory>)
+
+# `piece` written `times` times
+task repeated
+  take piece, like text
+  take times, like number
+  like text
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, times)
+    hook hold
+      save out, <{out}{piece}>
+      save at, add(at, 1)
+  back out
+
+# remember a fact in a new project, by name and kind when given, and answer its file and the index, apart by a line
+# of `=`. With `again` a second fact under the same name replaces it first
+task remembered
+  take fact, like text
+  take name, like text
+  take kind, like text
+  take again, like text
+  like text
+  mark async
+
+  save root, make-temporary(<directory>, <mind->)
+  save left-out, like maybe, like text
+    make none
+  save named, left-out
+  fork test, is-unequal(name, <>)
+    hold
+      save named, make(some, name)
+  save kinded, left-out
+  fork test, is-unequal(kind, <>)
+    hold
+      save kinded, make(some, kind)
+  call-mind(root, make(some, fact), named, kinded, left-out, left-out, make(some, <json>))
+  fork test, is-unequal(again, <>)
+    hold
+      call-mind(root, make(some, again), named, kinded, left-out, left-out, make(some, <json>))
+  save dir, memory-at(root)
+  save slug, name
+  fork test, is-equal(name, <>)
+    hold
+      save slug, <tabs-not-spaces-the-body-line>
+  save file, join-under(dir, <{slug}.md>)
+  save fact-file, <missing>
+  fork test, on-disk(file)
+    hold
+      save fact-file, read-text-now(file)
+  save index, read-text-now(join-under(dir, <index.md>))
+  remove-folder(root)
+  back <{fact-file}=\n{index}>
+
+# remember two facts by name, forget the first, and answer whether its file is gone and what the index holds
+task forgotten
+  take first, like text
+  take second, like text
+  like text
+  mark async
+
+  save root, make-temporary(<directory>, <mind->)
+  save left-out, like maybe, like text
+    make none
+  call-mind(root, make(some, <First fact>), make(some, first), left-out, left-out, left-out, make(some, <json>))
+  call-mind(root, make(some, <Second fact>), make(some, second), left-out, left-out, left-out, make(some, <json>))
+  call-mind(root, left-out, left-out, left-out, left-out, make(some, first), left-out)
+  save dir, memory-at(root)
+  save gone, <kept>
+  fork test, not(on-disk(join-under(dir, <{first}.md>)))
+    hold
+      save gone, <gone>
+  save index, read-text-now(join-under(dir, <index.md>))
+  remove-folder(root)
+  back <{gone}=\n{index}>
+
+test <a fact is named after itself, kind note, its first line the description>
+  want hold, is-equal remembered(<Tabs, not spaces\nThe body line>, <>, <>, <>), <---\nname: tabs-not-spaces-the-body-line\nkind: note\ndescription: Tabs, not spaces\n---\n\nTabs, not spaces\nThe body line\n=\n# Memory\n\n- [tabs-not-spaces-the-body-line](tabs-not-spaces-the-body-line.md) — Tabs, not spaces\n>
+
+test <a fact under a name already used replaces it, one index line a name>
+  want hold, is-equal remembered(<Use two spaces>, <style>, <decision>, <Use tabs>), <---\nname: style\nkind: decision\ndescription: Use tabs\n---\n\nUse tabs\n=\n# Memory\n\n- [style](style.md) — Use tabs\n>
+
+test <a kind outside the five is note>
+  want hold, is-equal remembered(<Short>, <brief>, <rule>, <>), <---\nname: brief\nkind: note\ndescription: Short\n---\n\nShort\n=\n# Memory\n\n- [brief](brief.md) — Short\n>
+
+test <the description is the first line's first 100 units>
+  want hold, is-equal remembered(repeated(<ab>, 60), <long>, <>, <>), <---\nname: long\nkind: note\ndescription: {repeated(<ab>, 50)}\n---\n\n{repeated(<ab>, 60)}\n=\n# Memory\n\n- [long](long.md) — {repeated(<ab>, 50)}\n>
+
+test <a forgotten fact loses its file and its index line>
+  want hold, is-equal forgotten(<one>, <two>), <gone=\n# Memory\n\n- [two](two.md) — Second fact\n>

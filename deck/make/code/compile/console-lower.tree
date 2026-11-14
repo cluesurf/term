@@ -19,6 +19,13 @@
 # position. A parameter whose type has no conversion (text, number, boolean, a list of text, and a maybe of each) is
 # refused at the build, never left to fail at run time. A program that defines `run`, `console-routes` or
 # `console-call` itself, or whose closure has no console runtime, is left as it was.
+#
+# A VERB THAT IS NOT NATIVE FORWARDS (decision 109 rule 1, item term-self-host-001-0800): a bound task whose closure
+# reaches a dock no Rust binding module writes, or a bind with no rust case, gets an arm that calls the runtime's
+# `console-forward` (the node build with the same words) instead of the task, and its parameters are not converted, so
+# none is refused. The gate then shakes the console from `run` alone (ir/prune.tree `prune-console`), so rustc never
+# reads that closure. `host console-forwarded` lists the command line of every forwarded route, the record
+# `term:native-verbs` reads.
 
 load @term/base/list
   find list
@@ -31,6 +38,7 @@ load @term/base/text
   find split
   find starts-with
   find char-at
+  find contains
 
 load ../parser/diagnostic
   find diagnostic
@@ -52,6 +60,13 @@ load ./node
   find statement
   find statement-branch
   find type
+
+load ./bind
+  find bind-target-of
+
+load ../ir/prune
+  find console-defined-names
+  find console-mentions
 
 # the lowered program, and the parameters it refused
 form console-lowered
@@ -320,15 +335,28 @@ task take-of
         case named
           link name
           link args
-          fork test, and(is-equal(name, <maybe>), is-above(args/length, 0))
+          # the first argument walked, never handed to a call: a `need false` list handed on is written back as an
+          # empty list into the type the lowering reads (T003, item 1173)
+          fork test, is-equal(name, <maybe>)
             hold
-              save item, get(args, 0)
-              save item-kind, item/kind
-              save optional, true
+              walk args
+                take item
+                save item-kind, item/kind
+                save optional, true
+                halt
         miss
           save nothing, 0
     case none
       save nothing, 0
+  # the take's lists walked into lists of the lowering's own, for the same reason
+  save aliases, make list
+  walk one/aliases
+    take alias
+    push(aliases, alias)
+  save choices, make list
+  walk one/choices
+    take choice
+    push(choices, choice)
   save parts, make list
   push(parts, text-value(one/name, at))
   push(parts, text-value(kind, at))
@@ -336,14 +364,14 @@ task take-of
   push(parts, flag-value(optional, at))
   push(parts, flag-value(one/required, at))
   push(parts, text-value(one/short, at))
-  push(parts, texts-of(one/aliases, at))
+  push(parts, texts-of(aliases, at))
   push(parts, flag-value(one/masked, at))
   push(parts, text-value(one/note, at))
   push(parts, fallback-of(one, at))
   push(parts, flag-value(one/variadic, at))
   push(parts, flag-value(one/positional, at))
   push(parts, flag-value(one/passes, at))
-  push(parts, texts-of(one/choices, at))
+  push(parts, texts-of(choices, at))
   back call-of(<console-take>, parts, at)
 
 # a statement's task name, the empty text for one that is no task. Read here, never in an arm over the function case:
@@ -558,33 +586,38 @@ task converter-of
     case named
       link name
       link args
-      fork test, and(is-equal(name, <maybe>), is-equal(args/length, 1))
+      # the one argument walked, never handed to a call: a `need false` list handed on is written back as an empty
+      # list into the parameter's type (T003, item 1173)
+      fork test, is-unequal(args/length, 1)
         hold
-          save item, get(args, 0)
-          sift item
-            case string
-              back <console-maybe-text>
-            case number
-              back <console-maybe-number>
-            case boolean
-              back <console-maybe-flag>
-            case array
-              link element
-              sift element
-                case string
-                  back <console-maybe-texts>
-                miss
-                  back <>
-            miss
-              back <>
-      fork test, and(is-equal(name, <list>), is-equal(args/length, 1))
-        hold
-          save item, get(args, 0)
-          sift item
-            case string
-              back <console-texts>
-            miss
-              back <>
+          back <>
+      walk args
+        take item
+        fork test, is-equal(name, <maybe>)
+          hold
+            sift item
+              case string
+                back <console-maybe-text>
+              case number
+                back <console-maybe-number>
+              case boolean
+                back <console-maybe-flag>
+              case array
+                link element
+                sift element
+                  case string
+                    back <console-maybe-texts>
+                  miss
+                    back <>
+              miss
+                back <>
+        fork test, is-equal(name, <list>)
+          hold
+            sift item
+              case string
+                back <console-texts>
+              miss
+                back <>
       back <>
     miss
       back <>
@@ -701,6 +734,303 @@ task bound-names
     bound-names(one/children, out)
   back out
 
+# ---- which verbs are native (decision 109 rules 1 and 2, item term-self-host-001-0800) ----
+#
+# A verb is native when its task's closure reaches the host through @term/base: no dock outside a Rust binding module
+# (a `node:` module, a JavaScript global, a foreign package, a TypeScript face) and no bind without a rust case. Every
+# other route's arm in the match calls `console-forward`, so the console's shake (ir/prune.tree `prune-console`) never
+# keeps that closure and rustc never reads it. Computed from the program, never a list.
+#
+# The closure is read as the shake reads it, every name a definition mentions (ir/prune.tree `console-mentions`), with
+# each name bound as the file that mentions it binds it: its own definition of that name, else the files its `find` of
+# the name reached and what those `bear`, else, for a find under another name, every definition of the files it
+# reached. A name the file neither defines nor finds (a local, a field, the prelude) is not followed. A definition is
+# held by its file and name, so two files' tasks of one name are two. Loose reads are not in it (decision 133).
+
+# what the reach of the console's closure holds, every definition by `<file>|<name>`
+form native-reach
+  mark shared
+  link defined, like hash, like text, like boolean
+  link by-file, like hash, like text, like list, like text
+  link found, like hash, like text, like list, like text
+  link renamed, like hash, like text, like list, like text
+  link users, like hash, like text, like list, like text
+  link tainted, like hash, like text, like boolean
+
+task definition-key
+  take file, like text
+  take name, like text
+  like text
+  mark private
+
+  back <{file}|{name}>
+
+# the file a definition is written in, the empty text for none or for a statement that defines nothing. This file's
+# own `statement-span` reads a task's and a value's span only, so the definitions the reach reads are read here
+task file-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, zero-span()
+  sift one
+    case function
+      save at, one/span
+    case record-type
+      save at, one/span
+    case native
+      save at, one/span
+    case bind
+      save at, one/span
+    case let
+      save at, one/span
+    miss
+      save nothing, 0
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+# a value added to the list one of the reach's tables (`by-file`, `found`, `renamed` or `users`) holds under `key`.
+# Handed the shared record, never the table: a table handed to a task is the task's own copy (decision 115), so a write
+# into it never reached the reach, as ir/prune.tree's index-definition writes through its state
+task add-to
+  take reach, like native-reach
+  take which, like text
+  take key, like text
+  take value, like text
+  mark private
+
+  save known, make list
+  fork test, is-equal(which, <by-file>)
+    hold
+      fork test, reach/by-file/has(key)
+        hold
+          save known, reach/by-file/get(key)
+      push(known, value)
+      save reach/by-file/{key}, known
+      back
+  fork test, is-equal(which, <found>)
+    hold
+      fork test, reach/found/has(key)
+        hold
+          save known, reach/found/get(key)
+      push(known, value)
+      save reach/found/{key}, known
+      back
+  fork test, is-equal(which, <renamed>)
+    hold
+      fork test, reach/renamed/has(key)
+        hold
+          save known, reach/renamed/get(key)
+      push(known, value)
+      save reach/renamed/{key}, known
+      back
+  fork test, reach/users/has(key)
+    hold
+      save known, reach/users/get(key)
+  push(known, value)
+  save reach/users/{key}, known
+
+# whether a statement is a dock no Rust binding module writes, or a bind with no rust case
+task is-unlinkable
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case native
+      sift span/file
+        case some
+          link written
+          back not(contains(written, </native/rust/>))
+        case none
+          back true
+    case bind
+      sift bind-target-of(one, <rust>)
+        case some
+          back false
+        case none
+          back true
+    miss
+      back false
+
+# the definitions a name a file mentions is bound to
+task mention-keys
+  take reach, like native-reach
+  take file, like text
+  take name, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save own, definition-key(file, name)
+  fork test, reach/defined/has(own)
+    hold
+      push(out, own)
+      back out
+  fork test, reach/found/has(own)
+    hold
+      walk reach/found/get(own)
+        take target
+        save there, definition-key(target, name)
+        fork test, reach/defined/has(there)
+          hold
+            push(out, there)
+  fork test, reach/renamed/has(own)
+    hold
+      walk reach/renamed/get(own)
+        take target
+        fork test, reach/by-file/has(target)
+          hold
+            walk reach/by-file/get(target)
+              take key
+              push(out, key)
+  back out
+
+# every definition of the program, which of them reach an unlinkable one, and through what
+task native-reach-of
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  like native-reach
+
+  save reach
+    make native-reach
+      bind defined, make hash
+      bind by-file, make hash
+      bind found, make hash
+      bind renamed, make hash
+      bind users, make hash
+      bind tainted, make hash
+  walk program
+    take one
+    save file, file-of(one)
+    walk console-defined-names(one)
+      take name
+      save key, definition-key(file, name)
+      save reach/defined/{key}, true
+      add-to(reach, <by-file>, file, key)
+  # what each file's finds reached, and what those bear
+  save bears, make hash
+  walk scopes
+    take scope
+    save beared, make list
+    walk scope/bears
+      take one
+      push(beared, one)
+    save bears/{scope/file}, beared
+  walk scopes
+    take scope
+    walk scope/finds
+      take found
+      save key, definition-key(scope/file, found/name)
+      walk found/targets
+        take target
+        add-to(reach, <found>, key, target)
+        fork test, bears/has(target)
+          hold
+            walk bears/get(target)
+              take further
+              add-to(reach, <found>, key, further)
+    walk scope/aliases
+      take found
+      save key, definition-key(scope/file, found/name)
+      walk found/targets
+        take target
+        add-to(reach, <renamed>, key, target)
+
+  # each definition is a user of what it mentions, and an unlinkable one is where the search starts
+  save queue, make list
+  walk program
+    take one
+    save defined, console-defined-names(one)
+    fork test, is-equal(defined/length, 0)
+      hold
+        turn next
+    save file, file-of(one)
+    save keys, make list
+    walk defined
+      take name
+      push(keys, definition-key(file, name))
+    fork test, is-unlinkable(one)
+      hold
+        walk keys
+          take key
+          push(queue, key)
+    walk console-mentions(one)
+      take mentioned
+      walk mention-keys(reach, file, mentioned)
+        take used
+        walk keys
+          take key
+          add-to(reach, <users>, used, key)
+  walk test
+    hook test, is-above(queue/length, 0)
+    hook hold
+      save key, queue/pop()
+      fork test, not(reach/tainted/has(key))
+        hold
+          save reach/tainted/{key}, true
+          fork test, reach/users/has(key)
+            hold
+              walk reach/users/get(key)
+                take user
+                fork test, not(reach/tainted/has(user))
+                  hold
+                    push(queue, user)
+  back reach
+
+# whether a bound task's closure is native: nothing it reaches is unlinkable
+task is-native
+  take reach, like native-reach
+  take task, like statement
+  like boolean
+  mark private
+
+  back not(reach/tainted/has(definition-key(file-of(task), task-name-of(task))))
+
+# THE FORWARD ARM: `if (task-name == "<name>") { return console-forward() }`. The decision already parsed the line
+# against the route's takes, so help and a refusal answer here, and a call runs the node build with the same words
+task forward-arm
+  take called-name, like text
+  take at, like span
+  like statement-branch
+  mark private
+
+  save body, make list
+  push(body, return-value(call-of(<console-forward>, no-expressions(), at), at))
+  back
+    make statement-branch
+      bind cond, text-equal(variable(<task-name>, at), text-value(called-name, at), at)
+      bind body, body
+
+# the command line of every route whose task the match forwards, its paths joined by a space, in the routes' order
+task forwarded-paths
+  take routes, like list, like dock-route
+  take prefix, like text
+  take forwarded, like hash, like text, like boolean
+  take out, like list, like text
+  like list, like text
+  mark private
+
+  walk routes
+    take one
+    save path, one/path
+    fork test, is-unequal(prefix, <>)
+      hold
+        save path, <{prefix} {one/path}>
+    save calls, one/calls
+    fork test, is-above(calls/length, 0)
+      hold
+        save first, get(calls, 0)
+        fork test, forwarded/has(first/name)
+          hold
+            push(out, path)
+    forwarded-paths(one/children, path, forwarded, out)
+  back out
+
 # ---- the pass ----
 
 # a command route of the entry file: a dock that is no page and no web path
@@ -788,6 +1118,7 @@ task taken-names
   push(out, <run>)
   push(out, <console-routes>)
   push(out, <console-call>)
+  push(out, <console-forwarded>)
   back out
 
 # THE LOWERING: the entry's command routes as the table, the match and the run, appended to the program. `name` is the
@@ -838,7 +1169,10 @@ task lower-console
     push(tables, route-of(one, program, file, scopes, at))
   save table, local(<console-routes>, call-of(<console-table-of>, one-value(list-of(tables, at)), at), false, at)
 
-  # task console-call: one arm per bound task the program defines
+  # task console-call: one arm per bound task the program defines, a direct call when its closure is native, else the
+  # forward (item term-self-host-001-0800)
+  save reach, native-reach-of(program, scopes)
+  save forwarded, make hash
   save refusals, make list
   save branches, make list
   save waits, false
@@ -848,6 +1182,12 @@ task lower-console
     sift task-named(program, bound, file, scopes)
       case some
         link task
+        fork test, not(is-native(reach, task))
+          hold
+            save forwarded/{bound}, true
+            save waits, true
+            push(branches, forward-arm(bound, at))
+            turn next
         fork test, is-async(task)
           hold
             save waits, true
@@ -928,11 +1268,28 @@ task lower-console
       bind async, waits
       bind span, at
 
+  # host console-forwarded: the command line of each route the match forwards, the record `term:native-verbs` reads
+  save no-prefix, <>
+  save no-paths, make list
+  # typed, so an empty list (no route forwarded) is a list of text too
+  save text-type, make type/string
+  save texts-type
+    make type/array
+      bind element, text-type
+  save forwarded-list
+    make statement/let
+      bind name, <console-forwarded>
+      bind init, texts-of(forwarded-paths(routes, no-prefix, forwarded, no-paths), at)
+      bind mutable, false
+      bind span, at
+      bind type, make(some, texts-type)
+
   save out, make list
   walk program
     take one
     push(out, one)
   push(out, table)
+  push(out, forwarded-list)
   push(out, call-task)
   push(out, run-task)
   back

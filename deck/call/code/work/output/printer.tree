@@ -36,6 +36,25 @@ load @term/base/text
 load @term/base/environment
   find current-directory
 
+load @term/base/environment/path
+  find known-directory
+
+load @term/base/path
+  find join, name join-path
+  find directory, name directory-of
+  find file-name
+
+load @term/base/file/blocking
+  find read, name read-whole
+
+load @term/base/file/directory
+  find make, name make-directory
+
+load @term/base/file/synchronous
+  find open, name open-blocking
+  find write, name write-blocking
+  find close, name close-blocking
+
 load @term/make/parser/diagnostic
   find diagnostic
 
@@ -91,11 +110,6 @@ load @term/call/work/item/live
   find place-item
   find plan-frame
   find write-frame
-
-dock load
-  load <node:os>, name node-os
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
 
 # ---- the caller's objects, read as the original read them ----
 
@@ -485,7 +499,7 @@ task show-path
   take root, like text, fall <>
   like text
 
-  back format-path(where, root, node-os/homedir())
+  back format-path(where, root, known-directory(<home>))
 
 # the opening item: the command's verb, the working directory or project root, the tool and version, and up to three
 # context counts (section 3). `started`: when the work began, for a run that opens its item only after it
@@ -1092,7 +1106,7 @@ task run-tool
       back ran-out(ran)
 
   save missing, is-missing(ran)
-  save said, tool-failure-of(node-path/basename(command), missing, signal-of(ran), status-of(ran), written-of(ran))
+  save said, tool-failure-of(file-name(command), missing, signal-of(ran), status-of(ran), written-of(ran))
   raise-tool-failure(said/message, said/quote, missing)
   back <>
 
@@ -1402,7 +1416,7 @@ task source-lines
 
   fork
     mark unsafe
-    save read, node-file/read-file-sync(file, <utf8>)
+    save read, read-whole(file)
     back split(read, <\n>)
   halt take
     take problem
@@ -1557,14 +1571,13 @@ task write-crash-log
 
   fork
     mark unsafe
-    save where, node-path/join(root, <.term>, <crash-{crash-stamp()}.log>)
-    node-file/mkdir-sync(node-path/dirname(where), make crash-folder, recursive(true))
-    node-file/write-file-sync(where, <{stack-of(problem)}\n>)
+    save where, join-path(join-path(root, <.term>), <crash-{crash-stamp()}.log>)
+    make-directory(directory-of(where))
+    save log, open-blocking(where, false, true, true, false, true)
+    write-blocking(log, <{stack-of(problem)}\n>)
+    close-blocking(log)
     back where
   halt take
     take failed
     back <>
   back <>
-
-form crash-folder
-  link recursive, like boolean

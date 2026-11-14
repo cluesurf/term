@@ -151,6 +151,7 @@ load ../ir/selection
 
 load ../ir/prune
   find prune-to-reachable
+  find prune-console
   find binding-finds
 
 # what the run holds as `need false` and the gate reads, filled by the face, with whether the original had it
@@ -242,6 +243,101 @@ task root-split-words
                 save nothing, 0
       miss
         save nothing, 0
+
+# ---- a console lowered for Rust ----
+
+# the names compile/console-lower.tree gives a console it lowered: its entry, its table, its match and the routes it
+# forwards (decision 109 rule 1, items term-self-host-001-1121 and 0800)
+task console-names
+  like list, like text
+  mark private
+
+  save out, make list
+  out/push(<run>)
+  out/push(<console-routes>)
+  out/push(<console-call>)
+  out/push(<console-forwarded>)
+  back out
+
+# whether the program is a console compile/console-lower.tree lowered: a Rust build whose entry file holds the match
+# it writes. The lowering leaves an entry that defines `console-call` itself as it was, so the name in the entry file
+# is the lowering's
+task is-lowered-console
+  take program, like list, like statement
+  take file, like text
+  take env, like text
+  like boolean
+  mark private
+
+  fork test, is-unequal(env, <rust>)
+    hold
+      back false
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-equal(name, <console-call>)
+          hold
+            sift span/file
+              case some
+                link written
+                fork test, is-equal(written, file)
+                  hold
+                    back true
+              case none
+                turn next
+      miss
+        turn next
+  back false
+
+# A LOWERED CONSOLE'S ROOTS (item term-self-host-001-0800): the shake's roots but the entry file's own tasks and forms,
+# and the console's names. A console binary is entered at `run` alone, so a task of the entry file is kept only when
+# the match or what it reaches calls it, and a verb the match forwards is never compiled
+task console-roots
+  take program, like list, like statement
+  take file, like text
+  take roots, like list, like text
+  like list, like text
+  mark private
+
+  save own, make hash
+  walk program
+    take one
+    sift one
+      case function
+        sift span/file
+          case some
+            link written
+            fork test, is-equal(written, file)
+              hold
+                save own/{name}, true
+          case none
+            turn next
+      case record-type
+        sift span/file
+          case some
+            link written
+            fork test, is-equal(written, file)
+              hold
+                save own/{name}, true
+          case none
+            turn next
+      miss
+        turn next
+  save seen, make hash
+  save out, make list
+  walk console-names()
+    take name
+    save seen/{name}, true
+    out/push(name)
+  walk roots
+    take name
+    fork test, or(own/has(name), seen/has(name))
+      hold
+        turn next
+    save seen/{name}, true
+    out/push(name)
+  back out
 
 # a file once, in the order first met
 task add-file
@@ -681,6 +777,9 @@ task program-gate
 
   save file, run/file
   save deck-of, given/deck-of
+  # a console the driver lowered for Rust: its routes are its match, so no route task is a root, and its shake is the
+  # console's (item term-self-host-001-0800)
+  save lowered-console, is-lowered-console(run/program, file, given/env)
   save route-env, given/env
   fork test, not(given/has-env)
     hold
@@ -869,11 +968,15 @@ task program-gate
     hold
       back refusal(answer/diagnostics, bound)
 
-  # the tasks a `hook` route names or calls, and an entry task the arity pass renamed apart, are roots
+  # the tasks a `hook` route names or calls, and an entry task the arity pass renamed apart, are roots. A lowered
+  # console's routes call nothing: its match does
   fork test, given/has-roots
     hold
       walk run/program
         take one
+        fork test, lowered-console
+          hold
+            turn next
         sift one
           case dock
             add-route-tasks(run, route)
@@ -1041,7 +1144,19 @@ task program-gate
           hold
             save prune-roots/{name}, true
             root-list/push(name)
-      save run/program, prune-to-reachable(run/program, root-list)
+      fork test, lowered-console
+        hold
+          # a lowered console is entered at `run` alone: its roots are its own names and what the gate added, and its
+          # shake drops the docks, binds and module values nothing kept names (item term-self-host-001-0800)
+          save kept-roots, console-roots(run/program, file, root-list)
+          save console-root-set, make hash
+          walk kept-roots
+            take name
+            save console-root-set/{name}, true
+          save run/roots, console-root-set
+          save run/program, prune-console(run/program, kept-roots)
+        miss
+          save run/program, prune-to-reachable(run/program, root-list)
 
   # the overload groups as the gate leaves them, which the phases after it read as module state
   save run/overload-groups, groups

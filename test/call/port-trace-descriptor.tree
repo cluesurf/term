@@ -1,0 +1,120 @@
+note <the trace files a read-only open of a path as a read of it, and a read through that descriptor as nothing it cannot describe>
+
+# Ported from port-trace-descriptor.ts by statement (item term-self-host-001-1234, one test per `ok` in its order), over
+# what item 0720 made of task/port-trace.ts (decision 140 section 3): the trace is task/port-trace/code/trace.tree and its
+# node fs shim task/port-trace/code/runtime/fs-trace.ts, which holds the descriptor rule of item 1041. From node 23 the ESM
+# loader under tsx's synchronous hooks loads a module's source with node's ORIGINAL readFileSync, which opens and reads
+# through the `fs` module object, so its openSync and readSync reached the trace at depth 0, marked the process
+# untrackable, and port-build skipped no module on node 24.
+#
+# Each case runs in a process of its own, task/port-trace/probe.tree run by the launcher (node task/launch.mjs), since an
+# untrackable read is sticky for the rest of one. The probe prints one JSON line: whether the module's keys hold the
+# untrackable key, and whether they hold the read of <dir>/data.txt.
+#
+#   loader      node's original readFileSync of a Buffer: filed as a read of the file, not untrackable
+#   import      a dynamic import of a module under the trace (on node 24 the loader's own path): not untrackable
+#   foreign-fd  a readSync through a descriptor the trace never saw opened: untrackable
+#   write-open  an openSync for writing: untrackable
+#   fstat       an fstatSync of a read-only descriptor: not untrackable
+#
+# The folder and each case's run are made once, by the first test that asks, and kept: loader and fstat answer two tests
+# each from one process, as in the original.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <node:fs>, name trace-fs
+
+# what one case's process printed
+form probe-seen
+  link code, like number
+  link said, like text
+
+form probe-held
+  mark shared
+  link folder, like hash, like text, like text
+  link seen, like hash, like text, like probe-seen
+
+host held, make(probe-held, bind(folder, make hash), bind(seen, make hash))
+
+# the folder every case reads: data.txt and probe.mjs, its real path, as the trace files real paths
+task case-folder
+  take key, like text
+  like text
+
+  fork test, held/folder/has(key)
+    hold
+      back held/folder/{key}
+  save dir, trace-fs/realpath-sync(temp-folder(<term-port-trace-descriptor->))
+  write-file(<{dir}/data.txt>, <some content\n>)
+  write-file(<{dir}/probe.mjs>, <export const probe = 1\n>)
+  save held/folder/{key}, dir
+  back dir
+
+# one case in a process of its own, run once
+task probe-case
+  take name, like text
+  like probe-seen
+
+  fork test, held/seen/has(name)
+    hold
+      back held/seen/{name}
+  save made, run(<node>, make list(<task/launch.mjs>, <port-trace/probe>, name, case-folder(<one>)))
+  save seen, make(probe-seen, bind(code, made/code), bind(said, <{made/output}\n{made/error}>))
+  save held/seen/{name}, seen
+  back seen
+
+task is-untrackable
+  take name, like text
+  like boolean
+
+  back matches(make(pattern, <<"untrackable":true>>), probe-case(name)/said)
+
+task is-read
+  take name, like text
+  like boolean
+
+  back matches(make(pattern, <<"read":true>>), probe-case(name)/said)
+
+# a case that printed its verdict: a probe that failed to start prints none, and must not pass a "no untrackable" test
+task answered
+  take name, like text
+  like boolean
+
+  back and(is-equal(probe-case(name)/code, 0), matches(make(pattern, <<\{"untrackable":(true|false),"read":(true|false)\}>>), probe-case(name)/said))
+
+test <loader: node's own readFileSync is no untrackable read>
+  want hold, answered(<loader>)
+  want hold, not(is-untrackable(<loader>))
+
+test <loader: it is filed as a read of the file>
+  want hold, is-read(<loader>)
+
+test <import: a dynamic import is no untrackable read>
+  want hold, answered(<import>)
+  want hold, not(is-untrackable(<import>))
+
+test <foreign-fd: a read through a descriptor never seen opened is untrackable>
+  want hold, is-untrackable(<foreign-fd>)
+
+test <write-open: an open for writing is untrackable>
+  want hold, is-untrackable(<write-open>)
+
+test <fstat: an fstat of a read-only descriptor is no untrackable read>
+  want hold, answered(<fstat>)
+  want hold, not(is-untrackable(<fstat>))
+
+test <fstat: its open is filed as a read>
+  want hold, is-read(<fstat>)

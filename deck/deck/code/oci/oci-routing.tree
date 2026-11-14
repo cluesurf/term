@@ -116,6 +116,8 @@ task trust-dir
       back pinned
   back node-path/join(get-store-root(), <trust>)
 
+# the object store over the store's layout. No install reads it since OCI format v2 (item term-self-host-001-1290,
+# decision 154): it stays only while object/local-store.tree loads it, and goes with object/ (item 1044)
 task local-store
   like dynamic
 

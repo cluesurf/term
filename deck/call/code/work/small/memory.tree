@@ -9,8 +9,12 @@
 #   term mind --find <query>    recall the facts matching a query
 #   term mind --forget <name>   forget one fact, its file and its line in the index
 #
-# The store is plain markdown (a person or any agent can read it); `--back json` answers structured records, written
-# by the host's JSON.stringify from records whose fields are in the original's order.
+# The store is plain markdown (a person or any agent can read it); `--back json` answers structured records, built
+# through @term/base/json with their fields in the original's order, so node's text is JSON.stringify's as before.
+#
+# The files and paths go through @term/base (file, file/blocking, file/directory, path), so the file builds on every
+# backend (item term-self-host-001-1437, decision 167). A memory folder that cannot be made is left to the write after
+# it to name, since file/directory `make` is total.
 #
 # Every argument is a maybe: the original told a name or a kind left out (`??`) from one given empty.
 
@@ -35,9 +39,41 @@ load @term/base/maybe
 
 load @term/base/text
   find split
+  find ends-with
+  find char-code-at
+  find to-lower-case
 
 load @term/base/list
   find get
+  find join
+
+# aliased: `join` is the list's here, `read`, `list` and `make` are heads in this dialect, and each alias is a name no
+# module of the mind closure defines
+load @term/base/path
+  find join, name join-under
+  find file-name
+  find relative-path
+
+load @term/base/file/blocking
+  find read, name read-text-now
+  find exists, name on-disk
+  find list, name listed-entries
+
+load @term/base/file
+  find write, name store-text
+  find remove, name drop-file
+
+load @term/base/file/directory
+  find make, name ensure-folder
+
+load @term/base/json
+  find stringify
+  find make-object
+  find set-field
+  find make-array
+  find push-item
+  find from-text
+  find from-boolean
 
 load @term/call/work/output/printer
   find close-run
@@ -46,17 +82,11 @@ load @term/call/work/output/printer
   find open-run
   find print-data
   find report
+  find set-exit-code
 
 load @term/call/work/item/event
   find tally
   find item-field
-
-dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
-  load <global:JSON>, name host-json
-  load <global:String>, name host-string
-  load <global:process>, name host-process
 
 # a fact read from its file
 form fact-file
@@ -116,37 +146,6 @@ form counted-close
   link verdict, like text
   link counts, like list, like tally
 
-form folder-ask
-  link recursive, like boolean
-
-form forgot-record
-  link ok, like boolean
-  link name, like text
-
-form saved-record
-  link ok, like boolean
-  link name, like text
-  link kind, like text
-  link file, like text
-
-form replaced-record
-  link ok, like boolean
-  link name, like text
-  link kind, like text
-  link file, like text
-  link replaced, like text
-
-form fact-record
-  link name, like text
-  link kind, like text
-  link description, like text
-  link body, like text
-  link file, like text
-
-form facts-record
-  link ok, like boolean
-  link facts, like list, like fact-record
-
 # what a remember wrote: the fact's name and kind, its file from the root, and the description it replaced, if any
 form saved-fact
   link name, like text
@@ -178,12 +177,32 @@ task memory-dir
   parts/push(<memory>)
   back kept-at(project-home(root, parts), legacy-project-home(root, parts))
 
+# a fact file's name without its `.md`, as node's `basename(file, '.md')` reads it: a name that is only `.md` keeps it
+task fact-stem
+  take file, like text
+  like text
+  mark private
+
+  save whole, file-name(file)
+  fork test, or(not(ends-with(whole, <.md>)), is-equal(whole, <.md>))
+    hold
+      back whole
+  save points, split(whole, <>)
+  save kept, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, subtract(points/length, 3))
+    hook hold
+      kept/push(get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
 task read-fact
   take file, like text
   like fact-file
   mark private
 
-  save read, fact-of(node-file/read-file-sync(file, <utf8>), node-path/basename(file, <.md>))
+  save read, fact-of(read-text-now(file), fact-stem(file))
   back make(fact-file, bind(name, read/name), bind(kind, read/kind), bind(description, read/description), bind(body, read/body), bind(file, file))
 
 task all-facts
@@ -193,18 +212,48 @@ task all-facts
 
   save dir, memory-dir(root)
   save out, make list
-  fork test, not(node-file/exists-sync(dir))
+  fork test, not(on-disk(dir))
     hold
       back out
-  # the names the host answers (seam decision 004)
-  save names, like list, like dynamic
-    node-file/readdir-sync(dir)
-  walk names
-    take name
-    fork test, and(name/ends-with(<.md>), is-unequal(name, <index.md>))
+  walk listed-entries(dir)
+    take entry
+    save name, entry/name
+    fork test, and(ends-with(name, <.md>), is-unequal(name, <index.md>))
       hold
-        out/push(read-fact(node-path/join(dir, name)))
+        out/push(read-fact(join-under(dir, name)))
   back out
+
+# a text's first `units` UTF-16 units, as JavaScript's `slice(0, units)` cuts it, counted over code points so every
+# backend agrees: a code point past the Basic Multilingual Plane is two units (a high surrogate on node, the code
+# point itself elsewhere). One that the cut would split is left out, where JavaScript kept its first half alone
+task unit-prefix
+  take value, like text
+  take units, like number
+  like text
+  mark private
+
+  save points, split(value, <>)
+  save kept, make list
+  save used, 0
+  save at, 0
+  save open, true
+  walk test
+    hook test, and(open, is-below(at, points/length))
+    hook hold
+      save point, get(points, at)
+      save code, char-code-at(point, 0)
+      save width, 1
+      fork test, and(is-above(code, 55295), or(is-below(code, 56320), is-above(code, 65535)))
+        hold
+          save width, 2
+      fork test, is-above(add(used, width), units)
+        hold
+          save open, false
+        miss
+          kept/push(point)
+          save used, add(used, width)
+          save at, add(at, 1)
+  back join(kept, <>)
 
 # the first line of a fact, its first 100 UTF-16 units, as the original's `split('\n')[0].slice(0, 100)` cut it
 task description-of
@@ -213,7 +262,7 @@ task description-of
   mark private
 
   save first, get(split(fact, <\n>), 0)
-  back host-string/prototype/slice/call(first, 0, 100)
+  back unit-prefix(first, 100)
 
 task remember
   take root, like text
@@ -224,7 +273,7 @@ task remember
   mark private
 
   save dir, memory-dir(root)
-  node-file/mkdir-sync(dir, make(folder-ask, bind(recursive, true)))
+  ensure-folder(dir)
   save kind, fact-kind(given(kind-given))
   save name, fact-slug(fact)
   sift name-given
@@ -234,22 +283,22 @@ task remember
     case none
       save keep, true
   save description, description-of(fact)
-  save file, node-path/join(dir, <{name}.md>)
+  save file, join-under(dir, <{name}.md>)
   # the fact this one replaces, so the run says it changed one rather than added one
   save replaced, make none
-  fork test, node-file/exists-sync(file)
+  fork test, on-disk(file)
     hold
       save was, read-fact(file)/description
       save replaced, make(some, was)
-  node-file/write-file-sync(file, fact-text(name, kind, description, fact))
+  store-text(file, fact-text(name, kind, description, fact))
   # keep a one-line index, deduped by name (the index is the thing a session loads up front)
-  save index-path, node-path/join(dir, <index.md>)
+  save index-path, join-under(dir, <index.md>)
   save existing, <>
-  fork test, node-file/exists-sync(index-path)
+  fork test, on-disk(index-path)
     hold
-      save existing, node-file/read-file-sync(index-path, <utf8>)
-  node-file/write-file-sync(index-path, index-with(existing, name, description))
-  back make(saved-fact, bind(name, name), bind(kind, kind), bind(file, node-path/relative(root, file)), bind(replaced, replaced))
+      save existing, read-text-now(index-path)
+  store-text(index-path, index-with(existing, name, description))
+  back make(saved-fact, bind(name, name), bind(kind, kind), bind(file, relative-path(root, file)), bind(replaced, replaced))
 
 # forget one fact: its file, and its line in the index. Answers what it forgot, or nothing for a name never used
 task forget
@@ -259,17 +308,71 @@ task forget
   mark private
 
   save dir, memory-dir(root)
-  save file, node-path/join(dir, <{fact-slug(name)}.md>)
-  fork test, not(node-file/exists-sync(file))
+  save file, join-under(dir, <{fact-slug(name)}.md>)
+  fork test, not(on-disk(file))
     hold
       back make none
   save gone, read-fact(file)
-  node-file/rm-sync(file)
-  save index-path, node-path/join(dir, <index.md>)
-  fork test, node-file/exists-sync(index-path)
+  drop-file(file)
+  save index-path, join-under(dir, <index.md>)
+  fork test, on-disk(index-path)
     hold
-      node-file/write-file-sync(index-path, index-without(node-file/read-file-sync(index-path, <utf8>), gone/name))
+      save index-text, read-text-now(index-path)
+      store-text(index-path, index-without(index-text, gone/name))
   back make(some, gone)
+
+# `{"ok":<ok>,"name":<name>}`, what `--forget` answers as json
+task forgot-json
+  take ok, like boolean
+  take name, like text
+  like text
+  mark private
+
+  save record, make-object()
+  save record, set-field(record, <ok>, from-boolean(ok))
+  save record, set-field(record, <name>, from-text(name))
+  back stringify(record)
+
+# what `remember` answers as json: ok, name, kind and file, then the description it replaced when there was one
+task saved-json
+  take saved, like saved-fact
+  like text
+  mark private
+
+  save record, make-object()
+  save record, set-field(record, <ok>, from-boolean(true))
+  save record, set-field(record, <name>, from-text(saved/name))
+  save record, set-field(record, <kind>, from-text(saved/kind))
+  save record, set-field(record, <file>, from-text(saved/file))
+  sift saved/replaced
+    case some
+      link was
+      save record, set-field(record, <replaced>, from-text(was))
+    case none
+      save keep, true
+  back stringify(record)
+
+# what a recall answers as json: ok, then each fact's name, kind, description, body and its file from the root
+task facts-json
+  take root, like text
+  take facts, like list, like fact-file
+  like text
+  mark private
+
+  save records, make-array()
+  walk facts
+    take one
+    save record, make-object()
+    save record, set-field(record, <name>, from-text(one/name))
+    save record, set-field(record, <kind>, from-text(one/kind))
+    save record, set-field(record, <description>, from-text(one/description))
+    save record, set-field(record, <body>, from-text(one/body))
+    save record, set-field(record, <file>, from-text(relative-path(root, one/file)))
+    save records, push-item(records, record)
+  save answer, make-object()
+  save answer, set-field(answer, <ok>, from-boolean(true))
+  save answer, set-field(answer, <facts>, records)
+  back stringify(answer)
 
 task call-forget
   take root, like text
@@ -284,11 +387,11 @@ task call-forget
       sift gone
         case some
           link one
-          print-data(<{host-json/stringify(make(forgot-record, bind(ok, true), bind(name, one/name)))}\n>)
-          save host-process/exit-code, 0
+          print-data(<{forgot-json(true, one/name)}\n>)
+          set-exit-code(0)
         case none
-          print-data(<{host-json/stringify(make(forgot-record, bind(ok, false), bind(name, name)))}\n>)
-          save host-process/exit-code, 1
+          print-data(<{forgot-json(false, name)}\n>)
+          set-exit-code(1)
     miss
       open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
       sift gone
@@ -315,12 +418,7 @@ task call-remember
   save saved, remember(root, fact, name, kind)
   fork test, json
     hold
-      sift saved/replaced
-        case some
-          link was
-          print-data(<{host-json/stringify(make(replaced-record, bind(ok, true), bind(name, saved/name), bind(kind, saved/kind), bind(file, saved/file), bind(replaced, was)))}\n>)
-        case none
-          print-data(<{host-json/stringify(make(saved-record, bind(ok, true), bind(name, saved/name), bind(kind, saved/kind), bind(file, saved/file)))}\n>)
+      print-data(<{saved-json(saved)}\n>)
     miss
       open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
       save fields, make list
@@ -349,7 +447,7 @@ task call-recall
   mark private
 
   save asked, given(find)
-  save query, host-string/prototype/to-lower-case/call(asked)
+  save query, to-lower-case(asked)
   save facts, make list
   walk all-facts(root)
     take one
@@ -358,11 +456,7 @@ task call-recall
         facts/push(one)
   fork test, json
     hold
-      save records, make list
-      walk facts
-        take one
-        records/push(make(fact-record, bind(name, one/name), bind(kind, one/kind), bind(description, one/description), bind(body, one/body), bind(file, node-path/relative(root, one/file))))
-      print-data(<{host-json/stringify(make(facts-record, bind(ok, true), bind(facts, records)))}\n>)
+      print-data(<{facts-json(root, facts)}\n>)
     miss
       # each fact one `recall` item: its description as the subject, its kind and name as facts
       save opening, make list

@@ -1,6 +1,7 @@
 # node whole-path file calls that never await, over node:fs's *Sync calls. `blocking-stat` and `blocking-list` build
 # each record from one host call. `changed` is `mtimeMs`, which keeps the fraction. Internal: reached only through the
-# public file/blocking API, which has already ruled out a missing path.
+# public file/blocking API, which has already ruled out a missing path for read, stat, list and real. The kind and the
+# four that change the disk rule out nothing first: each answers for a path that is not there itself.
 
 dock load
   load <node:fs>, name blocking-fs
@@ -103,3 +104,92 @@ task blocking-real
   send back
     call blocking-fs/realpath-sync
       read path
+
+# the path's own kind with links not followed (lstatSync), or the empty text when not even a link is there
+task blocking-kind
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save own
+      call blocking-fs/lstat-sync
+        read path
+    save kind, text <other>
+    fork test
+      hook test
+        call own/is-symbolic-link
+      hook hold
+        save kind, text <link>
+      hook miss
+        fork test
+          hook test
+            call own/is-directory
+          hook hold
+            save kind, text <directory>
+          hook miss
+            fork test
+              hook test
+                call own/is-file
+              hook hold
+                save kind, text <file>
+    send back, read kind
+  halt take
+    take problem
+    send back, text <>
+
+# each of the four below answers whether node's call returned, and false for anything it threw
+task blocking-rename
+  take from, like text
+  take to, like text
+  like boolean
+  fork
+    mark unsafe
+    call blocking-fs/rename-sync
+      read from
+      read to
+    send back, true
+  halt take
+    take problem
+    send back, false
+
+task blocking-remove-folder
+  take path, like text
+  like boolean
+  fork
+    mark unsafe
+    call blocking-fs/rmdir-sync
+      read path
+    send back, true
+  halt take
+    take problem
+    send back, false
+
+# `junction` is read on Windows only, and node ignores the type everywhere else
+task blocking-link
+  take target, like text
+  take at, like text
+  like boolean
+  fork
+    mark unsafe
+    call blocking-fs/symlink-sync
+      read target
+      read at
+      text <junction>
+    send back, true
+  halt take
+    take problem
+    send back, false
+
+task blocking-write
+  take path, like text
+  take body, like text
+  like boolean
+  fork
+    mark unsafe
+    call blocking-fs/write-file-sync
+      read path
+      read body
+    send back, true
+  halt take
+    take problem
+    send back, false

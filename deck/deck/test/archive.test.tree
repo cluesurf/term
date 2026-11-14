@@ -1,6 +1,9 @@
 note <A version's files as one gzip ustar archive, written, read back and refused where it must be>
 
 # Item term-self-host-001-1043 (decision 129 section 2): code/oci/archive.tree, the one layer of OCI artifact format v2.
+# Item term-self-host-001-1289 (decisions 154 and 158): the `.term-digest` marker refused as a path, the bounded
+# inflate, and the artifact around the archive: a dry build of a folder gives one layer holding the walk's files, and
+# verify-deck-config refuses every byte that is not the signed one.
 
 load ../code/oci/archive
   find check-archive-path
@@ -11,6 +14,26 @@ load ../code/oci/archive
 
 load ../code/oci/oci-failure
   find oci-failure-message
+
+load ../code/oci/artifact-format
+  find artifact-type
+  find archive-media-type
+  find deck-statement
+  find parse-deck-manifest
+  find parse-deck-config
+  find verify-deck-config
+  find check-archive-layer
+
+load ../code/oci/oci-publishing
+  find build-oci-artifact
+
+load ../code/oci/version-files
+  find default-version-exclude
+  find read-version-files
+
+load ../code/object/id-signing
+  find generate-keypair
+  find sign-id
 
 bind entry
   take path, like text
@@ -221,3 +244,266 @@ test <archive: an unpack refuses what is not gzip and what states more than the 
   save entries, some-entries()
   want hold, is-equal(unpack-refusal(write-archive(entries), 1048576), <archive layer is not gzip>)
   want hold, is-unequal(unpack-refusal(pack-archive(entries), 10), <>)
+
+# ---- item 1289: the marker, the bounded inflate, and the artifact around the archive ----
+
+bind nothing-given
+  like dynamic
+  case node
+    text <undefined>
+
+# a gzip of the bytes whose trailer states 0 bytes, so the stated-size check passes and only the inflate bound stops it
+bind gzip-forged
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<((forgedZip) => { forgedZip.writeUInt32LE(0, forgedZip.length - 4); return forgedZip })(Buffer.from(process.getBuiltinModule("node:zlib").gzipSync($bytes)))>>
+
+bind zero-entries
+  take size, like number
+  like dynamic
+  case node
+    text <<[{ path: "big", kind: "file", executable: false, bytes: Buffer.alloc($size) }]>>
+
+# a package folder in a fresh temporary directory: source, an executable, an empty directory, a `.treeignore`, and what
+# the walk must leave out (a dotfile, node_modules, the top `link/`, tmp, a forged `.term-digest`)
+bind fixture-folder
+  like text
+  case node
+    text <<((fixFs, fixPath, fixOs) => { const fixDir = fixFs.mkdtempSync(fixPath.join(fixOs.tmpdir(), "artifact-")); const fixPut = (fixAt, fixText, fixMode) => { const fixFull = fixPath.join(fixDir, fixAt); fixFs.mkdirSync(fixPath.dirname(fixFull), { recursive: true }); fixFs.writeFileSync(fixFull, fixText); if (fixMode) fixFs.chmodSync(fixFull, fixMode) }; fixPut("deck.tree", "deck @term/demo\n"); fixPut("code/base.tree", "task hello\n"); fixPut("code/link/kept.tree", "task kept\n"); fixPut("bin/run", "#!/bin/sh\n", 0o755); fixPut(".treeignore", "tmp\n"); fixPut(".hidden", "x"); fixPut("node_modules/x/index.js", "x"); fixPut("link/@term/base/deck.tree", "x"); fixPut("tmp/scratch.txt", "x"); fixPut(".term-digest", "sha256:00\n"); fixFs.mkdirSync(fixPath.join(fixDir, "empty")); return fixDir })(process.getBuiltinModule("node:fs"), process.getBuiltinModule("node:path"), process.getBuiltinModule("node:os"))>>
+
+# what the system's `tar -tzf` lists in a gzip layer, directories without their trailing slash, sorted, as JSON
+bind tar-list
+  take bytes, like dynamic
+  like text
+  case node
+    text <<((listFs, listPath, listOs, listChild) => { const listDir = listFs.mkdtempSync(listPath.join(listOs.tmpdir(), "layer-")); const listFile = listPath.join(listDir, "layer.tar.gz"); listFs.writeFileSync(listFile, $bytes); return JSON.stringify(listChild.execFileSync("tar", ["-tzf", listFile], { encoding: "utf8" }).split("\n").filter(listLine => listLine !== "").map(listLine => listLine.replace(/\/$/, "")).sort()) })(process.getBuiltinModule("node:fs"), process.getBuiltinModule("node:path"), process.getBuiltinModule("node:os"), process.getBuiltinModule("node:child_process"))>>
+
+bind entry-list
+  take entries, like dynamic
+  like text
+  case node
+    text <<JSON.stringify($entries.map(listEntry => listEntry.path).sort())>>
+
+bind layer-count
+  take bytes, like dynamic
+  like number
+  case node
+    text <JSON.parse($bytes.toString("utf8")).layers.length>
+
+bind blob-bytes
+  take artifact, like dynamic
+  take index, like number
+  like dynamic
+  case node
+    text <$artifact.blobs[$index].bytes>
+
+bind field-of
+  take record, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$record[$name]>
+
+bind json-bytes
+  take value, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from(JSON.stringify($value))>
+
+# a parsed manifest whose config descriptor is the digest and size of `bytes`, so a forged config passes step 1 and
+# the test reaches the signature and the layer
+bind manifest-for-config
+  take manifest, like dynamic
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<({ ...$manifest, config: { ...$manifest.config, digest: "sha256:" + process.getBuiltinModule("node:crypto").createHash("sha256").update($bytes).digest("hex"), size: $bytes.length } })>>
+
+bind manifest-archive-with
+  take manifest, like dynamic
+  take name, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <<({ ...$manifest, archive: { ...$manifest.archive, [$name]: $value } })>>
+
+bind config-with
+  take config, like dynamic
+  take name, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <<({ ...$config, [$name]: $value })>>
+
+# a signature with one base64 character changed, still well formed
+bind flipped
+  take sig, like text
+  like text
+  case node
+    text <<$sig.slice(0, 20) + ($sig[20] === "A" ? "B" : "A") + $sig.slice(21)>>
+
+# the v2 statement's text with its type set back to v1: what a v1 signature covered
+bind as-v1
+  take statement, like text
+  like text
+  case node
+    text <<$statement.replace("application/vnd.cluesurf.term.deck.v2", "application/vnd.cluesurf.term.deck.v1")>>
+
+bind with-two-layers
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<((twoManifest) => Buffer.from(JSON.stringify({ ...twoManifest, layers: [twoManifest.layers[0], twoManifest.layers[0]] })))(JSON.parse($bytes.toString("utf8")))>>
+
+bind with-last-byte
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<((lastCopy) => { lastCopy[lastCopy.length - 1] ^= 1; return lastCopy })(Buffer.from($bytes))>>
+
+bind holds-text
+  take value, like text
+  take part, like text
+  like boolean
+  case node
+    text <$value.includes($part)>
+
+bind demo-links
+  like dynamic
+  case node
+    text <<[{ deck: "@term/site", code: "0.0.x" }, { deck: "@term/base", code: "0.2.x" }]>>
+
+task verify-refusal
+  take config, like dynamic
+  take manifest, like dynamic
+  take tag, like dynamic
+  take version, like dynamic
+  take bytes, like dynamic
+  take pin, like dynamic
+  like text
+
+  fork
+    mark unsafe
+    verify-deck-config(config, manifest, <@term/demo>, tag, version, bytes, pin)
+    back <>
+  halt take
+    take cause
+    back oci-failure-message(cause)
+
+# a config verified with its bytes and its manifest's config descriptor made to agree, so steps 2 and 3 decide
+task forged-refusal
+  take config, like dynamic
+  take manifest, like dynamic
+  take tag, like dynamic
+  take version, like dynamic
+  like text
+
+  save bytes, json-bytes(config)
+  back verify-refusal(config, manifest-for-config(manifest, bytes), tag, version, bytes, nothing-given())
+
+task manifest-refusal
+  take bytes, like dynamic
+  like text
+
+  fork
+    mark unsafe
+    parse-deck-manifest(bytes)
+    back <>
+  halt take
+    take cause
+    back oci-failure-message(cause)
+
+task config-refusal
+  take bytes, like dynamic
+  like text
+
+  fork
+    mark unsafe
+    parse-deck-config(bytes)
+    back <>
+  halt take
+    take cause
+    back oci-failure-message(cause)
+
+task layer-refusal
+  take bytes, like dynamic
+  take config, like dynamic
+  like text
+
+  fork
+    mark unsafe
+    check-archive-layer(bytes, config)
+    back <>
+  halt take
+    take cause
+    back oci-failure-message(cause)
+
+test <archive: the install marker .term-digest is refused as a path on write and on read, and only at the top>
+  save marker, <archive path .term-digest is the install marker, which no package carries>
+  want hold, is-equal(path-refusal(<.term-digest>), marker)
+  want hold, is-equal(path-refusal(<code/.term-digest>), <>)
+  want hold, is-equal(write-refusal(one(entry(<.term-digest>, <file>, false, <sha256:00>))), marker)
+  save bytes, write-archive(one(entry(<code/base.tree>, <file>, false, <task hello>)))
+  want hold, is-equal(read-refusal(with-name(bytes, <.term-digest>), 1048576), marker)
+
+test <archive: an unpack stops a stream that inflates past the bound whatever its trailer states>
+  save forged, gzip-forged(write-archive(zero-entries(2097152)))
+  want hold, is-equal(unpack-refusal(forged, 10), <archive layer inflates past the limit of 1048586>)
+
+test <artifact: a dry build of a folder gives one layer whose tar lists exactly the walk's files>
+  save dir, fixture-folder()
+  save keypair, generate-keypair()
+  save built, build-oci-artifact(dir, <@term/demo>, <1.0.0>, demo-links(), keypair, nothing-given(), nothing-given())
+  save artifact, field-of(built, <artifact>)
+  save included, make list
+  save walked, read-version-files(dir, default-version-exclude(), included)
+  want hold, is-equal(layer-count(field-of(artifact, <manifest>)), 1)
+  want hold, is-equal(tar-list(blob-bytes(artifact, 1)), entry-list(walked))
+  want hold, is-equal(entry-list(walked), <[".treeignore","bin/run","code/base.tree","code/link/kept.tree","deck.tree","empty"]>)
+  save again, build-oci-artifact(dir, <@term/demo>, <1.0.0>, demo-links(), keypair, nothing-given(), nothing-given())
+  want hold, is-equal(field-of(artifact, <digest>), field-of(field-of(again, <artifact>), <digest>))
+  save parsed, parse-deck-manifest(field-of(artifact, <manifest>))
+  want hold, is-equal(field-of(field-of(parsed, <archive>), <mediaType>), archive-media-type())
+  save config, parse-deck-config(blob-bytes(artifact, 0))
+  want hold, is-equal(field-of(config, <type>), artifact-type())
+  want hold, is-equal(layer-refusal(blob-bytes(artifact, 1), config), <>)
+  want hold, holds-text(layer-refusal(with-last-byte(blob-bytes(artifact, 1)), config), <the fetched archive is>)
+  want hold, is-equal(manifest-refusal(with-two-layers(field-of(artifact, <manifest>))), <manifest must hold exactly 1 layer, the archive>)
+  want hold, is-equal(config-refusal(json-bytes(config-with(config, <type>, <application/vnd.cluesurf.term.deck.v1>))), <deck config is malformed or not a application/vnd.cluesurf.term.deck.v2 config>)
+
+test <artifact: verify-deck-config takes the signed bytes and refuses every other>
+  save dir, fixture-folder()
+  save keypair, generate-keypair()
+  save built, build-oci-artifact(dir, <@term/demo>, <1.0.0>, demo-links(), keypair, nothing-given(), nothing-given())
+  save artifact, field-of(built, <artifact>)
+  save parsed, parse-deck-manifest(field-of(artifact, <manifest>))
+  save bytes, blob-bytes(artifact, 0)
+  save config, parse-deck-config(bytes)
+  save digest, field-of(parsed, <digest>)
+  save failed, <the signature on @term/demo@1.0.0 does not verify>
+
+  # what was published verifies, with and without the pin, the tag and the version
+  want hold, is-equal(verify-refusal(config, parsed, <1.0.0>, <1.0.0>, bytes, digest), <>)
+  want hold, is-equal(verify-refusal(config, parsed, nothing-given(), nothing-given(), bytes, nothing-given()), <>)
+
+  # step 1: the pin, the config's bytes
+  save other, <sha256:0000000000000000000000000000000000000000000000000000000000000000>
+  want hold, is-equal(verify-refusal(config, parsed, <1.0.0>, <1.0.0>, bytes, other), <manifest {digest} is not the pinned {other}>)
+  want hold, is-equal(verify-refusal(config, parsed, <1.0.0>, <1.0.0>, nothing-given(), nothing-given()), <the config's bytes were not given, so they cannot be held to the manifest>)
+  want hold, holds-text(verify-refusal(config, parsed, <1.0.0>, <1.0.0>, with-last-byte(bytes), nothing-given()), <the config blob is>)
+
+  # step 2: a v1-typed statement, a flipped signature byte, a replay under another version or tag
+  save secret, field-of(keypair, <privateKey>)
+  save v1-signed, config-with(config, <sig>, sign-id(as-v1(deck-statement(config)), secret))
+  want hold, is-equal(forged-refusal(v1-signed, parsed, <1.0.0>, <1.0.0>), failed)
+  want hold, is-equal(forged-refusal(config-with(config, <sig>, flipped(field-of(config, <sig>))), parsed, <1.0.0>, <1.0.0>), failed)
+  want hold, is-equal(forged-refusal(config, parsed, <2.0.0>, <2.0.0>), <tag 2.0.0 serves an artifact signed for tag 1.0.0>)
+  want hold, is-equal(forged-refusal(config, parsed, nothing-given(), <2.0.0>), <expected @term/demo@2.0.0, the artifact is 1.0.0>)
+  want hold, is-equal(forged-refusal(config-with(config, <version>, <2.0.0>), parsed, nothing-given(), <2.0.0>), <the signature on @term/demo@2.0.0 does not verify>)
+
+  # step 3: the manifest's layer differs from the signed archive in digest, size or media type
+  save wrong, <is not the signed archive>
+  want hold, holds-text(forged-refusal(config, manifest-archive-with(parsed, <digest>, other), <1.0.0>, <1.0.0>), wrong)
+  want hold, holds-text(forged-refusal(config, manifest-archive-with(parsed, <size>, 1), <1.0.0>, <1.0.0>), wrong)
+  want hold, holds-text(forged-refusal(config, manifest-archive-with(parsed, <mediaType>, <application/vnd.oci.image.layer.v1.tar>), <1.0.0>, <1.0.0>), wrong)

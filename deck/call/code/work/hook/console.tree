@@ -36,6 +36,13 @@ load @term/base/process/current
   find read, name read-process
   find exit, name exit-process
 
+load @term/base/process/run
+  find run-attached
+
+load @term/base/path
+  find join, name path-join
+  find directory, name path-directory-of
+
 load @term/call/work/hook/route
   find route
   find route-take
@@ -275,6 +282,23 @@ task console-values
       back values
     miss
       back no-handed()
+
+# A VERB THE BUILD FORWARDS (decision 109 rule 1, item term-self-host-001-0800): a route whose task's closure the Rust
+# build cannot link is answered by the node build, `node <folder>/line.js` with this process's own arguments, where
+# <folder> holds the folder this executable is in (host/native/term beside host/line.js), on this terminal with the
+# same environment and working folder. The answer is the child's exit code, 128 plus n for a signal, and nothing of
+# its own is written
+task console-forward
+  mark async
+  like number
+  save started, read-process()
+  save line, path-join(path-directory-of(path-directory-of(started/executable)), <line.js>)
+  save words, make list
+  words/push line
+  walk started/arguments
+    take word
+    words/push word
+  back run-attached(<node>, words)
 
 # the process ends with the run's exit code
 task console-exit

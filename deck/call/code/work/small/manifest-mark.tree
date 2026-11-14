@@ -1,0 +1,50 @@
+# A manifest's `mark`, the version a console answers `--version` with, read from the manifest's text the way the package
+# manager reads it (`term show mark`). One reader for every console: a booted one (work/boot/boot-running.tree
+# `mark-for`) and one the compiler lowers, whose mark the build's deck lookup carries (work/build/deck-finding.tree, and
+# call/code/deck-of.ts, its TypeScript twin, item term-self-host-001-1173). `manifest-value-of` reads only a head whose argument is a name, and `mark <1.2.3>` is a
+# text, so it answers nothing for a mark (item 0983).
+
+load @term/deck/package/manifest-reading
+  find parse-manifest
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/version
+  find show-code
+
+dock load
+  load <node:fs>, name node-file
+
+# the mark this manifest text declares, the empty text for none. A manifest that does not read has no mark, and the
+# parsed default 0.0.0 is no mark either (the publish rule refuses it as a version)
+task manifest-mark
+  take text, like text
+  like text
+
+  save shown, <>
+  fork
+    mark unsafe
+    save read, parse-manifest(text, make-grammars())
+    save shown, show-code(read/mark)
+  halt take
+    take problem
+    save shown, <>
+  fork test, is-equal(shown, <0.0.0>)
+    hold
+      back <>
+  back shown
+
+# the mark the manifest at this path declares, the empty text for none or a file that cannot be read
+task manifest-mark-of
+  take file, like text
+  like text
+
+  save text, <>
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(file, <utf8>)
+  halt take
+    take problem
+    back <>
+  back manifest-mark(text)

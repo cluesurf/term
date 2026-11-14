@@ -1,74 +1,47 @@
-# `term host` to an OCI registry. Ported from deck/deck/code/oci/publish.ts (term-cli-in-term-0092): tagOfTarget,
-# buildOciArtifact, publishToOci, attachSignature.
+# `term host` to an OCI registry, artifact format v2 (decision 129 section 2 of the self-host change, decisions 154 and
+# 158, item term-self-host-001-1289). Ported from deck/deck/code/oci/publish.ts (term-cli-in-term-0092).
 #
-#   1. build the release locally, as every publish does
-#   2. build the artifact: the whole closure packed by content, so an unchanged run of objects packs to a blob the
-#      registry already holds under the same digest
+#   1. walk the package folder into its files (oci/version-files.tree), read as bytes
+#   2. build the artifact: one gzip ustar archive layer and a config that signs it (oci/artifact-format.tree)
 #   3. make sure this key may publish the scope (creating the scope's key set on its first publish)
-#   4. refuse a version tag that already names a different manifest. Versions are write-once
-#   5. upload each blob the registry lacks, found by HEAD, a few at a time
+#   4. refuse a version tag that already names a different manifest. Versions are write-once, and the same files under
+#      the same key give the same manifest digest, so a republish of an unchanged version is `unchanged`
+#   5. upload each blob the registry lacks (the config and the archive), found by HEAD, a few at a time
 #   6. put the manifest under its tag, then read the tag back to catch a racing publish
-#   7. ONLY WHEN ASKED (`referrer` true): attach the signature as an OCI 1.1 referrer, so tooling that has never heard
-#      of Term (`oras discover`) can see it
 #
-# THE REFERRER IS OFF BY DEFAULT since 2026-10-04. The signature that is checked lives in the config, and nothing that
-# installs reads the referrer. On a registry without the referrers API, GHCR among them, the spec's fallback is an
-# index TAGGED `sha256-<hex of the version's digest>`, and GHCR lists that tag beside every real version, so each
-# release looked like two. The ORAS interop witness (task/term/oci-witness.ts) is what asks for it.
-#
-# Nothing is uploaded on a dry run, and nothing reaches the registry before the artifact has passed the closure rule.
+# A publish target is a version, nothing else (decision 154 section 1): no branch tag, no commit, no chunking, no object
+# store and no signature referrer (decision 158 rule 3). Nothing is uploaded on a dry run.
 #
 # The decisions:
 #   - every task takes positional parameters: tag-of-target(target); build-oci-artifact(dir, package-name, version,
-#     target, link, local, keypair, author, time, message, params, annotations, include); publish-to-oci(dir,
-#     package-name, version, target, link, transport, repository, scope, keys-repository, local, keypair, author, time,
-#     message, params, annotations, include, concurrency, referrer, log); attach-signature(transport, repository,
-#     subject, artifact). Each optional one is none (undefined) where left out, defaulted as the original defaulted it
-#   - a target, a release, an artifact and every answer are the original's host records, built in binds in its key
-#     order; the transport is the caller's host record, called with the original's one record per method
+#     link, keypair, annotations, include); publish-to-oci(dir, package-name, version, link, transport, repository,
+#     scope, keys-repository, keypair, annotations, include, concurrency, log). Each optional one is none (undefined)
+#     where left out
+#   - a built artifact and every answer are host records, built in binds in a fixed key order; the transport is the
+#     caller's host record, called with one record per method
 #   - the blobs go up through `concurrency` workers (8 by default) started together and waited together, each taking
-#     the next blob, as the original's pool; the outcomes land at their blob's place
-#   - every OciError is a halt of oci-failure (decision 007); a referrer that fails is logged with the original's text
-#     (oci-failure-message) and answered `failed`
+#     the next blob; the outcomes land at their blob's place
+#   - every refusal is a halt of oci-failure (decision 007)
 
 load ./oci-address
   find pinned-reference
   find tag-of-version
-  find assert-tag
 
 load ./oci-failure
   find oci-failure
-  find oci-failure-message
 
 load ./registry-transport
   find manifest-media-type
-  find index-media-type
-  find sha256-digest
 
 load ./artifact-format
   find build-artifact
-  find build-signature-referrer
-  find commit-annotation
-  find empty-bytes
-  find empty-descriptor
-  find signature-artifact-type
 
 load ./key-trust
   find ensure-publisher
 
-load ../object/release-building
-  find build-release
-
-load ../object/content-chunking
-  find default-chunk-params
-
-load ../object/package-version
+load ./version-files
   find default-version-exclude
-
-bind pushing-nothing
-  like dynamic
-  case node
-    text <undefined>
+  find read-version-files
 
 bind pushing-truthy
   take value, like dynamic
@@ -100,21 +73,13 @@ bind pushing-is-version
   take target, like dynamic
   like boolean
   case node
-    text <($target.kind === "version")>
+    text <($target?.kind === "version")>
 
-bind pushing-branch-tag
+bind pushing-kind
   take target, like dynamic
   like text
   case node
-    text <<`branch.${$target.branch}`>>
-
-bind pushing-meta
-  take author, like dynamic
-  take time, like dynamic
-  take message, like dynamic
-  like dynamic
-  case node
-    text <<({ author: $author, time: Date.parse($time) || 0, message: $message ?? "" })>>
+    text <String($target?.kind)>
 
 bind pushing-or-list
   take value, like dynamic
@@ -122,19 +87,12 @@ bind pushing-or-list
   case node
     text <($value ?? [])>
 
-bind pushing-reader
-  take release, like dynamic
-  take local, like dynamic
-  like dynamic
-  case node
-    text <<(async (readId) => { const readHeld = $release.chunks.get(readId); return readHeld === undefined ? $local.get(readId) : Buffer.from(readHeld, "utf8") })>>
-
 bind pushing-built
-  take release, like dynamic
+  take entries, like dynamic
   take artifact, like dynamic
   like dynamic
   case node
-    text <<({ release: $release, artifact: $artifact })>>
+    text <<({ entries: $entries, artifact: $artifact })>>
 
 bind pushing-log
   take log, like dynamic
@@ -147,7 +105,7 @@ bind pushing-artifact-line
   take artifact, like dynamic
   like text
   case node
-    text <<`artifact ${$artifact.digest}: ${$artifact.blobs.length - 1} layers, ${$artifact.packed} objects packed, ${$artifact.loose} loose`>>
+    text <<`artifact ${$artifact.digest}: 1 layer, ${$artifact.entries} entries archived in ${$artifact.archive.size} bytes`>>
 
 bind pushing-get-manifest
   take transport, like dynamic
@@ -183,12 +141,6 @@ bind pushing-same
   case node
     text <($left === $right)>
 
-bind pushing-total-bytes
-  take blobs, like dynamic
-  like number
-  case node
-    text <<$blobs.reduce((sumTotal, sumBlob) => sumTotal + sumBlob.bytes.length, 0)>>
-
 bind pushing-unchanged
   take digest, like dynamic
   take reference, like text
@@ -197,15 +149,7 @@ bind pushing-unchanged
   take created, like boolean
   like dynamic
   case node
-    text <<((sameBlobs) => ({ digest: $digest, reference: $reference, tag: $tag, layers: sameBlobs.length - 1, manifestSize: $artifact.manifest.length, keySet: $created ? "created" : "member", artifact: $artifact, unchanged: true, blobs: { total: sameBlobs.length, uploaded: 0, mounted: 0, present: sameBlobs.length }, bytes: { total: sameBlobs.reduce((sameSum, sameBlob) => sameSum + sameBlob.bytes.length, 0), uploaded: 0 }, referrer: "skipped" }))($artifact.blobs)>>
-
-bind pushing-branch-moved
-  take target, like dynamic
-  take existing, like dynamic
-  take annotation, like text
-  like boolean
-  case node
-    text <<($target.kind === "branch" && $target.expected !== undefined && (($existing ? JSON.parse($existing.bytes.toString("utf8")).annotations?.[$annotation] : null) ?? null) !== $target.expected)>>
+    text <<((sameBlobs) => ({ digest: $digest, reference: $reference, tag: $tag, layers: sameBlobs.length - 1, manifestSize: $artifact.manifest.length, keySet: $created ? "created" : "member", artifact: $artifact, unchanged: true, blobs: { total: sameBlobs.length, uploaded: 0, mounted: 0, present: sameBlobs.length }, bytes: { total: sameBlobs.reduce((sameSum, sameBlob) => sameSum + sameBlob.bytes.length, 0), uploaded: 0 } }))($artifact.blobs)>>
 
 bind pushing-slots
   take count, like number
@@ -254,13 +198,6 @@ bind pushing-count
   case node
     text <<$outcomes.filter(countOutcome => countOutcome === $kind).length>>
 
-bind pushing-uploaded-bytes
-  take blobs, like dynamic
-  take outcomes, like dynamic
-  like number
-  case node
-    text <<$blobs.reduce((upSum, upBlob, upAt) => upSum + ($outcomes[upAt] === "uploaded" ? upBlob.bytes.length : 0), 0)>>
-
 bind pushing-landed-digest
   take landed, like dynamic
   like dynamic
@@ -273,14 +210,6 @@ bind pushing-landed-text
   case node
     text <<($landed?.digest ?? "nothing")>>
 
-bind pushing-subject
-  take kind, like text
-  take digest, like dynamic
-  take size, like number
-  like dynamic
-  case node
-    text <<({ mediaType: $kind, digest: $digest, size: $size })>>
-
 bind pushing-published
   take digest, like dynamic
   take reference, like text
@@ -288,120 +217,56 @@ bind pushing-published
   take artifact, like dynamic
   take created, like boolean
   take outcomes, like dynamic
-  take referrer, like dynamic
   like dynamic
   case node
-    text <<((doneBlobs, doneCount) => ({ digest: $digest, reference: $reference, tag: $tag, layers: doneBlobs.length - 1, manifestSize: $artifact.manifest.length, keySet: $created ? "created" : "member", artifact: $artifact, unchanged: false, blobs: { total: doneBlobs.length, uploaded: doneCount("uploaded"), mounted: doneCount("mounted"), present: doneCount("present") }, bytes: { total: doneBlobs.reduce((doneSum, doneBlob) => doneSum + doneBlob.bytes.length, 0), uploaded: doneBlobs.reduce((doneUp, doneOne, doneAt) => doneUp + ($outcomes[doneAt] === "uploaded" ? doneOne.bytes.length : 0), 0) }, referrer: $referrer }))($artifact.blobs, (doneKind) => $outcomes.filter(doneOutcome => doneOutcome === doneKind).length)>>
+    text <<((doneBlobs, doneCount) => ({ digest: $digest, reference: $reference, tag: $tag, layers: doneBlobs.length - 1, manifestSize: $artifact.manifest.length, keySet: $created ? "created" : "member", artifact: $artifact, unchanged: false, blobs: { total: doneBlobs.length, uploaded: doneCount("uploaded"), mounted: doneCount("mounted"), present: doneCount("present") }, bytes: { total: doneBlobs.reduce((doneSum, doneBlob) => doneSum + doneBlob.bytes.length, 0), uploaded: doneBlobs.reduce((doneUp, doneOne, doneAt) => doneUp + ($outcomes[doneAt] === "uploaded" ? doneOne.bytes.length : 0), 0) } }))($artifact.blobs, (doneKind) => $outcomes.filter(doneOutcome => doneOutcome === doneKind).length)>>
 
-bind pushing-fallback-tag
-  take subject, like dynamic
-  like text
-  case node
-    text <<`sha256-${$subject.digest.slice("sha256:".length)}`>>
-
-bind pushing-fallback-index
-  take current, like dynamic
-  take digest, like dynamic
-  take kind, like text
-  take size, like number
-  take artifact, like text
-  take ikind, like text
-  like dynamic
-  case node
-    text <<((fallIndex) => { const fallManifests = (fallIndex.manifests ?? []).filter(fallEntry => fallEntry.digest !== $digest); fallManifests.push({ mediaType: $kind, digest: $digest, size: $size, artifactType: $artifact }); return Buffer.from(JSON.stringify({ schemaVersion: 2, mediaType: $ikind, manifests: fallManifests })) })($current ? JSON.parse($current.bytes.toString("utf8")) : { manifests: [] })>>
-
-# the tag a publish target is written under
+# the tag a publish target is written under. A target is a version, nothing else (decision 154 section 1)
 task tag-of-target
   take target, like dynamic
   like text
 
-  fork test, pushing-is-version(target)
+  fork test, not(pushing-is-version(target))
     hold
-      back tag-of-version(pushing-field(target, <version>))
+      save kind, pushing-kind(target)
+      halt oci-failure
+        bind thing, <only a version is published, not a {kind}>
+  back tag-of-version(pushing-field(target, <version>))
 
-  save tag, pushing-branch-tag(target)
-  assert-tag(tag)
-  back tag
-
-# the artifact a publish would push, built without contacting anything. `term host --dry` prints it
+# the artifact a publish would push, built without contacting anything. `term host --dry` prints it. The answer holds
+# the walked entries and the built artifact
 task build-oci-artifact
   take dir, like text
   take package-name, like text
   take version, like text
-  take target, like dynamic
   take link, like dynamic
-  take local, like dynamic
   take keypair, like dynamic
-  take author, like dynamic
-  take time, like dynamic
-  take message, like dynamic
-  take params, like dynamic
   take annotations, like dynamic
   take include, like dynamic
   like dynamic
 
-  save chunking, default-chunk-params()
-  fork test, pushing-truthy(params)
-    hold
-      save chunking, params
-  save release, build-release(dir, local, pushing-meta(author, time, message), chunking, default-version-exclude(), pushing-or-list(include))
-  save reader, pushing-reader(release, local)
-  save artifact, build-artifact(release, reader, package-name, version, tag-of-target(target), link, keypair, annotations)
-  back pushing-built(release, artifact)
-
-# Push the signature referrer. A registry with the referrers API says so with `OCI-Subject` on the PUT. One without
-# it gets the spec's fallback: an image index tagged `sha256-<hex>` listing the referrers of that digest
-task attach-signature
-  take transport, like dynamic
-  take repository, like dynamic
-  take subject, like dynamic
-  take artifact, like dynamic
-  like text
-
-  save referrer, build-signature-referrer(subject, pushing-field(artifact, <config>))
-  save empty, empty-descriptor()
-  wait pushing-put-blob(transport, repository, pushing-field(empty, <digest>), empty-bytes())
-  save layer, pushing-field(referrer, <layer>)
-  wait pushing-put-blob(transport, repository, pushing-field(pushing-field(layer, <descriptor>), <digest>), pushing-field(layer, <bytes>))
-
-  save manifest, pushing-field(referrer, <manifest>)
-  save put, wait pushing-put-manifest(transport, repository, sha256-digest(manifest), manifest, manifest-media-type())
-  fork test, pushing-truthy(pushing-field(put, <subjectAccepted>))
-    hold
-      back <attached>
-
-  save digest, pushing-field(put, <digest>)
-  save fallback, pushing-fallback-tag(subject)
-  save current, wait pushing-get-manifest(transport, repository, fallback)
-  save index, pushing-fallback-index(current, digest, manifest-media-type(), pushing-length(manifest), signature-artifact-type(), index-media-type())
-  wait pushing-put-manifest(transport, repository, fallback, index, index-media-type())
-  back <fallback-tag>
+  save entries, read-version-files(dir, default-version-exclude(), pushing-or-list(include))
+  save artifact, build-artifact(entries, package-name, version, tag-of-version(version), link, keypair, annotations)
+  back pushing-built(entries, artifact)
 
 task publish-to-oci
   take dir, like text
   take package-name, like text
   take version, like text
-  take target, like dynamic
   take link, like dynamic
   take transport, like dynamic
   take repository, like dynamic
   take scope, like text
   take keys-repository, like text
-  take local, like dynamic
   take keypair, like dynamic
-  take author, like dynamic
-  take time, like dynamic
-  take message, like dynamic
-  take params, like dynamic
   take annotations, like dynamic
   take include, like dynamic
   take concurrency, like dynamic
-  take referrer, like dynamic
   take log, like dynamic
   like dynamic
 
   save repo, pushing-field(repository, <name>)
-  save built, build-oci-artifact(dir, package-name, version, target, link, local, keypair, author, time, message, params, annotations, include)
+  save built, build-oci-artifact(dir, package-name, version, link, keypair, annotations, include)
   save artifact, pushing-field(built, <artifact>)
   save tag, pushing-field(pushing-field(artifact, <config>), <tag>)
 
@@ -414,12 +279,12 @@ task publish-to-oci
     hold
       pushing-log(log, <created the key set of {scope} with this machine's key>)
 
-  # 4. write-once: a version tag that names anything else is a refusal, never an overwrite
+  # 4. write-once, by manifest digest: the tag names this manifest already, or it names another and is refused
   save existing, wait pushing-get-manifest(transport, repo, tag)
   save digest, pushing-field(artifact, <digest>)
   save reference, pinned-reference(repository, digest)
 
-  fork test, and(pushing-truthy(existing), pushing-is-version(target))
+  fork test, pushing-truthy(existing)
     hold
       save held, pushing-field(existing, <digest>)
       fork test, pushing-same(held, digest)
@@ -427,14 +292,6 @@ task publish-to-oci
           back pushing-unchanged(digest, reference, tag, artifact, created)
       halt oci-failure
         bind thing, <{package-name}@{version} is already published as {held}. Versions are write-once: publish a new version>
-
-  # a branch moves by compare-and-swap where the caller asked for one. OCI has no conditional tag write, so this
-  # narrows the race rather than closing it, which is acceptable for a draft and is why no lockfile pins a branch
-  fork test, pushing-branch-moved(target, existing, commit-annotation())
-    hold
-      save branch, pushing-field(target, <branch>)
-      halt oci-failure
-        bind thing, <branch {branch} of {package-name} moved under you (fast-forward required)>
 
   # 5. blobs, the registry's HEAD deciding which are already there
   save blobs, pushing-field(artifact, <blobs>)
@@ -474,18 +331,4 @@ task publish-to-oci
       halt oci-failure
         bind thing, <tag {tag} names {named} after the publish of {digest}: another publish raced this one>
 
-  # 7. the signature as a referrer, when asked. Best effort: the signature that matters is already in the config
-  save referred, <skipped>
-  fork test, pushing-truthy(referrer)
-    hold
-      save subject, pushing-subject(manifest-media-type(), digest, pushing-length(manifest))
-      fork
-        mark unsafe
-        save referred, attach-signature(transport, repo, subject, artifact)
-      halt take
-        take problem
-        save said, oci-failure-message(problem)
-        pushing-log(log, <signature referrer not attached: {said}>)
-        save referred, <failed>
-
-  back pushing-published(digest, reference, tag, artifact, created, outcomes, referred)
+  back pushing-published(digest, reference, tag, artifact, created, outcomes)

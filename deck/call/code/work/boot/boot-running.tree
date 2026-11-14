@@ -123,14 +123,8 @@ load ../small/manifest-file
 
 # the manifest's `mark` as the package manager reads it: `manifest-value-of` reads only a head whose argument is a name,
 # and `mark <1.2.3>` is a text, so it answered nothing and every booted program lost its -v (item 0983, 13:07Z window)
-load @term/deck/package/manifest-reading
-  find parse-manifest
-
-load @term/deck/package/grammar-reading
-  find make-grammars
-
-load @term/deck/version
-  find show-code
+load ../small/manifest-mark
+  find manifest-mark-of
 
 # development in a browser: the small lane's port of feed.ts `serveBrowserDevelopment`, where it was imported at run
 # time until term-cli-in-term-0069
@@ -888,20 +882,8 @@ task mark-for
   fork test, not(node-file/exists-sync(deck-file))
     hold
       back <>
-  # read through the package manager's own manifest reader, as `term show mark` does. A manifest that does not read
-  # has no mark, and the parsed default 0.0.0 is no mark either (the publish rule refuses it as a version)
-  save shown, <>
-  fork
-    mark unsafe
-    save read, parse-manifest(text-of(node-file/read-file-sync(deck-file, <utf8>)), make-grammars())
-    save shown, show-code(read/mark)
-  halt take
-    take problem
-    save shown, <>
-  fork test, is-equal(shown, <0.0.0>)
-    hold
-      back <>
-  back shown
+  # read through the one mark reader, which a console the compiler lowers reads through too (item 1173)
+  back manifest-mark-of(deck-file)
 
 # the entry as a build item names it: relative to the working directory
 task shown-entry
