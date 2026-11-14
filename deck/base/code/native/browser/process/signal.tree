@@ -1,0 +1,8 @@
+# browser signals: a page runs no processes, so no signal is ever sent. Internal: reached only through the public
+# process/signal API.
+
+task signal-process
+  take id, like number
+  take number, like number
+  like boolean
+  send back, false

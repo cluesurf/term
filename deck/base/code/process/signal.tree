@@ -1,0 +1,83 @@
+# Signals sent to another process by its id, such as one found in the process table: `send-signal` answers whether the
+# signal was sent, and never raises. The numbers are POSIX's and the same on macOS and Linux, so one table here serves
+# every backend, and each platform's own call only hands a number to kill(2) (node's process.kill). process/child
+# `stop` signals a child this program started, and process/current `listen` hears the signals sent to this one.
+#
+#   save sent, send-signal(id)
+#
+# Node, Rust, Swift and Kotlin send it. The browser runs no processes, and answers false.
+
+mark unstable
+
+load @term/base/native/{platform}/process/signal
+  find signal-process
+
+# the number of a signal named as process/current `listen` names it, and <kill>. A name not here answers 0
+task read-signal-number
+  mark private
+  take signal, like text
+  like number
+  fork test
+    hook test
+      call is-equal
+        read signal
+        text <terminate>
+    hook hold
+      send back, code 15
+  fork test
+    hook test
+      call is-equal
+        read signal
+        text <interrupt>
+    hook hold
+      send back, code 2
+  fork test
+    hook test
+      call is-equal
+        read signal
+        text <hangup>
+    hook hold
+      send back, code 1
+  fork test
+    hook test
+      call is-equal
+        read signal
+        text <kill>
+    hook hold
+      send back, code 9
+  send back, code 0
+
+# send `signal` (<terminate>, <interrupt>, <hangup> or <kill>) to the process `id`. True when it was sent. False when no
+# process has that id, when this one may not signal it, for a signal not named here, and for an id that is not one
+# process: kill(2) reads 0 as this process's group and -1 as every process it may signal, so 0 and below never reach it
+task send-signal
+  take id, like number
+  take signal
+    like text
+    fall text <terminate>
+  like boolean
+  save number
+    call read-signal-number
+      read signal
+  fork test
+    hook test
+      call is-equal
+        read number
+        code 0
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call or
+        call is-below
+          read id
+          code 1
+        call is-above
+          read id
+          code 2147483647
+    hook hold
+      send back, false
+  send back
+    call signal-process
+      read id
+      read number

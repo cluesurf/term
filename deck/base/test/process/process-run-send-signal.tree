@@ -1,0 +1,169 @@
+# `send-signal` (@term/base/process/signal) sends a signal to another process by its id. A shell started by `run`
+# leaves a `sleep` behind, writes its id to a file, and waits for it to write its exit status to another. The signal
+# answers true and the sleep ends with 128 plus the signal's number. A second send to the same id, which nothing holds
+# now, answers false, as do the id of a shell `run` already waited for, the id 0 and a signal with no name here. Every
+# sleep a case starts is ended by the case. The same on node, rust, swift and kotlin. Named process-run-* so the base
+# gate's browser leg skips it with the other run suites (BROWSER_GAP): a page runs no processes.
+
+load @term/base/process/signal
+  find send-signal
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find trim
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/list
+  find list
+
+# the arguments `sh` takes to run `script` with `place` as its $0
+task script-words
+  take script, like text
+  take place, like text
+  like list
+    like text
+  save words
+    make list
+  call words/push
+    text <-c>
+  call words/push
+    read script
+  call words/push
+    read place
+  send back, read words
+
+# what `sh` prints for `script`, trimmed, with `place` as its $0. A script that has not ended in 5000 ms raises
+task shell
+  mark async
+  take script, like text
+  take place, like text
+  like text
+  save result
+    call run
+      text <sh>
+      call script-words
+        read script
+        read place
+      bind limit, code 5000
+  send back
+    call trim
+      read result/output
+
+# a new empty folder for one case
+task scratch
+  mark async
+  like text
+  send back
+    call shell
+      text <mktemp -d>
+      text <sh>
+
+# start a sleep in `place` and a waiter that writes its exit status to `place`/status once it ends, with every stream
+# of both away from the run, which then ends at once. Answers the sleep's id, once it is written
+task start-sleep
+  mark async
+  take place, like text
+  like number
+  save started
+    call shell
+      text <(sleep 30 & echo $! \> "$0/pid"; wait $!; echo $? \> "$0/status") \< /dev/null \> /dev/null 2\>&1 &>
+      read place
+  save id
+    call shell
+      text <while [ ! -s "$0/pid" ]; do sleep 0.05; done; cat "$0/pid">
+      read place
+  send back
+    call parse-integer
+      read id
+
+# a sleep sent a signal with no name, then `way`, and the same id `way` again once the sleep's status is written:
+# `<no name> <first> <status> <second>`
+task signal-sleep
+  mark async
+  take way, like text
+  like text
+  save place
+    call scratch
+  save id
+    call start-sleep
+      read place
+  save unnamed
+    call send-signal
+      read id
+      text <stop>
+  save first
+    call send-signal
+      read id
+      read way
+  save status
+    call shell
+      text <while [ ! -s "$0/status" ]; do sleep 0.05; done; cat "$0/status">
+      read place
+  save second
+    call send-signal
+      read id
+      read way
+  save removed
+    call shell
+      text <rm -rf "$0">
+      read place
+  send back, text <{unnamed} {first} {status} {second}>
+
+# the id of a shell that `run` started and waited for, which no process has now
+task gone-id
+  mark async
+  like number
+  save id
+    call shell
+      text <echo $$>
+      text <sh>
+  send back
+    call parse-integer
+      read id
+
+test <terminate ends a live process with signal 15, and a second send to its id answers false>
+  want hold
+    call is-equal
+      call signal-sleep
+        text <terminate>
+      text <false true 143 false>
+
+test <kill ends a live process with signal 9>
+  want hold
+    call is-equal
+      call signal-sleep
+        text <kill>
+      text <false true 137 false>
+
+test <hangup ends a live process with signal 1>
+  want hold
+    call is-equal
+      call signal-sleep
+        text <hangup>
+      text <false true 129 false>
+
+test <a process that is gone answers false, with the default signal>
+  want hold
+    call is-equal
+      call send-signal
+        call gone-id
+      false
+
+test <a process that is gone answers false to kill>
+  want hold
+    call is-equal
+      call send-signal
+        call gone-id
+        text <kill>
+      false
+
+test <the id 0, this process's group, is never signalled>
+  want hold
+    call is-equal
+      call send-signal
+        code 0
+      false

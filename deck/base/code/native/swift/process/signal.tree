@@ -1,0 +1,15 @@
+# swift signals, over kill(2) in the linked `signal-sender` runtime shim. Internal: reached only through the public
+# process/signal API, which has already ruled out an id that is not one process and a signal with no number.
+
+# The dock ALIAS is the global's own name, `signal-sender`. The shim file is runtime/signal-sender.<ext>
+dock load
+  load <global:signal-sender>, name signal-sender
+
+task signal-process
+  take id, like number
+  take number, like number
+  like boolean
+  send back
+    call signal-sender/send
+      read id
+      read number

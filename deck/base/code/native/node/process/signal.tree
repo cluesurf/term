@@ -1,0 +1,21 @@
+# node signals, over process.kill, which throws for a process that is not there (ESRCH) or one this process may not
+# signal (EPERM): either is read as false. Internal: reached only through the public process/signal API, which has
+# already ruled out an id that is not one process and a signal with no number.
+
+# The dock ALIAS is the global's own name, `process`, as native/node/process.tree docks it
+dock load
+  load <global:process>, name process
+
+task signal-process
+  take id, like number
+  take number, like number
+  like boolean
+  fork
+    mark unsafe
+    call process/kill
+      read id
+      read number
+    send back, true
+  halt take
+    take problem
+    send back, false
