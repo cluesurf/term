@@ -1,0 +1,148 @@
+# A timer runs its task once, after its time, and a cleared one never runs it, on every backend
+# (deck/base/code/clock/timer.tree). Each test counts the runs of its own task in its own list. Held by
+# `pnpm term:base-gate` and `term test --env <backend>`.
+
+load @term/base/clock
+  find sleep
+
+load @term/base/clock/timer
+  find set-timer
+  find cancel-timer
+
+load @term/base/list
+  find list
+
+host runs-once
+  like list
+    like text
+  make list
+
+host runs-cleared
+  like list
+    like text
+  make list
+
+host runs-debounced
+  like list
+    like text
+  make list
+
+host runs-late
+  like list
+    like text
+  make list
+
+host runs-early
+  like list
+    like text
+  make list
+
+task run-once
+  like void
+  call runs-once/push
+    text <ran>
+
+task run-cleared
+  like void
+  call runs-cleared/push
+    text <ran>
+
+task run-debounced
+  like void
+  call runs-debounced/push
+    text <ran>
+
+task run-late
+  like void
+  call runs-late/push
+    text <ran>
+
+task run-early
+  like void
+  call runs-early/push
+    text <ran>
+
+test <a timer left alone runs its task once>
+  save left
+    call set-timer
+      code 10
+      read run-once
+  call sleep
+    code 100
+  want hold
+    call is-equal
+      read runs-once/length
+      code 1
+
+test <a cleared timer never runs its task>
+  save cleared
+    call set-timer
+      code 10
+      read run-cleared
+  call cancel-timer
+    read cleared
+  call sleep
+    code 100
+  want hold
+    call is-equal
+      read runs-cleared/length
+      code 0
+
+test <a debounce runs the last timer only>
+  save first
+    call set-timer
+      code 20
+      read run-debounced
+  call cancel-timer
+    read first
+  save second
+    call set-timer
+      code 20
+      read run-debounced
+  call cancel-timer
+    read second
+  save third
+    call set-timer
+      code 20
+      read run-debounced
+  call sleep
+    code 120
+  want hold
+    call is-equal
+      read runs-debounced/length
+      code 1
+
+test <cancelling a timer that already ran changes nothing>
+  save done
+    call set-timer
+      code 5
+      read run-late
+  call sleep
+    code 80
+  call cancel-timer
+    read done
+  call sleep
+    code 20
+  want hold
+    call is-equal
+      read runs-late/length
+      code 1
+
+test <a timer does not run before its time>
+  save waiting
+    call set-timer
+      code 150
+      read run-early
+  call sleep
+    code 10
+  save before, read runs-early/length
+  call sleep
+    code 250
+  want hold
+    call and
+      call is-equal
+        read before
+        code 0
+      call is-equal
+        read runs-early/length
+        code 1

@@ -23,11 +23,13 @@ load @term/call/work/build/host-faces
   find face-lean-reader
 
 load @term/call/work/output/printer
+  find count
+  find print-data
+
+load @term/call/work/output/printer-input
   find problem-entry
   find close-run
-  find count
   find open-run
-  find print-data
   find report
   find report-problems
 

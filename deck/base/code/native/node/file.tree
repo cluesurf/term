@@ -11,6 +11,12 @@ load ./file/metadata
   find metadata-size
   find metadata-is-directory
 
+load @term/base/file/failure
+  find raise-file-failure
+
+load @term/base/native/node/file/refusal
+  find node-refusal
+
 task read-file
   mark async
   take path, like text
@@ -20,14 +26,26 @@ task read-file
       read path
       text <utf8>
 
+# a write node refuses raises `failure` worded by @term/base/file/failure, its note node's own message, as on every
+# backend (term/compiler decision 021 point 4a): the host Error is caught here and handed up as its code, syscall and
+# message
 task write-file
   mark async
   take path, like text
   take data, like text
-  send back
+  like void
+  fork
+    mark unsafe
     call fs/write-file
       read path
       read data
+      wait true
+  halt take
+    take problem
+    call raise-file-failure
+      call node-refusal
+        read problem
+      read path
 
 task read-file-bytes
   mark async

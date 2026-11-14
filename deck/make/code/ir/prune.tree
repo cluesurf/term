@@ -288,21 +288,52 @@ task console-defined-names
   back out
 
 # every name a statement mentions, anywhere inside it, as the shake reads it, and for a path such as `os/hostname` (a
-# dock's task) its first part too, the dock's alias
+# dock's task) its first part too, the dock's alias. A name the statement binds itself (own-names: a parameter, a local,
+# a walk's item ...) names nothing where console-references skips it, as a variable, so it is left out, while the
+# same name read as a type, a case or a method stays, as the shake keeps it there (term/compiler decision 020: the
+# open-console of the Term CLI takes `mark`, which never names the `mark` verb its entry finds)
 task console-mentions
   take one, like statement
   like list, like text
 
+  save single, make list
+  push(single, one)
+  save skip, make list
+  push(skip, <span>)
+  save reached, reach-statements(single, skip)
+  save own, own-names(reached/statements, reached/expressions)
+  save kept, make hash
+  walk console-references(one)
+    take key
+    save kept/{key}, true
   save out, make list
-  walk names-of(one)
+  walk reached/names
     take name
-    push(out, name)
+    fork test, is-mentioned(name, own, kept)
+      hold
+        push(out, name)
     fork test, contains(name, </>)
       hold
         save parts, split(name, </>)
         save head, get(parts, 0)
-        push(out, head)
+        fork test, is-mentioned(head, own, kept)
+          hold
+            push(out, head)
   back out
+
+# whether a name console-mentions reads names something: any name the statement does not bind itself, and an own name
+# only where console-references keeps it (`v:` or `t:`)
+task is-mentioned
+  take name, like text
+  take own, like hash, like text, like boolean
+  take kept, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  fork test, not(own/has(name))
+    hold
+      back true
+  back or(kept/has(<v:{name}>), kept/has(<t:{name}>))
 
 # the names a statement binds inside itself: a task's parameters, its `save` locals, a walk's item and index, a match
 # arm's links, a guard's caught name and a closure's parameters. Inside the statement each shadows a definition of the

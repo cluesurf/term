@@ -38,11 +38,13 @@ load @term/call/work/workers/source-faces
   find face-buildable
 
 load @term/call/work/output/printer
-  find close-run
   find count
   find field
-  find open-run
   find print-data
+
+load @term/call/work/output/printer-input
+  find close-run
+  find open-run
   find report
 
 dock load

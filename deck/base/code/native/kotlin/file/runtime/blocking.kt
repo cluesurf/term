@@ -1,8 +1,12 @@
 // Whole-path file calls for the kotlin target that never block a coroutine's dispatcher, which is to say never
-// suspend, over java.nio.file. `statPath` and `listPath` build the emitted `StatRaw` and `EntryRaw` records directly
-// (the shim is prepended to the module that declares them, so the types are in scope), one call each. `changed` is
-// seconds times 1000 plus nanoseconds over 1e6 in a Double, read from the file time's instant, which keeps the
-// nanoseconds the way node's `mtimeMs` does (`toMillis()` would drop the fraction).
+// suspend, over java.nio.file. `statPath` builds the emitted `StatRaw` record directly (the shim is prepended to the
+// module that declares it, so the type is in scope), one call. `changed` is seconds times 1000 plus nanoseconds over
+// 1e6 in a Double, read from the file time's instant, which keeps the nanoseconds the way node's `mtimeMs` does
+// (`toMillis()` would drop the fraction).
+//
+// `readPath` and `listPath` answer a list of text, the refusal first (refusal.kt: the code name, empty when carried
+// out, the step and the host text), then the text, or each entry's name and kind. The public module raises the refusal
+// as `failure` worded in Term (term/compiler decision 021 points 2 and 4). Every other call here stays total.
 //
 // `kotlin.Exception` is spelled out: a program that loads the stdlib's `exception` form emits a class of that name
 // (`Exception<P>`) beside this object, and a bare `Exception` then names it.
@@ -13,12 +17,36 @@ import java.nio.file.LinkOption
 import java.nio.file.Paths
 
 object blocking {
-  fun readPath(path: String): String =
-    try {
-      String(Files.readAllBytes(Paths.get(path)), Charsets.UTF_8)
+  // runtime-include: refusal.kt
+
+  // the channel's opening is the `open` step and the reads the `read` step, as node's readFileSync names them: a
+  // folder opens and its read is refused
+  fun readPath(path: String): MutableList<String> {
+    val channel =
+      try {
+        Files.newByteChannel(Paths.get(path))
+      } catch (error: kotlin.Exception) {
+        return refused(error, "open")
+      }
+
+    return try {
+      channel.use { open ->
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = java.nio.ByteBuffer.allocate(65536)
+        while (true) {
+          buffer.clear()
+          val count = open.read(buffer)
+          if (count < 0) break
+          out.write(buffer.array(), 0, count)
+        }
+        val answer = carried()
+        answer.add(String(out.toByteArray(), Charsets.UTF_8))
+        answer
+      }
     } catch (error: kotlin.Exception) {
-      ""
+      refused(error, "read")
     }
+  }
 
   // a symbolic link is followed, so a link to nothing is not there
   fun existsPath(path: String): Boolean =
@@ -48,9 +76,11 @@ object blocking {
       StatRaw("other", 0L, 0.0)
     }
 
-  // the platform's own order, no `.` or `..`, each kind the entry's own with links not followed
-  fun listPath(path: String): MutableList<EntryRaw> {
-    val out = kotlin.collections.mutableListOf<EntryRaw>()
+  // the platform's own order, no `.` or `..`, each kind the entry's own with links not followed. The opening and every
+  // read of the folder are the `scandir` step, as node's readdirSync names them, and an entry the stream cannot read
+  // comes wrapped in a DirectoryIteratorException, whose cause is the refusal
+  fun listPath(path: String): MutableList<String> {
+    val out = carried()
 
     try {
       Files.newDirectoryStream(Paths.get(path)).use { entries ->
@@ -63,11 +93,13 @@ object blocking {
               else -> "other"
             }
 
-          out.add(EntryRaw(entry.fileName.toString(), kind))
+          out.add(entry.fileName.toString())
+          out.add(kind)
         }
       }
     } catch (error: kotlin.Exception) {
-      return out
+      val cause = if (error is java.nio.file.DirectoryIteratorException) error.cause ?: error else error
+      return refused(cause, "scandir")
     }
 
     return out

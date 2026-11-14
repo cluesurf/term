@@ -64,6 +64,20 @@ load @term/call/work/app-verbs
   find test, name test-verb
   find walk, name walk-verb
 
+# the native term's opening of a run (open-console, at the end): the printer's one mapping from the global flags
+load @term/call/work/output/printer
+  find output-flags
+  find make-output-setting
+  find set-typed-output
+  find is-bug-form
+  find fail-typed-run
+  find write-typed-crash-log
+  find show-path
+
+# the native term's answer to a raise (catch-console, at the end): the folder its crash log goes under
+load @term/base/environment
+  find current-directory
+
 # the calls the run entry makes, reached through tasks of this file (start-console, at the end)
 load @term/call/work/dispatch
   find start-line
@@ -1110,3 +1124,93 @@ task fail-console
   send back
     call fail-line
       read error
+
+# THE NATIVE TERM ANSWERS A RAISE HERE (term/compiler decision 021 points 6 to 9, item term-self-host-001-1464). The
+# lowered console calls this when a verb it runs natively raises, each parameter bound by its name: the raise's note
+# and form, the lines an unhandled raise prints (`<form>: <note>` and its frames), the console's mark and the verb.
+# It answers as node's fail-run does through the same printer task: a defect is a bug in Term (a crash log under the
+# working folder and exit 70), any other raise the run's failure (exit 1). A Term raise carries no quote on node, so
+# none is handed here. Node's run never calls it: fail-console answers there
+task catch-console
+  take note, like text
+  take form, like text
+  take stack, like text
+  take mark, like text
+  take verb, like text
+  like number
+  save bug
+    call is-bug-form
+      read form
+  save shown, text <>
+  fork test
+    hook test
+      read bug
+    hook hold
+      save root
+        call current-directory
+      save log
+        call write-typed-crash-log
+          read stack
+          read root
+      fork test
+        hook test
+          call is-unequal
+            read log
+            text <>
+        hook hold
+          save shown
+            call show-path
+              read log
+              read root
+  save quote
+    make list
+  send back
+    call fail-typed-run
+      read note
+      text <>
+      read bug
+      read quote
+      read shown
+
+# THE NATIVE TERM OPENS ITS RUN HERE (term/compiler decision 019, item term-self-host-001-1451). The lowered console calls
+# this once before a verb it runs natively (halt, mind, wake), each parameter bound by its name to the program hook's
+# take, `mark` the console's mark and `verb` the command's first word. The flags reach the printer through the same
+# output-flags and make-output-setting node's set-output builds (work/output/printer-input.tree), so the native run
+# prints as node's does. A forwarded verb never calls it: the node build it hands to opens its own run
+task open-console
+  take quiet, like boolean
+  take verbose, like boolean
+  take trace, like boolean
+  take log, like text
+  take color, like text
+  take utc, like boolean
+  take plain, like boolean
+  take strict, like boolean
+  take motion, like boolean
+  take yes, like boolean
+  take raw, like boolean
+  take source, like text
+  take all, like boolean
+  take mark, like text
+  take verb, like text
+  like void
+  save flags
+    make output-flags
+      bind quiet, read quiet
+      bind verbose, read verbose
+      bind trace, read trace
+      bind log, read log
+      bind color, read color
+      bind utc, read utc
+      bind plain, read plain
+      bind strict, read strict
+      bind motion, read motion
+      bind yes, read yes
+      bind raw, read raw
+      bind source, read source
+      bind all, read all
+      bind version, read mark
+      bind verb, read verb
+  call set-typed-output
+    call make-output-setting
+      read flags

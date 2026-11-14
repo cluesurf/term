@@ -56,6 +56,8 @@ load @term/call/work/hook/deciding
   find line-ask
   find outcome
   find handed
+  find decide-opening
+  find line-opening
 
 load @term/call/work/hook/refusal
   find refusal-view
@@ -195,6 +197,28 @@ task console-decide
   save started, read-process()
   save ask, make line-ask, name(console-name(name)), mark(mark), routes(table/routes), argv(started/arguments), words-own(false)
   back decide(ask)
+
+# WHAT THE RUN OPENS WITH (term/compiler decision 019, item term-self-host-001-1456): for an entry that defines
+# `open-console`, the run reads, once a line is decided as a call to a task it calls directly, the program hook's takes
+# and the verb of this process's own command line, which its call of `open-console` is handed by name
+task console-opening
+  take name, like text
+  take mark, like text
+  take table, like console-table
+  like line-opening
+  save started, read-process()
+  save ask, make line-ask, name(console-name(name)), mark(mark), routes(table/routes), argv(started/arguments), words-own(false)
+  back decide-opening(ask)
+
+task console-opened-globals
+  take opened, like line-opening
+  like list, like handed
+  back opened/globals
+
+task console-opened-verb
+  take opened, like line-opening
+  like text
+  back opened/verb
 
 # one write, as node's run makes it: a line as console.log writes it, raw text as it is
 task console-write

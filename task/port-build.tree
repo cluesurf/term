@@ -1304,6 +1304,13 @@ task printer-file
   like text
   send back, text <deck/call/code/work/output/printer.tree>
 
+# the printer's node-only face (decision 167 point 5, item term-self-host-001-1434): open-run, close-run and
+# set-output read the caller's objects there, and printer.tree's own are typed, so the keeper drives the face. The
+# face loads the printer, so it shares the port's one run. Neither file's own port takes the keeper
+task printer-input-file
+  like text
+  send back, text <deck/call/code/work/output/printer-input.tree>
+
 # is-run-open is one comparison, and the simplifier inlines it into every caller, so it is kept as a task of the
 # module (port-printer-is-run-open, a root) and exported under the printer's name by printer-exports. The return is
 # spelled the way the module's own mode reads it
@@ -1316,10 +1323,12 @@ task printer-keeper
   call lines/push, text <>
   call lines/push, text <# written by task/port-build.ts, never in the source (decision term-cli-in-term-0240): the printer run tasks a>
   call lines/push, text <# caller of this port drives>
-  call lines/push, text <load @term/call/work/output/printer>
+  call lines/push, text <load @term/call/work/output/printer-input>
   call lines/push, text <  find open-run, name port-printer-open-run>
   call lines/push, text <  find close-run, name port-printer-close-run>
   call lines/push, text <  find set-output, name port-printer-set-output>
+  call lines/push, text <>
+  call lines/push, text <load @term/call/work/output/printer>
   call lines/push, text <  find is-run-open, name port-printer-run-open>
   call lines/push, text <>
   call lines/push, text <task port-printer-run>
@@ -1376,9 +1385,13 @@ task holds-printer
   like boolean
   fork test
     hook test
-      call is-equal
-        read name
-        call printer-file
+      call or
+        call is-equal
+          read name
+          call printer-file
+        call is-equal
+          read name
+          call printer-input-file
     hook hold
       send back, false
   save collected

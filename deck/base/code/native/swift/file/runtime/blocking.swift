@@ -1,8 +1,11 @@
 // Whole-path file calls for the swift target that never await, over Foundation and the C library (NIOFileSystem,
-// which the asynchronous side uses, is async only). `statPath` and `listPath` build the emitted `StatRaw` and
-// `EntryRaw` records directly (the shim is prepended to the module that declares them, so the types are in scope),
-// one call each. `changed` is seconds times 1000 plus nanoseconds over 1e6 in a Double, the arithmetic node's
-// `mtimeMs` is.
+// which the asynchronous side uses, is async only). `statPath` builds the emitted `StatRaw` record directly (the shim
+// is prepended to the module that declares it, so the type is in scope), one call. `changed` is seconds times 1000
+// plus nanoseconds over 1e6 in a Double, the arithmetic node's `mtimeMs` is.
+//
+// `readPath` and `listPath` answer a list of text, the refusal first (refusal.swift: the code name, empty when carried
+// out, the step and the host text), then the text, or each entry's name and kind. The public module raises the refusal
+// as `failure` worded in Term (term/compiler decision 021 points 2 and 4). Every other call here stays total.
 //
 // The C calls are spelled through `Darwin` / `Glibc` and named `lstat` and `realpath`, never `stat`: the emitted
 // public module has a task called `stat`, which would shadow the C function of that name in this file.
@@ -16,10 +19,26 @@ import Glibc
 #endif
 
 enum blocking {
-  static func readPath(_ path: String) -> String {
-    guard let data = FileManager.default.contents(atPath: path) else { return "" }
+  // runtime-include: refusal.swift
 
-    return String(decoding: data, as: UTF8.self)
+  // open(2) is the `open` step and the reads the `read` step, as node's readFileSync names them: a folder opens and
+  // its read is refused. errno is read before the descriptor is closed
+  static func readPath(_ path: String) -> [String] {
+    let descriptor = Foundation.open(path, O_RDONLY)
+    guard descriptor >= 0 else { return refused(errno, "open") }
+    defer { Foundation.close(descriptor) }
+
+    var out: [UInt8] = []
+    var chunk = [UInt8](repeating: 0, count: 65536)
+
+    while true {
+      let count = chunk.withUnsafeMutableBytes { Foundation.read(descriptor, $0.baseAddress, 65536) }
+      if count < 0 { return refused(errno, "read") }
+      if count == 0 { break }
+      out.append(contentsOf: chunk[0..<count])
+    }
+
+    return carried() + [String(decoding: out, as: UTF8.self)]
   }
 
   // a symbolic link is followed, so a link to nothing is not there
@@ -71,14 +90,19 @@ enum blocking {
     )
   }
 
-  // the platform's own order, no `.` or `..`, each kind the entry's own with links not followed
-  static func listPath(_ path: String) -> [EntryRaw] {
+  // the platform's own order, no `.` or `..`, each kind the entry's own with links not followed. opendir(3) is the
+  // `scandir` step node's readdirSync names: a folder it refuses is answered with its errno
+  static func listPath(_ path: String) -> [String] {
+    guard let folder = opendir(path) else { return refused(errno, "scandir") }
+    closedir(folder)
+
+    // a folder that changed between the two is refused with the errno FileManager's own opendir left
     guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else {
-      return []
+      return refused(errno, "scandir")
     }
 
     let base = path.hasSuffix("/") ? path : path + "/"
-    var out: [EntryRaw] = []
+    var out: [String] = carried()
 
     for name in names {
       #if canImport(Darwin)
@@ -88,7 +112,8 @@ enum blocking {
       #endif
 
       let kind = lstat(base + name, &info) == 0 ? entryKind(info.st_mode) : "other"
-      out.append(EntryRaw(name: name, kind: kind))
+      out.append(name)
+      out.append(kind)
     }
 
     return out

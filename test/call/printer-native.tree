@@ -1,0 +1,53 @@
+note <the printer's typed tasks build and answer alike on every backend a native verb runs on>
+
+# Item term-self-host-001-1434 part 2 (decision 167 point 5): work/output/printer.tree holds typed tasks only, and each
+# bind it keeps has a rust, swift and kotlin case, so a program that loads it builds off node. The answers are node's.
+
+load @term/call/work/output/printer
+  find item-input
+  find make-typed-item
+  find run-opening
+  find open-typed-run
+  find report-typed
+  find run-closing
+  find close-typed-run
+  find count
+  find field
+  find location
+  find show-path
+  find is-run-open
+
+load @term/base/list
+  find get
+
+# the facts of a stop item, as halting.tree reports them
+task stop-facts
+  like list, like text
+
+  save facts, make list
+  facts/push <pid 42>
+  back facts
+
+test <an item built typed holds what it was given>
+  save one, make-typed-item(make(item-input, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, <:2400>), bind(facts, stop-facts())))
+  want hold, and(is-equal(one/glyph, <done>), and(is-equal(one/kind, <lifecycle>), and(is-equal(one/verb, <stop>), and(is-equal(get(one/subject, 0)/value, <:2400>), and(is-equal(get(one/facts, 0), <pid 42>), is-above(one/clock, 0))))))
+
+test <an item with no kind is a step, with no message and no fields>
+  save one, make-typed-item(make(item-input, bind(glyph, <info>), bind(verb, <recall>), bind(subject, <tabs>)))
+  want hold, and(is-equal(one/kind, <step>), and(is-equal(one/message/length, 0), is-equal(one/fields/length, 0)))
+
+test <a count, a field and a location>
+  save made, count(3, <files>, <file>)
+  save at, location(<a/b.tree>)
+  save named, field(<next>, <term boot>)
+  want hold, and(is-equal(made/amount, 3), and(is-equal(made/noun, <files>), and(at/location, and(is-equal(get(at/value, 0)/value, <a/b.tree>), is-equal(named/key, <next>)))))
+
+test <a path under the root is shown from the root>
+  want hold, is-equal(show-path(</tmp/term-1434/a/b.tree>, </tmp/term-1434>), <a/b.tree>)
+
+test <a run opens, reports and closes with exit code 0>
+  open-typed-run(make(run-opening, bind(verb, <probe>), bind(root, </tmp/term-1434>)))
+  save opened, is-run-open()
+  report-typed(make-typed-item(make(item-input, bind(glyph, <info>), bind(verb, <probe>), bind(subject, <one item>))))
+  save code, close-typed-run(make(run-closing, bind(verdict, <Probed>)))
+  want hold, and(opened, and(is-equal(code, 0), not(is-run-open())))

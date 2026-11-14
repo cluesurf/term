@@ -1,0 +1,75 @@
+# node's two raising disk calls, over node:fs's *Sync calls. Each catches node's own Error and answers its code,
+# syscall and message as the list of text every backend hands @term/base/file/failure (the code empty when the call
+# was carried out), so node raises the one `failure` the public module words (term/compiler decision 021 points 4, 5
+# and 1b). Internal: reached only through the public file/create API.
+
+dock load
+  load <node:fs>, name create-fs
+
+load @term/base/native/node/file/refusal
+  find node-refusal
+
+load @term/base/list
+  find push
+
+# the options node's fs takes to make a folder and every missing folder above it
+bind create-folder-options
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+# the options node's fs takes to write a file only when nothing is at its path
+bind create-new-options
+  like dynamic
+  case node
+    text <(\{ flag: 'wx' \})>
+
+# the list of text a carried out call answers: no code name, no step, no host text
+task create-carried
+  like list, like text
+  save out, like list, like text
+    make list
+  call push
+    read out
+    text <>
+  call push
+    read out
+    text <>
+  call push
+    read out
+    text <>
+  send back, read out
+
+task create-folder
+  take path, like text
+  like list, like text
+  fork
+    mark unsafe
+    call create-fs/mkdir-sync
+      read path
+      call create-folder-options
+  halt take
+    take problem
+    send back
+      call node-refusal
+        read problem
+  send back
+    call create-carried
+
+task create-new
+  take path, like text
+  take body, like text
+  like list, like text
+  fork
+    mark unsafe
+    call create-fs/write-file-sync
+      read path
+      read body
+      call create-new-options
+  halt take
+    take problem
+    send back
+      call node-refusal
+        read problem
+  send back
+    call create-carried

@@ -10,11 +10,13 @@
 // The probe answers --version with its own deck's mark and --help under its program hook's name, and a console whose
 // folder an enclosing deck's `line` names is handed that deck's mark (term/compiler decision 018). When the native
 // term is built (`pnpm make:native`, host/native/term), its --version and --help equal node's host/line.js byte for
-// byte, and a forwarded verb of the real CLI is run against node's too.
-// Run: npx tsx test/call/native-forward.ts
+// byte, and a forwarded verb of the real CLI is run against node's too. Every verb its build record lists as native
+// must have cases here, run against node's, or this fails naming it (item 1456), and each such verb's --help byte for
+// byte, its global takes after and before the verb, and the runs where its task throws (item 1409).
+// Run: npx tsx test/call/native-forward.ts   (NATIVE_FORWARD_RECORD=<file> reads another build record)
 
 import { spawn, spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,6 +26,8 @@ const LINE = join(TERM, 'host', 'line.js')
 
 let pass = 0
 let fail = 0
+// the runs a filed item says differ (each names its item): neither a pass nor a fail
+let known = 0
 
 function ok(name: string, holds: boolean, detail = ''): void {
   if (holds) {
@@ -285,6 +289,47 @@ if (tool && folder) {
   }
 }
 
+// the command lines each NATIVE verb is checked with against node, by the task host/native/build.json names it by
+// (`nativeTasks`). A verb the build makes native lands with its lines here (decision 167 point 6), its globals among
+// them (`--log json`, `--plain`), since the native run opens through the entry's open-console (term/compiler decision
+// 019)
+//
+// halt, mind and wake (item term-self-host-001-1451: the printer split made their closures build on Rust): the runs of
+// tmp/self-host/1434/part2's capture that leave the folder as they found it, in the line view, under --log json and
+// --plain, the exit-1 runs among them, each global after the verb. Node's twin runs first in the same folder, so a run
+// that writes (wake into a new folder, mind remembering or forgetting a fact) would hand the native run a different
+// folder: the capture (capture2.sh) compares those, each side in a folder of its own. `halt` bare is left out: outside
+// a project it stops every term boot on the machine
+const VERB_CASES: Record<string, string[][]> = {
+  halt: [
+    ['halt', '-p', '59997'],
+    ['halt', '-p', '59997', '--log', 'json'],
+    ['halt', '-p', '59997', '--plain'],
+  ],
+  mind: [
+    ['mind'],
+    ['mind', '--log', 'json'],
+    ['mind', '--plain'],
+    ['mind', '--back', 'json'],
+    ['mind', '--find', 'tabs'],
+    ['mind', '--find', 'tabs', '--log', 'json'],
+    ['mind', '--forget', 'nope'],
+    ['mind', '--forget', 'nope', '--log', 'json'],
+    ['mind', '--forget', 'nope', '--plain'],
+    ['mind', '--forget', 'nope', '--back', 'json'],
+  ],
+  wake: [
+    ['wake', '/dev/null/demo'],
+    ['wake', '/dev/null/demo', '--log', 'json'],
+    ['wake', '/dev/null/demo', '--plain'],
+    // item term-self-host-001-1465: a folder two below the refusal, which node's mkdir names by the full path given
+    ['wake', '/dev/null/a/b'],
+    ['wake', '/dev/null/a/b', '--log', 'json'],
+    ['wake', '/dev/null/a/b', '--plain'],
+  ],
+}
+const NATIVE_RECORD = process.env.NATIVE_FORWARD_RECORD ?? join(TERM, 'host', 'native', 'build.json')
+
 // THE REAL CLI, when it is built: a forwarded verb against node's host/line.js, in an empty folder
 const real = join(TERM, 'host', 'native', 'term')
 if (!existsSync(real)) {
@@ -294,7 +339,172 @@ if (!existsSync(real)) {
     text
       .replace(/\d\d:\d\d:\d\d\.\d\d\d/g, 'HH:MM:SS.mmm')
       .replace(/\b\d+(\.\d+)?(ms|s)\b/g, 'ELAPSED')
+      // --log json gives the elapsed time as a number field, as the line view's `4ms`
+      .replace(/"ms":\d+(\.\d+)?/g, '"ms":ELAPSED')
+      // under --color always the unit is coloured apart from its number: `3\e[90mms\e[0m`
+      .replace(/\b\d+(\.\d+)?(\x1b\[\d+m)(ms|s)\b/g, 'ELAPSED$2$3')
   const empty = folderAt('empty')
+
+  // EACH NATIVE VERB'S SURFACE (item term-self-host-001-1409, procedure task/native-surface.md section B): every other
+  // global take of the program hook (--quiet, --strict, --color, --utc) after the verb and before it, and the runs
+  // where the verb's task throws (node's fail-run: `✗ <verb> <message>` then `✗ <verb> Failed`, exit 1). Each side
+  // runs in the SAME folder path, made again between the two, so a path the run prints is byte-equal and a run that
+  // writes hands the other side nothing. A run `known` to differ names the item that owns the difference: it prints
+  // `known` while it differs and passes once it does not, and its mark goes with the fix
+  type Ran2 = { out: string; err: string; code: number | null }
+  type SurfaceCase = {
+    verb: string
+    name: string
+    words: string[]
+    setup?: (dir: string) => void
+    env?: NodeJS.ProcessEnv
+    known?: string
+    // a further check over both runs: the empty text when it holds, else what is wrong
+    check?: (node: Ran2, native: Ran2) => string
+  }
+  const memoryAt = (dir: string): string => join(dir, '.base', '@term', 'code', 'memory')
+  const memoryFile = (dir: string): void => {
+    mkdirSync(join(dir, '.base', '@term', 'code'), { recursive: true })
+    writeFileSync(memoryAt(dir), 'not a folder\n')
+  }
+  const factFolder = (dir: string): void => {
+    mkdirSync(join(memoryAt(dir), 'tabs.md'), { recursive: true })
+  }
+  const memoryLocked = (dir: string): void => {
+    mkdirSync(memoryAt(dir), { recursive: true })
+    chmodSync(memoryAt(dir), 0o000)
+  }
+  const colourless: NodeJS.ProcessEnv = { ...env }
+  delete colourless.NO_COLOR
+  // fourteen hours ahead of UTC all year, so a local clock never reads as a UTC one
+  const kiritimati: NodeJS.ProcessEnv = { ...env, TZ: 'Pacific/Kiritimati' }
+  const clockHours = (text: string): string[] => [...text.matchAll(/^\s*(\d\d):\d\d:\d\d\.\d\d\d$/gm)].map(m => m[1]!)
+  let utcHours: string[] = []
+  const inUtc = (twin: Ran2, native: Ran2): string => {
+    const node = clockHours(twin.err)
+    const ran = clockHours(native.err)
+    if (node.length === 0 || ran.length === 0) return `no clock line: node ${JSON.stringify(node)}, native ${JSON.stringify(ran)}`
+    const wrong = [...node, ...ran].filter(hour => !utcHours.includes(hour))
+    return wrong.length === 0 ? '' : `clock hours ${JSON.stringify(wrong)} are not UTC's ${JSON.stringify(utcHours)}`
+  }
+  const ON_PORT = ['halt', '-p', '59997']
+  const NOPE = ['mind', '--forget', 'nope']
+  const NO_DIR = ['wake', '/dev/null/demo']
+  // A THROWN RUN (item term-self-host-001-1460, term/compiler decision 021): the host's file failure raises node's
+  // wording natively (1463) and the console's catch-console prints node's fail-run (1464), so each side exits 1 with
+  // `x mind <message>` then `x mind Failed`, under --log json and --plain alike, and a fact that cannot be written leaves
+  // the memory file as it was
+  const thrownOnNode = (twin: Ran2): string => (twin.code === 1 ? '' : `node exit ${twin.code}, not 1`)
+  const memoryKept = (twin: Ran2): string => {
+    const wrong = thrownOnNode(twin)
+    if (wrong !== '') return wrong
+    let kept = ''
+    try {
+      kept = readFileSync(memoryAt(join(out, 'surface')), 'utf8')
+    } catch (problem) {
+      return `the memory file is gone after the native run: ${String(problem)}`
+    }
+    return kept === 'not a folder\n' ? '' : `the memory file reads ${JSON.stringify(kept)} after the native run`
+  }
+  const THROWN: Array<{ name: string; words: string[]; setup: (dir: string) => void; check: (twin: Ran2, native: Ran2) => string }> = [
+    { name: 'the memory folder is a file, listed', words: ['mind'], setup: memoryFile, check: thrownOnNode },
+    { name: 'the memory folder is a file, a fact remembered', words: ['mind', 'Use tabs'], setup: memoryFile, check: memoryKept },
+    { name: 'a fact file is a folder', words: ['mind'], setup: factFolder, check: thrownOnNode },
+    { name: 'the memory folder cannot be read', words: ['mind'], setup: memoryLocked, check: thrownOnNode },
+  ]
+  const thrownCases: SurfaceCase[] = THROWN.flatMap(one => [
+    { verb: 'mind', name: `thrown: ${one.name}`, words: one.words, setup: one.setup, check: one.check },
+    { verb: 'mind', name: `thrown: ${one.name}, --log json`, words: [...one.words, '--log', 'json'], setup: one.setup, check: one.check },
+    { verb: 'mind', name: `thrown: ${one.name}, --plain`, words: [...one.words, '--plain'], setup: one.setup, check: one.check },
+  ])
+  const SURFACE_CASES: SurfaceCase[] = [
+    { verb: 'halt', name: '--quiet after the verb', words: [...ON_PORT, '--quiet'] },
+    { verb: 'halt', name: '--strict after the verb (a warning fails the run)', words: [...ON_PORT, '--strict'], check: (twin: Ran2) => (twin.code === 1 ? '' : `node exit ${twin.code}, not 1`) },
+    { verb: 'halt', name: '--color never after the verb, NO_COLOR unset', words: [...ON_PORT, '--color', 'never'], env: colourless },
+    { verb: 'halt', name: '--utc after the verb, TZ fourteen hours ahead', words: [...ON_PORT, '--utc'], env: kiritimati, check: inUtc },
+    { verb: 'halt', name: 'no lsof, ps or netstat on the PATH', words: ON_PORT, env: { ...env, PATH: '/nonexistent' } },
+    { verb: 'mind', name: '--quiet after the verb', words: [...NOPE, '--quiet'] },
+    { verb: 'mind', name: '--strict after the verb', words: ['mind', '--strict'] },
+    { verb: 'mind', name: '--color never after the verb, NO_COLOR unset', words: [...NOPE, '--color', 'never'], env: colourless },
+    { verb: 'mind', name: '--color always after the verb', words: [...NOPE, '--color', 'always'] },
+    ...thrownCases,
+    { verb: 'wake', name: '--quiet after the verb', words: [...NO_DIR, '--quiet'] },
+    { verb: 'wake', name: '--strict after the verb', words: [...NO_DIR, '--strict'] },
+    { verb: 'wake', name: '--color never after the verb, NO_COLOR unset', words: [...NO_DIR, '--color', 'never'], env: colourless },
+    { verb: 'wake', name: 'a file where the project folder goes', words: ['wake', 'demo'], setup: dir => writeFileSync(join(dir, 'demo'), 'a file\n') },
+  ]
+  // GLOBALS BEFORE THE VERB (item term-self-host-001-1459): a global take written before the verb is the same take as
+  // after it, short or valued, inline or not, on node and natively. Each case names the line with the take after the
+  // verb (`after`), which node runs first in the same folder, made again for it: node's run of the line as written must
+  // equal it (the take applied, never read as a command word), and the native run must equal node's, as every surface
+  // case. A word that names no command past a valued global is refused naming that word, the same after it
+  type BeforeCase = SurfaceCase & { after: string[] }
+  const BEFORE_CASES: BeforeCase[] = [
+    { verb: 'halt', name: '-q before the verb', words: ['-q', ...ON_PORT], after: [...ON_PORT, '-q'] },
+    { verb: 'halt', name: '--utc before the verb, TZ fourteen hours ahead', words: ['--utc', ...ON_PORT], after: [...ON_PORT, '--utc'], env: kiritimati, check: inUtc },
+    { verb: 'halt', name: '--log json before the verb', words: ['--log', 'json', ...ON_PORT], after: [...ON_PORT, '--log', 'json'] },
+    { verb: 'halt', name: '--color=never before the verb, NO_COLOR unset', words: ['--color=never', ...ON_PORT], after: [...ON_PORT, '--color=never'], env: colourless },
+    { verb: 'mind', name: '--strict before the verb', words: ['--strict', 'mind'], after: ['mind', '--strict'] },
+    { verb: 'mind', name: '--log json before the verb', words: ['--log', 'json', 'mind'], after: ['mind', '--log', 'json'] },
+    { verb: 'mind', name: '-q before the verb', words: ['-q', ...NOPE], after: [...NOPE, '-q'] },
+    { verb: 'mind', name: '--color never before the verb, NO_COLOR unset', words: ['--color', 'never', ...NOPE], after: [...NOPE, '--color', 'never'], env: colourless },
+    { verb: 'mind', name: '--back json before the verb (a take mind declares too)', words: ['--back', 'json', 'mind'], after: ['mind', '--back', 'json'] },
+    { verb: 'mind', name: '--log json before a word that names no command', words: ['--log', 'json', 'nope'], after: ['nope', '--log', 'json'] },
+    { verb: 'wake', name: '-q before the verb', words: ['-q', ...NO_DIR], after: [...NO_DIR, '-q'] },
+    { verb: 'wake', name: '--log json before the verb', words: ['--log', 'json', ...NO_DIR], after: [...NO_DIR, '--log', 'json'] },
+    { verb: 'wake', name: '--color never before the verb, NO_COLOR unset', words: ['--color', 'never', ...NO_DIR], after: [...NO_DIR, '--color', 'never'], env: colourless },
+  ]
+  for (const one of BEFORE_CASES) {
+    const dir = join(out, 'surface')
+    rmSync(dir, { recursive: true, force: true })
+    mkdirSync(dir, { recursive: true })
+    const after = await run([process.execPath, LINE], { words: one.after, cwd: dir, env: one.env ?? env })
+    const further = one.check
+    one.check = (twin: Ran2, native: Ran2): string => {
+      const wrong: string[] = []
+      if (twin.code !== after.code) wrong.push(`node exit ${twin.code}, ${after.code} with the take after the verb`)
+      if (mask(twin.out) !== mask(after.out)) wrong.push(`node stdout ${JSON.stringify(twin.out.slice(0, 400))}, with the take after the verb ${JSON.stringify(after.out.slice(0, 400))}`)
+      if (mask(twin.err) !== mask(after.err)) wrong.push(`node stderr ${JSON.stringify(twin.err.slice(0, 400))}, with the take after the verb ${JSON.stringify(after.err.slice(0, 400))}`)
+      const more = further?.(twin, native) ?? ''
+      if (more !== '') wrong.push(more)
+      return wrong.join('\n        ')
+    }
+    SURFACE_CASES.push(one)
+  }
+  const unlock = (dir: string): void => {
+    try {
+      chmodSync(memoryAt(dir), 0o755)
+    } catch {}
+  }
+  const surfaceCase = async (one: SurfaceCase): Promise<void> => {
+    const dir = join(out, 'surface')
+    const fresh = (): void => {
+      unlock(dir)
+      rmSync(dir, { recursive: true, force: true })
+      mkdirSync(dir, { recursive: true })
+      one.setup?.(dir)
+    }
+    const shown = `verb ${one.verb}: ${one.name}: term ${one.words.join(' ')}`
+    const before = new Date().getUTCHours()
+    fresh()
+    const twin = await run([process.execPath, LINE], { words: one.words, cwd: dir, env: one.env ?? env })
+    fresh()
+    const native = await run([real], { words: one.words, cwd: dir, env: one.env ?? env })
+    unlock(dir)
+    utcHours = [before, new Date().getUTCHours()].map(hour => String(hour).padStart(2, '0'))
+    const wrong: string[] = []
+    if (native.code !== twin.code) wrong.push(`exit: node ${twin.code}, native ${native.code}`)
+    if (mask(native.out) !== mask(twin.out)) wrong.push(`stdout: node ${JSON.stringify(twin.out.slice(0, 400))}\n        native ${JSON.stringify(native.out.slice(0, 400))}`)
+    if (mask(native.err) !== mask(twin.err)) wrong.push(`stderr: node ${JSON.stringify(twin.err.slice(0, 400))}\n        native ${JSON.stringify(native.err.slice(0, 400))}`)
+    const further = one.check?.(twin, native) ?? ''
+    if (further !== '') wrong.push(further)
+    if (one.known !== undefined && wrong.length > 0) {
+      known++
+      console.log(`known ${shown}  (${one.known})`)
+      return
+    }
+    ok(`${shown}: exit, stdout and stderr equal node's`, wrong.length === 0, wrong.join('\n        '))
+  }
   // the dispatcher's own answers (term/compiler decision 018): `term` and the root deck's mark. --version and a verb's
   // --help byte for byte. The program's --help byte for byte from its second line on, and its first line PINNED on
   // each side (decision 018 rule 3's exception, item 1361 option b): node's CLI prints the program hook's note there
@@ -329,12 +539,52 @@ if (!existsSync(real)) {
     ok(`real: term ${words.join(' ')} stdout equals node's`, mask(native.out) === mask(twin.out), `node ${JSON.stringify(twin.out)}\nnative ${JSON.stringify(native.out)}`)
     ok(`real: term ${words.join(' ')} stderr equals node's`, mask(native.err) === mask(twin.err), `node ${JSON.stringify(twin.err)}\nnative ${JSON.stringify(native.err)}`)
   }
+
+  // A VERB GOES NATIVE ONLY WITH ITS CASES (decision 167 point 6 of term/self-host/change/001-finish-self-host, item
+  // term-self-host-001-1456): every task host/native/build.json lists as native has its command lines here, each run
+  // on the real native term against node's, so a closure that starts to build on Rust never turns a verb native
+  // unseen (trap T-1451 (4)). The build alone decides what is native, and this fails, naming the verb, for one with
+  // no case
+  let record: { nativeTasks?: unknown } | undefined
+  try {
+    record = JSON.parse(readFileSync(NATIVE_RECORD, 'utf8')) as { nativeTasks?: unknown }
+  } catch {
+    record = undefined
+  }
+  const nativeTasks = record && Array.isArray(record.nativeTasks) ? record.nativeTasks.filter((one): one is string => typeof one === 'string') : undefined
+  if (nativeTasks === undefined) {
+    ok('guard: host/native/build.json beside host/native/term lists its native verbs', false, `${NATIVE_RECORD} is missing or holds no nativeTasks list: run pnpm make:native`)
+  } else {
+    for (const task of nativeTasks) {
+      const cases = VERB_CASES[task] ?? []
+      ok(`guard: native verb ${task} has native-forward cases`, cases.length > 0, `host/native/build.json lists ${task} as native and native-forward has no case for it: add its command lines to VERB_CASES`)
+      for (const words of cases) {
+        const ask = { words, cwd: empty, env }
+        const twin = await run(['node', LINE], ask)
+        const native = await run([real], ask)
+        const shown = words.join(' ')
+        ok(`verb ${task}: term ${shown} exit equals node's`, native.code === twin.code, `node ${twin.code}, native ${native.code}`)
+        ok(`verb ${task}: term ${shown} stdout equals node's`, mask(native.out) === mask(twin.out), `node ${JSON.stringify(twin.out.slice(0, 400))}\nnative ${JSON.stringify(native.out.slice(0, 400))}`)
+        ok(`verb ${task}: term ${shown} stderr equals node's`, mask(native.err) === mask(twin.err), `node ${JSON.stringify(twin.err.slice(0, 400))}\nnative ${JSON.stringify(native.err.slice(0, 400))}`)
+      }
+      // the verb's own --help, byte for byte: it is the console's usage text, no clock in it (item 1409)
+      if (cases.length > 0) {
+        const ask = { words: [task, '--help'], cwd: empty, env }
+        const twin = await run([process.execPath, LINE], ask)
+        const native = await run([real], ask)
+        ok(`verb ${task}: term ${task} --help exit equals node's`, native.code === twin.code, `node ${twin.code}, native ${native.code}`)
+        ok(`verb ${task}: term ${task} --help stdout equals node's byte for byte`, native.out === twin.out && twin.out.length > 0, `node ${JSON.stringify(twin.out.slice(0, 400))}\nnative ${JSON.stringify(native.out.slice(0, 400))}`)
+        ok(`verb ${task}: term ${task} --help stderr equals node's byte for byte`, native.err === twin.err, `node ${JSON.stringify(twin.err.slice(0, 400))}\nnative ${JSON.stringify(native.err.slice(0, 400))}`)
+      }
+      for (const one of SURFACE_CASES.filter(c => c.verb === task)) await surfaceCase(one)
+    }
+  }
 }
 
 // the probe's own folder goes, as the gate's --temp-strict asks
 rmSync(out, { recursive: true, force: true })
 
-console.log(`\nnative-forward: ${pass} pass, ${fail} fail`)
+console.log(`\nnative-forward: ${pass} pass, ${fail} fail${known > 0 ? `, ${known} known` : ''}`)
 
 if (fail > 0 || pass === 0) {
   process.exitCode = 1

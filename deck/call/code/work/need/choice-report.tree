@@ -18,12 +18,14 @@ load @term/base/text
   find substring
 
 load @term/call/work/output/printer
+  find field
+  find show-path
+
+load @term/call/work/output/printer-input
   find set-output
   find open-run
   find report
   find close-run
-  find field
-  find show-path
 
 # the install, version-install.tree (need-load.ts's port), since term-cli-in-term-0068. Its ask is found under a name of
 # its own: this file's `load-ask` is loadNeeded's input

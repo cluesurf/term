@@ -1,0 +1,59 @@
+# Two calls that make something on the disk and RAISE when the host refuses, on node, Rust, Swift and Kotlin (term/compiler
+# decision 021 point 1b, as ruling 1473 amends it). Answered WITHOUT awaiting, as [blocking.tree](blocking.tree) is.
+#
+# `make-folder` makes a folder and every missing folder above it (node's `mkdirSync` with `recursive`): a folder
+# already there is no refusal. `write-new` writes a file only when nothing is at its path (node's `writeFileSync` with
+# the `wx` flag): it answers false, and writes nothing, when something is there, a file or a folder.
+#
+# Any other refusal raises `failure`, its note node's own message, worded once by [failure.tree](failure.tree): each
+# binding answers the refusal's code name (empty when carried out), the step as node's `syscall` names it (`mkdir`,
+# `open`, `write`) and the host's text, as a list of text. Node names the path given in both, whichever folder of the
+# chain refused (`ENOTDIR: not a directory, mkdir '/x/plain.txt/a/b'`).
+#
+# A new module, never a change to the total calls: `make` of [directory.tree](directory.tree) stays total, since live
+# callers rely on it (home-folder.tree's `try-move` at every command's start), and [../file.tree](../file.tree) gains
+# nothing, so the webview bridge stays as it is.
+#
+# Browser: there is no file system there, so this module has no browser binding.
+
+mark unstable
+
+load @term/base/native/{platform}/file/create
+  find create-folder
+  find create-new
+
+load @term/base/file/failure
+  find raise-file-failure
+
+# the folder at `path` and every missing folder above it. A folder already there is carried out
+task make-folder
+  take path, like text
+  like void
+  save raw
+    call create-folder
+      read path
+  call raise-file-failure
+    read raw
+    read path
+
+# the whole text written as UTF-8 to a new file at `path`: true when it was written, false when something is already
+# there (EEXIST, node's `wx`), and any other refusal raised
+task write-new
+  take path, like text
+  take body, like text
+  like boolean
+  save raw
+    call create-new
+      read path
+      read body
+  fork test
+    hook test
+      call is-equal
+        read raw/0
+        text <EEXIST>
+    hook hold
+      send back, false
+  call raise-file-failure
+    read raw
+    read path
+  send back, true

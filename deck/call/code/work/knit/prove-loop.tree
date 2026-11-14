@@ -82,11 +82,13 @@ load @term/call/work/knit/project-frame
   find emit
 
 load @term/call/work/output/printer
+  find field
+  find count
+
+load @term/call/work/output/printer-input
   find open-run
   find report
   find close-run
-  find field
-  find count
 
 load @term/call/work/build/role-reading
   find make-role-reader

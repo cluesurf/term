@@ -113,15 +113,17 @@ load ../serve/dev-serving
   find start-dev-server
 
 load @term/call/work/output/printer
-  find close-run
   find count
   find field
-  find follow-child
   find is-run-open
   find location
+  find show-path
+
+load @term/call/work/output/printer-input
+  find close-run
+  find follow-child
   find open-run
   find report
-  find show-path
 
 load @term/call/work/item/event
   find item-field

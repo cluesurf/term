@@ -1,0 +1,182 @@
+# What a file call the host refused raises, worded ONCE, here, for every backend (term/compiler decision 021 part 1,
+# as amended by ruling 1469).
+#
+# The host gives only the refusal's identity, as a list of text: the POSIX code name (`ENOTDIR`), the step that
+# failed as node's `syscall` names it (`open`, `read`, `write`, `scandir`, `mkdir`), and the host's own text.
+# The code name is the empty text when the call was carried out, and `?` for a refusal the host gives no POSIX name.
+# `raise-file-failure` raises it as the text raise `halt <note>`, which is `failure` with that note and no `thing`
+# on every backend, the note worded by `word-file-failure`: node's own message, `<CODE>: <libuv's text>, <step>`, and
+# ` '<path>'` after it when the step names a path, as node's errors do (`open`, `scandir` and `mkdir` do, `read`
+# and `write` on a descriptor do not). A code outside the table is worded by the host's own text. Nothing else in Term
+# words a file failure.
+#
+# Raised by `read` and `list` of [blocking.tree](blocking.tree) and by each backend's `write-file` binding
+# (native/<env>/file.tree), on node, Rust, Swift and Kotlin. A path that is not there still raises `absence`, asked
+# first. No shim answers a record defined here: about 25 modules per backend dock the aio shim without loading this.
+
+mark unstable
+
+# libuv's text for a POSIX code name, the text node's message holds, or the empty text for a code outside the table
+task libuv-file-text
+  take code-name, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <EPERM>
+    hook hold
+      send back, text <operation not permitted>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <ENOENT>
+    hook hold
+      send back, text <no such file or directory>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <EIO>
+    hook hold
+      send back, text <i/o error>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <EACCES>
+    hook hold
+      send back, text <permission denied>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <EEXIST>
+    hook hold
+      send back, text <file already exists>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <ENOTDIR>
+    hook hold
+      send back, text <not a directory>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <EISDIR>
+    hook hold
+      send back, text <illegal operation on a directory>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <ENOSPC>
+    hook hold
+      send back, text <no space left on device>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <EROFS>
+    hook hold
+      send back, text <read-only file system>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <EMLINK>
+    hook hold
+      send back, text <too many links>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <ENAMETOOLONG>
+    hook hold
+      send back, text <name too long>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <ELOOP>
+    hook hold
+      send back, text <too many symbolic links encountered>
+  fork test
+    hook test
+      call is-equal
+        read code-name
+        text <ENOTEMPTY>
+    hook hold
+      send back, text <directory not empty>
+  send back, text <>
+
+# whether node's message for a step names the path after it
+task step-names-path
+  take step, like text
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read step
+        text <open>
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal
+        read step
+        text <scandir>
+    hook hold
+      send back, true
+  send back
+    call is-equal
+      read step
+      text <mkdir>
+
+# node's message for a refused file call: `ENOTDIR: not a directory, scandir '/x/memory'`, or the host's own text for
+# a code the table does not hold
+task word-file-failure
+  take code-name, like text
+  take step, like text
+  take path, like text
+  take host-text, like text
+  like text
+  save said
+    call libuv-file-text
+      read code-name
+  fork test
+    hook test
+      call is-equal
+        read said
+        text <>
+    hook hold
+      send back, read host-text
+  fork test
+    hook test
+      call step-names-path
+        read step
+    hook hold
+      send back, text <{code-name}: {said}, {step} '{path}'>
+  send back, text <{code-name}: {said}, {step}>
+
+# a refused call's `failure`, its note node's message for the refusal (`refusal` is the code name, the step and the
+# host text). A carried out call, its code name the empty text, raises nothing
+task raise-file-failure
+  take refusal, like list, like text
+  take path, like text
+  fork test
+    hook test
+      call is-equal
+        read refusal/0
+        text <>
+    hook miss
+      save worded
+        call word-file-failure
+          read refusal/0
+          read refusal/1
+          read path
+          read refusal/2
+      halt <{worded}>

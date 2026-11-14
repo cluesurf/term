@@ -94,13 +94,15 @@ load @term/call/work/small/home-folder
   find user-home
 
 load @term/call/work/output/printer
-  find close-run
   find count
   find field
   find location
+  find show-path
+
+load @term/call/work/output/printer-input
+  find close-run
   find open-run
   find report
-  find show-path
 
 # versions, manifests, lockfiles and the registry: @term/deck's ports
 load @term/deck/version

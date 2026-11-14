@@ -151,7 +151,7 @@ bind error-columns, like number
     load <Foundation>
     text <\{ () -\> Int in var __term_size = winsize(); return ioctl(STDERR_FILENO, TIOCGWINSZ, &__term_size) == 0 ? Int(__term_size.ws_col) : 0 \}()>
   case kotlin
-    text <kotlin.run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(1)?.toLongOrNull() ?: 0L \} catch (__term_failed: Exception) \{ 0L \} \}>
+    text <kotlin.run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(1)?.toLongOrNull() ?: 0L \} catch (__term_failed: java.lang.Exception) \{ 0L \} \}>
 
 # the local zone's offset from UTC in minutes at an instant, east positive
 bind local-offset, take epoch, like number

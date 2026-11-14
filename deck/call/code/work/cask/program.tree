@@ -33,7 +33,7 @@ load ../build/project-resolving
 load ../build/host-faces
   find face-project-resolver
 
-load @term/call/work/output/printer
+load @term/call/work/output/printer-input
   find run-tool
 
 # the Swift, Rust and Kotlin emitters, where compile/swift.ts, rust.ts and kotlin.ts were docked until

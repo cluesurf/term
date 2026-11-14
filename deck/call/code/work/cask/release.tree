@@ -27,8 +27,10 @@ load ../self/page-update
 load @term/call/work/output/printer
   find field
   find location
-  find report
   find show-path
+
+load @term/call/work/output/printer-input
+  find report
 
 load @term/call/work/item/event
   find item-field

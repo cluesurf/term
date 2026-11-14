@@ -132,18 +132,20 @@ load ../small/browser-serving
   find serve-browser-development
 
 load @term/call/work/output/printer
-  find problem-entry
-  find close-run
   find count
-  find fail-run
   find field
-  find follow-child
   find is-run-open
   find location
+  find show-path
+
+load @term/call/work/output/printer-input
+  find problem-entry
+  find close-run
+  find fail-run
+  find follow-child
   find open-run
   find report
   find report-problems
-  find show-path
 
 load @term/call/work/item/event
   find tally

@@ -49,14 +49,16 @@ load ../context/emission
   find program-emit
 
 load @term/call/work/output/printer
-  find close-run
   find count
   find field
   find location
+  find show-path
+
+load @term/call/work/output/printer-input
+  find close-run
   find open-run
   find report
   find report-problems
-  find show-path
 
 # the tree reader: @term/deck's tree-reading port (term-cli-in-term-0234, where its face package/read.ts was docked)
 load @term/deck/package/tree-reading

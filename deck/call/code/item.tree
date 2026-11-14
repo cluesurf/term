@@ -9,7 +9,7 @@
 #
 # Every task takes one record or one value. Nothing else here is meant to be found.
 
-load @term/call/work/output/printer
+load @term/call/work/output/printer-input
   find open-run, name printer-open-run
   find report, name printer-report
   find close-run, name printer-close-run

@@ -9,7 +9,9 @@
 // AsynchronousFileChannel covers plain files only, so the pool is the same answer on every backend.
 //
 // TOTAL, LIKE THE REST OF THE NATIVE SURFACE: a failure reads as the empty / false / zero answer, except a handle
-// open, where a missing file cannot be papered over.
+// open, where a missing file cannot be papered over, and `fileWrite`, which answers its refusal as a list of text
+// (refusal.kt: the code name, empty when carried out, the step and the host text) for the binding to raise as
+// `failure` worded in Term (term/compiler decision 021 point 4a).
 //
 // Reached only through the public file API.
 import java.nio.channels.FileChannel
@@ -67,8 +69,38 @@ object aio {
     }
   }
 
-  suspend fun fileWrite(path: String, data: String) {
-    fileWriteBytes(path, data.toByteArray(Charsets.UTF_8))
+  // runtime-include: refusal.kt
+
+  suspend fun fileWrite(path: String, data: String): MutableList<String> = termLoop.handBack {
+    writeWhole(path, data.toByteArray(Charsets.UTF_8))
+  }
+
+  // the file made or cut, then every byte written, as node's writeFile: the channel's opening is the `open` step, the
+  // writes the `write` step
+  private fun writeWhole(path: String, data: ByteArray): MutableList<String> {
+    val channel =
+      try {
+        Files.newByteChannel(
+          at(path),
+          StandardOpenOption.CREATE,
+          StandardOpenOption.TRUNCATE_EXISTING,
+          StandardOpenOption.WRITE,
+        )
+      } catch (error: kotlin.Exception) {
+        return refused(error, "open")
+      }
+
+    return try {
+      channel.use { open ->
+        val buffer = java.nio.ByteBuffer.wrap(data)
+        while (buffer.hasRemaining()) {
+          open.write(buffer)
+        }
+        carried()
+      }
+    } catch (error: kotlin.Exception) {
+      refused(error, "write")
+    }
   }
 
   suspend fun fileWriteBytes(path: String, data: ByteArray) {

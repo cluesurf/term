@@ -1,0 +1,170 @@
+# A timer that can be cleared: `set-timer` runs a task once, `ms` milliseconds from now, and answers a `timer`;
+# `cancel-timer` clears it, and a cleared timer never runs its task. A debounce is the use: put a flush off past the
+# last change by cancelling the timer each change set and setting a new one.
+#
+# One implementation, in Term, on every backend: the timer is a job (a ticked call, code/task.tree's handle) that
+# sleeps (code/clock.tree) and then runs the task. Cancelling the job stops it at its sleep on node, rust, swift and
+# kotlin (each job runtime drops a cancelled job's next wait), and the timer's id leaves the live list, which the job
+# reads before it runs the task, so a browser page, whose cancelled job runs on to its end, never runs a cleared task
+# either. A raise in the sleep or the task stops in the job (`fire-timer`): nobody waits on a timer, so nothing
+# surfaces.
+
+mark stable
+
+load @term/base/clock
+  find sleep
+
+load @term/base/list
+  find list
+
+load @term/base/task
+  find handle
+
+load @term/base/native/{platform}/job
+  find job-cancel
+
+# one task put off: its id in the live list, and the job that sleeps and then runs it
+form timer
+  link id, like number
+  link job
+    like handle
+      like boolean
+
+# the ids of the timers set and not yet run or cancelled, read by each timer's job before it runs its task
+host timer-live
+  like list
+    like number
+  make list
+
+# the last id given, one item, so ids never repeat in a process
+host timer-last
+  like list
+    like number
+  make list
+
+# a fresh id
+task next-timer-id
+  like number
+  mark private
+  save id, code 0
+  fork test
+    hook test
+      call is-above
+        read timer-last/length
+        code 0
+    hook hold
+      save id
+        call add
+          call timer-last/pop
+          code 1
+  call timer-last/push
+    read id
+  send back, read id
+
+# where `id` stands in the live list, or -1 when it is not there
+task place-of-timer
+  take id, like number
+  like number
+  mark private
+  save at, code 0
+  walk list, read timer-live
+    hook next
+      take site, name live
+      fork test
+        hook test
+          call is-equal
+            read live
+            read id
+        hook hold
+          send back, read at
+      save at
+        call add
+          read at
+          code 1
+  send back
+    call subtract
+      code 0
+      code 1
+
+# take `id` out of the live list: true when it was there. The last item moves into its place, so the list keeps only
+# the timers still waiting
+task forget-timer
+  take id, like number
+  like boolean
+  mark private
+  save at
+    call place-of-timer
+      read id
+  fork test
+    hook test
+      call is-below
+        read at
+        code 0
+    hook hold
+      send back, false
+  save moved
+    call timer-live/pop
+  fork test
+    hook test
+      call is-below
+        read at
+        read timer-live/length
+    hook hold
+      call timer-live/set
+        read at
+        read moved
+  send back, true
+
+# a timer's job: sleep, then run the task when the timer is still live. True when it ran the task. Nobody waits on a
+# timer, so a raise stops here, as one in a job nobody waits on stops in the job
+task fire-timer
+  mark async
+  take ms, like number
+  take id, like number
+  take action
+    like task
+      like void
+  like boolean
+  mark private
+  save ran, false
+  fork
+    mark unsafe
+    call sleep
+      read ms
+    fork test
+      hook test
+        call forget-timer
+          read id
+      hook hold
+        save ran, true
+        call action
+  halt take
+    take problem
+    save dropped, code 0
+  send back, read ran
+
+# run `action` once, `ms` milliseconds from now, unless the timer is cancelled first
+task set-timer
+  take ms, like number
+  take action
+    like task
+      like void
+  like timer
+  save id
+    call next-timer-id
+  call timer-live/push
+    read id
+  save started, tick fire-timer(read(ms), read(id), read(action))
+  send back
+    make timer
+      bind id, read id
+      bind job, read started
+
+# clear a timer: its task never runs. A timer that already ran, or was cancelled before, is left as it is
+task cancel-timer
+  take pending, like timer
+  like void
+  call forget-timer
+    read pending/id
+  call job-cancel
+    read pending/job/dock

@@ -39,12 +39,14 @@ load @term/call/work/build/host-faces
   find face-deck-finder
 
 load @term/call/work/output/printer
-  find problem-entry
-  find close-run
   find count
   find field
-  find open-run
   find print-data
+
+load @term/call/work/output/printer-input
+  find problem-entry
+  find close-run
+  find open-run
   find report
   find report-problems
 

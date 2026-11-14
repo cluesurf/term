@@ -60,6 +60,11 @@ const CASES: Case[] = [
   { name: 'unknown verb', args: ['nonesuch'], cwd: TERM, runs: RUNS, budget: [5, 10] },
   // compiler-free: prints the shell completion script and touches no project
   { name: 'fill', args: ['fill'], cwd: TERM, runs: RUNS, budget: [10, 15] },
+  // the verbs the native term runs itself (item term-self-host-001-1409), each a compiler-free verb on a small input
+  // that leaves the disk as it found it: halt on a port nothing serves, mind listing, wake refused its folder
+  { name: 'halt -p 59997', args: ['halt', '-p', '59997'], cwd: TERM, runs: RUNS, budget: [10, 15] },
+  { name: 'mind', args: ['mind'], cwd: TERM, runs: RUNS, budget: [10, 15] },
+  { name: 'wake /dev/null/demo', args: ['wake', '/dev/null/demo'], cwd: TERM, runs: RUNS, budget: [10, 15] },
 ]
 
 if (withMake) {

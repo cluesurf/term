@@ -1,0 +1,115 @@
+note <the printer's typed forms say what node's caller objects said, read by its node face>
+
+# Item term-self-host-001-1434 part 2 (decision 167 point 5): work/output/printer.tree takes typed forms only, and its
+# node face, work/output/printer-input.tree, reads node's caller objects into them. An item the verbs build typed
+# (make-typed-item) is the event the face's make-item builds from the same keys, and the face reads an opening, a
+# closing and a step the way the printer read them before: a key left out is left out, a verdict is a subject only
+# when it is given. Runs on node, the face's one backend.
+
+load @term/call/work/output/printer
+  find item-input
+  find make-typed-item
+  find show-path
+
+load @term/call/work/output/printer-input
+  find make-item
+  find opening-of
+  find closing-of
+  find progress-of
+
+load @term/base/list
+  find get
+
+form stop-ask
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form recall-ask
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form open-ask
+  link verb, like text
+  link root, like text
+
+form wake-ask
+  link verb, like text
+  link root, like text
+  link subject, like text
+
+form verdict-ask
+  link verdict, like text
+
+form ready-ask
+  link verdict, like text
+  link next, like text
+  link done, like boolean
+
+form failure-ask
+  link failure, like text
+
+form step-ask
+  link verb, like text
+  link subject, like text
+  link noun, like text
+  link done, like number
+  link total, like number
+
+form bare-step-ask
+  link noun, like text
+  link done, like number
+
+# the facts of a stop item, as halting.tree reports them
+task stop-facts
+  like list, like text
+
+  save facts, make list
+  facts/push <pid 42>
+  back facts
+
+test <an item built typed is the item the face makes of the same keys>
+  save typed, make-typed-item(make(item-input, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, <:2400>), bind(facts, stop-facts())))
+  save read, make-item(make(stop-ask, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, <:2400>), bind(facts, stop-facts())))
+  want hold, and(is-equal(typed/glyph, read/glyph), and(is-equal(typed/kind, read/kind), and(is-equal(typed/verb, read/verb), and(is-equal(get(typed/subject, 0)/value, get(read/subject, 0)/value), and(is-equal(typed/subject/length, read/subject/length), and(is-equal(get(typed/facts, 0), get(read/facts, 0)), is-equal(typed/facts/length, read/facts/length)))))))
+
+test <an item with no kind is a step both ways>
+  save typed, make-typed-item(make(item-input, bind(glyph, <info>), bind(verb, <recall>), bind(subject, <tabs>)))
+  save read, make-item(make(recall-ask, bind(glyph, <info>), bind(verb, <recall>), bind(subject, <tabs>)))
+  want hold, and(is-equal(typed/kind, <step>), and(is-equal(read/kind, <step>), and(is-equal(typed/message/length, 0), is-equal(typed/fields/length, read/fields/length))))
+
+test <an opening with no subject shows the root's path>
+  save one, opening-of(make(open-ask, bind(verb, <mind>), bind(root, </tmp/a/b>)))
+  want hold, and(is-equal(one/verb, <mind>), and(one/has-subject, and(is-equal(one/subject, show-path(</tmp/a/b>)), and(not(one/has-tool), and(is-below(one/started, 0), is-equal(one/counts/length, 0))))))
+
+test <an opening's own subject is shown>
+  save one, opening-of(make(wake-ask, bind(verb, <wake>), bind(root, </tmp/a>), bind(subject, <~/demo>)))
+  want hold, and(one/has-subject, is-equal(one/subject, <~/demo>))
+
+test <a verdict given is the closing's subject>
+  save one, closing-of(make(verdict-ask, bind(verdict, <Stopped>)))
+  want hold, and(one/titled, and(is-equal(one/verdict, <Stopped>), and(not(one/done), and(is-equal(one/next, <>), is-equal(one/failure, <>)))))
+
+test <a closing with no verdict has no subject>
+  save one, closing-of(make(failure-ask, bind(failure, <usage>)))
+  want hold, and(not(one/titled), is-equal(one/failure, <usage>))
+
+test <next and done are read by their truth>
+  save one, closing-of(make(ready-ask, bind(verdict, <demo is ready>), bind(next, <term boot>), bind(done, true)))
+  save none, closing-of(make(ready-ask, bind(verdict, <x>), bind(next, <>), bind(done, false)))
+  want hold, and(one/done, and(is-equal(one/next, <term boot>), and(not(none/done), is-equal(none/next, <>))))
+
+test <an empty failure is no failure>
+  save one, closing-of(make(failure-ask, bind(failure, <>)))
+  want hold, is-equal(one/failure, <>)
+
+test <a step with a noun is counted>
+  save one, progress-of(make(step-ask, bind(verb, <port>), bind(subject, <modules>), bind(noun, <modules>), bind(done, 2), bind(total, 6)))
+  want hold, and(is-equal(one/tallies/length, 1), and(is-equal(get(one/tallies, 0)/amount, 2), and(is-equal(get(one/subject, 0)/value, <modules>), and(is-equal(one/verb, <port>), is-equal(one/total, 6)))))
+
+test <a step with no done yet is not counted>
+  save one, progress-of(make(bare-step-ask, bind(noun, <files>), bind(done, -1)))
+  want hold, and(is-equal(one/tallies/length, 0), and(is-equal(one/subject/length, 0), is-equal(one/total, -1)))

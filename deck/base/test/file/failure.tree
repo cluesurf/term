@@ -1,0 +1,348 @@
+# A file call the host refuses raises `failure` on every backend, its note node's own message for that refusal
+# (term/compiler decision 021 part 1, as ruling 1469 amends it: a text raise, so no `thing`): `read` of a folder,
+# `list` of a file, `write` under a file and `list` of a folder no one may read. Each expected note is the message node's fs gives for the same call, so the one
+# note on all four backends is node's. Held by `pnpm term:base-gate`.
+#
+# The raising calls of @term/base/file/create (decision 021 point 1b, ruling 1473) are held here too: `make-folder`
+# under a file, at a file and under a folder no one may search, and `write-new` over a file or a folder (false) and
+# under a file. Node names the path given in each.
+#
+# The fixture is built by one `sh` run through `process/run`, as in test/file/blocking.tree. Its folder sits under the
+# system's temporary directory and is left for it to clear: nothing here removes a file. `locked` is mode 000, which
+# root reads anyway, so the fixture marks a run as root with `as-root` and that case then holds without asking.
+
+load @term/base/file/blocking
+  find read, name read-path
+  find list, name list-path
+  find exists, name exists-path
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/failure
+  find word-file-failure
+
+load @term/base/file/create
+  find make-folder
+  find write-new
+
+load @term/base/exception
+  find failure
+  find absence
+
+load @term/base/process/run
+  find run
+
+# a new folder holding `plain.txt`, the folder `inner` and the mode 000 folder `locked`, and `as-root` when the run is
+# root's. It answers the folder's path, which the script prints without a newline
+task make-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); printf %s x \> "$d/plain.txt"; mkdir "$d/inner" "$d/locked"; chmod 000 "$d/locked"; if [ "$(id -u)" = 0 ]; then printf %s x \> "$d/as-root"; fi; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# the note a refused call raised, or `no` when it raised nothing, or the form it raised
+task read-refused
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call read-path
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+      case absence
+        send back, text <absence>
+
+task list-refused
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call list-path
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+      case absence
+        send back, text <absence>
+
+task write-refused
+  mark async
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    call write-file
+      read path
+      text <y>
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+
+# the note make-folder raised, or `no` when it raised nothing
+task make-refused
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    call make-folder
+      read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+
+# what write-new answered (`true` or `false`), or the note it raised
+task write-new-said
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save made
+      call write-new
+        read path
+        text <y>
+    fork test
+      hook test
+        read made
+      hook hold
+        send back, text <true>
+    send back, text <false>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+
+test <a folder read raises failure with node's message, which names no path>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/inner>
+  want hold
+    call is-equal
+      call read-refused
+        read path
+      text <EISDIR: illegal operation on a directory, read>
+
+test <a file listed raises failure with node's message, which names the path>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt>
+  want hold
+    call is-equal
+      call list-refused
+        read path
+      text <ENOTDIR: not a directory, scandir '{{path}}'>
+
+test <a file written under a file raises failure with node's message for the open>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt/new.txt>
+  want hold
+    call is-equal
+      call write-refused
+        read path
+      text <ENOTDIR: not a directory, open '{{path}}'>
+
+test <a folder no one may read raises failure with node's message when listed, unless the run is root's>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/locked>
+  save expected, text <EACCES: permission denied, scandir '{{path}}'>
+  fork test
+    hook test
+      call exists-path
+        text <{{dir}}/as-root>
+    hook hold
+      save expected, text <no>
+  want hold
+    call is-equal
+      call list-refused
+        read path
+      read expected
+
+test <a missing path still raises absence, asked first>
+  save dir
+    call make-fixture
+  want hold
+    call and
+      call is-equal
+        call read-refused
+          text <{{dir}}/nowhere>
+        text <absence>
+      call is-equal
+        call list-refused
+          text <{{dir}}/nowhere>
+        text <absence>
+
+test <a readable file still reads and a folder still lists>
+  save dir
+    call make-fixture
+  want hold
+    call and
+      call is-equal
+        call read-path
+          text <{{dir}}/plain.txt>
+        text <x>
+      call is-equal
+        call read-refused
+          text <{{dir}}/plain.txt>
+        text <no>
+
+test <a code outside the table is worded by the host's own text>
+  want hold
+    call is-equal
+      call word-file-failure
+        text <EMFILE>
+        text <open>
+        text </x>
+        text <Too many open files (os error 24)>
+      text <Too many open files (os error 24)>
+
+test <a code with no name is worded by the host's own text>
+  want hold
+    call is-equal
+      call word-file-failure
+        text <?>
+        text <open>
+        text </x>
+        text <The system cannot find the path specified>
+      text <The system cannot find the path specified>
+
+test <mkdir names the path and write does not>
+  want hold
+    call and
+      call is-equal
+        call word-file-failure
+          text <ENOTEMPTY>
+          text <mkdir>
+          text </x/y>
+          text <ignored>
+        text <ENOTEMPTY: directory not empty, mkdir '/x/y'>
+      call is-equal
+        call word-file-failure
+          text <ENOSPC>
+          text <write>
+          text </x/y>
+          text <ignored>
+        text <ENOSPC: no space left on device, write>
+
+test <a folder made under a file raises failure with node's message, which names the path given>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt/a/b>
+  want hold
+    call is-equal
+      call make-refused
+        read path
+      text <ENOTDIR: not a directory, mkdir '{{path}}'>
+
+test <a folder made where a file is raises failure with node's message>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt>
+  want hold
+    call is-equal
+      call make-refused
+        read path
+      text <EEXIST: file already exists, mkdir '{{path}}'>
+
+test <a folder made under a folder no one may search raises failure with node's message, unless the run is root's>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/locked/a/b>
+  save expected, text <EACCES: permission denied, mkdir '{{path}}'>
+  fork test
+    hook test
+      call exists-path
+        text <{{dir}}/as-root>
+    hook hold
+      save expected, text <no>
+  want hold
+    call is-equal
+      call make-refused
+        read path
+      read expected
+
+test <a missing chain of folders is made, and made again raises nothing>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/new/a/b>
+  want hold
+    call and
+      call is-equal
+        call make-refused
+          read path
+        text <no>
+      call and
+        call is-equal
+          call make-refused
+            read path
+          text <no>
+        call is-equal
+          call make-refused
+            text <{{dir}}/inner>
+          text <no>
+
+test <a new file is written once, and over a file or a folder answers false and writes nothing>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/new.txt>
+  want hold
+    call and
+      call is-equal
+        call write-new-said
+          read path
+        text <true>
+      call and
+        call is-equal
+          call read-path
+            read path
+          text <y>
+        call and
+          call is-equal
+            call write-new-said
+              text <{{dir}}/plain.txt>
+            text <false>
+          call and
+            call is-equal
+              call read-path
+                text <{{dir}}/plain.txt>
+              text <x>
+            call is-equal
+              call write-new-said
+                text <{{dir}}/inner>
+              text <false>
+
+test <a new file written under a file raises failure with node's message for the open>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt/new.txt>
+  want hold
+    call is-equal
+      call write-new-said
+        read path
+      text <ENOTDIR: not a directory, open '{{path}}'>

@@ -478,8 +478,9 @@ const SHIPPED_PACKAGES = ['mill', 'host']
 
 // the files of `@term/call` a user's project compiles: the test report's own program, which `term test` builds
 // (test-running.tree `reporter-sources`), and the printer a program reports through, `@term/call/item`, with what it
-// loads (the run, work/output/printer.tree, and the output library, work/item/), item term-self-host-001-0983. Only these
-// ship, with the manifest that names the package and the role that reads them lean. A folder ships whole
+// loads (the run, work/output/printer.tree, its node face work/output/printer-input.tree, and the output library,
+// work/item/), item term-self-host-001-0983. Only these ship, with the manifest that names the package and the role
+// that reads them lean. A folder ships whole
 const SHIPPED_CALL = [
   'role.tree',
   'code/test-report.tree',
@@ -489,6 +490,7 @@ const SHIPPED_CALL = [
   'code/output-plan.tree',
   'code/draft-mark.tree',
   'code/work/output/printer.tree',
+  'code/work/output/printer-input.tree',
   'code/work/item',
 ]
 

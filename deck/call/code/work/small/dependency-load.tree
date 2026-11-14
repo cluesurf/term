@@ -6,9 +6,11 @@
 # (`Boolean`), as the original's `need?.pin` and `need.kept` tested them.
 
 load @term/call/work/output/printer
-  find close-run
   find count
   find field
+
+load @term/call/work/output/printer-input
+  find close-run
   find open-run
   find report
 

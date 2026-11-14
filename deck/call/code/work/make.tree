@@ -64,7 +64,7 @@ load @term/call/work/cask/command
   find make-cask
   find cask-ask
 
-load @term/call/work/output/printer
+load @term/call/work/output/printer-input
   find close-run
   find open-run
   find report

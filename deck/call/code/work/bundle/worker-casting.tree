@@ -43,15 +43,17 @@ load ../cache/compile-store
   find project-cache
 
 load @term/call/work/output/printer
+  find field
+  find location
+  find show-path
+
+load @term/call/work/output/printer-input
   find problem-entry
   find close-run
   find fail-run
-  find field
-  find location
   find open-run
   find report
   find report-problems
-  find show-path
 
 load @term/call/work/item/event
   find item-field

@@ -55,14 +55,19 @@ load @term/base/maybe
 load ./home-folder
   find home-posix
 
+# the printer's typed tasks (decision 167 point 5): `term halt` is a native verb, so it reports through no JavaScript
+# value. Its items name no fields, given as the printer's empty list (no-item-fields): the form's own fall, emitted
+# here, would name a type this module's port does not import
 load @term/call/work/output/printer
-  find close-run
   find count
-  find open-run
-  find report
-
-load @term/call/work/item/event
-  find tally
+  find run-opening
+  find open-typed-run
+  find item-input
+  find no-item-fields
+  find make-typed-item
+  find report-typed
+  find run-closing
+  find close-typed-run
 
 load @term/base/process/run
   find run, name run-process
@@ -106,28 +111,6 @@ form service-row
   link pid, like number
   link verb, like text
   link project, like maybe, like text
-
-form open-ask
-  link verb, like text
-  link root, like text
-  link facts, like list, like text
-
-form item-ask
-  link glyph, like text
-  link kind, like text
-  link verb, like text
-  link subject, like text
-
-form fact-item-ask
-  link glyph, like text
-  link kind, like text
-  link verb, like text
-  link subject, like text
-  link facts, like list, like text
-
-form close-ask
-  link verdict, like text
-  link counts, like list, like tally
 
 # the markers that identify a term boot server process in the process table: the folder's name now, and the name it
 # had until 2026-10-05, which a server an older `term` started still runs from (home-folder.tree)
@@ -1075,7 +1058,7 @@ task report-item
   like void
   mark private
 
-  report(make(item-ask, bind(glyph, glyph), bind(kind, kind), bind(verb, verb), bind(subject, subject)))
+  report-typed(make-typed-item(make(item-input, bind(glyph, glyph), bind(kind, kind), bind(verb, verb), bind(subject, subject), bind(fields, no-item-fields()))))
 
 task report-stop
   take subject, like text
@@ -1085,7 +1068,7 @@ task report-stop
 
   save facts, make list
   facts/push(<pid {pid}>)
-  report(make(fact-item-ask, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, subject), bind(facts, facts)))
+  report-typed(make-typed-item(make(item-input, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, subject), bind(facts, facts), bind(fields, no-item-fields()))))
 
 task close-halt
   take verdict, like text
@@ -1097,7 +1080,7 @@ task close-halt
 
   save counts, make list
   counts/push(count(stopped, noun, one))
-  close-run(make(close-ask, bind(verdict, verdict), bind(counts, counts)))
+  close-typed-run(make(run-closing, bind(verdict, verdict), bind(counts, counts)))
 
 # `term halt -p 2400,2401` stops the apps on those ports; bare `term halt` (no ports) stops this project's term boot
 # instances, or every one outside a project. Each process stopped is a `stop` lifecycle item, its pid a fact
@@ -1113,7 +1096,7 @@ task call-halt
       walk ports
         take port
         facts/push(<:{port}>)
-      open-run(make(open-ask, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
+      open-typed-run(make(run-opening, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
       save stopped, 0
       # a program a `term boot` started is stopped through its boot, as bare `halt` does
       save owner, make hash
@@ -1176,7 +1159,7 @@ task halt-project
       facts/push(<this project's term boot>)
     miss
       facts/push(<every term boot>)
-  open-run(make(open-ask, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
+  open-typed-run(make(run-opening, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
   save targets, make list
   save remotes, make list
   fork test, inside

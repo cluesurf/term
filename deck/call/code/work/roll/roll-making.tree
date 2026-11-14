@@ -54,8 +54,10 @@ load @term/call/work/cache/compile-store
   find project-cache
 
 load @term/call/work/output/printer
-  find problem-entry
   find print-profile
+
+load @term/call/work/output/printer-input
+  find problem-entry
 
 dock load
   load <@term/make/code/compile/compile>, name compile-module

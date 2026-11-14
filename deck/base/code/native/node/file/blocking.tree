@@ -2,13 +2,19 @@
 # each record from one host call. `changed` is `mtimeMs`, which keeps the fraction. Internal: reached only through the
 # public file/blocking API, which has already ruled out a missing path for read, stat, list and real. The kind and the
 # four that change the disk rule out nothing first: each answers for a path that is not there itself.
+#
+# `blocking-read` and `blocking-list` catch node's own Error and answer its code, syscall and message first in their
+# list of text (the code empty when the call was carried out), so node raises the one `failure` the public module words
+# on every backend (term/compiler decision 021 points 4 and 5).
 
 dock load
   load <node:fs>, name blocking-fs
 
 load @term/base/file/blocking
   find stat-raw
-  find entry-raw
+
+load @term/base/native/node/file/refusal
+  find node-refusal
 
 load @term/base/list
   find push
@@ -21,11 +27,33 @@ bind make-entry-options
 
 task blocking-read
   take path, like text
-  like text
-  send back
-    call blocking-fs/read-file-sync
-      read path
-      text <utf8>
+  like list, like text
+  save out, like list, like text
+    make list
+  fork
+    mark unsafe
+    save body, like text
+      call blocking-fs/read-file-sync
+        read path
+        text <utf8>
+    call push
+      read out
+      text <>
+    call push
+      read out
+      text <>
+    call push
+      read out
+      text <>
+    call push
+      read out
+      read body
+  halt take
+    take problem
+    send back
+      call node-refusal
+        read problem
+  send back, read out
 
 # a symbolic link is followed, so a link to nothing is not there
 task blocking-exists
@@ -62,14 +90,31 @@ task blocking-stat
 # the platform's own order, no `.` or `..`, each kind the entry's own with links not followed
 task blocking-list
   take path, like text
-  like list
-    like entry-raw
-  save out, like list, like entry-raw
+  like list, like text
+  save out, like list, like text
     make list
-  save entries
-    call blocking-fs/readdir-sync
-      read path
-      call make-entry-options
+  save entries, like dynamic
+    make list
+  fork
+    mark unsafe
+    save entries
+      call blocking-fs/readdir-sync
+        read path
+        call make-entry-options
+  halt take
+    take problem
+    send back
+      call node-refusal
+        read problem
+  call push
+    read out
+    text <>
+  call push
+    read out
+    text <>
+  call push
+    read out
+    text <>
   walk list, read entries
     hook next
       take site, name entry
@@ -93,9 +138,10 @@ task blocking-list
                   save kind, text <file>
       call push
         read out
-        make entry-raw
-          bind name, read entry/name
-          bind kind, read kind
+        read entry/name
+      call push
+        read out
+        read kind
   send back, read out
 
 task blocking-real

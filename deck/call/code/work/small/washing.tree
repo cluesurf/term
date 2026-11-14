@@ -28,12 +28,14 @@ load @term/base/maybe
   find maybe
 
 load @term/call/work/output/printer
-  find close-run
   find count
   find field
+  find show-path
+
+load @term/call/work/output/printer-input
+  find close-run
   find open-run
   find report
-  find show-path
 
 load @term/call/work/item/event
   find item-field

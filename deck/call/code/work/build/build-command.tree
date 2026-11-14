@@ -75,12 +75,14 @@ load ../roll/roll-making
   find project-roll
 
 load @term/call/work/output/printer
-  find close-run
   find count
-  find fail-run
   find field
-  find open-run
   find output-options
+
+load @term/call/work/output/printer-input
+  find close-run
+  find fail-run
+  find open-run
   find report
   find report-problems
 

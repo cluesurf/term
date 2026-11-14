@@ -25,12 +25,14 @@ load ./repository
   find save-repository
 
 load @term/call/work/output/printer
-  find close-run
   find count
   find field
   find location
-  find open-run
   find print-data
+
+load @term/call/work/output/printer-input
+  find close-run
+  find open-run
   find report
 
 load @term/call/work/item/event

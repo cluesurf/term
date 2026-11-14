@@ -59,14 +59,16 @@
 # started in, which the alias makes the Term root.
 
 load @term/call/work/output/printer
+  find count
+  find field
+  find is-run-open
+
+load @term/call/work/output/printer-input
   find open-run
   find report
   find close-run
   find progress
-  find count
-  find field
   find fail-run
-  find is-run-open
 
 load @term/call/work/item/event
   find item-field
@@ -271,8 +273,9 @@ task shipped-packages
 
 # the files of `@term/call` a user's project compiles: the test report's own program, which `term test` builds
 # (test-running.tree `reporter-sources`), and the printer a program reports through, `@term/call/item`, with what it
-# loads (the run, work/output/printer.tree, and the output library, work/item/), item term-self-host-001-0983. Only these
-# ship, with the manifest that names the package and the role that reads them lean. A folder ships whole
+# loads (the run, work/output/printer.tree, its node face work/output/printer-input.tree, and the output library,
+# work/item/), item term-self-host-001-0983. Only these ship, with the manifest that names the package and the role
+# that reads them lean. A folder ships whole
 task shipped-call
   like list, like text
   save all
@@ -285,6 +288,7 @@ task shipped-call
   call all/push, text <code/output-plan.tree>
   call all/push, text <code/draft-mark.tree>
   call all/push, text <code/work/output/printer.tree>
+  call all/push, text <code/work/output/printer-input.tree>
   call all/push, text <code/work/item>
   send back, read all
 

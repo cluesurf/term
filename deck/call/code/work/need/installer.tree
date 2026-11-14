@@ -52,14 +52,16 @@ load @term/call/work/small/home-folder
   find front-dir
 
 load @term/call/work/output/printer
-  find close-run
   find field
   find location
-  find open-run
   find print-data
+  find show-path
+
+load @term/call/work/output/printer-input
+  find close-run
+  find open-run
   find report
   find set-output
-  find show-path
 
 load @term/call/work/item/event
   find item-field

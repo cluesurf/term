@@ -386,6 +386,11 @@ function shimValues(shim: string): Set<string> {
 // second compile and a discarded TypeScript emit for every such module, 230 s of a 752 s full build (term-cli-in-term-0252)
 const PRINTER = 'deck/call/code/work/output/printer.tree'
 
+// the printer's node-only face (decision 167 point 5, item term-self-host-001-1434): open-run, close-run and
+// set-output read the caller's objects there, and printer.tree's own are typed, so the keeper drives the face. The
+// face loads the printer, so it shares the port's one run. Neither file's own port takes the keeper
+const PRINTER_INPUT = 'deck/call/code/work/output/printer-input.tree'
+
 // is-run-open is one comparison, and the simplifier inlines it into every caller, so it is kept as a task of the
 // module (port-printer-is-run-open, a root) and exported under the printer's name by printerExports. The return is
 // spelled the way the module's own mode reads it
@@ -395,10 +400,12 @@ function printerKeeper(lean: boolean): string {
     '',
     '# written by task/port-build.ts, never in the source (decision term-cli-in-term-0240): the printer run tasks a',
     '# caller of this port drives',
-    'load @term/call/work/output/printer',
+    'load @term/call/work/output/printer-input',
     '  find open-run, name port-printer-open-run',
     '  find close-run, name port-printer-close-run',
     '  find set-output, name port-printer-set-output',
+    '',
+    'load @term/call/work/output/printer',
     '  find is-run-open, name port-printer-run-open',
     '',
     'task port-printer-run',
@@ -441,7 +448,7 @@ function holdsPrinter(
   walked: WalkMemo,
   collectModules: Compiler['collectModules'],
 ): boolean {
-  if (name === PRINTER) {
+  if (name === PRINTER || name === PRINTER_INPUT) {
     return false
   }
 
@@ -1171,7 +1178,7 @@ function compileEntry(work: UnitWork, root: string, file: string, text: string):
   const parsed = runParseMemo(c.makeParseMemo)
   const walked: WalkMemo = new Map()
   const collected = c.collectModules({ file, text }, readers.resolve, parsed, undefined, walked)
-  const keep = name !== PRINTER && collected.sources.some(unit => unit.file.endsWith(`/${PRINTER}`))
+  const keep = name !== PRINTER && name !== PRINTER_INPUT && collected.sources.some(unit => unit.file.endsWith(`/${PRINTER}`))
 
   const result = c.compileSeparate(
     { file, text: keep ? `${text}${printerKeeper(readers.leanOf(file) === true)}` : text },
@@ -1189,12 +1196,14 @@ function compileEntry(work: UnitWork, root: string, file: string, text: string):
       keepProgram: basename(root) === 'call',
     },
   )
-  // the keeper's text loads the printer
+  // the keeper's text loads the printer and its face, which sits beside it
   const printer = keep ? collected.sources.find(unit => unit.file.endsWith(`/${PRINTER}`))?.file : undefined
   const edges = new Map(collected.edges)
 
   if (printer !== undefined) {
-    edges.set(file, [...new Set([...(edges.get(file) ?? []), printer])])
+    const face = join(dirname(printer), basename(PRINTER_INPUT))
+
+    edges.set(file, [...new Set([...(edges.get(file) ?? []), printer, face])])
   }
 
   return { result, edges }

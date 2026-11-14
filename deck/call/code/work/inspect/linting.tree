@@ -52,9 +52,11 @@ load @term/make/manifest-read
   find manifest-name
 
 load @term/call/work/output/printer
+  find count
+
+load @term/call/work/output/printer-input
   find problem-entry
   find close-run
-  find count
   find open-run
   find report
   find report-problems

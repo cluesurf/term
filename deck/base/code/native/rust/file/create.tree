@@ -1,0 +1,24 @@
+# rust's two raising disk calls, over `std::fs` through the linked `file-create` runtime shim, which answers each
+# refusal as a list of text: the code name (empty when carried out), the step as node's `syscall` names it, and the
+# host's text (term/compiler decision 021 points 4 and 1b). Internal: reached only through the public file/create API.
+
+# The dock ALIAS is the global's own name, `file-create`, as on node, where any other alias does not load. No stdlib
+# name is `file-create`. The shim file is runtime/file-create.<ext>.
+dock load
+  load <global:file-create>, name file-create
+
+task create-folder
+  take path, like text
+  like list, like text
+  send back
+    call file-create/make-folder-path
+      read path
+
+task create-new
+  take path, like text
+  take body, like text
+  like list, like text
+  send back
+    call file-create/write-new-path
+      read path
+      read body

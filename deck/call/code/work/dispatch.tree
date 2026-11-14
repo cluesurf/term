@@ -90,8 +90,10 @@ load @term/call/work/tool/hunt-command
   find run-hunt-fuzz-child
 
 load @term/call/work/output/printer
-  find fail-run
   find print-data
+
+load @term/call/work/output/printer-input
+  find fail-run
   find set-output
 
 # the refusal's shape and the nearest command, shared with every program `term boot` writes (item 0983): what was not
@@ -578,13 +580,35 @@ task start-line
   save flags, globals-of(routes)
   save commands, commands-of(routes)
 
-  # the command the bare words name: whether a flag is the command's own, and whether it takes its words whole
+  # the command the bare words name: whether a flag is the command's own, and whether it takes its words whole. A
+  # global written before the first bare word takes its value as the walk below takes it, so the value is no command
+  # word (`term --log json mind` runs mind, item term-self-host-001-1459): a valued global that holds no `=` takes the
+  # next word, whatever it is, and a literal `--` ends the globals
   save bare, make list
+  save skip, false
+  save ended, false
   walk words
     take word
-    fork test, not(starts-with(word, <->))
+    fork test, skip
       hold
-        bare/push word
+        save skip, false
+      miss
+        fork test, not(starts-with(word, <->))
+          hold
+            bare/push word
+          miss
+            fork test, is-equal(word, <-->)
+              hold
+                save ended, true
+            fork test, and(not(ended), is-equal(bare/length, 0))
+              hold
+                save lead-word, read-flag-word(word)
+                sift global-of(flags, lead-word)
+                  case some
+                    link lead-flag
+                    save skip, and(takes-value(lead-flag), not(lead-word/inline))
+                  case none
+                    save nothing, 0
   save takes, make list
   save passing, false
   sift route-for(commands, bare)

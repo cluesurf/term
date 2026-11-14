@@ -10,7 +10,7 @@
 # only the module it changed. The compiler (compile/compile.ts, compile/separate.ts) is TypeScript, docked, and the
 # tier-0 tally is check/holding.tree. The lane's lookups are handed to the compiler as host functions (host-faces.tree).
 
-load ../output/printer
+load ../output/printer-input
   find problem-entry
 
 load @term/base/list

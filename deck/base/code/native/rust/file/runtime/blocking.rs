@@ -1,11 +1,17 @@
-// Whole-path file calls for the rust target that never await, over `std::fs`. `stat_path` and `list_path` build the
-// emitted `StatRaw` and `EntryRaw` records directly (the shim is prepended to the module that declares them, so the
-// types are in scope through `use super::*`), one call each. `changed` is seconds times 1000 plus nanoseconds over
-// 1e6 in a double, the arithmetic node's `mtimeMs` is.
+// Whole-path file calls for the rust target that never await, over `std::fs`. `stat_path` builds the emitted `StatRaw`
+// record directly (the shim is prepended to the module that declares it, so the type is in scope through `use
+// super::*`), one call. `changed` is seconds times 1000 plus nanoseconds over 1e6 in a double, the arithmetic node's
+// `mtimeMs` is.
+//
+// `read_path` and `list_path` answer a list of text, the refusal first (refusal.rs: the code name, empty when carried
+// out, the step and the host text), then the text, or each entry's name and kind. The public module raises the refusal
+// as `failure` worded in Term (term/compiler decision 021 points 2 and 4). Every other call here stays total.
 //
 // Reached only through the public file/blocking API, which has already ruled out a missing path.
 mod blocking {
-    use super::{EntryRaw, StatRaw};
+    use super::StatRaw;
+
+    // runtime-include: refusal.rs
 
     // milliseconds from the epoch with the fraction kept, signed: on unix the same double `mtime * 1000 +
     // mtime_nsec / 1e6` makes, and read through `SystemTime` so it is one call on every system
@@ -31,10 +37,25 @@ mod blocking {
         seconds as f64 * 1000.0 + nanoseconds as f64 / 1e6
     }
 
-    pub fn read_path(path: String) -> String {
-        match std::fs::read(&path) {
-            Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
-            Err(_) => String::new(),
+    // open(2) is the `open` step and the reads the `read` step, as node's readFileSync names them: a folder opens and
+    // its read is refused
+    pub fn read_path(path: String) -> Vec<String> {
+        use std::io::Read;
+
+        let mut file = match std::fs::File::open(&path) {
+            Ok(file) => file,
+            Err(failure) => return refused(&failure, "open"),
+        };
+
+        let mut bytes = Vec::new();
+
+        match file.read_to_end(&mut bytes) {
+            Ok(_) => {
+                let mut out = carried();
+                out.push(String::from_utf8_lossy(&bytes).to_string());
+                out
+            }
+            Err(failure) => refused(&failure, "read"),
         }
     }
 
@@ -64,24 +85,31 @@ mod blocking {
         }
     }
 
-    // the platform's own order, no `.` or `..`, each kind the entry's own with links not followed
-    pub fn list_path(path: String) -> Vec<EntryRaw> {
-        let mut out = Vec::new();
+    // the platform's own order, no `.` or `..`, each kind the entry's own with links not followed. The opening and
+    // every read of the folder are the `scandir` step, as node's readdirSync names them
+    pub fn list_path(path: String) -> Vec<String> {
+        let entries = match std::fs::read_dir(&path) {
+            Ok(entries) => entries,
+            Err(failure) => return refused(&failure, "scandir"),
+        };
 
-        if let Ok(entries) = std::fs::read_dir(&path) {
-            for entry in entries.flatten() {
-                let kind = match entry.file_type() {
-                    Ok(kind) if kind.is_dir() => "directory",
-                    Ok(kind) if kind.is_symlink() => "link",
-                    Ok(kind) if kind.is_file() => "file",
-                    _ => "other",
-                };
+        let mut out = carried();
 
-                out.push(EntryRaw {
-                    name: entry.file_name().to_string_lossy().to_string(),
-                    kind: kind.to_string(),
-                });
-            }
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(failure) => return refused(&failure, "scandir"),
+            };
+
+            let kind = match entry.file_type() {
+                Ok(kind) if kind.is_dir() => "directory",
+                Ok(kind) if kind.is_symlink() => "link",
+                Ok(kind) if kind.is_file() => "file",
+                _ => "other",
+            };
+
+            out.push(entry.file_name().to_string_lossy().to_string());
+            out.push(kind.to_string());
         }
 
         out

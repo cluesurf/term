@@ -23,7 +23,7 @@ load ./toolchain
 load ../native/declaration
   find permission-lines
 
-load @term/call/work/output/printer
+load @term/call/work/output/printer-input
   find run-tool
 
 dock load

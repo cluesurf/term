@@ -15,8 +15,10 @@ load @term/call/work/serve/compile-daemon
   find start-daemon
 
 load @term/call/work/output/printer
-  find close-run
   find field
+
+load @term/call/work/output/printer-input
+  find close-run
   find open-run
   find report
 

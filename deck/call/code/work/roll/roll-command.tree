@@ -37,14 +37,16 @@ load ./roll-comparing
   find compare-rolls
 
 load @term/call/work/output/printer
-  find problem-entry
-  find close-run
   find count
   find field
   find location
-  find open-run
   find output-options
   find print-data
+
+load @term/call/work/output/printer-input
+  find problem-entry
+  find close-run
+  find open-run
   find report
   find report-problems
 

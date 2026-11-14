@@ -13,9 +13,11 @@ load @term/base/maybe
   find none
 
 load @term/call/work/output/printer
-  find close-run
   find count
   find field
+
+load @term/call/work/output/printer-input
+  find close-run
   find make-item
   find open-run
   find report

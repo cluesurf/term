@@ -15,9 +15,11 @@ load @term/base/maybe
   find maybe
 
 load @term/call/work/output/printer
-  find report
   find count
   find field
+
+load @term/call/work/output/printer-input
+  find report
 
 # the build's resolver and the project's home: the build and small lanes' ports, where make.ts and home.ts were docked
 # (term-cli-in-term-0069)

@@ -1,0 +1,38 @@
+# node's half of a refused file call: the host Error a node:fs call threw, read as the list of text every backend
+# hands @term/base/file/failure (term/compiler decision 021 points 4 and 5): `err.code` the code name, `err.syscall` the
+# step, `err.message` the host text. A thrown value with no code answers the code name `?`, which no table row names,
+# so its note is its own text. Internal: reached only through the node file bindings.
+
+bind node-refusal-code
+  take problem, like dynamic
+  like text
+  case node
+    text <(typeof ($problem)?.code === "string" && ($problem).code !== "" ? String(($problem).code) : "?")>
+
+bind node-refusal-step
+  take problem, like dynamic
+  like text
+  case node
+    text <(typeof ($problem)?.syscall === "string" ? String(($problem).syscall) : "")>
+
+bind node-refusal-text
+  take problem, like dynamic
+  like text
+  case node
+    text <(($problem) instanceof Error ? ($problem).message : String($problem))>
+
+task node-refusal
+  take problem, like dynamic
+  like list, like text
+  save out, like list, like text
+    make list
+  call out/push
+    call node-refusal-code
+      read problem
+  call out/push
+    call node-refusal-step
+      read problem
+  call out/push
+    call node-refusal-text
+      read problem
+  send back, read out

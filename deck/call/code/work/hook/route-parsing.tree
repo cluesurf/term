@@ -15,7 +15,8 @@
 #
 # A CONSOLE IS ONE PROGRAM HOOK (decision term/003 part 3): `hook term` holds every command as a nested hook, and its
 # takes are the global options. A hook's takes reach every hook nested in it: an ancestor's flag is accepted anywhere
-# after the command, and its value is the console's (`globals`), never a task's argument.
+# after the command, and its value is the console's (`globals`), never a task's argument. The program's flags are
+# accepted before the first command word too (`lead-of`, item term-self-host-001-1459).
 #
 # ARGUMENT VALUES ARE TYPED HERE. hook-dispatch.ts held them in one record of `string | boolean | number | string[]`;
 # here an argument is a `line-arg`, its value an `arg-value` of five cases, kept in a list in the order the record's
@@ -123,6 +124,12 @@ form parsed-line
   link globals, like list, like line-arg
   link route, like maybe, like route
   link refusal, like maybe, like usage-refusal
+
+# the global takes a line writes before its first command word (`lead-of`): where the first word that is not one of
+# them stands, and each one written again as `--<name>=<value>`, so it reads after the command as it read before it
+form line-lead
+  link end, like number
+  link words, like list, like text
 
 # ---- JavaScript's own readings ----
 
@@ -770,6 +777,84 @@ task kind-of-found
     case none
       back <>
 
+# THE GLOBALS BEFORE THE VERB (item term-self-host-001-1459). A take of the program written before the first command
+# word is the same take as after it (`term -q halt`, `term --log json mind`), as node's term reads it (work/dispatch.tree
+# start-line, the rule yargs kept): a long or short word that names one of these takes, by its name, an alias, its
+# letter or a boolean's `--no-` form, stands alone when the take is a boolean and takes the next word as its value
+# otherwise, whatever that word is, unless it holds its own after `=`. The lead ends at the first word that is not such
+# a take (a command word, `--`, `-`, a flag no take names, or a valued take with no word after it), and `end` is that
+# word's index
+task lead-of
+  take takes, like list, like route-take
+  take argv, like list, like text
+  like line-lead
+  save written, make list
+  save count, argv/length
+  save at, 0
+  save going, true
+  walk test
+    hook test, and(going, is-below(at, count))
+    hook hold
+      save token, argv/{at}
+      save long, starts-with(token, <-->)
+      fork test, or(not(starts-with(token, <->)), or(is-equal(token, <-->), is-equal(token, <->)))
+        hold
+          save going, false
+        miss
+          save body, substring(token, 1)
+          fork test, long
+            hold
+              save body, substring(token, 2)
+          save equals, index-of(body, <=>)
+          save inline, and(long, is-minimum(equals, 0))
+          save named-word, body
+          save inline-value, <>
+          fork test, inline
+            hold
+              save named-word, substring(body, 0, equals)
+              save inline-value, substring(body, add(equals, 1))
+          save found, take-named(takes, named-word, not(long))
+          save negated, false
+          fork test, and(long, starts-with(named-word, <no->))
+            hold
+              sift found
+                case none
+                  save plain, take-named(takes, substring(named-word, 3), false)
+                  fork test, is-equal(kind-of-found(plain), <boolean>)
+                    hold
+                      save found, plain
+                      save negated, true
+                case some
+                  save nothing, 0
+          sift found
+            case none
+              save going, false
+            case some
+              link lead-take
+              fork test, is-equal(kind-of(lead-take), <boolean>)
+                hold
+                  save on, not(negated)
+                  fork test, and(inline, is-equal(inline-value, <false>))
+                    hold
+                      save on, false
+                  written/push <--{lead-take/name}={on}>
+                  save at, add(at, 1)
+                miss
+                  fork test, inline
+                    hold
+                      written/push <--{lead-take/name}={inline-value}>
+                      save at, add(at, 1)
+                    miss
+                      save value-at, add(at, 1)
+                      fork test, is-below(value-at, count)
+                        hold
+                          save value-word, argv/{value-at}
+                          written/push <--{lead-take/name}={value-word}>
+                          save at, add(at, 2)
+                        miss
+                          save going, false
+  back make line-lead, end(at), words(written)
+
 # the required takes a line left out, as a refusal: the slots given a value against the route's required slots, and
 # every required take not given. None when nothing is missing
 task missing-of
@@ -819,7 +904,9 @@ task find-passing-start
   save above, program-takes(split)
   save count, argv/length
   save end, 0
-  save at, 0
+  # the program's takes before the first command word are passed over with their values (`lead-of`)
+  save lead, lead-of(above, argv)
+  save at, lead/end
   save going, true
   walk test
     hook test, and(going, is-below(at, count))
@@ -924,7 +1011,9 @@ task parse-line
   # the same takes in the order they are declared, the program's first: the order a choice refusal lists them in
   save above-declared, program-takes(split)
   save count, argv/length
-  save at, 0
+  # the program's takes written before the first command word (`lead-of`): the descent starts past them
+  save lead, lead-of(above, argv)
+  save at, lead/end
   save going, true
 
   # descend subcommands while the next bare token names one
@@ -959,10 +1048,36 @@ task parse-line
       fork test, is-equal(count, 0)
         hold
           back refused-with(command, <no command given>)
-      back refused-with(command, <unknown command "{argv/0}">)
+      # the word that names no command: the first one past the lead, the first word when the lead is the whole line
+      save stray, argv/0
+      fork test, is-below(at, count)
+        hold
+          save stray, argv/{at}
+      back refused-with(command, <unknown command "{stray}">)
     case some
       link chosen
-      back parse-command(routes, argv, at, command, chosen, above, above-declared)
+      fork test, is-equal(lead/end, 0)
+        hold
+          back parse-command(routes, argv, at, command, chosen, above, above-declared)
+      # the lead read as the command's own words: the command's path, then the lead as written again, then the rest.
+      # A passing command hands its words to another program, so the lead, which is this console's, is not among them
+      save moved, make list
+      walk command
+        take path-word
+        moved/push path-word
+      # the command's own words start right after its path, the lead first
+      save start, moved/length
+      fork test, not(chosen/passes)
+        hold
+          save lead-words, lead/words
+          walk lead-words
+            take lead-word
+            moved/push lead-word
+      save rest-words, words-from(argv, at)
+      walk rest-words
+        take rest-word
+        moved/push rest-word
+      back parse-command(routes, moved, start, command, chosen, above, above-declared)
 
 # a flag word to the take it names, by name, long alias or short letter; a word no take names is kept as written
 task key-of

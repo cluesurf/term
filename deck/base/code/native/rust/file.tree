@@ -4,7 +4,8 @@
 # module, whose `aio` shim hands the blocking call back to the program's loop
 # (note/project/term/decision/001-native-work-hands-back-to-the-loop.md), so a read that blocks stalls no other job.
 # `file-exists` and `stat-file` stay synchronous, as node's `existsSync` is, through the linked `io` runtime, which
-# wraps std::fs and absorbs its Result type so the public file API stays total.
+# wraps std::fs and absorbs its Result type so the public file API stays total, but for
+# `write-file`, which raises a refused write (term/compiler decision 021 point 4a).
 # `remove` and `copy` pass `deep` false: std::fs::copy takes a file, and a remove takes a file or, now, an empty directory, as on Kotlin.
 
 dock load
@@ -23,6 +24,9 @@ load @term/base/native/rust/file/asynchronous
 load @term/base/file/stat
   find path-info
 
+load @term/base/file/failure
+  find raise-file-failure
+
 task read-file
   mark async
   take path, like text
@@ -31,14 +35,20 @@ task read-file
     call file-read
       read path
 
+# a write the host refuses raises `failure` worded by @term/base/file/failure, its note node's own message for the
+# same refusal (term/compiler decision 021 point 4a): the shim answers its code name, step and host text
 task write-file
   mark async
   take path, like text
   take data, like text
   like void
-  call file-write
+  save refusal
+    call file-write
+      read path
+      read data
+  call raise-file-failure
+    read refusal
     read path
-    read data
 
 task read-file-bytes
   mark async

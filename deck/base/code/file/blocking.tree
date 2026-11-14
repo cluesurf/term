@@ -11,6 +11,11 @@
 # decided here in Term before the binding runs, as [../file.tree](../file.tree) does for `read`: node threw its own
 # error and the other three read a missing file as the empty text. `exists` never raises.
 #
+# A path that IS there and that the host refuses makes `read` and `list` raise `failure`, its note node's own message
+# (`ENOTDIR: not a directory, scandir '/x/memory'`), on every backend: each binding answers the refusal's code name,
+# step and host text first in its list of text, and [failure.tree](failure.tree) words and raises it (term/compiler
+# decision 021 part 1). Rust, Swift and Kotlin read such a path as the empty text or the empty list before.
+#
 # `path-kind` asks the path itself with links not followed, so a link to nothing is a `link`, and it raises `absence`
 # only when not even a link is there. The four that change the disk (`rename-path`, `remove-empty-folder`,
 # `make-folder-link`, `write-path`) never raise: each answers whether it was made, so a caller that tries and carries
@@ -36,6 +41,12 @@ load @term/base/native/{platform}/file/blocking
 load @term/base/exception
   find absence
 
+load @term/base/file/failure
+  find raise-file-failure
+
+load @term/base/list
+  find length, name list-length
+
 # what a directory entry or a path is. A link is a symbolic link, `other` is anything else (a socket, a device, a pipe)
 form entry-kind
   mark text
@@ -56,20 +67,18 @@ form path-entry
   link name, like text
   link kind, like entry-kind
 
-# the two records below are what a binding hands back, with the kind as the text it read. They are declared here,
-# once, because all four backends build them and a form declared per backend is four forms sharing a name. Internal:
-# `stat` and `list` turn them into `path-stat` and `path-entry`. Named apart from the binding's tasks
-# (`blocking-stat`), since the binding and this module load each other
+# the record below is what `blocking-stat` hands back, with the kind as the text it read. It is declared here, once,
+# because all four backends build it and a form declared per backend is four forms sharing a name. Internal: `stat`
+# turns it into `path-stat`. Named apart from the binding's tasks (`blocking-stat`), since the binding and this module
+# load each other. A listing crosses as a list of text instead (its refusal, then each entry's name and kind), since a
+# refusal crosses as text on every backend (term/compiler decision 021 point 4)
 form stat-raw
   link kind, like text
   link size, like size
   link changed, like float
 
-form entry-raw
-  link name, like text
-  link kind, like text
-
-# the whole file as UTF-8 text
+# the whole file as UTF-8 text. The binding answers a list of text: the refusal's code name (empty when carried out),
+# step and host text, then the text
 task read
   take path, like text
   like text
@@ -80,9 +89,13 @@ task read
     hook miss
       halt absence
         bind thing, read path
-  send back
+  save raw
     call blocking-read
       read path
+  call raise-file-failure
+    read raw
+    read path
+  send back, read raw/3
 
 # whether a path exists, a file or a directory. A symbolic link is followed, so a link to nothing is not there
 task exists
@@ -115,7 +128,9 @@ task stat
       bind size, read raw/size
       bind changed, read raw/changed
 
-# the entries of a directory in the platform's order, never `.` or `..`. Each kind is the entry's own, links not followed
+# the entries of a directory in the platform's order, never `.` or `..`. Each kind is the entry's own, links not
+# followed. The binding answers a list of text: the refusal's code name (empty when carried out), step and host text,
+# then each entry's name and kind
 task list
   take path, like text
   like list
@@ -130,18 +145,36 @@ task list
   save raw
     call blocking-list
       read path
+  call raise-file-failure
+    read raw
+    read path
   save entries
     make list
-  walk list, read raw
-    hook next
-      take site, name one
+  save count
+    call list-length
+      read raw
+  save at, code 3
+  walk test
+    hook test
+      call is-below
+        read at
+        read count
+    hook hold
+      save after
+        call add
+          read at
+          code 1
       call entries/push
         make path-entry
-          bind name, read one/name
+          bind name, read raw/{at}
           bind kind
             call from-text
-              read one/kind
+              read raw/{after}
               make other
+      save at
+        call add
+          read at
+          code 2
   send back
     read entries
 

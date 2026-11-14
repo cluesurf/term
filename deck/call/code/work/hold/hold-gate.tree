@@ -45,12 +45,14 @@ load @term/test/file-proof
   find render-report
 
 load @term/call/work/output/printer
-  find open-run
-  find report
-  find close-run
   find count
   find field
   find print-data
+
+load @term/call/work/output/printer-input
+  find open-run
+  find report
+  find close-run
   find problem-of
   find report-problems
 

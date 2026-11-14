@@ -12,11 +12,13 @@
 # (compile/host-code) and the output library are docked until their own ports land.
 
 load @term/call/work/output/printer
+  find print-data
+
+load @term/call/work/output/printer-input
   find problem-entry
   find close-run
   find open-run
   find print-bytes
-  find print-data
   find report
   find report-problems
 

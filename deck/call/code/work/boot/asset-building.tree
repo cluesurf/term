@@ -15,9 +15,11 @@ load @term/base/text
   find ends-with
 
 load @term/call/work/output/printer
-  find problem-entry
   find count
   find location
+
+load @term/call/work/output/printer-input
+  find problem-entry
   find report
   find report-problems
 

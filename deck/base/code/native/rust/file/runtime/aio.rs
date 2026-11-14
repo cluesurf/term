@@ -4,10 +4,12 @@
 // comes back, so a read that blocks (a FIFO, a slow disk) stalls no other job. No tokio: a program that reads a file
 // builds with plain `rustc`, and tokio::fs was a blocking pool too, one that never ran under Term's executor.
 //
-// TOTAL, LIKE THE REST OF THE NATIVE SURFACE. std::fs returns `io::Result`; the public file API has no error channel,
-// so a failure reads as the empty / false / zero answer here rather than unwinding through emitted code that has no
-// way to catch it. The one place that is wrong is a handle op, where a missing file cannot be papered over, and
-// `handle_open` says so by panicking on a path it cannot open.
+// TOTAL, LIKE THE REST OF THE NATIVE SURFACE, BUT FOR `file_write`. std::fs returns `io::Result`, and a failure reads
+// as the empty / false / zero answer here rather than unwinding through emitted code that has no way to catch it.
+// `file_write` answers its refusal instead, as a list of text (refusal.rs: the code name, empty when carried out, the
+// step and the host text), and the binding raises it as `failure` worded in Term (term/compiler decision 021 point
+// 4a). A handle op is the other place a failure cannot be papered over, and `handle_open` says so by panicking on a
+// path it cannot open.
 //
 // Reached only through the public file API. See note/project/term/stdlib/native-async-file-and-server.md.
 mod aio {
@@ -17,6 +19,8 @@ mod aio {
     // an open file, shared so the emitted `file` struct stays Clone (every emitted struct derives it) and seek /
     // read / write can still take &mut through the mutex, on whichever worker runs the call
     pub type Handle = Arc<Mutex<std::fs::File>>;
+
+    // runtime-include: refusal.rs
 
     // ---- whole file ----
 
@@ -28,9 +32,24 @@ mod aio {
         crate::__term_hand_back(move || std::fs::read(&path).unwrap_or_default()).await
     }
 
-    pub async fn file_write(path: String, data: String) {
+    // the file made or cut, then the whole text written, as node's writeFile: open(2) is the `open` step, the writes
+    // the `write` step
+    pub async fn file_write(path: String, data: String) -> Vec<String> {
         crate::__term_hand_back(move || {
-            let _ = std::fs::write(&path, data);
+            let mut file = match std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&path)
+            {
+                Ok(file) => file,
+                Err(failure) => return refused(&failure, "open"),
+            };
+
+            match file.write_all(data.as_bytes()) {
+                Ok(_) => carried(),
+                Err(failure) => refused(&failure, "write"),
+            }
         })
         .await
     }

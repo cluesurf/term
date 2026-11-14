@@ -51,13 +51,15 @@
 # folder it was started in, which the alias makes the Term root.
 
 load @term/call/work/output/printer
-  find open-run
-  find report
-  find close-run
   find count
   find field
   find location
   find show-path
+
+load @term/call/work/output/printer-input
+  find open-run
+  find report
+  find close-run
 
 load @term/call/work/item/event
   find item-field

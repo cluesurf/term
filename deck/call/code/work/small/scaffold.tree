@@ -3,11 +3,12 @@
 # call/code/wake.ts (term-cli-in-term-0060). The texts it writes were Term already, call/code/wake-files.tree, which
 # call/code/wake-text.ts only re-exports; work/wake.tree was an earlier conversion that wrote other texts.
 #
-# THE FILE SYSTEM IS node:fs/promises on node, as the original's: a folder that cannot be made is named as its own
-# failure names it (the first folder of the path that could not be made, where mkdirSync names the target). The three
-# calls are binds with a case for every backend (item term-self-host-001-1437, decision 167), since @term/base's
-# folder make is total and its write cannot refuse a file already there. Each answers a text, never a raise: the
-# failure's message, `kept` for a file already there, so no host value reaches Term. Paths go through @term/base/path.
+# THE FILE SYSTEM IS @term/base's, on every backend (term/compiler decision 021 point 1b, item term-self-host-001-1465):
+# file/create's make-folder and write-new and file/blocking's list, each raising `failure` when the host refuses, its
+# note node's own message worded once by @term/base/file/failure (`ENOTDIR: not a directory, mkdir '<path>'`, the
+# path given, as node's mkdir names it). The three tasks below guard those calls and answer a text, never a raise:
+# the empty text or the note, `held` or `absent`, `written` or `kept`, else `failed: ` and the note, so the native term
+# prints what node's CLI prints. Paths go through @term/base/path.
 #
 # A FILE ALREADY THERE IS THE AUTHOR'S and is kept: wake in a folder that held a `readme.md` or a `.gitignore` replaced
 # it without a word (guides: commands/wake, 2026-10-04). Each file is written with the `wx` flag, which refuses to
@@ -39,113 +40,84 @@ load @term/base/path
   find file-name
   find resolve-path
 
+load @term/base/file/create
+  find make-folder
+  find write-new
+
+load @term/base/file/blocking
+  find list, name list-path
+
+# the printer's typed tasks (decision 167 point 5): `term wake` is a native verb, so it reports through no JavaScript
+# value
 load @term/call/work/output/printer
-  find close-run
   find count
   find location
-  find open-run
-  find report
   find show-path
+  find run-opening
+  find open-typed-run
+  find item-input
+  find make-typed-item
+  find report-typed
+  find run-closing
+  find close-typed-run
 
-load @term/call/work/item/event
-  find item-field
-  find tally
-
-# the folder and every folder above it made: the empty text, or the failure's message as node's fs/promises names it
-bind made-folder
-  mark async
+# the folder and every folder above it made: the empty text, or the raised note, node's own message for the refusal
+task made-folder
   take place, like text
   like text
-  case node
-    text <process.getBuiltinModule('node:fs/promises').mkdir($place, \{ recursive: true \}).then(() =\> '', (__termFailure: any) =\> (Error.prototype.isPrototypeOf(__termFailure) ? __termFailure.message : String(__termFailure)))>
-  case browser
-    text <Promise.resolve('there is no file system in a browser')>
-  case rust
-    text <async \{ let __term_place: String = ($place).clone(); match std::fs::create_dir_all(&__term_place) \{ Ok(_) =\> String::new(), Err(__term_failure) =\> __term_failure.to_string() \} \}>
-  case swift
-    load <Foundation>
-    text <\{ () -\> String in do \{ try FileManager.default.createDirectory(atPath: $place, withIntermediateDirectories: true); return "" \} catch let __term_failure \{ return __term_failure.localizedDescription \} \}()>
-  case kotlin
-    text <kotlin.run \{ try \{ java.nio.file.Files.createDirectories(java.nio.file.Paths.get($place)); "" \} catch (__term_failure: java.lang.Exception) \{ __term_failure.message ?: __term_failure.toString() \} \}>
+  mark private
 
-# whether the folder holds an entry of that name: `held`, `absent`, or `failed: ` and the failure's message
-bind folder-holds
-  mark async
+  fork
+    mark unsafe
+    make-folder(place)
+    back <>
+  halt take
+    take problem
+    back problem/note
+
+# whether the folder holds an entry of that name: `held`, `absent`, or `failed: ` and the raised note
+task folder-holds
   take place, like text
   take entry, like text
   like text
-  case node
-    text <process.getBuiltinModule('node:fs/promises').readdir($place).then((__termNames: string[]) =\> (__termNames.includes($entry) ? 'held' : 'absent'), (__termFailure: any) =\> 'failed: ' + (Error.prototype.isPrototypeOf(__termFailure) ? __termFailure.message : String(__termFailure)))>
-  case browser
-    text <Promise.resolve('failed: there is no file system in a browser')>
-  case rust
-    text <async \{ let __term_place: String = ($place).clone(); let __term_entry: String = ($entry).clone(); match std::fs::read_dir(&__term_place) \{ Ok(__term_names) =\> if __term_names.filter_map(|__term_one| __term_one.ok()).any(|__term_one| __term_one.file_name().to_string_lossy() == __term_entry.as_str()) \{ "held".to_string() \} else \{ "absent".to_string() \}, Err(__term_failure) =\> "failed: ".to_string() + &__term_failure.to_string() \} \}>
-  case swift
-    load <Foundation>
-    text <\{ () -\> String in do \{ let __term_names = try FileManager.default.contentsOfDirectory(atPath: $place); return __term_names.contains($entry) ? "held" : "absent" \} catch let __term_failure \{ return "failed: " + __term_failure.localizedDescription \} \}()>
-  case kotlin
-    text <kotlin.run \{ try \{ java.nio.file.Files.newDirectoryStream(java.nio.file.Paths.get($place)).use \{ __term_names -\> if (__term_names.any \{ __term_one -\> __term_one.fileName.toString() == $entry \}) "held" else "absent" \} \} catch (__term_failure: java.lang.Exception) \{ "failed: " + (__term_failure.message ?: __term_failure.toString()) \} \}>
+  mark private
+
+  fork
+    mark unsafe
+    save names, list-path(place)
+    save found, <absent>
+    walk names
+      take one
+      fork test, is-equal(one/name, entry)
+        hold
+          save found, <held>
+    back found
+  halt take
+    take problem
+    back <failed: {problem/note}>
 
 # the file written only when nothing is there yet (node's `wx` flag): `written`, `kept` when something is, or
-# `failed: ` and the failure's message
-bind written-new
-  mark async
+# `failed: ` and the raised note
+task written-new
   take place, like text
   take body, like text
   like text
-  case node
-    text <process.getBuiltinModule('node:fs/promises').writeFile($place, $body, \{ flag: 'wx' \}).then(() =\> 'written', (__termFailure: any) =\> (__termFailure.code === 'EEXIST' ? 'kept' : 'failed: ' + (Error.prototype.isPrototypeOf(__termFailure) ? __termFailure.message : String(__termFailure))))>
-  case browser
-    text <Promise.resolve('failed: there is no file system in a browser')>
-  case rust
-    text <async \{ let __term_place: String = ($place).clone(); let __term_body: String = ($body).clone(); match std::fs::OpenOptions::new().write(true).create_new(true).open(&__term_place) \{ Ok(mut __term_file) =\> match std::io::Write::write_all(&mut __term_file, __term_body.as_bytes()) \{ Ok(_) =\> "written".to_string(), Err(__term_failure) =\> "failed: ".to_string() + &__term_failure.to_string() \}, Err(__term_failure) =\> if __term_failure.kind() == std::io::ErrorKind::AlreadyExists \{ "kept".to_string() \} else \{ "failed: ".to_string() + &__term_failure.to_string() \} \} \}>
-  case swift
-    load <Foundation>
-    text <\{ () -\> String in let __term_handle = open($place, O_WRONLY | O_CREAT | O_EXCL, 0o666); if __term_handle \< 0 \{ return errno == EEXIST ? "kept" : "failed: " + String(cString: strerror(errno)) \}; let __term_bytes = Array(($body).utf8); let __term_wrote = __term_bytes.withUnsafeBufferPointer \{ __term_buffer in write(__term_handle, __term_buffer.baseAddress, __term_buffer.count) \}; let __term_error = errno; close(__term_handle); return __term_wrote == __term_bytes.count ? "written" : "failed: " + String(cString: strerror(__term_error)) \}()>
-  case kotlin
-    text <kotlin.run \{ try \{ java.nio.file.Files.write(java.nio.file.Paths.get($place), ($body).toByteArray(), java.nio.file.StandardOpenOption.CREATE_NEW, java.nio.file.StandardOpenOption.WRITE); "written" \} catch (__term_there: java.nio.file.FileAlreadyExistsException) \{ "kept" \} catch (__term_failure: java.lang.Exception) \{ "failed: " + (__term_failure.message ?: __term_failure.toString()) \} \}>
+  mark private
+
+  fork
+    mark unsafe
+    save wrote, write-new(place, body)
+    fork test, wrote
+      hold
+        back <written>
+    back <kept>
+  halt take
+    take problem
+    back <failed: {problem/note}>
 
 form scaffold-file
   link file, like text
   link text, like text
-
-form wake-open
-  link verb, like text
-  link root, like text
-  link subject, like text
-
-form problem-at
-  link glyph, like text
-  link kind, like text
-  link subject, like text
-  link fields, like list, like item-field
-
-form problem-said
-  link glyph, like text
-  link kind, like text
-  link subject, like text
-  link message, like list, like text
-
-form kept-item
-  link glyph, like text
-  link verb, like text
-  link subject, like text
-  link facts, like list, like text
-
-form added-item
-  link glyph, like text
-  link kind, like text
-  link verb, like text
-  link subject, like text
-
-form nothing-close
-  link verdict, like text
-
-form ready-close
-  link verdict, like text
-  link counts, like list, like tally
-  link next, like text
-  link done, like boolean
 
 # JavaScript's `trim`: every `\s` code point off both ends
 task trimmed
@@ -177,16 +149,7 @@ task close-nothing
   like void
   mark private
 
-  close-run(make(nothing-close, bind(verdict, <Nothing written>)))
-
-# write one file unless something is already there: `written`, `kept`, or the failure's message
-task write-new
-  take full, like text
-  take text, like text
-  like text
-  mark private
-
-  back written-new(full, text)
+  close-typed-run(make(run-closing, bind(verdict, <Nothing written>)))
 
 # the scaffold: its folders, then the files written in order, then one item per file and the closing item; or the
 # first failure, after every write was tried (the original tried all four at once and then reported the failure). A
@@ -230,7 +193,7 @@ task write-files
   save failure, <>
   walk scaffold
     take one
-    save status, write-new(join-under(target, one/file), one/text)
+    save status, written-new(join-under(target, one/file), one/text)
     fork test, is-equal(status, <kept>)
       hold
         kept/push(one/file)
@@ -249,17 +212,17 @@ task write-files
           hold
             save facts, make list
             facts/push(<already here, left as it was>)
-            report(make(kept-item, bind(glyph, <info>), bind(verb, <keep>), bind(subject, one/file), bind(facts, facts)))
+            report-typed(make-typed-item(make(item-input, bind(glyph, <info>), bind(verb, <keep>), bind(subject, one/file), bind(facts, facts))))
           miss
             save written, add(written, 1)
-            report(make(added-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, one/file)))
+            report-typed(make-typed-item(make(item-input, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, one/file))))
       save counts, make list
       counts/push(count(written, <files>, <file>))
       save next, <term boot>
       fork test, named
         hold
           save next, <cd {project} && term boot>
-      close-run(make(ready-close, bind(verdict, <{label} is ready>), bind(counts, counts), bind(next, next), bind(done, true)))
+      close-typed-run(make(run-closing, bind(verdict, <{label} is ready>), bind(counts, counts), bind(next, next), bind(done, true)))
 
 task report-failure
   take message, like text
@@ -268,7 +231,7 @@ task report-failure
 
   save said, make list
   said/push(message)
-  report(make(problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The project could not be written>), bind(message, said)))
+  report-typed(make-typed-item(make(item-input, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The project could not be written>), bind(message, said))))
   close-nothing()
 
 # `root` is the folder the command ran in, `name` the project's name or the empty text
@@ -286,7 +249,7 @@ task call-wake
   # the deck's name is the folder's own name, never the path that reached it: `term wake ~/work/demo` names it `demo`
   save label, file-name(target)
   save shown, show-path(target)
-  open-run(make(wake-open, bind(verb, <wake>), bind(root, root), bind(subject, shown)))
+  open-typed-run(make(run-opening, bind(verb, <wake>), bind(root, root), bind(subject, shown), bind(has-subject, true)))
 
   save made, made-folder(target)
   fork test, is-unequal(made, <>)
@@ -298,7 +261,7 @@ task call-wake
         hold
           save fields, make list
           fields/push(location(<{shown}/deck.tree>))
-          report(make(problem-at, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <A deck.tree is already here>), bind(fields, fields)))
+          report-typed(make-typed-item(make(item-input, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <A deck.tree is already here>), bind(fields, fields))))
           close-nothing()
         miss
           fork test, is-equal(holds, <absent>)

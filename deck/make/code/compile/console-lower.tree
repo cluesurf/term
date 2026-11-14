@@ -26,6 +26,15 @@
 # none is refused. The gate then shakes the console from `run` alone (ir/prune.tree `prune-console`), so rustc never
 # reads that closure. `host console-forwarded` lists the command line of every forwarded route, the record
 # `term:native-verbs` reads.
+#
+# AN ENTRY'S `open-console` OPENS A NATIVE RUN (term/compiler decision 019, item term-self-host-001-1456): when the
+# entry defines it, `run` calls it once a line is decided as a call to a task the match calls directly, before that
+# call, its parameters bound by name to the program hook's takes, `mark` and `verb`. An entry with none lowers as before.
+#
+# AN ENTRY'S `catch-console` ANSWERS A RAISE (term/compiler decision 021 points 6 to 9, item term-self-host-001-1464):
+# when the entry defines it, `run` guards the call of a task the match calls directly and on a raise sets the code to
+# catch-console's answer, its parameters bound by name to the raise's note, form and stack, `mark` and `verb`. An entry
+# with none lowers as before.
 
 load @term/base/list
   find list
@@ -60,6 +69,9 @@ load ./node
   find statement
   find statement-branch
   find type
+  find catch-clause
+  find chunk-part
+  find value-part
 
 load ./bind
   find bind-target-of
@@ -744,8 +756,11 @@ task bound-names
 # The closure is read as the shake reads it, every name a definition mentions (ir/prune.tree `console-mentions`), with
 # each name bound as the file that mentions it binds it: its own definition of that name, else the files its `find` of
 # the name reached and what those `bear`, else, for a find under another name, every definition of the files it
-# reached. A name the file neither defines nor finds (a local, a field, the prelude) is not followed. A definition is
-# held by its file and name, so two files' tasks of one name are two. Loose reads are not in it (decision 133).
+# reached. The definition's own parameters and locals (a walk's item, a match arm's links, a caught name, a closure's
+# parameters) are skipped, as the shake skips them, so a parameter named like a find (open-console's `mark` beside
+# line/base.tree's `find mark, name mark-verb`) names nothing (term/compiler decision 020). A name the file neither
+# defines nor finds (a field, the prelude) is not followed. A definition is held by its file and name, so two files'
+# tasks of one name are two. Loose reads are not in it (decision 133).
 
 # what the reach of the console's closure holds, every definition by `<file>|<name>`
 form native-reach
@@ -1031,6 +1046,380 @@ task forwarded-paths
     forwarded-paths(one/children, path, forwarded, out)
   back out
 
+# ---- the opening (term/compiler decision 019, item term-self-host-001-1456) ----
+#
+# When the entry defines `task open-console`, the run calls it once, after `console-decide` answers a call and before
+# `console-call`, and only when the task called is one the match calls directly: a forwarded verb's node build opens its
+# own run. Each parameter binds by its name: a take of the program hook gets that take's decided value through the
+# converter its type has (the ones `console-call` uses), `mark` the console's mark, `verb` the first word of the
+# command. A parameter that names none of these, or whose type has no converter, is refused at the build.
+
+# what a call of the entry's `open-console` is handed, in its parameters' order, and the parameters it refused
+form opening-call
+  link args, like list, like expression
+  link refusals, like list, like diagnostic
+
+# the names of the program hook's takes, in the order it declares them: the takes of the one route the entry docks,
+# when that route holds commands (work/hook/route-parsing.tree `split-routes`), else none
+task program-take-names
+  take routes, like list, like dock-route
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, is-unequal(routes/length, 1)
+    hold
+      back out
+  save program-route, get(routes, 0)
+  fork test, is-equal(program-route/children/length, 0)
+    hold
+      back out
+  walk program-route/takes
+    take one
+    push(out, one/name)
+  back out
+
+# where a name is in a list, -1 when it is not
+task index-in
+  take names, like list, like text
+  take wanted, like text
+  like number
+  mark private
+
+  save found, -1
+  save index, 0
+  walk names
+    take one
+    fork test, and(is-equal(found, -1), is-equal(one, wanted))
+      hold
+        save found, index
+    save index, add(index, 1)
+  back found
+
+# the arguments of the call of `open-console`, each parameter bound by its name, and the parameters refused
+task opening-call-of
+  take opener, like statement
+  take names, like list, like text
+  take console-mark, like text
+  take at, like span
+  take file, like text
+  like opening-call
+  mark private
+
+  save args, make list
+  save refusals, make list
+  walk params-of(opener)
+    take one
+    save converter, <>
+    sift one/type
+      case some
+        link param-type
+        save converter, converter-of(param-type)
+      case none
+        save nothing, 0
+    save index, index-in(names, one/name)
+    save problem-text, <>
+    fork test, is-minimum(index, 0)
+      hold
+        fork test, is-equal(converter, <>)
+          hold
+            save problem-text, <the console's open-console takes the program's {one/name} as a type no console conversion gives: text, number, boolean, a list of text, or a maybe of one>
+          miss
+            push(args, call-of(converter, two(call-of(<console-opened-globals>, one-value(variable(<opening>, at)), at), number-value(index, at)), at))
+      miss
+        fork test, or(is-equal(one/name, <mark>), is-equal(one/name, <verb>))
+          hold
+            fork test, is-unequal(converter, <console-text>)
+              hold
+                save problem-text, <the console's open-console takes {one/name} as a type other than text>
+              miss
+                fork test, is-equal(one/name, <mark>)
+                  hold
+                    push(args, text-value(console-mark, at))
+                  miss
+                    push(args, call-of(<console-opened-verb>, one-value(variable(<opening>, at)), at))
+          miss
+            save problem-text, <the console's open-console has a parameter {one/name}, which names no take of the program hook and is not mark or verb>
+    fork test, is-unequal(problem-text, <>)
+      hold
+        save input
+          make diagnostic-input
+            bind file, file
+            bind span, at
+            bind message, make(some, problem-text)
+            bind hint, make(some, <name each parameter of open-console for a take of the program hook, or mark, or verb>)
+        save problem, make not-implemented
+        push(refusals, diagnose(problem, input))
+  back
+    make opening-call
+      bind args, args
+      bind refusals, refusals
+
+task either-of
+  take left, like expression
+  take right, like expression
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/binary
+      bind op, make either
+      bind left, left
+      bind right, right
+      bind span, at
+
+# whether the task the decision called is one of these, every node written fresh (a node at two places is shared on
+# TypeScript only, T049)
+task called-one-of
+  take names, like list, like text
+  take at, like span
+  like expression
+  mark private
+
+  save chosen, flag-value(false, at)
+  save first, true
+  walk names
+    take one
+    save matched, text-equal(call-of(<console-called>, one-value(variable(<decided>, at)), at), text-value(one, at), at)
+    fork test, first
+      hold
+        save chosen, matched
+        save first, false
+      miss
+        save chosen, either-of(chosen, matched, at)
+  back chosen
+
+# `if (<a task the match calls directly>) { let opening = console-opening(name, mark, console-routes);
+# open-console(...) }`
+task opening-of
+  take names, like list, like text
+  take args, like list, like expression
+  take shown, like text
+  take console-mark, like text
+  take at, like span
+  like statement
+  mark private
+
+  save body, make list
+  push(body, local(<opening>, call-of(<console-opening>, three(text-value(shown, at), text-value(console-mark, at), variable(<console-routes>, at)), at), false, at))
+  push(body, expression-statement(call-of(<open-console>, args, at), at))
+  save opening-branch
+    make statement-branch
+      bind cond, called-one-of(names, at)
+      bind body, body
+  save branches, make list
+  push(branches, opening-branch)
+  back
+    make statement/if
+      bind branches, branches
+      bind span, at
+
+# ---- the catch (term/compiler decision 021 points 6 and 7, item term-self-host-001-1464) ----
+#
+# When the entry defines `task catch-console`, the run guards the call of a task the match calls directly, and on a raise
+# sets the run's code to catch-console's answer. Each parameter binds by its name: `note` and `form` the raise's,
+# `stack` the lines an unhandled raise prints (`<form>: <note>` and an `  at <frame>` line per frame, as rust-assemble.tree
+# `__term_unhandled` writes them), `mark` the console's mark, `verb` the first word of the command. Each is a text. A
+# parameter that names none of these, another type, or an answer that is not a number is refused at the build. A
+# forwarded verb is never guarded: the node build it hands to answers for itself.
+
+# what a call of the entry's `catch-console` is handed, in its parameters' order, the parameters it refused, and
+# whether the handler must build the stack or the opening (for `verb`)
+form catching-call
+  link args, like list, like expression
+  link refusals, like list, like diagnostic
+  link stack, like boolean
+  link verb, like boolean
+
+task caught-member
+  take field, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/member
+      bind target, variable(<console-raised>, at)
+      bind name, field
+      bind span, at
+
+# the arguments of the call of `catch-console`, each parameter bound by its name, and the parameters refused
+task catching-call-of
+  take catcher, like statement
+  take console-mark, like text
+  take at, like span
+  take file, like text
+  like catching-call
+  mark private
+
+  save args, make list
+  save refusals, make list
+  save wants-stack, false
+  save wants-verb, false
+  walk params-of(catcher)
+    take one
+    save converter, <>
+    sift one/type
+      case some
+        link param-type
+        save converter, converter-of(param-type)
+      case none
+        save nothing, 0
+    save problem-text, <>
+    save known, or(or(is-equal(one/name, <note>), is-equal(one/name, <form>)), or(or(is-equal(one/name, <stack>), is-equal(one/name, <mark>)), is-equal(one/name, <verb>)))
+    fork test, not(known)
+      hold
+        save problem-text, <the console's catch-console has a parameter {one/name}, which is not note, form, stack, mark or verb>
+      miss
+        fork test, is-unequal(converter, <console-text>)
+          hold
+            save problem-text, <the console's catch-console takes {one/name} as a type other than text>
+          miss
+            fork test, or(is-equal(one/name, <note>), is-equal(one/name, <form>))
+              hold
+                push(args, caught-member(one/name, at))
+            fork test, is-equal(one/name, <stack>)
+              hold
+                push(args, variable(<console-raised-stack>, at))
+                save wants-stack, true
+            fork test, is-equal(one/name, <mark>)
+              hold
+                push(args, text-value(console-mark, at))
+            fork test, is-equal(one/name, <verb>)
+              hold
+                push(args, call-of(<console-opened-verb>, one-value(variable(<console-caught-opening>, at)), at))
+                save wants-verb, true
+    fork test, is-unequal(problem-text, <>)
+      hold
+        save input
+          make diagnostic-input
+            bind file, file
+            bind span, at
+            bind message, make(some, problem-text)
+            bind hint, make(some, <name each parameter of catch-console note, form, stack, mark or verb, each a text>)
+        save problem, make not-implemented
+        push(refusals, diagnose(problem, input))
+  fork test, not(answers-number(catcher))
+    hold
+      save answer-input
+        make diagnostic-input
+          bind file, file
+          bind span, at
+          bind message, make(some, <the console's catch-console answers something other than a number, the run's exit code>)
+          bind hint, make(some, <give catch-console the answer like number>)
+      save answer-problem, make not-implemented
+      push(refusals, diagnose(answer-problem, answer-input))
+  back
+    make catching-call
+      bind args, args
+      bind refusals, refusals
+      bind stack, wants-stack
+      bind verb, wants-verb
+
+# a text built of parts: a value, a chunk, a value
+task joined-text
+  take first, like expression
+  take middle, like text
+  take last, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save parts, make list
+  push(parts, value-part(first))
+  push(parts, chunk-part(middle))
+  push(parts, value-part(last))
+  back
+    make expression/template
+      bind parts, parts
+      bind span, at
+
+# `let mut console-raised-stack = "<form>: <note>"`, then an `  at <frame>` line for each frame of the raise, each flow
+# text split on its line breaks (a text holds several frames where a task was inlined), as `__term_unhandled` prints
+task stack-lines
+  take at, like span
+  like list, like statement
+  mark private
+
+  save out, make list
+  push(out, local(<console-raised-stack>, joined-text(caught-member(<form>, at), <: >, caught-member(<note>, at), at), true, at))
+  save line-body, make list
+  push(line-body, assigned(<console-raised-stack>, joined-text(variable(<console-raised-stack>, at), <\n  at >, variable(<console-raised-line>, at), at), at))
+  save lines-loop
+    make statement/for-each
+      bind item, <console-raised-line>
+      bind iterable, call-of(<split>, two(variable(<console-raised-frame>, at), text-value(<\n>, at)), at)
+      bind body, line-body
+      bind span, at
+  save frame-body, make list
+  push(frame-body, lines-loop)
+  save frames-loop
+    make statement/for-each
+      bind item, <console-raised-frame>
+      bind iterable, caught-member(<flow>, at)
+      bind body, frame-body
+      bind span, at
+  push(out, frames-loop)
+  back out
+
+# `if (<a task the match calls directly>) { guard { code = console-call(...) } catch console-raised { ...;
+# code = catch-console(...) } } else { code = console-call(...) }`
+task caught-call-of
+  take names, like list, like text
+  take made, like catching-call
+  take shown, like text
+  take console-mark, like text
+  take at, like span
+  like statement
+  mark private
+
+  save guarded, make list
+  push(guarded, called-line(at))
+  save handler, make list
+  fork test, made/verb
+    hold
+      push(handler, local(<console-caught-opening>, call-of(<console-opening>, three(text-value(shown, at), text-value(console-mark, at), variable(<console-routes>, at)), at), false, at))
+  fork test, made/stack
+    hold
+      walk stack-lines(at)
+        take line
+        push(handler, line)
+  push(handler, assigned(<code>, call-of(<catch-console>, made/args, at), at))
+  save clause
+    make catch-clause
+      bind name, <console-raised>
+      bind body, handler
+      bind span, at
+  save guard
+    make statement/guard
+      bind body, guarded
+      bind catch, make(some, clause)
+      bind span, at
+  save direct-body, make list
+  push(direct-body, guard)
+  save direct
+    make statement-branch
+      bind cond, called-one-of(names, at)
+      bind body, direct-body
+  save branches, make list
+  push(branches, direct)
+  save forwarded-body, make list
+  push(forwarded-body, called-line(at))
+  back
+    make statement/if
+      bind branches, branches
+      bind otherwise, make(some, forwarded-body)
+      bind span, at
+
+# `code = console-call(console-called(decided), console-values(decided))`
+task called-line
+  take at, like span
+  like statement
+  mark private
+
+  back assigned(<code>,call-of(<console-call>, two(call-of(<console-called>, one-value(variable(<decided>, at)), at), call-of(<console-values>, one-value(variable(<decided>, at)), at)), at), at)
+
 # ---- the pass ----
 
 # a command route of the entry file: a dock that is no page and no web path
@@ -1178,6 +1567,8 @@ task lower-console
   save branches, make list
   save waits, false
   save no-names, make list
+  # the bound tasks the match calls directly, in the routes' order
+  save native-names, make list
   walk bound-names(routes, no-names)
     take bound
     sift task-named(program, bound, file, scopes)
@@ -1196,10 +1587,75 @@ task lower-console
           case some
             link arm
             push(branches, arm)
+            push(native-names, bound)
           case none
             save nothing, 0
       case none
         save nothing, 0
+
+  # the entry's `open-console`, called once a line is decided as a call to a task the match calls directly (term/compiler
+  # decision 019, item term-self-host-001-1456). Its parameters are read and refused here, before anything is written
+  save opener-args, no-expressions()
+  save opens, false
+  save run-waits, waits
+  sift task-named(program, <open-console>, file, scopes)
+    case some
+      link opener
+      save opening-made, opening-call-of(opener, program-take-names(routes), mark, at, file)
+      walk opening-made/refusals
+        take refused
+        push(refusals, refused)
+      fork test, and(is-above(native-names/length, 0), not(is-native(reach, opener)))
+        hold
+          save opener-input
+            make diagnostic-input
+              bind file, file
+              bind span, at
+              bind message, make(some, <the console's open-console reaches the host through something no Rust binding module writes, so the native run cannot call it>)
+              bind hint, make(some, <reach the host in open-console through @term/base only>)
+          save opener-problem, make not-implemented
+          push(refusals, diagnose(opener-problem, opener-input))
+      save opener-args, opening-made/args
+      save opens, is-above(native-names/length, 0)
+      fork test, and(opens, is-async(opener))
+        hold
+          save run-waits, true
+    case none
+      save nothing, 0
+
+  # the entry's `catch-console`, the run's answer to a raise of a task the match calls directly (term/compiler decision
+  # 021 points 6 and 7, item term-self-host-001-1464). Its parameters are read and refused here, before anything is
+  # written. An entry with none lowers exactly as before
+  save catches, false
+  save catch-made
+    make catching-call
+      bind args, no-expressions()
+      bind refusals, no-refusals()
+      bind stack, false
+      bind verb, false
+  sift task-named(program, <catch-console>, file, scopes)
+    case some
+      link catcher
+      save catch-made, catching-call-of(catcher, mark, at, file)
+      walk catch-made/refusals
+        take catch-refused
+        push(refusals, catch-refused)
+      fork test, and(is-above(native-names/length, 0), not(is-native(reach, catcher)))
+        hold
+          save catcher-input
+            make diagnostic-input
+              bind file, file
+              bind span, at
+              bind message, make(some, <the console's catch-console reaches the host through something no Rust binding module writes, so the native run cannot call it>)
+              bind hint, make(some, <reach the host in catch-console through @term/base only>)
+          save catcher-problem, make not-implemented
+          push(refusals, diagnose(catcher-problem, catcher-input))
+      save catches, is-above(native-names/length, 0)
+      fork test, and(catches, is-async(catcher))
+        hold
+          save run-waits, true
+    case none
+      save nothing, 0
   fork test, is-above(refusals/length, 0)
     hold
       back
@@ -1253,7 +1709,16 @@ task lower-console
   push(run-body, local(<decided>, decided, false, at))
   push(run-body, local(<code>, call-of(<console-answer>, one-value(variable(<decided>, at)), at), true, at))
   save call-line, make list
-  push(call-line, assigned(<code>, call-of(<console-call>, two(call-of(<console-called>, one-value(variable(<decided>, at)), at), call-of(<console-values>, one-value(variable(<decided>, at)), at)), at), at))
+  # `if (<a task the match calls directly>) { let opening = console-opening(...); open-console(...) }`, before the call
+  fork test, opens
+    hold
+      push(call-line, opening-of(native-names, opener-args, shown, mark, at))
+  # with a catch-console, the call of a task the match calls directly is guarded and a forwarded one is not
+  fork test, catches
+    hold
+      push(call-line, caught-call-of(native-names, catch-made, shown, mark, at))
+    miss
+      push(call-line, assigned(<code>,call-of(<console-call>, two(call-of(<console-called>, one-value(variable(<decided>, at)), at), call-of(<console-values>, one-value(variable(<decided>, at)), at)), at), at))
   save calling
     make statement-branch
       bind cond, call-of(<console-is-call>, one-value(variable(<decided>, at)), at)
@@ -1274,7 +1739,7 @@ task lower-console
       bind params, no-params
       bind body, run-body
       bind generics, run-generics
-      bind async, waits
+      bind async, run-waits
       bind span, at
 
   # host console-forwarded: the command line of each route the match forwards, the record `term:native-verbs` reads

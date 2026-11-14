@@ -75,18 +75,20 @@ load @term/base/json
   find from-text
   find from-boolean
 
+# the printer's typed tasks (decision 167 point 5): `term mind` is a native verb, so it reports through no JavaScript
+# value
 load @term/call/work/output/printer
-  find close-run
   find count
   find location
-  find open-run
   find print-data
-  find report
   find set-exit-code
-
-load @term/call/work/item/event
-  find tally
-  find item-field
+  find run-opening
+  find open-typed-run
+  find item-input
+  find make-typed-item
+  find report-typed
+  find run-closing
+  find close-typed-run
 
 # a fact read from its file
 form fact-file
@@ -95,56 +97,6 @@ form fact-file
   link description, like text
   link body, like text
   link file, like text
-
-form mind-open
-  link verb, like text
-  link root, like text
-
-form mind-open-facts
-  link verb, like text
-  link root, like text
-  link facts, like list, like text
-
-form fact-item
-  link glyph, like text
-  link kind, like text
-  link verb, like text
-  link subject, like text
-  link facts, like list, like text
-
-form placed-item
-  link glyph, like text
-  link kind, like text
-  link verb, like text
-  link subject, like text
-  link facts, like list, like text
-  link fields, like list, like item-field
-
-form recall-item
-  link glyph, like text
-  link verb, like text
-  link subject, like text
-  link facts, like list, like text
-
-form problem-item
-  link glyph, like text
-  link kind, like text
-  link subject, like text
-
-form done-close
-  link verdict, like text
-  link done, like boolean
-
-form next-close
-  link verdict, like text
-  link next, like text
-
-form plain-close
-  link verdict, like text
-
-form counted-close
-  link verdict, like text
-  link counts, like list, like tally
 
 # what a remember wrote: the fact's name and kind, its file from the root, and the description it replaced, if any
 form saved-fact
@@ -393,18 +345,18 @@ task call-forget
           print-data(<{forgot-json(false, name)}\n>)
           set-exit-code(1)
     miss
-      open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
+      open-typed-run(make(run-opening, bind(verb, <mind>), bind(root, root)))
       sift gone
         case some
           link one
           save facts, make list
           facts/push(one/kind)
           facts/push(one/description)
-          report(make(fact-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, one/name), bind(facts, facts)))
-          close-run(make(done-close, bind(verdict, <Forgotten>), bind(done, true)))
+          report-typed(make-typed-item(make(item-input, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, one/name), bind(facts, facts))))
+          close-typed-run(make(run-closing, bind(verdict, <Forgotten>), bind(done, true)))
         case none
-          report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no fact named {name}>)))
-          close-run(make(next-close, bind(verdict, <Nothing forgotten>), bind(next, <term mind, to list the names>)))
+          report-typed(make-typed-item(make(item-input, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no fact named {name}>))))
+          close-typed-run(make(run-closing, bind(verdict, <Nothing forgotten>), bind(next, <term mind, to list the names>)))
 
 task call-remember
   take root, like text
@@ -420,7 +372,7 @@ task call-remember
     hold
       print-data(<{saved-json(saved)}\n>)
     miss
-      open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
+      open-typed-run(make(run-opening, bind(verb, <mind>), bind(root, root)))
       save fields, make list
       fields/push(location(saved/file))
       save verdict, <Remembered>
@@ -431,13 +383,13 @@ task call-remember
           save facts, make list
           facts/push(saved/kind)
           facts/push(<was: {was}>)
-          report(make(placed-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields)))
+          report-typed(make-typed-item(make(item-input, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields))))
           save verdict, <Replaced>
         case none
           save facts, make list
           facts/push(saved/kind)
-          report(make(placed-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields)))
-      close-run(make(plain-close, bind(verdict, verdict)))
+          report-typed(make-typed-item(make(item-input, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields))))
+      close-typed-run(make(run-closing, bind(verdict, verdict)))
 
 task call-recall
   take root, like text
@@ -463,7 +415,7 @@ task call-recall
       fork test, is-unequal(asked, <>)
         hold
           opening/push(asked)
-      open-run(make(mind-open-facts, bind(verb, <mind>), bind(root, root), bind(facts, opening)))
+      open-typed-run(make(run-opening, bind(verb, <mind>), bind(root, root), bind(facts, opening)))
       walk facts
         take one
         save subject, one/description
@@ -473,10 +425,10 @@ task call-recall
         save item-facts, make list
         item-facts/push(one/kind)
         item-facts/push(one/name)
-        report(make(recall-item, bind(glyph, <info>), bind(verb, <recall>), bind(subject, subject), bind(facts, item-facts)))
+        report-typed(make-typed-item(make(item-input, bind(glyph, <info>), bind(verb, <recall>), bind(subject, subject), bind(facts, item-facts))))
       save counts, make list
       counts/push(count(facts/length, <facts>, <fact>))
-      close-run(make(counted-close, bind(verdict, recall-verdict(facts/length, query)), bind(counts, counts)))
+      close-typed-run(make(run-closing, bind(verdict, recall-verdict(facts/length, query)), bind(counts, counts)))
 
 # `fact` to remember (with its `name` and `kind`), `find` to recall by, `forget` the name to forget, `response` the
 # response format, the original's `back` (`json` answers records; `back` is the word that returns here)

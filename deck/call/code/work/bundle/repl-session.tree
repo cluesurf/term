@@ -22,11 +22,13 @@ load ../build/host-faces
   find face-project-resolver
 
 load @term/call/work/output/printer
+  find field
+  find print-data
+
+load @term/call/work/output/printer-input
   find close-run
   find fail-run
-  find field
   find open-run
-  find print-data
   find report
 
 load @term/call/work/item/event

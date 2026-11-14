@@ -57,7 +57,7 @@ load ../cache/compile-store
   find project-cache
   find make-parse-memo
 
-load ../output/printer
+load ../output/printer-input
   find problem-entry
 
 load ../output/diagnostic-report

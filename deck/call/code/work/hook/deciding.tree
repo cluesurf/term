@@ -41,6 +41,9 @@ load @term/call/work/hook/route-parsing
   find arg-value
   find line-arg
   find route-named
+  find lead-of
+  find line-lead
+  find words-from
 
 # term's help layout, the same code term's own console prints through (zone decision 002, item
 # term-self-host-001-0983)
@@ -176,7 +179,11 @@ task help-of
   take split, like route-split
   take bare, like list, like text
   like text
-  back help-text(name, <>, program-takes(split), split/commands, bare)
+  # the program's takes before the first command word name no command (route-parsing.tree `lead-of`, item 1459)
+  save takes, program-takes(split)
+  save lead, lead-of(takes, bare)
+  save named, words-from(bare, lead/end)
+  back help-text(name, <>, takes, split/commands, named)
 
 task no-route-yet
   like maybe, like route
@@ -189,18 +196,23 @@ task refused
   back make(outcome-refuse, bind(usage, usage))
 
 # A line the parse refused, in term's shape (work/hook/refusal.tree): a first word that names no command is said as
-# term says it, with the nearest command to run, and anything else in the dispatcher's own words, with the help to run
+# term says it, with the nearest command to run, and anything else in the dispatcher's own words, with the help to run.
+# The first word is looked for past the program's takes written before it and their values (`lead-of`, item 1459), as
+# node's term looks for it
 task refuse-booted
   take name, like text
   take mark, like text
-  take commands, like list, like route
+  take split, like route-split
   take bare, like list, like text
   take error, like text
   like usage-ask
+  save commands, split/commands
   save message, error
   save next, <{name} --help>
   save first, <>
-  walk bare
+  save lead, lead-of(program-takes(split), bare)
+  save past, words-from(bare, lead/end)
+  walk past
     take word
     fork test, and(is-equal(first, <>), not(starts-with(word, <->)))
       hold
@@ -288,7 +300,7 @@ task decide
               back make(outcome-hand, bind(refusal, refusal))
             case none
               save nothing, 0
-      back refused(refuse-booted(name, mark, commands, bare, hit/error))
+      back refused(refuse-booted(name, mark, split, bare, hit/error))
 
   save chosen, no-route-yet()
   save chosen, hit/route
@@ -358,3 +370,27 @@ task decide-route
     take one
     values/push handed-value(one, hit/args)
   back make(outcome-call, bind(task-name, hit/called), bind(values, values))
+
+# WHAT A CALLED LINE OPENS ITS RUN WITH (term/compiler decision 019, item term-self-host-001-1456): the program hook's
+# takes, each as its handed value by the same rules a bound task's are (given, its default, or its natural zero), in
+# the order the program declares them, and the verb, the first word of the command (node's `argv._[0]`), the empty
+# text for none. Read only by a lowered console whose entry defines `open-console`, so no other run reads it
+form line-opening
+  link globals, like list, like handed
+  link verb, like text
+
+task decide-opening
+  take ask, like line-ask
+  like line-opening
+  save split, split-routes(ask/routes)
+  save hit, parse-line(ask/routes, ask/argv)
+  save globals, make list
+  walk program-takes(split)
+    take one
+    globals/push handed-value(one, hit/globals)
+  save verb, <>
+  save command, hit/command
+  fork test, is-above(command/length, 0)
+    hold
+      save verb, command/0
+  back make line-opening, globals(globals), verb(verb)

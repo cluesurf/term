@@ -5,7 +5,7 @@
 # A deck or a constraint left out is the empty text, which the original's `!input.deck` and `input.constraint ?`
 # read the same as one left out.
 
-load @term/call/work/output/printer
+load @term/call/work/output/printer-input
   find close-run
   find open-run
   find report

@@ -5,9 +5,13 @@ note <the printer reaches the home folder, a file's lines, a tool's name and its
 
 load @term/call/work/output/printer
   find show-path
+  find is-bug-form
+
+load @term/call/work/output/printer-input
   find source-lines
   find write-crash-log
   find no-value
+  find is-bug-kind
 
 load @term/base/environment
   find variable
@@ -57,3 +61,40 @@ test <a crash log is written under the root's .term folder and its lines read ba
   save first, get(lines, 0)
   remove-directory(root)
   want hold, and(starts-with(where, <{root}/.term/crash->), and(ends-with(where, <.log>), and(is-equal(lines/length, 2), is-equal(first, <undefined>))))
+
+# Item term-self-host-001-1467 (term/compiler decision 021 point 8): a raised defect is a bug in Term, so node's
+# fail-run exits 70 with the crash item and log on one, and every other raise is the run's failure, exit 1.
+
+# raises a defect when asked for one, else a failure
+task raise-probe
+  take form, like text
+  like void
+
+  fork test, is-equal(form, <defect>)
+    hold
+      halt defect
+        bind thing, <probe>
+  halt <probe failure>
+
+# node's verdict (is-bug-kind) on the raise raise-probe makes
+task bug-of-raise
+  take form, like text
+  like boolean
+
+  fork
+    mark unsafe
+    raise-probe(form)
+    back false
+  halt take
+    take raised
+    back is-bug-kind(raised)
+  back false
+
+test <a defect is the one raised form that is a bug in Term>
+  want hold, and(is-bug-form(<defect>), and(not(is-bug-form(<failure>)), not(is-bug-form(<>))))
+
+test <node judges a raised defect a bug>
+  want hold, bug-of-raise(<defect>)
+
+test <node judges a raised failure no bug>
+  want hold, not(bug-of-raise(<failure>))

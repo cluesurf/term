@@ -14,7 +14,7 @@ load @term/make/parser/diagnostic
 load @term/base/terminal
   find uses-color
 
-load @term/call/work/output/printer
+load @term/call/work/output/printer-input
   find report-problem
   find report-problems
 

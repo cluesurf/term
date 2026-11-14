@@ -4,8 +4,10 @@
 // slow disk) stalls no other job. No swift-nio: a program that reads a file builds with plain `swiftc`, and
 // NIOFileSystem was a blocking pool too (it runs its syscalls on NIOThreadPool).
 //
-// TOTAL, LIKE THE REST OF THE NATIVE SURFACE. The public file API has no error channel, so a failure reads as the
-// empty / false / zero answer. A handle open is the exception: a missing file there cannot be papered over.
+// TOTAL, LIKE THE REST OF THE NATIVE SURFACE, BUT FOR `fileWrite`: a failure reads as the empty / false / zero answer,
+// and `fileWrite` answers its refusal instead, as a list of text (refusal.swift: the code name, empty when carried
+// out, the step and the host text), which the binding raises as `failure` worded in Term (term/compiler decision 021
+// point 4a). A handle open is the other exception: a missing file there cannot be papered over.
 //
 // `handBack` is the swift runtime's one hand-back: the stat and walk shims call it too, and their modules dock this
 // one so it is in the program. Reached only through the public file API. See
@@ -98,8 +100,30 @@ enum aio {
     return out
   }
 
-  static func fileWrite(_ path: String, _ data: String) async {
-    await handBack { writeBytes(path, Array(data.utf8), append: false) }
+  // runtime-include: refusal.swift
+
+  static func fileWrite(_ path: String, _ data: String) async -> [String] {
+    await handBack { writeWhole(path, Array(data.utf8)) }
+  }
+
+  // the file made or cut, then every byte written, as node's writeFile: open(2) is the `open` step, the writes the
+  // `write` step. errno is read before the descriptor is closed
+  private static func writeWhole(_ path: String, _ bytes: [UInt8]) -> [String] {
+    let descriptor = Foundation.open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+    guard descriptor >= 0 else { return refused(errno, "open") }
+    defer { Foundation.close(descriptor) }
+
+    var done = 0
+    while done < bytes.count {
+      let count = bytes[done...].withUnsafeBytes { chunk -> Int in
+        Foundation.write(descriptor, chunk.baseAddress, chunk.count)
+      }
+      if count < 0 { return refused(errno, "write") }
+      if count == 0 { break }
+      done += count
+    }
+
+    return carried()
   }
 
   static func fileWriteBytes(_ path: String, _ data: Data) async {
