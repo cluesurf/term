@@ -69,6 +69,9 @@ const CASES: Case[] = [
   { name: 'feed', args: ['feed'], cwd: TERM, runs: RUNS, budget: [10, 15] },
   // note, native since item term-self-host-001-1523 (its line item 1504): the Term root's own deck.tree, read only
   { name: 'note', args: ['note'], cwd: TERM, runs: RUNS, budget: [10, 15] },
+  // move, native since item term-self-host-001-1523 (its line item 1410): a target that names nothing is refused,
+  // deck.tree left as it was
+  { name: 'move nope', args: ['move', 'nope'], cwd: TERM, runs: RUNS, budget: [10, 15] },
 ]
 
 if (withMake) {

@@ -692,6 +692,19 @@ mine text-def
       /nothing named everything to wash/.test(word.out),
     word.out,
   )
+
+  // the target table is read by own key only (decision cli-in-term/019): a member every object has is an unknown word
+  for (const member of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+    const named = term(loose, 'wash', member)
+
+    ok(
+      `\`term wash ${member}\` is refused as an unknown word, exit 2`,
+      named.status === 2 &&
+        named.out.includes(`nothing named ${member} to wash`) &&
+        existsSync(join(loose, 'make/notes.txt')),
+      named.out,
+    )
+  }
 }
 
 // ---- commands/view: with no path, the documents are what role.tree gives the view role ----

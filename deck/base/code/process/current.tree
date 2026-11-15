@@ -22,8 +22,9 @@ task read
     call read-process
 
 # the real absolute path of the file of the program that is running, every link in it followed: on node the main
-# script (`host/line.js` when term runs, never the node binary `read` names as the executable), on rust, swift and
-# kotlin the executable. The empty text when no such file can be read (a page, `node -e`), never a raise
+# script (`host/line.js` when term runs, never the node binary `read` names as the executable), on rust and swift
+# the executable, on kotlin the jar the program runs from (never the java binary `read` names). The empty text when no
+# such file can be read (a page, `node -e`), never a raise
 task program-file
   like text
   send back

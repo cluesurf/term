@@ -61,22 +61,22 @@ load @term/base/file/remove
 load @term/base/truth
   find is-truthy
 
-# The original read its one old spelling (`store`, which was `base` until 2026-10-04) from a plain object,
-# `RENAMED[target] ?? target`, so a word an object already has (`constructor`, `__proto__`) answered the object's own
-# member, a host value that is no text: printed into the refusal, and handed to the opening item as a fact, where a
-# function (`constructor`) throws in the output library. Kept as the original had it, the lookup, its value and its
-# truth, so the port answers what the original answered for every word (a `Diverges:` request in log.md)
+# The one old spelling, `store`, which was `base` until 2026-10-04, read from its table by OWN key only (decision
+# cli-in-term/019): a word an object already has (`constructor`, `__proto__`, `toString`) is no key of the table, so
+# it is washed as itself and refused as every other unknown word is. The original read the table as a plain object,
+# `RENAMED[target] ?? target`, so those words answered the object's own member: `constructor` threw in the output
+# library and the others printed a host value as the target
 bind washed-word
   take word, like text
-  like dynamic
+  like text
   case node
-    text <(\{ store: "base" \})[$word] ?? $word>
+    text <Object.hasOwn(\{ store: "base" \}, $word) ? "base" : $word>
 
 bind is-renamed-word
   take word, like text
   like boolean
   case node
-    text <Boolean((\{ store: "base" \})[$word])>
+    text <Object.hasOwn(\{ store: "base" \}, $word)>
 
 # what a build writes: `host/`, `make/`, `hold/`, and the cache under each name the home has had
 task build-folders
@@ -124,18 +124,13 @@ task is-there
 
   back path-there(file)
 
-# whether the washed word is one of the targets: a text the list holds. The word is the host's lookup (washed-word),
-# and a member that is no text (`constructor`) is no target, as the list's own compare answered it
+# whether the washed word is one of the targets
 task is-wash-target
-  take word, like unknown
+  take word, like text
   like boolean
   mark private
 
-  sift word
-    case text
-      back contains(wash-targets(), word)
-    miss
-      back false
+  back contains(wash-targets(), word)
 
 task report-removed
   take subject, like text

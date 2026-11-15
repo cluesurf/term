@@ -6,11 +6,28 @@
 #     `parse-lockfile` take the grammars record last; the hand extraction is the retired reference path, kept
 #   - `load-lockfile` answers a maybe where the original answered undefined, for a lockfile that is not there or
 #     does not read alike
-#   - the decks are sorted by the host's `localeCompare`, as the original sorted them
+#   - the decks are sorted by code point (@term/base/list `sort` with `from-texts`), where the original sorted them by
+#     the host's `localeCompare`, so a lockfile writes the same bytes on every machine and backend (decision 174)
+#   - the disk and paths are @term/base/file and @term/base/path, and a `lock` version is grammar-reading.tree's
+#     `leading-integer-of`, where node:fs/promises, node:path and global:Number were docked (item
+#     term-self-host-001-1513)
 
 load @term/base/list
   find list
   find get
+  find join
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load @term/base/path
+  find join, name path-join
+
+load @term/base/file
+  find read, name read-text
+  find write, name write-text
 
 load @term/base/maybe
   find maybe
@@ -28,6 +45,7 @@ load ./lockfile-shape
 load ./grammar-reading
   find manifest-grammars
   find parse-lockfile-mill
+  find leading-integer-of
 
 load ./tree-reading
   find tree-form
@@ -35,42 +53,36 @@ load ./tree-reading
   find value-of
   find forms-with
 
-dock load
-  load <node:fs/promises>, name fs-promise
-    mark async
-  load <node:path>, name node-path
-  load <global:Number>, name host-number
+# two decks by name, code point order
+task deck-order
+  take left, like lock-entry
+  take right, like lock-entry
+  like ordering
+  mark private
 
-bind lockfile-decks-sorted
-  take decks, like list, like lock-entry
-  like list, like lock-entry
-  case node
-    text <<[...$decks].sort(function (a, b) { return a.name.localeCompare(b.name) })>>
+  back from-texts(left/name, right/name)
 
-bind lockfile-lines-joined
-  take lines, like list, like text
-  like text
-  case node
-    text <$lines.join(String.fromCharCode(10))>
-
-bind lockfile-is-filled
-  take value, like dynamic
+# a text that is not empty: the original's truth test on a text
+task lockfile-is-filled
+  take value, like text
   like boolean
-  case node
-    text <Boolean($value)>
+  mark private
+
+  back not(is-equal(value, <>))
 
 task load-lockfile
   take dir, like text
   take grammars, like manifest-grammars
   like maybe, like lockfile
 
-  save file, node-path/join(dir, <lock.tree>)
+  save file, path-join(dir, <lock.tree>)
 
   fork
     mark unsafe
-    save content, fs-promise/read-file(file, <utf-8>)
-    save read, parse-lockfile(content, grammars)
-    back make(some, read)
+    save content, read-text(file)
+    # not named `read`: a local of the original name of an aliased find shadows the alias (traps T-1390)
+    save found, parse-lockfile(content, grammars)
+    back make(some, found)
   halt take
     take unread
     back make none
@@ -143,10 +155,12 @@ task parse-lockfile-by-hand
 
     fork test, is-equal(form/head, <lock>)
       hold
-        save stated, host-number/parse-int(text-or-blank(form/value), 10)
-        fork test, host-number/is-finite(stated)
-          hold
+        sift leading-integer-of(text-or-blank(form/value))
+          case some
+            link stated
             save version, stated
+          case none
+            save nothing, 0
         turn next
 
     fork test, not(is-equal(form/head, <deck>))
@@ -203,7 +217,7 @@ task write-lockfile
     case none
       save nothing, 0
 
-  walk lockfile-decks-sorted(lockfile/decks)
+  walk sort(lockfile/decks, deck-order)
     take entry
     lines/push(<deck {entry/name}>)
     lines/push(<  code \<{show-code(entry/code)}\>>)
@@ -220,13 +234,13 @@ task write-lockfile
 
     lines/push(<>)
 
-  back lockfile-lines-joined(lines)
+  back join(lines, <\n>)
 
 task save-lockfile
   take dir, like text
   take lockfile, like lockfile
   like void
 
-  save file, node-path/join(dir, <lock.tree>)
+  save file, path-join(dir, <lock.tree>)
   save content, write-lockfile(lockfile)
-  fs-promise/write-file(file, content, <utf-8>)
+  write-text(file, content)

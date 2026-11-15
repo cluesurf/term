@@ -79,6 +79,34 @@ task is-digits
 
   back true
 
+# the digits past the leading zeros, `<>` for a run of zeros
+task significant-digits
+  take value, like text
+  like text
+  mark private
+
+  host size, char-count(value)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, size), is-equal(substring(value, at, add(at, 1)), <0>))
+    hook hold
+      save at, add(at, 1)
+
+  back substring(value, at, size)
+
+# digits, at most 15 of them past the leading zeros: the widest run every backend reads exactly (decision 172), so a
+# longer one never reaches parse-integer
+task is-short-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, not(is-digits(value))
+    hold
+      back false
+
+  back is-maximum(char-count(significant-digits(value)), 15)
+
 # a build's letters: digits, ASCII letters, `.` and `-`, at least one
 task is-build-text
   take value, like text
@@ -95,7 +123,7 @@ task is-build-text
 
   back true
 
-# a part that is digits, or `x` read as 0, as the original's `(\d+|x)`; -2 when it is neither
+# a part that is digits, or `x` read as 0, as the original's `(\d+|x)`; -2 when it is neither, or past 15 digits
 task part-or-x
   take value, like text
   like number
@@ -103,7 +131,7 @@ task part-or-x
   fork test, is-equal(value, <x>)
     hold
       back 0
-  fork test, is-digits(value)
+  fork test, is-short-digits(value)
     hold
       back parse-integer(value)
 
@@ -138,7 +166,7 @@ task parse-code
     hold
       halt <Invalid version: {text}>
   host first, get(parts, 0)
-  fork test, not(is-digits(first))
+  fork test, not(is-short-digits(first))
     hold
       halt <Invalid version: {text}>
   host minor, part-or-x(get(parts, 1))
@@ -167,13 +195,13 @@ task parse-wild
   host first, get(parts, 0)
   host second, get(parts, 1)
   host third, get(parts, 2)
-  fork test, not(is-digits(first))
+  fork test, not(is-short-digits(first))
     hold
       halt <Invalid wildcard version: {text}>
-  fork test, not(or(is-equal(second, <x>), is-digits(second)))
+  fork test, not(or(is-equal(second, <x>), is-short-digits(second)))
     hold
       halt <Invalid wildcard version: {text}>
-  fork test, not(or(is-equal(third, <x>), is-digits(third)))
+  fork test, not(or(is-equal(third, <x>), is-short-digits(third)))
     hold
       halt <Invalid wildcard version: {text}>
   save minor, -1
@@ -274,7 +302,9 @@ task show-code
   back shown
 
 # semver 2.0, section 11: identifiers left to right, numbers by value, a number below a word, words in ASCII order,
-# and a shorter list below a longer one it begins
+# and a shorter list below a longer one it begins. Two numbers of at most 15 digits answer their difference, as the
+# original did; a longer one is never parsed (decision 172): fewer digits past the leading zeros come first, then the
+# digits in text order, which is exact at any length
 task compare-prerelease
   take a, like text
   take b, like text
@@ -292,10 +322,28 @@ task compare-prerelease
       host y-number, is-digits(y)
       fork test, and(x-number, y-number)
         hold
-          host difference, subtract(parse-integer(x), parse-integer(y))
-          fork test, not(is-equal(difference, 0))
+          fork test, and(is-short-digits(x), is-short-digits(y))
             hold
-              back difference
+              host difference, subtract(parse-integer(x), parse-integer(y))
+              fork test, not(is-equal(difference, 0))
+                hold
+                  back difference
+            miss
+              host x-digits, significant-digits(x)
+              host y-digits, significant-digits(y)
+              host longer, subtract(char-count(x-digits), char-count(y-digits))
+              fork test, is-below(longer, 0)
+                hold
+                  back -1
+              fork test, is-above(longer, 0)
+                hold
+                  back 1
+              sift from-texts(x-digits, y-digits)
+                case less
+                  back -1
+                case greater
+                  back 1
+                miss
         miss
           fork test, not(is-equal(x-number, y-number))
             hold
@@ -466,6 +514,10 @@ task bump-prerelease
       host rest, substring(value/prerelease, char-count(prefix), char-count(value/prerelease))
       fork test, is-digits(rest)
         hold
+          # a count past 15 digits does not read (decision 172)
+          fork test, not(is-short-digits(rest))
+            hold
+              halt <Invalid version: {show-code(value)}>
           save count, add(parse-integer(rest), 1)
 
   back

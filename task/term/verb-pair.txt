@@ -174,3 +174,8 @@ empty walk --log
 # (OCI namespace does not fit the repository grammar: Bad_Name), never 'OCI request failed' (term-cli-in-term-0236,
 # decision 007)
 need TERM_RELEASE_REGISTRY=oci://127.0.0.1:9/Bad_Name load
+# a wash target that is a member every object has: refused as any unknown word, where the baseline read its table as a
+# plain object (decision cli-in-term/019, each a DIVERGES row). At the end so no earlier row's number moves
+hello wash constructor
+hello wash __proto__
+hello wash toString

@@ -6,8 +6,11 @@
 #     caller made once, taken last as every mill read takes it. `parse-role-file-by-hand`, the retired reader the
 #     grammar is held against, reads the forms of tree-reading.tree
 #   - a glob is turned into the original's regular expression text here, rune by rune (every character the
-#     translation looks at is ASCII, and any other is copied whole, so runes and UTF-16 units write the same text),
-#     and the host's `RegExp` tests it, as the original's did: a `[...]` class passes into it as written
+#     translation looks at is ASCII, and any other is copied whole), and @term/base/regex `matches` tests it, where
+#     the original handed it to the host's `RegExp` (decision 174): a glob reads per code point in Term's dialect, so
+#     `?` takes one character, and a `[...]` class passes into it as written. Each `.` it writes is a class that
+#     leaves out a line feed, a carriage return, U+2028 and U+2029, and a bare `}` or `]` is backslashed, so both mean
+#     what they meant to JavaScript
 #   - `match-role` and `match-role-rule` answer a maybe where the original answered null
 
 load @term/base/list
@@ -27,6 +30,9 @@ load @term/base/text/unicode
 load @term/base/maybe
   find maybe
 
+load @term/base/regex
+  find matches
+
 load ./role-shape
   find role-take
   find role-rule
@@ -41,14 +47,6 @@ load ./tree-reading
   find read-tree
   find forms-with
   find terms-of
-
-# whether a text, as a regular expression the host reads, matches the whole of another
-bind regex-tests
-  take source, like text
-  take value, like text
-  like boolean
-  case node
-    text <new RegExp($source).test($value)>
 
 # `@/x` and `@` name the package root; anything else is as written
 task expand-root
@@ -234,6 +232,17 @@ task escape-regex
     out/push(rune)
   back from-runes(out)
 
+# JavaScript's `.`: any character but a line feed, a carriage return, U+2028 and U+2029, where the dialect's leaves
+# out the line feed alone. The two last are written as runes, since the dialect reads no `\u`
+task line-dot
+  like text
+  mark private
+
+  save ends, make list
+  ends/push(8232)
+  ends/push(8233)
+  back <[^\\n\\r{from-runes(ends)}]>
+
 # A glob as the original's regular expression text: `**/` any folders, `**` anything, `*` anything but `/`, `?` one
 # character but `/`, `{a,b}` either, `[...]` a class as written, and the expression's own characters backslashed
 task glob-source
@@ -241,6 +250,7 @@ task glob-source
   like text
   mark private
 
+  save dot, line-dot()
   save runes, to-runes(pattern)
   save out, <>
   save at, 0
@@ -262,10 +272,10 @@ task glob-source
             hold
               fork test, is-equal(after-rune, 47)
                 hold
-                  save out, <{out}(?:.+/)?>
+                  save out, <{out}(?:{dot}+/)?>
                   save at, add(at, 3)
                 miss
-                  save out, <{out}.*>
+                  save out, <{out}{dot}*>
                   save at, add(at, 2)
             miss
               save out, <{out}[^/]*>
@@ -303,7 +313,7 @@ task glob-source
                           save at, add(end, 1)
                     miss
                       save one, runes-text(runes, at, add(at, 1))
-                      fork test, rune-among(rune, <.+^$|()\\>)
+                      fork test, rune-among(rune, <.+^$|()\\\}]>)
                         hold
                           save out, <{out}\\{one}>
                         miss
@@ -317,4 +327,4 @@ task glob-match
   take path, like text
   like boolean
 
-  back regex-tests(glob-source(pattern), path)
+  back matches(glob-source(pattern), path)

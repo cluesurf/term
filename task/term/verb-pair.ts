@@ -140,6 +140,13 @@ const DIVERGES: Record<string, string> = {
   // the one zone row the frozen console cannot make agree (decision 018 part 4): a list slot without `mark pass`
   'empty zone call dev node -e x':
     'cli-in-term/decision/012: yargs passed -e on to call\'s list and ran it (exit 3); the dispatcher halts at the first positional only for a list slot marked pass, and the flat console\'s is not, so it refuses the unknown flag -e (exit 2)',
+  // wash reads its target table by own key only: a member every object has is an unknown word
+  'hello wash constructor':
+    "cli-in-term/decision/019: refused as an unknown word (exit 2), where the baseline read the object's constructor as the target and threw in the output library",
+  'hello wash __proto__':
+    "cli-in-term/decision/019: refused as an unknown word (exit 2), where the baseline read the object's prototype as the target",
+  'hello wash toString':
+    "cli-in-term/decision/019: refused as an unknown word (exit 2), where the baseline read the object's toString as the target",
 }
 
 // `name` is a generated row's name, `<verb path> --<take>`, which names its folder under diff/

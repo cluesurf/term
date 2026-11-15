@@ -28,12 +28,14 @@ object current {
 
   fun executable(): String = ProcessHandle.current().info().command().orElse("")
 
-  // the executable `executable` names, with every link followed, the empty text when it cannot be read
+  // the program the user ran: the jar (or class folder) this shim was loaded from, with every link followed, the
+  // empty text when it cannot be read. Never `executable`, which names the java binary, so a walk up from it finds
+  // the JDK and no package root (item 1507). The shim is compiled into the program, so its code source is the
+  // program's own jar, also when the runtime's jars stand beside it on `-cp`
   fun programFile(): String {
-    val command = ProcessHandle.current().info().command().orElse("")
-    if (command.isEmpty()) return ""
     return try {
-      java.nio.file.Paths.get(command).toRealPath().toString()
+      val location = this.javaClass.protectionDomain?.codeSource?.location ?: return ""
+      java.nio.file.Paths.get(location.toURI()).toRealPath().toString()
     } catch (problem: java.lang.Exception) {
       ""
     }

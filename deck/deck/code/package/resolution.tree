@@ -38,6 +38,7 @@ load @term/base/task
 load ../version
   find code
   find code-hold
+  find code-of
   find parse-code
   find parse-code-hold
   find show-code
@@ -182,7 +183,8 @@ task warn-indented
   host-console/warn(<  {message}>)
 
 # a link a lockfile holds, read as the range it is. `*` is what a workspace deck's links were written as before they
-# carried their own ranges: any version
+# carried their own ranges: any version. The head's major is built, not read: a version part past 15 digits does not
+# read (decision 172)
 task locked-hold
   take value, like text
   like code-hold
@@ -190,7 +192,7 @@ task locked-hold
 
   fork test, is-equal(trim(value), <*>)
     hold
-      back make(band, bind(base, parse-code(<0.0.0>)), bind(head, parse-code(<9007199254740991.0.0>)))
+      back make(band, bind(base, code-of(0, 0, 0)), bind(head, code-of(9007199254740991, 0, 0)))
   back parse-code-hold(value)
 
 task find-locked-version

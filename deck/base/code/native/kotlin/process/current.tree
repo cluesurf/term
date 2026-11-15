@@ -22,7 +22,7 @@ task read-process
       bind executable
         call current/executable
 
-# the executable, made real by the shim
+# the jar the program runs from (never the java binary), made real by the shim
 task read-program-file
   like text
   send back
