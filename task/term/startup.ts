@@ -72,6 +72,8 @@ const CASES: Case[] = [
   // move, native since item term-self-host-001-1523 (its line item 1410): a target that names nothing is refused,
   // deck.tree left as it was
   { name: 'move nope', args: ['move', 'nope'], cwd: TERM, runs: RUNS, budget: [10, 15] },
+  // wash, native since item term-self-host-001-1505: a target that names nothing is refused, nothing removed
+  { name: 'wash nope', args: ['wash', 'nope'], cwd: TERM, runs: RUNS, budget: [10, 15] },
 ]
 
 if (withMake) {

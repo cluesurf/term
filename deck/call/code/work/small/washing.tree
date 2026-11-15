@@ -65,18 +65,22 @@ load @term/base/truth
 # cli-in-term/019): a word an object already has (`constructor`, `__proto__`, `toString`) is no key of the table, so
 # it is washed as itself and refused as every other unknown word is. The original read the table as a plain object,
 # `RENAMED[target] ?? target`, so those words answered the object's own member: `constructor` threw in the output
-# library and the others printed a host value as the target
-bind washed-word
-  take word, like text
-  like text
-  case node
-    text <Object.hasOwn(\{ store: "base" \}, $word) ? "base" : $word>
-
-bind is-renamed-word
+# library and the others printed a host value as the target. The table has one key, so its own-key read is a text
+# comparison, the same on every backend (item term-self-host-001-1505, where the node-only binds kept wash forwarded)
+task is-renamed-word
   take word, like text
   like boolean
-  case node
-    text <Object.hasOwn(\{ store: "base" \}, $word)>
+
+  back is-equal(word, <store>)
+
+task washed-word
+  take word, like text
+  like text
+
+  fork test, is-renamed-word(word)
+    hold
+      back <base>
+  back word
 
 # what a build writes: `host/`, `make/`, `hold/`, and the cache under each name the home has had
 task build-folders

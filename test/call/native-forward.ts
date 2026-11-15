@@ -368,6 +368,29 @@ const VERB_CASES: Record<string, string[][]> = {
     ['note', 'nope', '--log', 'json'],
     ['note', 'nope', '--plain'],
   ],
+  // wash (item term-self-host-001-1505: washing.tree's own-key table read in Term, where its two node-only binds kept
+  // the closure forwarded): in an empty folder, no deck.tree for the build output, deck, tail or boot, a word that
+  // names nothing and the empty word refused (usage, exit 2), and the words every object has, refused as any unknown
+  // word (cli-in-term decision 019), in the line view, under --log json and --plain. `base` and `store` touch the
+  // machine-wide cache, so they are the surface cases, under a TERM_CACHE_HOME of their own
+  wash: [
+    ['wash'],
+    ['wash', '--log', 'json'],
+    ['wash', '--plain'],
+    ['wash', 'deck'],
+    ['wash', 'tail'],
+    ['wash', 'boot'],
+    ['wash', 'nope'],
+    ['wash', 'nope', '--log', 'json'],
+    ['wash', 'nope', '--plain'],
+    ['wash', ''],
+    ['wash', 'constructor'],
+    ['wash', 'constructor', '--log', 'json'],
+    ['wash', 'constructor', '--plain'],
+    ['wash', '__proto__'],
+    ['wash', 'toString'],
+    ['wash', 'hasOwnProperty'],
+  ],
 }
 // the command word of a native task the hook binds under another name, for its --help (the rest are their verb)
 const VERB_WORDS: Record<string, string> = { 'bump-code': 'move' }
@@ -579,9 +602,98 @@ if (!existsSync(real)) {
   noteCases.push({ verb: 'note', name: 'an in-tree deck, @term/deck unlinked', words: ['note', '@term/deck'], setup: deckOf(RELEASED) })
   noteCases.push({ verb: 'note', name: 'an in-tree deck, @term/make unlinked', words: ['note', '@term/make'], setup: deckOf(RELEASED) })
   noteCases.push({ verb: 'note', name: 'the stdlib, @term/base unlinked', words: ['note', '@term/base'], setup: deckOf(RELEASED) })
+  // WASH REMOVES FOLDERS (item term-self-host-001-1505): a project holding every folder a target names, each target in
+  // each view, and after the native run the folders the target names are gone and the others kept. `base` and `store`
+  // wash a TERM_CACHE_HOME inside the case's own folder, never the machine's. The logs under a home that refuses the
+  // removal print node's own message (file/remove remove-all, item 1489)
+  const surfaceDir = join(out, 'surface')
+  const washHome = (dir: string): string => join(dir, '.base', '@term', 'code')
+  const WASH_FOLDERS = ['host', 'make', 'hold', '.base/@term/code/cache', '.base/@term/code/log', '.base/@term/code/boot', '.base/@term/code/client', 'build', 'work']
+  const washProject = (dir: string): void => {
+    writeFileSync(join(dir, 'deck.tree'), RELEASED)
+    for (const folder of WASH_FOLDERS) {
+      mkdirSync(join(dir, folder), { recursive: true })
+      writeFileSync(join(dir, folder, 'kept.txt'), 'a file\n')
+    }
+  }
+  // the build output under the two names the cache had before (.base/@cluesurf/term/, .base/term/) as well
+  const washOldNames = (dir: string): void => {
+    washProject(dir)
+    for (const folder of ['.base/@cluesurf/term/cache', '.base/term/cache']) {
+      mkdirSync(join(dir, folder), { recursive: true })
+      writeFileSync(join(dir, folder, 'kept.txt'), 'a file\n')
+    }
+  }
+  const cacheHome = join(surfaceDir, 'cache-home')
+  const cached: NodeJS.ProcessEnv = { ...env, TERM_CACHE_HOME: cacheHome }
+  const withCache = (inProject: boolean) => (dir: string): void => {
+    if (inProject) washProject(dir)
+    for (const folder of ['mill', 'unit', 'blobs']) {
+      mkdirSync(join(dir, 'cache-home', folder), { recursive: true })
+      writeFileSync(join(dir, 'cache-home', folder, 'kept.txt'), 'a file\n')
+    }
+  }
+  const washLocked = (dir: string): void => {
+    washProject(dir)
+    chmodSync(washHome(dir), 0o555)
+  }
+  // node's exit, then each folder the target names gone after the native run and each other one the setup made kept
+  const washed = (goneFolders: string[], keptFolders: string[], code: number | null = 0) => (twin: Ran2): string => {
+    const wrong: string[] = []
+    if (twin.code !== code) wrong.push(`node exit ${twin.code}, not ${code}`)
+    const there = (folder: string): boolean => existsSync(join(surfaceDir, folder))
+    for (const folder of goneFolders) if (there(folder)) wrong.push(`${folder} is still there after the native run`)
+    for (const folder of keptFolders) if (!there(folder)) wrong.push(`${folder} is gone after the native run`)
+    return wrong.join('\n        ')
+  }
+  const BUILD = ['host', 'make', 'hold', '.base/@term/code/cache']
+  const LOG = ['.base/@term/code/log']
+  const BOOT = ['.base/@term/code/boot', '.base/@term/code/client', 'build', 'work']
+  const SHARED = ['cache-home/mill', 'cache-home/unit']
+  const BLOBS = ['cache-home/blobs']
+  const washCases: SurfaceCase[] = []
+  for (const view of [[], ['--log', 'json'], ['--plain']]) {
+    const shown = view.length > 0 ? `, ${view.join(' ')}` : ''
+    washCases.push({ verb: 'wash', name: `the build output${shown}`, words: ['wash', ...view], setup: washProject, check: washed(BUILD, [...LOG, ...BOOT]) })
+    washCases.push({ verb: 'wash', name: `deck${shown}`, words: ['wash', 'deck', ...view], setup: washProject, check: washed(BUILD, [...LOG, ...BOOT]) })
+    washCases.push({ verb: 'wash', name: `the logs${shown}`, words: ['wash', 'tail', ...view], setup: washProject, check: washed(LOG, [...BUILD, ...BOOT]) })
+    washCases.push({ verb: 'wash', name: `boot output${shown}`, words: ['wash', 'boot', ...view], setup: washProject, check: washed(BOOT, [...BUILD, ...LOG]) })
+    washCases.push({ verb: 'wash', name: `the shared cache in a project${shown}`, words: ['wash', 'base', ...view], setup: withCache(true), env: cached, check: washed(SHARED, [...BLOBS, ...BUILD, ...LOG, ...BOOT]) })
+    washCases.push({ verb: 'wash', name: `store, the old word for base${shown}`, words: ['wash', 'store', ...view], setup: withCache(true), env: cached, check: washed(SHARED, [...BLOBS, ...BUILD, ...LOG, ...BOOT]) })
+    washCases.push({
+      verb: 'wash',
+      name: `the logs, their home refusing the removal${shown}`,
+      words: ['wash', 'tail', ...view],
+      setup: washLocked,
+      check: (twin: Ran2): string => {
+        const kept = washed([], [...BUILD, ...LOG, ...BOOT], twin.code)(twin)
+        const told = `${twin.out}${twin.err}`.includes('could not be removed') ? '' : 'node did not print that the logs could not be removed'
+        return [kept, told].filter(one => one !== '').join('\n        ')
+      },
+    })
+  }
+  washCases.push({ verb: 'wash', name: 'the build output under the old cache names', words: ['wash'], setup: washOldNames, check: washed([...BUILD, '.base/@cluesurf/term/cache', '.base/term/cache'], [...LOG, ...BOOT]) })
+  // a deck.tree that links to itself (ELOOP) and one that is a folder, each in each view (1401's eloop probe)
+  for (const view of [[], ['--log', 'json'], ['--plain']]) {
+    const shown = view.length > 0 ? `, ${view.join(' ')}` : ''
+    washCases.push({ verb: 'wash', name: `deck.tree links to itself${shown}`, words: ['wash', ...view], setup: dir => symlinkSync('deck.tree', join(dir, 'deck.tree')) })
+    washCases.push({ verb: 'wash', name: `deck.tree is a folder${shown}`, words: ['wash', ...view], setup: deckFolder })
+  }
+  washCases.push({ verb: 'wash', name: 'the logs, none there', words: ['wash', 'tail'], setup: deckOf(RELEASED) })
+  washCases.push({ verb: 'wash', name: 'the build output, none there', words: ['wash'], setup: deckOf(RELEASED) })
+  washCases.push({ verb: 'wash', name: 'the shared cache outside a project', words: ['wash', 'base'], setup: withCache(false), env: cached, check: washed(SHARED, BLOBS) })
+  washCases.push({ verb: 'wash', name: 'the shared cache, none there', words: ['wash', 'base'], env: cached })
+  for (const word of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
+    washCases.push({ verb: 'wash', name: `${word} in a project, refused as an unknown word`, words: ['wash', word], setup: washProject, check: washed([], [...BUILD, ...LOG, ...BOOT], 2) })
+  }
+  washCases.push({ verb: 'wash', name: '--quiet after the verb', words: ['wash', '--quiet'], setup: washProject, check: washed(BUILD, [...LOG, ...BOOT]) })
+  washCases.push({ verb: 'wash', name: '--strict after the verb', words: ['wash', 'store', '--strict'], setup: withCache(true), env: cached })
+  washCases.push({ verb: 'wash', name: '--color never after the verb, NO_COLOR unset', words: ['wash', '--color', 'never'], setup: washProject, env: colourless, check: washed(BUILD, [...LOG, ...BOOT]) })
+  washCases.push({ verb: 'wash', name: '--color always after the verb', words: ['wash', 'nope', '--color', 'always'] })
   const SURFACE_CASES: SurfaceCase[] = [
     ...moveCases,
     ...noteCases,
+    ...washCases,
     { verb: 'halt', name: '--quiet after the verb', words: [...ON_PORT, '--quiet'] },
     { verb: 'halt', name: '--strict after the verb (a warning fails the run)', words: [...ON_PORT, '--strict'], check: (twin: Ran2) => (twin.code === 1 ? '' : `node exit ${twin.code}, not 1`) },
     { verb: 'halt', name: '--color never after the verb, NO_COLOR unset', words: [...ON_PORT, '--color', 'never'], env: colourless },
@@ -629,6 +741,8 @@ if (!existsSync(real)) {
     { verb: 'bump-code', name: '-q before the verb', words: ['-q', 'move', 'nope'], after: ['move', 'nope', '-q'] },
     { verb: 'note', name: '--log json before the verb', words: ['--log', 'json', 'note'], after: ['note', '--log', 'json'] },
     { verb: 'note', name: '-q before the verb', words: ['-q', 'note', 'nope'], after: ['note', 'nope', '-q'] },
+    { verb: 'wash', name: '--log json before the verb', words: ['--log', 'json', 'wash', 'nope'], after: ['wash', 'nope', '--log', 'json'] },
+    { verb: 'wash', name: '-q before the verb', words: ['-q', 'wash', 'nope'], after: ['wash', 'nope', '-q'] },
   ]
   for (const one of BEFORE_CASES) {
     const dir = join(out, 'surface')
@@ -650,6 +764,10 @@ if (!existsSync(real)) {
   const unlock = (dir: string): void => {
     try {
       chmodSync(memoryAt(dir), 0o755)
+    } catch {}
+    // wash's locked home (item 1505)
+    try {
+      chmodSync(washHome(dir), 0o755)
     } catch {}
   }
   const surfaceCase = async (one: SurfaceCase): Promise<void> => {
