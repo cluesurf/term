@@ -10,6 +10,10 @@
 # The fixture is built by `sh` run through `process/run`, as in test/file/blocking.tree: the gate's Swift link has no
 # NIO libraries, so the asynchronous `file/temporary` and `file` modules cannot be loaded here. The directories sit
 # under the system's temporary directory and are left for it to clear: nothing here removes a file.
+#
+# A folder beneath the root the run may not read (mode 111) is passed over and the rest watched, as node's fs.watch
+# watches the rest on macOS (term-self-host-001-1519); test/file/watch-refusal.tree holds the same on swift, whose
+# deep watch this file cannot ask about (D026).
 
 load @term/base/file/watch
   find watch, name watch-path
@@ -32,6 +36,21 @@ task make-fixture
     text <-c>
   call arguments/push
     text <d=$(mktemp -d); mkdir "$d/inner"; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# the fixture with the directory `shut` beside `inner`, mode 111: a folder the run may not read (term-self-host-001-1519)
+task make-shut-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); mkdir "$d/inner" "$d/shut"; chmod 111 "$d/shut"; printf %s "$d">
   save result
     call run
       text </bin/sh>
@@ -154,6 +173,26 @@ test <a file written in a subdirectory made before the watch is seen with deep t
     call event-kind
       read eye
       text <b.tree>
+  call close-watch
+    read eye
+  want hold
+    call is-new-file
+      read kind
+
+test <a deep watch of a directory holding a folder the run may not read sees a file written in the rest>
+  save dir
+    call make-shut-fixture
+  save eye
+    call watch-path
+      read dir
+      true
+  call write-file
+    text <{{dir}}/inner/c.tree>
+    text <hello>
+  save kind
+    call event-kind
+      read eye
+      text <c.tree>
   call close-watch
     read eye
   want hold

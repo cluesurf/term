@@ -2,9 +2,17 @@
 
 dock load
   load <global:process>, name current-process
+  load <node:fs>, name program-fs
 
 load @term/base/process/current
   find process-info
+
+# the main script as node was given it (argv[1], which node makes absolute), the empty text when there is none: a
+# `node -e` or a REPL
+bind main-script
+  like text
+  case node
+    text <(process.argv[1] ?? "")>
 
 task read-process
   like process-info
@@ -20,6 +28,28 @@ task read-process
       bind directory
         call current-process/cwd
       bind executable, read current-process/exec-path
+
+# the main script made real, never `exec-path` (the node binary): the empty text when there is none or it cannot be
+# read
+task read-program-file
+  like text
+  save script
+    call main-script
+  fork test
+    hook test
+      call is-equal
+        read script
+        text <>
+    hook hold
+      send back, text <>
+  fork
+    mark unsafe
+    send back
+      call program-fs/realpath-sync
+        read script
+  halt take
+    take problem
+    send back, text <>
 
 task exit-process
   take

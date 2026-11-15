@@ -73,8 +73,28 @@ enum aio {
 
   // ---- whole file ----
 
-  static func fileRead(_ path: String) async -> String {
-    await handBack { String(decoding: readWhole(path), as: UTF8.self) }
+  // the refusal first (refusal.swift), then the text. open(2) is the `open` step and the reads the `read` step, as
+  // node's readFile names them: a folder opens and its read is refused. errno is read before the descriptor is closed
+  static func fileRead(_ path: String) async -> [String] {
+    await handBack { readWholeText(path) }
+  }
+
+  private static func readWholeText(_ path: String) -> [String] {
+    let descriptor = Foundation.open(path, O_RDONLY)
+    guard descriptor >= 0 else { return refused(errno, "open") }
+    defer { Foundation.close(descriptor) }
+
+    var out: [UInt8] = []
+    var chunk = [UInt8](repeating: 0, count: 65536)
+
+    while true {
+      let count = chunk.withUnsafeMutableBytes { Foundation.read(descriptor, $0.baseAddress, 65536) }
+      if count < 0 { return refused(errno, "read") }
+      if count == 0 { break }
+      out.append(contentsOf: chunk[0..<count])
+    }
+
+    return carried() + [String(decoding: out, as: UTF8.self)]
   }
 
   static func fileReadBytes(_ path: String) async -> Data {

@@ -1,0 +1,45 @@
+# THE ONE NODE-ONLY PIECE OF THE COMPILE STORE: the TypeScript `CompileCache` (compile/cache.ts) that node's compile driver
+# takes, built over a store, and the store's entry as that class's `CacheStore` hands it back (undefined for a miss).
+# compile-store.tree's `project-cache` hands it the store and every kind's version. The
+# native driver builds compile/cache-store.tree's Term state itself (item 1415), so nothing here is ever native: the
+# construction sits apart from compile-store, out of the native closure, as decision 167 point 5 did for the printer
+# (decision 169 point 6 of term/self-host/change/001-finish-self-host, item term-self-host-001-1390).
+
+load @term/base/maybe
+  find maybe
+
+dock load
+  load <@term/make/code/compile/cache>, name compile-cache-module
+
+bind construct-compile-cache
+  take module, like dynamic
+  take store, like dynamic
+  take version, like dynamic
+  take cap, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)($store, $version, ($cap) ?? undefined)>
+
+# an entry as compile/cache.ts `CacheStore` hands it back: its text, or undefined for none. Term's maybe crosses to
+# TypeScript as `{ form, value }`, as compile/cache.ts builds it
+bind host-entry-of
+  take found, like dynamic
+  like dynamic
+  case node
+    text <((($found).form === "some") ? ($found).value : undefined)>
+
+task host-entry
+  take found, like maybe, like text
+  like dynamic
+
+  back host-entry-of(found)
+
+# a `CompileCache` over `store`, `version` a task of the kind, `cap` the milled modules held in memory (null or none for
+# the class's own default)
+task new-compile-cache
+  take store, like dynamic
+  take version, like dynamic
+  take cap, like dynamic
+  like dynamic
+
+  back construct-compile-cache(compile-cache-module, store, version, cap)

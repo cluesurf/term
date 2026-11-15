@@ -53,11 +53,37 @@ object aio {
 
   // ---- whole file ----
 
-  suspend fun fileRead(path: String): String = termLoop.handBack {
-    try {
-      Files.readString(at(path))
+  // the refusal first (refusal.kt), then the text, decoded as node's readFile decodes: a byte that is not UTF-8 is
+  // U+FFFD. The channel's opening is the `open` step and the reads the `read` step, as node names them: a folder
+  // opens and its read is refused
+  suspend fun fileRead(path: String): MutableList<String> = termLoop.handBack {
+    readWholeText(path)
+  }
+
+  private fun readWholeText(path: String): MutableList<String> {
+    val channel =
+      try {
+        Files.newByteChannel(at(path))
+      } catch (error: kotlin.Exception) {
+        return refused(error, "open")
+      }
+
+    return try {
+      channel.use { open ->
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = java.nio.ByteBuffer.allocate(65536)
+        while (true) {
+          buffer.clear()
+          val count = open.read(buffer)
+          if (count < 0) break
+          out.write(buffer.array(), 0, count)
+        }
+        val answer = carried()
+        answer.add(String(out.toByteArray(), Charsets.UTF_8))
+        answer
+      }
     } catch (error: kotlin.Exception) {
-      ""
+      refused(error, "read")
     }
   }
 

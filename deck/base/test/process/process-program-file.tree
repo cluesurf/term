@@ -1,0 +1,42 @@
+# `program-file` names the file of the running program the same way on every backend: never a raise, and either the
+# empty text (a page) or an absolute path already in its shortest form. That it is real (no link on its way) and not
+# the runtime is held by process-run-program-file.tree, which runs `sh` and so has no browser leg. Held by
+# `pnpm term:base-gate` on node, browser, rust, swift and kotlin.
+
+load @term/base/process/current
+  find program-file
+
+load @term/base/path
+  find is-absolute
+  find normalize-path
+
+# whether a program file is the empty text, or absolute and normal
+task is-plain-or-empty
+  take file, like text
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read file
+        text <>
+    hook hold
+      send back, true
+  send back
+    call and
+      call is-absolute
+        read file
+      call is-equal
+        call normalize-path
+          read file
+        read file
+
+test <program-file is the empty text or an absolute path in its shortest form>
+  want hold
+    call is-plain-or-empty
+      call program-file
+
+test <program-file answers the same twice>
+  want hold
+    call is-equal
+      call program-file
+      call program-file

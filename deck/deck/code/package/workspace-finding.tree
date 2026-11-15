@@ -18,7 +18,17 @@
 #     answered the manifest with a `dir` field spread over it
 #   - every mill read takes the grammars record last, so `find-workspaces` takes it
 #   - `find-project-root` answers a maybe where the original answered undefined
-#   - `topological-sort` takes the manifests by name and warns on a cycle through the host's console, as the original
+#   - `topological-sort` takes the manifests by name and warns on a cycle on the error stream, as the original's
+#     `console.warn`
+#   - the disk, the paths and the console are reached through @term/base (item term-self-host-001-1512, where
+#     node:fs/promises, node:path and global:console were docked), so the search reads the same on every backend: a
+#     folder is listed by @term/base/file/blocking's `list`, its entries' kinds asked of each entry with links not
+#     followed (node's `readdir` with file types), a place is reached when that module's `exists` says so (node's
+#     `access`, which follows links too), a join is @term/base/path's (node's `path.join` for every path built here),
+#     a path is made absolute against the working directory by `resolve-path` (node's `path.resolve`), and the cycle
+#     warning is @term/base/console's `error`
+#   - where `access` refused inside a guard, the guard now raises when `exists` is false, so whatever else the guard
+#     held (the scan of the project's own `deck/`, a member's manifest read) is still caught as before
 
 load @term/base/list
   find list
@@ -28,6 +38,26 @@ load @term/base/maybe
 
 load @term/base/hash
   find hash
+
+load @term/base/text
+  find starts-with
+
+load @term/base/path
+  find join, name path-join
+  find directory, name path-directory
+  find file-name, name path-file-name
+  find resolve-path
+
+load @term/base/environment
+  find directory, name working-directory
+
+load @term/base/file/blocking
+  find exists, name path-exists
+  find list, name list-folder
+  find path-entry
+
+load @term/base/console
+  find error, name console-error
 
 load ./manifest-shape
   find deck-manifest
@@ -41,35 +71,6 @@ load ./manifest-reading
 load ./resolution
   find workspace-deck
 
-dock load
-  load <node:fs/promises>, name fs-promise
-    mark async
-  load <node:path>, name node-path
-  load <global:console>, name host-console
-
-form listing-ask
-  link with-file-types, like boolean
-
-bind is-folder-entry
-  take entry, like dynamic
-  like boolean
-  case node
-    text <$entry.isDirectory()>
-
-bind entry-name
-  take entry, like dynamic
-  like text
-  case node
-    text <$entry.name>
-
-# the host's items as a list, so they can be walked
-task host-items
-  take items, like list, like dynamic
-  like list, like dynamic
-  mark private
-
-  back items
-
 task find-workspaces
   take root, like text
   take grammars, like manifest-grammars
@@ -81,15 +82,17 @@ task find-workspaces
   sift enclosing
     case some
       link parent
-      scan-for-decks(node-path/join(parent, <deck>), workspaces, grammars)
+      scan-for-decks(path-join(parent, <deck>), workspaces, grammars)
     case none
       save nothing, 0
 
-  save own, node-path/join(root, <deck>)
+  save own, path-join(root, <deck>)
 
   fork
     mark unsafe
-    fs-promise/access(own)
+    fork test, not(path-exists(own))
+      hold
+        halt <no deck folder at {own}>
     scan-for-decks(own, workspaces, grammars)
   halt take
     # no `deck/` folder of its own
@@ -104,21 +107,21 @@ task enclosing-workspace
   like maybe, like text
   mark private
 
-  save current, node-path/resolve(root)
+  save current, resolve-path(working-directory(), root)
 
   walk test
     hook test, true
     hook hold
-      save parent, node-path/dirname(current)
+      save parent, path-directory(current)
 
       fork test, is-equal(parent, current)
         hold
           back make none
 
-      fork test, is-equal(node-path/basename(current), <deck>)
+      fork test, is-equal(path-file-name(current), <deck>)
         hold
           # a `deck/` folder of something that is not a workspace: keep walking
-          fork test, can-reach(node-path/join(parent, <deck.tree>))
+          fork test, can-reach(path-join(parent, <deck.tree>))
             hold
               back make(some, parent)
 
@@ -126,19 +129,30 @@ task enclosing-workspace
 
   back make none
 
-# whether a place can be reached, as the original's `fs.access` in a try read it
+# whether a listed entry is a folder: its own kind, a link to a folder not followed, as a `Dirent`'s `isDirectory`
+task is-folder-entry
+  take entry, like path-entry
+  like boolean
+  mark private
+
+  sift entry/kind
+    case directory
+      back true
+    case file
+      back false
+    case link
+      back false
+    case other
+      back false
+
+# whether a place can be reached, as the original's `fs.access` in a try read it: a link is followed, so a link to
+# nothing cannot be reached
 task can-reach
   take place, like text
   like boolean
   mark private
 
-  fork
-    mark unsafe
-    fs-promise/access(place)
-    back true
-  halt take
-    take unread
-    back false
+  back path-exists(place)
 
 task scan-for-decks
   take dir, like text
@@ -147,31 +161,33 @@ task scan-for-decks
   like void
   mark private
 
-  save entries, fs-promise/readdir(dir, make(listing-ask, bind(with-file-types, true)))
+  save entries, list-folder(dir)
 
-  walk host-items(entries)
+  walk entries
     take entry
 
     fork test, not(is-folder-entry(entry))
       hold
         turn next
 
-    save entry-text, entry-name(entry)
+    save entry-text, entry/name
 
     fork test, or(is-equal(entry-text, <node_modules>), is-equal(entry-text, <link>))
       hold
         turn next
 
-    fork test, starts-workspace-dot(entry-text)
+    fork test, starts-with(entry-text, <.>)
       hold
         turn next
 
-    save sub-dir, node-path/join(dir, entry-text)
-    save deck-file, node-path/join(sub-dir, <deck.tree>)
+    save sub-dir, path-join(dir, entry-text)
+    save deck-file, path-join(sub-dir, <deck.tree>)
 
     fork
       mark unsafe
-      fs-promise/access(deck-file)
+      fork test, not(path-exists(deck-file))
+        hold
+          halt <no deck.tree in {sub-dir}>
       save manifest, load-manifest(sub-dir, grammars)
       save full-name, full-name-of(manifest)
       workspaces/set(full-name, make(workspace-deck, bind(manifest, manifest), bind(dir, make(some, sub-dir))))
@@ -179,12 +195,6 @@ task scan-for-decks
       # no deck.tree, scan deeper
       take unread
       scan-for-decks(sub-dir, workspaces, grammars)
-
-bind starts-workspace-dot
-  take name, like text
-  like boolean
-  case node
-    text <$name.startsWith(".")>
 
 # a deck's full name: `@host/name`, or the bare name when it has no host
 task full-name-of
@@ -206,13 +216,13 @@ task find-project-root
   walk test
     hook test, true
     hook hold
-      save deck-file, node-path/join(current, <deck.tree>)
+      save deck-file, path-join(current, <deck.tree>)
 
       fork test, can-reach(deck-file)
         hold
           back make(some, current)
 
-      save parent, node-path/dirname(current)
+      save parent, path-directory(current)
 
       fork test, is-equal(parent, current)
         hold
@@ -264,7 +274,7 @@ task visit
 
   fork test, visiting/has(name)
     hold
-      host-console/warn(<Circular dependency detected: {name}>)
+      console-error(<Circular dependency detected: {name}>)
       back
 
   visiting/set(name, true)

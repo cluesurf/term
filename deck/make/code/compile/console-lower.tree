@@ -66,6 +66,7 @@ load ./node
   find dock-take
   find expression
   find function-param
+  find native-kind
   find statement
   find statement-branch
   find type
@@ -849,7 +850,21 @@ task add-to
   push(known, value)
   save reach/users/{key}, known
 
-# whether a statement is a dock no Rust binding module writes, or a bind with no rust case
+# whether a dock is a `dock type`, as rust-program.tree's is-type-kind reads it
+task is-type-kind
+  take kind, like native-kind
+  like boolean
+  mark private
+
+  sift kind
+    case type
+      back true
+    miss
+      back false
+
+# whether a statement is a dock no Rust binding module writes, or a bind with no rust case. A `dock type` of module any
+# is never one, wherever its file lives: it names the host's dynamic value, which every backend lowers by itself
+# (Rust's Rc<dyn Any>, rust-program.tree's opaque arm), so no binding module has to write it (term/compiler decision 022)
 task is-unlinkable
   take one, like statement
   like boolean
@@ -857,6 +872,14 @@ task is-unlinkable
 
   sift one
     case native
+      sift one/kind
+        case some
+          link native-kind
+          fork test, and(is-equal(one/module, <any>), is-type-kind(native-kind))
+            hold
+              back false
+        case none
+          save idle, 0
       sift span/file
         case some
           link written

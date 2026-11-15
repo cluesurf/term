@@ -14,10 +14,16 @@
 # The decisions:
 #   - `load-deck-meta` answers a maybe where the original answered undefined
 #   - `prune-store` takes the hashes in use as a list (the original took a Set) and answers a `prune-count`
-#   - a file's bytes pass through as the host value they are
+#   - a file's bytes pass through as the `bytes` they are (the host's buffer), written by @term/base/file `write-bytes`
+#   - the disk is read and written through @term/base (item term-self-host-001-1401, where node:fs, node:fs/promises,
+#     node:path and node:os were docked), so the store reads the same on every backend: the home is
+#     `known-directory <home>` (node's `os.homedir()`), a join is @term/base/path's (node's `path.join` for every
+#     path built here), a folder is made by @term/base/file/create, the existence tests are
+#     @term/base/file/blocking's `exists` (node's `existsSync`, as `access` answered it for `has-file`)
 
 load @term/base/list
   find list
+  find get
 
 load @term/base/maybe
   find maybe
@@ -25,59 +31,79 @@ load @term/base/maybe
 load @term/base/hash
   find hash
 
-dock load
-  load <node:fs/promises>, name fs-promise
-    mark async
-  load <node:fs>, name node-fs
-  load <node:path>, name node-path
-  load <node:os>, name node-os
+load @term/base/text
+  find substring
 
-form folder-ask
-  link recursive, like boolean
+load @term/base/text/unicode
+  find to-runes
+
+load @term/base/environment/path
+  find known-directory
+
+load @term/base/path
+  find join, name path-join
+  find directory, name path-directory
+
+load @term/base/file/blocking
+  find path-stat
+  find exists, name path-exists
+  find rename-path
+  find list, name list-folder
+  find stat, name stat-path
+
+load @term/base/file/create
+  find make-folder
+
+load @term/base/file
+  find read, name read-text
+  find write, name write-text
+  find write-bytes
+  find remove, name remove-file
 
 # what `prune-store` answers: how many files it removed, and their bytes
 form prune-count
   link removed, like number
   link bytes, like number
 
-bind is-folder-stat
-  take stat, like dynamic
-  like boolean
-  case node
-    text <$stat.isDirectory()>
-
-# a hash's first two UTF-16 units, as the original's `slice(0, 2)` cut it: the stdlib's substring counts runes, so an
-# astral first character would take one more
-bind hash-prefix
+# a hash's first two UTF-16 units, as the original's `slice(0, 2)` cut it: the stdlib's substring counts code points,
+# so a first character past U+FFFF, which is two units alone, is cut by itself
+task hash-prefix
   take hash, like text
   like text
-  case node
-    text <$hash.slice(0, 2)>
-
-bind stat-size
-  take stat, like dynamic
-  like number
-  case node
-    text <$stat.size>
-
-# the host's items as a list, so they can be walked
-task host-items
-  take items, like list, like dynamic
-  like list, like dynamic
   mark private
 
-  back items
+  save runes, to-runes(hash)
+  fork test, and(is-above(runes/length, 0), is-above(get(runes, 0), 65535))
+    hold
+      back substring(hash, 0, 1)
+  back substring(hash, 0, 2)
+
+# whether a stat, which follows a link, describes a folder
+task is-folder-stat
+  take stat, like path-stat
+  like boolean
+  mark private
+
+  sift stat/kind
+    case directory
+      back true
+    case file
+      back false
+    case link
+      back false
+    case other
+      back false
 
 # every place the toolchain's folder has been, newest first
 task store-homes
   like list, like text
   mark private
 
-  save home, node-os/homedir()
+  save home, known-directory(<home>)
   save all, make list
-  all/push(node-path/join(home, <.base>, node-path/join(<@term>, <code>)))
-  all/push(node-path/join(home, <.base>, node-path/join(<@cluesurf>, <term>)))
-  all/push(node-path/join(home, <.base>, <term>))
+  all/push(path-join(path-join(home, <.base>), path-join(<@term>, <code>)))
+  all/push(path-join(path-join(home, <.base>), path-join(<@cluesurf>, <term>)))
+  all/push(path-join(path-join(home, <.base>), <term>))
   back all
 
 task get-store-root
@@ -87,7 +113,7 @@ task get-store-root
 
   walk all
     take dir
-    fork test, node-fs/exists-sync(dir)
+    fork test, path-exists(dir)
       hold
         back dir
 
@@ -104,32 +130,30 @@ task get-base-dir
   like text
 
   save root, get-store-root()
-  save current, node-path/join(root, <base>)
-  save legacy, node-path/join(root, <store>)
+  save current, path-join(root, <base>)
+  save legacy, path-join(root, <store>)
 
-  fork test, and(not(node-fs/exists-sync(current)), node-fs/exists-sync(legacy))
+  fork test, and(not(path-exists(current)), path-exists(legacy))
     hold
-      fork
-        mark unsafe
-        node-fs/rename-sync(legacy, current)
-      halt take
-        take refused
-        fork test, node-fs/exists-sync(current)
-          hold
-            back current
-        back legacy
+      save moved, rename-path(legacy, current)
+      fork test, not(moved)
+        hold
+          fork test, path-exists(current)
+            hold
+              back current
+          back legacy
 
   back current
 
 task get-tree-dir
   like text
 
-  back node-path/join(get-store-root(), <tree>)
+  back path-join(get-store-root(), <tree>)
 
 task get-deck-dir
   like text
 
-  back node-path/join(get-store-root(), <deck>)
+  back path-join(get-store-root(), <deck>)
 
 task get-file-path
   take hash, like text
@@ -137,42 +161,34 @@ task get-file-path
 
   save prefix, hash-prefix(hash)
 
-  back node-path/join(get-tree-dir(), prefix, hash)
+  back path-join(path-join(get-tree-dir(), prefix), hash)
 
 task init-store
   like void
 
-  fs-promise/mkdir(get-tree-dir(), make(folder-ask, bind(recursive, true)))
-  fs-promise/mkdir(get-deck-dir(), make(folder-ask, bind(recursive, true)))
+  make-folder(get-tree-dir())
+  make-folder(get-deck-dir())
 
 task has-file
   take hash, like text
   like boolean
 
-  save file-path, get-file-path(hash)
-
-  fork
-    mark unsafe
-    fs-promise/access(file-path)
-    back true
-  halt take
-    take unread
-    back false
+  back path-exists(get-file-path(hash))
 
 task store-file
-  take data, like dynamic
+  take data, like bytes
   take hash, like text
   like text
+  mark async
 
   save file-path, get-file-path(hash)
-  save dir, node-path/dirname(file-path)
-  fs-promise/mkdir(dir, make(folder-ask, bind(recursive, true)))
+  make-folder(path-directory(file-path))
 
   save exists, has-file(hash)
 
   fork test, not(exists)
     hold
-      fs-promise/write-file(file-path, data)
+      write-bytes(file-path, data)
 
   back file-path
 
@@ -182,31 +198,37 @@ task store-deck-meta
   take code, like text
   take data, like text
   like void
+  mark async
 
-  save dir, node-path/join(get-deck-dir(), <link>, registry, name, code)
+  save dir, path-join(path-join(path-join(path-join(get-deck-dir(), <link>), registry), name), code)
 
-  fs-promise/mkdir(dir, make(folder-ask, bind(recursive, true)))
-  fs-promise/write-file(node-path/join(dir, <deck.tree>), data, <utf-8>)
+  make-folder(dir)
+  write-text(path-join(dir, <deck.tree>), data)
 
 task load-deck-meta
   take registry, like text
   take name, like text
   take code, like text
   like maybe, like text
+  mark async
 
-  save file, node-path/join(get-deck-dir(), <link>, registry, name, code, <deck.tree>)
+  save file, path-join(path-join(path-join(path-join(path-join(get-deck-dir(), <link>), registry), name), code), <deck.tree>)
 
   fork
     mark unsafe
-    save content, fs-promise/read-file(file, <utf-8>)
+    save content, read-text(file)
     back make(some, content)
   halt take
     take unread
     back make none
 
+# Every stored file no project uses is removed, and counted with its bytes. A refusal anywhere ends the prune with
+# what it has counted so far, as the original's one guard did: a prefix that is not a folder is passed over, and a
+# listed entry that is a folder stops the prune after its bytes are counted, where the original's `unlink` refused it
 task prune-store
   take used-hashes, like list, like text
   like prune-count
+  mark async
 
   save used, make hash
   walk used-hashes
@@ -219,27 +241,30 @@ task prune-store
 
   fork
     mark unsafe
-    save prefixes, fs-promise/readdir(tree-dir)
+    save prefixes, list-folder(tree-dir)
 
-    walk host-items(prefixes)
+    walk prefixes
       take prefix
-      save prefix-dir, node-path/join(tree-dir, prefix)
-      save stat, fs-promise/stat(prefix-dir)
+      save prefix-dir, path-join(tree-dir, prefix/name)
+      save stat, stat-path(prefix-dir)
 
       fork test, not(is-folder-stat(stat))
         hold
           turn next
 
-      save files, fs-promise/readdir(prefix-dir)
+      save files, list-folder(prefix-dir)
 
-      walk host-items(files)
+      walk files
         take file
-        fork test, not(used/has(file))
+        fork test, not(used/has(file/name))
           hold
-            save file-path, node-path/join(prefix-dir, file)
-            save file-stat, fs-promise/stat(file-path)
-            save bytes, add(bytes, stat-size(file-stat))
-            fs-promise/unlink(file-path)
+            save file-path, path-join(prefix-dir, file/name)
+            save file-stat, stat-path(file-path)
+            save bytes, add(bytes, file-stat/size)
+            fork test, is-folder-stat(file-stat)
+              hold
+                halt <EISDIR: illegal operation on a directory, unlink '{file-path}'>
+            remove-file(file-path)
             save removed, add(removed, 1)
   halt take
     # store may not exist yet

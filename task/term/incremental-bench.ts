@@ -51,7 +51,6 @@ import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { cpus, loadavg, tmpdir } from 'node:os'
 import path from 'node:path'
-import { gunzipSync } from 'node:zlib'
 import { makeScratch, removeTree, scratchEnv, sweepStaleRuns } from './temp-run'
 import { CALLER_CWD, PARENT_ROOT, TERM_ROOT, parentPaths } from './root'
 
@@ -215,13 +214,14 @@ function answersIn(home: string): number {
     for (const name of readdirSync(dir)) {
       const at = path.join(dir, name)
       if (statSync(at).isDirectory()) walk(at, out)
-      else if (at.endsWith('.json.gz')) out.push(at)
+      else if (at.endsWith('.json')) out.push(at)
     }
     return out
   }
   let answers = 0
   for (const file of walk(path.join(home, 'unit'))) {
-    const text = gunzipSync(readFileSync(file)).toString('utf8')
+    // an entry is its JSON as plain UTF-8 text in `<key>.json` (decision 169 point 4)
+    const text = readFileSync(file, 'utf8')
     if (text.length >= 200 && !text.includes('{\\"diagnostics\\"') && !text.startsWith('{"portable":"trace:')) answers++
   }
   return answers

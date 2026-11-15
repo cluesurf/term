@@ -2,11 +2,11 @@
 # namespaces removed, each kind under its byte budget. Ported from call/code/cache-store.ts (term-cli-in-term-0027),
 # the part that holds no state: the store, the versions and the project caches are compile-store.tree.
 #
-# THE LAYOUT IS `<kind>/<version>/<shard>/<key>.json.gz`, AND EVERY PART OF THAT PATH IS LOAD-BEARING.
+# THE LAYOUT IS `<kind>/<version>/<shard>/<key>.json`, AND EVERY PART OF THAT PATH IS LOAD-BEARING.
 #
-# It used to be `<kind>/<key>.json`, flat and uncompressed, with the version folded into the key hash and nothing ever
-# removed. Measured on 2026-09-01, that cost 101 GB across the tree, 86 GB of it in `deck/bind`, in 143,604 files in
-# ONE directory. The three reasons, each fixed by one part of the path:
+# It used to be `<kind>/<key>.json`, flat, with the version folded into the key hash and nothing ever removed.
+# Measured on 2026-09-01, that cost 101 GB across the tree, 86 GB of it in `deck/bind`, in 143,604 files in ONE
+# directory. The two reasons, each fixed by one part of the path:
 #
 # `<version>`: a compiler change strands the whole cache. The version is a content hash of the running compiler, so
 # every rebuild opens a new namespace. A DIRECTORY per version means a stale namespace is a directory to remove, which
@@ -16,17 +16,56 @@
 # `<shard>`: 143,604 files in one directory is a cost paid by every `readdir`, every Spotlight pass and every Time
 # Machine run. Two characters of the key bound a directory at a few hundred.
 #
-# `.gz`: entries compress 13.1x (16.9 MB raw to 1.29 MB over 25 entries of `deck/bind`).
+# An entry is its JSON as plain UTF-8 text, never gzip (decisions 169 point 4 and 170 of
+# term/self-host/change/001-finish-self-host): a host deflate library writes other bytes on every backend and Term's own gzip
+# costs a warm build its startup budget. Entries were gzip, `<key>.json.gz`, at epochs up to 25. The flat layout before
+# 2026-09 sits one level higher, which `stored-entries` never reads as an entry.
 #
 # Which budget a kind has, which namespaces are dead and which entries go first is call/code/cache-plan.tree. This
-# module lists, stats and removes.
+# module lists, stats and removes, through @term/base on every backend (item term-self-host-001-1390).
 
 load @term/base/list
   find list
   find push
+  find sort
+
+load @term/base/text
+  find substring
+  find char-count
+  find starts-with
+  find ends-with
+
+load @term/base/path
+  find join, name path-join
+  find directory, name path-directory
+  find file-name, name path-file-name
+
+# the blocking file calls (node's *Sync calls on node): readdirSync with each entry's own kind, lstatSync's kind,
+# statSync and writeFileSync
+load @term/base/file/blocking
+  find list, name list-entries
+  find path-kind
+  find stat, name stat-path
+  find write-path
+  find entry-kind
+
+# mkdirSync with `recursive`, raising on a refusal
+load @term/base/file/create
+  find make-folder
+
+# rmSync with `recursive` and `force`, raising on a refusal
+load @term/base/file/remove
+  find remove-all
+
+load @term/base/time
+  find now, name epoch-now
 
 load @term/make/term/hash
   find hash-key
+
+# JavaScript's default `sort()` order of texts, by UTF-16 unit
+load @term/make/check/eliminate
+  find utf16-order
 
 load @term/call/work/small/home-folder
   find project-home
@@ -39,99 +78,11 @@ load @term/call/cache-plan
   find evicted
   find evict
 
-dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
-
-form folder-ask
-  link recursive, like boolean
-
-form remove-ask
-  link recursive, like boolean
-  link force, like boolean
-
 # an entry as the layout addresses it: kind, version namespace (the SLUG on disk), key
 form stored-entry
   link kind, like text
   link version, like text
   link key, like text
-
-bind nothing
-  like dynamic
-  case node
-    text <undefined>
-
-bind is-nothing
-  take value, like dynamic
-  like boolean
-  case node
-    text <(($value) === undefined)>
-
-bind now-ms
-  like number
-  case node
-    text <Date.now()>
-
-bind as-number
-  take value, like dynamic
-  like number
-  case node
-    text <($value)>
-
-# the first two UTF-16 units of a key, as the original's `slice(0, 2)` cut them
-bind first-two
-  take key, like text
-  like text
-  case node
-    text <($key).slice(0, 2)>
-
-bind ends-gz
-  take name, like text
-  like boolean
-  case node
-    text <($name).endsWith(".json.gz")>
-
-bind without-gz
-  take name, like text
-  like text
-  case node
-    text <($name).slice(0, -8)>
-
-bind starts-cache-dot
-  take name, like text
-  like boolean
-  case node
-    text <($name).startsWith("cache.")>
-
-bind sorted-texts
-  take names, like list, like text
-  like list, like text
-  case node
-    text <($names).sort()>
-
-bind mtime-of
-  take stat, like dynamic
-  like float
-  case node
-    text <($stat).mtimeMs>
-
-bind size-of
-  take stat, like dynamic
-  like number
-  case node
-    text <($stat).size>
-
-bind is-link
-  take stat, like dynamic
-  like boolean
-  case node
-    text <($stat).isSymbolicLink()>
-
-bind is-directory
-  take stat, like dynamic
-  like boolean
-  case node
-    text <($stat).isDirectory()>
 
 # How many compiler versions keep their entries: the current one plus one, so alternating between two binaries (a
 # rebuilt `host/line.js` and the one before it) does not cold-start either
@@ -177,12 +128,15 @@ task budget-interval-ms
 
   back multiply(60, multiply(60, 1000))
 
-# two characters of the key. The keys are hex digits of SHA-256 (`hash-key`, decision 080), so this spreads evenly
+# Two characters of the key. The keys are hex digits of SHA-256 (`hash-key`, decision 080), so this spreads evenly.
+#
+# Diverges: original, the first two UTF-16 units (`slice(0, 2)`); new, the first two characters. Reason: a key is hex,
+# where the two are the same, and a character is what every backend counts
 task shard-of
   take key, like text
   like text
 
-  save two, first-two(key)
+  save two, substring(key, 0, 2)
   fork test, is-equal(two, <>)
     hold
       back <__>
@@ -217,10 +171,28 @@ task entry-path-by-slug
   take key, like text
   like text
 
-  back node-path/join(dir, kind, slug, shard-of(key), <{key}.json.gz>)
+  back path-join(path-join(path-join(path-join(dir, kind), slug), shard-of(key)), <{key}.json>)
 
-# Every file under `dir`, with its size and mtime. `lstat`, NEVER `stat`: a symlink is counted as the link and never
-# followed (following them measured 33.6 GB under `deck/zone`, which holds 1.9 GB)
+# whether a file name is an entry's, and its key
+task is-entry-name
+  take name, like text
+  like boolean
+
+  back ends-with(name, <.json>)
+
+task key-of-name
+  take name, like text
+  like text
+
+  back substring(name, 0, subtract(char-count(name), 5))
+
+# Every file under `dir`, with its size and mtime. A symlink is counted as the link and never followed (following them
+# measured 33.6 GB under `deck/zone`, which holds 1.9 GB): each entry's kind is its own, links not followed, and only a
+# plain file is stat'd.
+#
+# Diverges: original, every entry that is neither a link nor a folder, by its lstat; new, the same, by its stat (a
+# file's stat and lstat are one). A socket or a device under the cache is now skipped, where it was counted. Reason:
+# @term/base answers a size only through `stat`, and nothing but files is ever written there
 task cache-entries
   take dir, like text
   like list, like cache-entry
@@ -235,35 +207,38 @@ task walk-entries
   like void
   mark private
 
-  save names, make list
+  save entries, make list
   fork
     mark unsafe
-    save names, node-file/readdir-sync(at)
+    save entries, list-entries(at)
   halt take
     take problem
     back
 
-  walk names
-    take name
-    save full, node-path/join(at, name)
-    fork
-      mark unsafe
-      save stat, node-file/lstat-sync(full)
-      fork test, is-link(stat)
-        hold
+  walk entries
+    take entry
+    save full, path-join(at, entry/name)
+    sift entry/kind
+      case directory
+        walk-entries(full, found)
+      case file
+        fork
+          mark unsafe
+          save stat, stat-path(full)
+          found/push make(cache-entry, bind(file, full), bind(size, stat/size), bind(when, stat/changed))
+        halt take
+          # a file removed underneath the walk is not an error
+          take problem
           turn next
-      fork test, is-directory(stat)
-        hold
-          walk-entries(full, found)
-        miss
-          found/push make(cache-entry, bind(file, full), bind(size, size-of(stat)), bind(when, mtime-of(stat)))
-    halt take
-      # a file removed underneath the walk is not an error
-      take problem
-      turn next
+      case link
+        turn next
+      case other
+        turn next
 
 # Every entry an entry directory holds: kind, version namespace (the slug on disk, which is what names the
-# directory), key. `<dir>/<kind>/<version>/<shard>/<key>.json.gz`, so the version is two levels above the file
+# directory), key. `<dir>/<kind>/<version>/<shard>/<key>.json`, so the version is two levels above the file, and an
+# entry sits three levels below its kind's folder: a file at another depth (the flat layout's `<kind>/<key>.json`) is
+# not an entry
 task stored-entries
   take dir, like text
   take kinds, like list, like text
@@ -272,17 +247,22 @@ task stored-entries
   save found, make list
   walk kinds
     take kind
-    walk cache-entries(node-path/join(dir, kind))
+    save base, path-join(dir, kind)
+    walk cache-entries(base)
       take entry
-      save name, node-path/basename(entry/file)
-      fork test, not(ends-gz(name))
+      save name, path-file-name(entry/file)
+      fork test, not(is-entry-name(name))
         hold
           turn next
-      save version, node-path/basename(node-path/dirname(node-path/dirname(entry/file)))
-      found/push make(stored-entry, bind(kind, kind), bind(version, version), bind(key, without-gz(name)))
+      save shard-dir, path-directory(entry/file)
+      save version-dir, path-directory(shard-dir)
+      fork test, is-unequal(path-directory(version-dir), base)
+        hold
+          turn next
+      found/push make(stored-entry, bind(kind, kind), bind(version, path-file-name(version-dir)), bind(key, key-of-name(name)))
   back found
 
-# the folders under `base` a predicate names, that are real folders, sorted
+# the folders under `base` a predicate names, that are real folders (a link is not), sorted
 task folders-named
   take base, like text
   take legacy, like boolean
@@ -292,22 +272,19 @@ task folders-named
   save out, make list
   fork
     mark unsafe
-    walk node-file/readdir-sync(base)
-      take name
-      save named, starts-cache-dot(name)
+    walk list-entries(base)
+      take entry
+      save named, starts-with(entry/name, <cache.>)
       fork test, legacy
         hold
-          save named, or(named, is-equal(name, <cache>))
-      fork test, named
+          save named, or(named, is-equal(entry/name, <cache>))
+      fork test, and(named, is-real-folder(path-join(base, entry/name)))
         hold
-          save dir, node-path/join(base, name)
-          fork test, is-real-folder(dir)
-            hold
-              out/push dir
+          out/push path-join(base, entry/name)
   halt take
     take problem
     back make list
-  back sorted-texts(out)
+  back sort(out, utf16-order)
 
 task is-real-folder
   take dir, like text
@@ -316,7 +293,15 @@ task is-real-folder
 
   fork
     mark unsafe
-    back is-directory(node-file/lstat-sync(dir))
+    sift path-kind(dir)
+      case directory
+        back true
+      case file
+        back false
+      case link
+        back false
+      case other
+        back false
   halt take
     take problem
     back false
@@ -327,7 +312,7 @@ task legacy-cache-dirs
   take project-root, like text
   like list, like text
 
-  back folders-named(node-path/join(project-root, <.base/term>), true)
+  back folders-named(path-join(project-root, <.base/term>), true)
 
 # The same for the CURRENT path: a `cache.*` copy set aside beside the live one is not the live cache and nothing
 # reads it
@@ -343,93 +328,93 @@ task remove-quietly
 
   fork
     mark unsafe
-    node-file/rm-sync(target, make(remove-ask, bind(recursive, true), bind(force, true)))
+    remove-all(target)
     back true
   halt take
     take problem
     back false
 
 # Remove every version namespace but the newest `keep`, always keeping `current`. A FILE directly under the kind is an
-# entry in the pre-2026-09-01 flat layout, unreadable now, and goes with the stale namespaces
+# entry in the pre-2026-09-01 flat layout, unreadable now, and goes with the stale namespaces, as does a link
 task reclaim-stale-versions
   take dir, like text
   take kind, like text
   take current, like text
-  take keep, like dynamic, fall nothing()
+  take keep, like number, fall 2
   like list, like text
 
-  save kept, 2
-  fork test, not(is-nothing(keep))
-    hold
-      save kept, as-number(keep)
-  save base, node-path/join(dir, kind)
-  save names, make list
+  save base, path-join(dir, kind)
+  save entries, make list
   fork
     mark unsafe
-    save names, node-file/readdir-sync(base)
+    save entries, list-entries(base)
   halt take
     take problem
     back make list
 
   save versions, make list
-  walk names
-    take name
-    save full, node-path/join(base, name)
-    fork
-      mark unsafe
-      save stat, node-file/lstat-sync(full)
-      fork test, not(is-directory(stat))
-        hold
-          remove-quietly(full)
-        miss
-          versions/push make(namespace, bind(name, name), bind(when, mtime-of(stat)))
-    halt take
-      # gone already
-      take problem
-      turn next
+  walk entries
+    take entry
+    save full, path-join(base, entry/name)
+    sift entry/kind
+      case directory
+        fork
+          mark unsafe
+          save stat, stat-path(full)
+          versions/push make(namespace, bind(name, entry/name), bind(when, stat/changed))
+        halt take
+          # gone already
+          take problem
+          turn next
+      case file
+        remove-quietly(full)
+      case link
+        remove-quietly(full)
+      case other
+        remove-quietly(full)
 
-  save doomed, doomed-versions(versions, current, kept)
+  save doomed, doomed-versions(versions, current, keep)
   walk doomed
     take name
-    remove-quietly(node-path/join(base, name))
+    remove-quietly(path-join(base, name))
   back doomed
 
-# Hold one kind's CURRENT namespace under its byte budget by dropping the least recently used first
+# Hold one kind's CURRENT namespace under its byte budget by dropping the least recently used first. No budget given
+# (or a negative one) is the kind's own
 task enforce-budget
   take dir, like text
   take kind, like text
   take slug, like text
-  take budget, like dynamic, fall nothing()
+  take budget, like number, fall -1
   like evicted
 
-  save limit, 0
-  fork test, is-nothing(budget)
+  save limit, budget
+  fork test, is-below(budget, 0)
     hold
       save limit, budget-for(kind)
-    miss
-      save limit, as-number(budget)
-  back evict(cache-entries(node-path/join(dir, kind, slug)), limit, remove-quietly)
+  back evict(cache-entries(path-join(path-join(dir, kind), slug)), limit, remove-quietly)
 
 # Whether the namespace's sweep is due: its `.budget` stamp is older than the interval, or missing. A due sweep stamps
-# the namespace; a stamp that cannot be read or written means the sweep runs
+# the namespace; a stamp that cannot be read or written means the sweep runs. No time given (or a negative one) is now
 task budget-due
   take dir, like text
   take kind, like text
   take slug, like text
-  take now, like dynamic, fall nothing()
+  take when, like number, fall -1
   like boolean
 
-  save at, 0
-  fork test, is-nothing(now)
+  # a parameter named `now` would shadow the clock's task of that name, whatever its alias
+  save at, when
+  fork test, is-below(when, 0)
     hold
-      save at, now-ms()
-    miss
-      save at, as-number(now)
-  save stamp, node-path/join(dir, kind, slug, <.budget>)
+      save at, epoch-now()
+  save folder, path-join(path-join(dir, kind), slug)
+  save stamp, path-join(folder, <.budget>)
   save fresh, false
   fork
     mark unsafe
-    save fresh, is-below(subtract(at, mtime-of(node-file/lstat-sync(stamp))), budget-interval-ms())
+    save stamped, stat-path(stamp)
+    save fresh, is-below(subtract(at, stamped/changed), budget-interval-ms())
   halt take
     # no stamp yet: the first sweep of this namespace
     take problem
@@ -440,8 +425,8 @@ task budget-due
 
   fork
     mark unsafe
-    node-file/mkdir-sync(node-path/dirname(stamp), make(folder-ask, bind(recursive, true)))
-    node-file/write-file-sync(stamp, <>)
+    make-folder(folder)
+    write-path(stamp, <>)
   halt take
     # an unwritable cache folder sweeps every time, as it always did
     take problem

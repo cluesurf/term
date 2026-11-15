@@ -2,7 +2,8 @@
 # and handed back to the program's loop (note/project/term/decision/001-native-work-hands-back-to-the-loop.md).
 #
 # `file-write` answers the shim's refusal as a list of text: the code name (empty when the write was carried out),
-# the step and the host text, which the binding raises (term/compiler decision 021 point 4).
+# the step and the host text, which the binding raises (term/compiler decision 021 point 4). `file-read` answers the
+# same three, then the text (item 1499).
 #
 # Internal: reached only through the public file API.
 
@@ -12,7 +13,7 @@ dock load
 task file-read
   mark async
   take path, like text
-  like text
+  like list, like text
   send back
     call aio/file-read
       read path
@@ -143,6 +144,15 @@ task watch-open
     make watcher
       bind dock, read raw
       bind path, read path
+
+# what the host refused when the watch was opened, as the shim's refusal list (refusal.rs), the empty code name when it
+# opened: file/watch raises it (term-self-host-001-1519)
+task watch-refusal
+  take watcher, like watcher
+  like list, like text
+  send back
+    call watch-file/watch-refusal
+      read watcher/dock
 
 task watch-next
   mark async

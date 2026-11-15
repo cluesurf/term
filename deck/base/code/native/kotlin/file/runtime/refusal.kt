@@ -30,7 +30,8 @@
       reason == "Read-only file system" -> "EROFS"
       reason == "Too many links" -> "EMLINK"
       reason == "File name too long" -> "ENAMETOOLONG"
-      reason == "Too many levels of symbolic links" -> "ELOOP"
+      // the JDK's own words for ELOOP on an open add " or unable to access attributes of symbolic link"
+      reason.startsWith("Too many levels of symbolic links") -> "ELOOP"
       reason == "Directory not empty" -> "ENOTEMPTY"
       else -> "?"
     }

@@ -37,7 +37,6 @@ dock load
   load <@term/call/code/make>, name project-module
   load <node:fs>, name verify-file
   load <node:path>, name verify-path
-  load <node:zlib>, name verify-zlib
 
 bind new-cache
   take module, like dynamic
@@ -108,7 +107,7 @@ task recursive
 
   back make-record(make(list, <recursive>, true))
 
-# every unit `.json.gz` under the store, as paths from it
+# every unit `.json` entry under the store, as paths from it
 task unit-entries
   take store, like text
   like list, like text
@@ -117,7 +116,7 @@ task unit-entries
   walk verify-file/readdir-sync(store, recursive())
     take name, like text
     save parts, split(name, verify-path/sep)
-    fork test, and(ends-with(name, <.json.gz>), is-equal(parts/0, <unit>))
+    fork test, and(ends-with(name, <.json>), is-equal(parts/0, <unit>))
       hold
         out/push(name)
   back out
@@ -250,11 +249,10 @@ task story
   walk unit-entries(store)
     take entry, like text
     save file, verify-path/join(store, entry)
-    save unzipped, verify-zlib/gunzip-sync(verify-file/read-file-sync(file))
-    save stored, unzipped/to-string(<utf8>)
+    save stored, verify-file/read-file-sync(file, <utf8>)
     fork test, contains(stored, <planted-name>)
       hold
-        verify-file/write-file-sync(file, verify-zlib/gzip-sync(replace-all(stored, <planted-name>, <PLANTED-NAME>)))
+        verify-file/write-file-sync(file, replace-all(stored, <planted-name>, <PLANTED-NAME>))
         save planted, add(planted, 1)
   # without the check the stale answer is served, and with it the build stops
   save stale, build(root, store, <>)

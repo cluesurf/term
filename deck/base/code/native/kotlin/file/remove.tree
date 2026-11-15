@@ -1,0 +1,16 @@
+# kotlin's whole-folder remove, over java.nio.file through the linked `file-remove` runtime shim, which walks the folder
+# in node's order and answers a refusal as a list of text: the POSIX code name its exception stands for (empty when
+# carried out), the step as node's `syscall` names it, the host's text and the path the step named (term/compiler
+# decision 021 points 4 and 1b). Internal: reached only through the public file/remove API.
+
+# The dock ALIAS is the global's own name, `file-remove`, as on node, where any other alias does not load. No stdlib
+# name is `file-remove`. The shim file is runtime/file-remove.<ext>.
+dock load
+  load <global:file-remove>, name file-remove
+
+task remove-path
+  take path, like text
+  like list, like text
+  send back
+    call file-remove/remove-path
+      read path

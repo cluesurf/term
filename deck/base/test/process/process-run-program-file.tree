@@ -1,0 +1,66 @@
+# `program-file` is a real file on every backend that runs processes: not empty, a file and not a link, its folder
+# the one `sh` reaches with every link followed (`cd -P`, `pwd -P`), and never the runtime that started the run
+# (TERM_TEST_SELF, which `term test` and the base gate set to node's own binary: node answering `exec-path` fails
+# here). The same on node, rust, swift and kotlin (item 1495, decision 168 point 3). Held by `pnpm term:base-gate`,
+# whose browser leg skips it by name (`process-run` in BROWSER_GAP): a page runs no processes and has no program file.
+
+load @term/base/process/current
+  find program-file
+
+load @term/base/process/run
+  find run
+
+load @term/base/environment
+  find variable
+
+load @term/base/list
+  find list
+
+# what `sh` reads of `file`: `file <real folder>/<name>` when it is a file and not a link, else `none`
+task sh-real-of
+  mark async
+  take file, like text
+  like text
+  save words
+    make list
+  call words/push
+    text <-c>
+  call words/push
+    text <<if [ -f "$1" ] && [ ! -L "$1" ]; then printf 'file %s/%s' "$(cd -P -- "$(dirname -- "$1")" && pwd -P)" "$(basename -- "$1")"; else printf none; fi>>
+  call words/push
+    text <sh>
+  call words/push
+    read file
+  save result
+    call run
+      text <sh>
+      read words
+  send back, read result/output
+
+test <program-file is not empty>
+  want hold
+    call is-unequal
+      call program-file
+      text <>
+
+test <program-file is a file reached through no link>
+  save file
+    call program-file
+  want hold
+    call is-equal
+      call sh-real-of
+        read file
+      text <file {file}>
+
+test <program-file is never the runtime that started the run>
+  save self
+    call variable
+      text <TERM_TEST_SELF>
+  want hold
+    call or
+      call is-equal
+        read self
+        text <>
+      call is-unequal
+        call program-file
+        read self

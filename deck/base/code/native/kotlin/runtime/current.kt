@@ -28,6 +28,17 @@ object current {
 
   fun executable(): String = ProcessHandle.current().info().command().orElse("")
 
+  // the executable `executable` names, with every link followed, the empty text when it cannot be read
+  fun programFile(): String {
+    val command = ProcessHandle.current().info().command().orElse("")
+    if (command.isEmpty()) return ""
+    return try {
+      java.nio.file.Paths.get(command).toRealPath().toString()
+    } catch (problem: java.lang.Exception) {
+      ""
+    }
+  }
+
   fun exit(code: Long): Nothing {
     System.exit(code.toInt())
     throw RuntimeException("unreachable")

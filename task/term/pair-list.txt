@@ -174,7 +174,7 @@ legacy tmp/pair-call-make.ts
 legacy tmp/pair-call-home.ts
 legacy tmp/pair-call-runtime.ts
 # retired, decision 112, test/call/test-snapshot.ts (item 0872): legacy tmp/pair-call-snapshot.ts
-# dead, stale import @term/deck/code/store, repair item term-self-host-001-0876 (item 0810):legacy tmp/pair-call-cache.ts
+# retired, decision 170, test/compile/cache.ts, cache-reclaimed.ts and cache-health.ts (item 1390): its reference is a gzip-era copy of call/code/cache-store.ts and its two twins are one store since 1509, so it compares the text store with a store no backend runs: legacy tmp/pair-call-cache.ts
 legacy tmp/pair-call-need-load.ts
 legacy tmp/pair-call-self.ts
 legacy tmp/pair-call-compose.ts

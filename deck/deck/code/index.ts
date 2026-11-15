@@ -34,7 +34,6 @@ export {
   consumeGlobalLink,
 } from './package/link'
 export {
-  hashFile,
   hashBuffer,
   hashText,
   verifyHash,

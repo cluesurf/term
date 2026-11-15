@@ -114,7 +114,9 @@ enum runner {
         if command.contains("/") {
             return files.isExecutableFile(atPath: command) ? URL(fileURLWithPath: command) : nil
         }
-        let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+        // spelled through Foundation: a program that also holds process/current declares its own `ProcessInfo` (the
+        // process-info form), which shadows Foundation's
+        let path = Foundation.ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
         for directory in path.split(separator: ":") {
             let candidate = "\(directory)/\(command)"
             if files.isExecutableFile(atPath: candidate) {
@@ -146,7 +148,7 @@ enum runner {
             process.currentDirectoryURL = URL(fileURLWithPath: directory)
         }
         if !environment.data.isEmpty {
-            var merged = ProcessInfo.processInfo.environment
+            var merged = Foundation.ProcessInfo.processInfo.environment
             for (name, value) in environment.data {
                 merged[name] = value
             }

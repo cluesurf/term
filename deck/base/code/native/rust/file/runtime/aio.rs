@@ -4,11 +4,11 @@
 // comes back, so a read that blocks (a FIFO, a slow disk) stalls no other job. No tokio: a program that reads a file
 // builds with plain `rustc`, and tokio::fs was a blocking pool too, one that never ran under Term's executor.
 //
-// TOTAL, LIKE THE REST OF THE NATIVE SURFACE, BUT FOR `file_write`. std::fs returns `io::Result`, and a failure reads
-// as the empty / false / zero answer here rather than unwinding through emitted code that has no way to catch it.
-// `file_write` answers its refusal instead, as a list of text (refusal.rs: the code name, empty when carried out, the
-// step and the host text), and the binding raises it as `failure` worded in Term (term/compiler decision 021 point
-// 4a). A handle op is the other place a failure cannot be papered over, and `handle_open` says so by panicking on a
+// TOTAL, LIKE THE REST OF THE NATIVE SURFACE, BUT FOR `file_write` AND `file_read`. std::fs returns `io::Result`, and a
+// failure reads as the empty / false / zero answer here rather than unwinding through emitted code that has no way to
+// catch it. `file_write` and `file_read` answer their refusal instead, as a list of text (refusal.rs: the code name,
+// empty when carried out, the step and the host text, then the read's text), and the binding raises it as `failure`
+// worded in Term, or `absence` for ENOENT (term/compiler decision 021 point 4a, item 1499). A handle op is the other place a failure cannot be papered over, and `handle_open` says so by panicking on a
 // path it cannot open.
 //
 // Reached only through the public file API. See note/project/term/stdlib/native-async-file-and-server.md.
@@ -24,8 +24,28 @@ mod aio {
 
     // ---- whole file ----
 
-    pub async fn file_read(path: String) -> String {
-        crate::__term_hand_back(move || std::fs::read_to_string(&path).unwrap_or_default()).await
+    // the refusal first (refusal.rs), then the text, decoded as node's readFile decodes: a byte that is not UTF-8 is
+    // U+FFFD. open(2) is the `open` step and the reads the `read` step, as node names them: a folder opens and its read
+    // is refused
+    pub async fn file_read(path: String) -> Vec<String> {
+        crate::__term_hand_back(move || {
+            let mut file = match std::fs::File::open(&path) {
+                Ok(file) => file,
+                Err(failure) => return refused(&failure, "open"),
+            };
+
+            let mut bytes = Vec::new();
+
+            match file.read_to_end(&mut bytes) {
+                Ok(_) => {
+                    let mut out = carried();
+                    out.push(String::from_utf8_lossy(&bytes).to_string());
+                    out
+                }
+                Err(failure) => refused(&failure, "read"),
+            }
+        })
+        .await
     }
 
     pub async fn file_read_bytes(path: String) -> Vec<u8> {

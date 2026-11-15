@@ -5,7 +5,8 @@
 # (note/project/term/decision/001-native-work-hands-back-to-the-loop.md), so a read that blocks stalls no other job.
 # `file-exists` and `stat-file` stay synchronous, as node's `existsSync` is, through the linked `io` runtime, which
 # wraps std::fs and absorbs its Result type so the public file API stays total, but for
-# `write-file`, which raises a refused write (term/compiler decision 021 point 4a).
+# `write-file`, which raises a refused write (term/compiler decision 021 point 4a), and `read-file`, which raises a
+# refused read (item 1499).
 # `remove` and `copy` pass `deep` false: std::fs::copy takes a file, and a remove takes a file or, now, an empty directory, as on Kotlin.
 
 dock load
@@ -26,14 +27,22 @@ load @term/base/file/stat
 
 load @term/base/file/failure
   find raise-file-failure
+  find raise-read-failure
 
+# a read the host refuses raises `absence` when the host says nothing is there (ENOENT) and any other refusal as
+# `failure`, its note node's own message for the same refusal (item 1499, option A): the shim answers its code name,
+# step and host text, then the text
 task read-file
   mark async
   take path, like text
   like text
-  send back
+  save raw
     call file-read
       read path
+  call raise-read-failure
+    read raw
+    read path
+  send back, read raw/3
 
 # a write the host refuses raises `failure` worded by @term/base/file/failure, its note node's own message for the
 # same refusal (term/compiler decision 021 point 4a): the shim answers its code name, step and host text

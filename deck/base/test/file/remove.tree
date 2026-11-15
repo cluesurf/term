@@ -1,0 +1,201 @@
+# `remove-all` of @term/base/file/remove removes a path and everything in it on every backend, and raises `failure`
+# when the host refuses, its note node's own message for that refusal (term/compiler decision 021, the shape of point
+# 1b): a folder under a read-only parent (the `rmdir` of the path given, its entries left), a file in a read-only
+# folder (the `unlink` of that file), a folder in a read-only folder (the `rmdir` of that folder), a path under a file
+# and under a folder no one may search (the `lstat` of the path given). Each expected note is the message node's
+# `fs.rm` gives for the same call (tmp/self-host/1489/raw.ts of the item), so the one note on all four backends is
+# node's. Held by `pnpm term:base-gate`.
+#
+# The fixture is built by one `sh` run through `process/run`, as in test/file/failure.tree. Its folder sits under the
+# system's temporary directory and is left for it to clear. `stuck`, `held/inner` and `nest/shut` are mode 555 and
+# `locked` mode 000, which root writes and reads anyway, so the fixture marks a run as root with `as-root` and the
+# refusal cases then answer `no` without asking.
+
+load @term/base/file/blocking
+  find read, name read-path
+  find exists, name exists-path
+
+load @term/base/file/remove
+  find remove-all
+
+load @term/base/exception
+  find failure
+
+load @term/base/boolean
+  find not
+
+load @term/base/process/run
+  find run
+
+# a new folder holding `plain.txt`, the folder `tree` (two files, a folder in a folder), `stuck/log/inner` with
+# `stuck` read-only, `held/inner/kept.txt` with `held/inner` read-only, `nest/shut/deep` with `nest/shut` read-only,
+# the mode 000 folder `locked`, `target/t.txt` and `link`, a link to `target`, and `as-root` when the run is root's. It
+# answers the folder's path, which the script prints without a newline
+task make-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); printf %s x \> "$d/plain.txt"; mkdir -p "$d/tree/a/b" "$d/stuck/log/inner" "$d/held/inner" "$d/nest/shut/deep" "$d/locked" "$d/target"; printf %s 1 \> "$d/tree/a/one.txt"; printf %s 2 \> "$d/tree/a/b/two.txt"; printf %s k \> "$d/held/inner/kept.txt"; printf %s t \> "$d/target/t.txt"; ln -s "$d/target" "$d/link"; chmod 555 "$d/stuck" "$d/held/inner" "$d/nest/shut"; chmod 000 "$d/locked"; if [ "$(id -u)" = 0 ]; then printf %s x \> "$d/as-root"; fi; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# the note remove-all raised, or `no` when it raised nothing
+task remove-refused
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    call remove-all
+      read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+
+# the expected note, or `no` when the run is root's, which no mode refuses
+task refused-unless-root
+  take dir, like text
+  take note, like text
+  like text
+  fork test
+    hook test
+      call exists-path
+        text <{{dir}}/as-root>
+    hook hold
+      send back, text <no>
+  send back, read note
+
+test <a missing path is no refusal>
+  save dir
+    call make-fixture
+  want hold
+    call is-equal
+      call remove-refused
+        text <{{dir}}/nowhere>
+      text <no>
+
+test <a file is removed>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt>
+  want hold
+    call and
+      call is-equal
+        call remove-refused
+          read path
+        text <no>
+      call not
+        call exists-path
+          read path
+
+test <a folder is removed with everything in it>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/tree>
+  want hold
+    call and
+      call is-equal
+        call remove-refused
+          read path
+        text <no>
+      call not
+        call exists-path
+          read path
+
+test <a link to a folder is removed and what it points at is kept>
+  save dir
+    call make-fixture
+  want hold
+    call and
+      call is-equal
+        call remove-refused
+          text <{{dir}}/link>
+        text <no>
+      call and
+        call not
+          call exists-path
+            text <{{dir}}/link>
+        call is-equal
+          call read-path
+            text <{{dir}}/target/t.txt>
+          text <t>
+
+test <a folder under a read-only parent raises node's message for its rmdir and keeps what it holds, unless the run is root's>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/stuck/log>
+  save expected
+    call refused-unless-root
+      read dir
+      text <EACCES: permission denied, rmdir '{{path}}'>
+  save said
+    call remove-refused
+      read path
+  want hold
+    call and
+      call is-equal
+        read said
+        read expected
+      call is-equal
+        call exists-path
+          text <{{dir}}/stuck/log/inner>
+        call is-equal
+          read expected
+          text <EACCES: permission denied, rmdir '{{path}}'>
+
+test <a file in a read-only folder raises node's message for its unlink, which names the file, unless the run is root's>
+  save dir
+    call make-fixture
+  want hold
+    call is-equal
+      call remove-refused
+        text <{{dir}}/held>
+      call refused-unless-root
+        read dir
+        text <EACCES: permission denied, unlink '{{dir}}/held/inner/kept.txt'>
+
+test <a folder in a read-only folder raises node's message for its rmdir, which names that folder, unless the run is root's>
+  save dir
+    call make-fixture
+  want hold
+    call is-equal
+      call remove-refused
+        text <{{dir}}/nest>
+      call refused-unless-root
+        read dir
+        text <EACCES: permission denied, rmdir '{{dir}}/nest/shut/deep'>
+
+test <a path under a file raises node's message for its lstat>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt/x>
+  want hold
+    call and
+      call is-equal
+        call remove-refused
+          read path
+        text <ENOTDIR: not a directory, lstat '{{path}}'>
+      call is-equal
+        call read-path
+          text <{{dir}}/plain.txt>
+        text <x>
+
+test <a path under a folder no one may search raises node's message for its lstat, unless the run is root's>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/locked/x>
+  want hold
+    call is-equal
+      call remove-refused
+        read path
+      call refused-unless-root
+        read dir
+        text <EACCES: permission denied, lstat '{{path}}'>

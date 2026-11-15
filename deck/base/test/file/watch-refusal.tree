@@ -1,0 +1,252 @@
+# A watch the host refuses raises `failure`, its note node's own message for fs.watch (`<CODE>: <text>, watch
+# '<path>'`), on every backend (term-self-host-001-1519): a missing path, a path under a file, and a folder the run may
+# not read (mode 111), which root reads anyway, so the fixture marks a run as root with `as-root` and that case then
+# holds without asking. A directory that is there opens and raises nothing, and so does a deep watch of a directory
+# holding a folder the run may not read (node watches the rest). A plain file is watched as node's fs.watch watches
+# it: a write to it is reported as a `create` or `change` whose path is the file's own (node's own event names the
+# file, which joined to the watched path once read `plain.txt/plain.txt`). Held by `pnpm term:base-gate`, on swift
+# too: these cases ask only whether a watch opens and what a watched file reports, so the swift gap that skips
+# test/file/watch.tree (a change in a directory is reported on the directory, D026) is not met here.
+#
+# The fixture is built by `sh` run through `process/run`, as in test/file/watch.tree. Its folders sit under the
+# system's temporary directory and are left for it to clear: nothing here removes a file.
+
+load @term/base/file/watch
+  find watch, name watch-path
+  find next, name next-event
+  find close, name close-watch
+  find watcher
+  find watch-event
+
+load @term/base/file/blocking
+  find exists, name exists-path
+
+load @term/base/exception
+  find failure
+
+load @term/base/text
+  find ends-with
+
+load @term/base/process/run
+  find run
+
+# a new directory holding the file `plain.txt`, and `as-root` when the run is root's. It answers the directory's path,
+# printed without a newline
+task make-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); printf %s x \> "$d/plain.txt"; if [ "$(id -u)" = 0 ]; then printf %s x \> "$d/as-root"; fi; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# a new directory of mode 111. It answers the directory's path, printed without a newline
+task make-shut
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <s=$(mktemp -d); chmod 111 "$s"; printf %s "$s">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# a new directory holding the directory `inner` and the mode 111 directory `shut`. It answers the directory's path,
+# printed without a newline
+task make-shut-tree
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); mkdir "$d/inner" "$d/shut"; chmod 111 "$d/shut"; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# write `data` to the file at `path`, which `sh` makes
+task write-file
+  take path, like text
+  take data, like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <printf %s {{data}} \> {{path}}>
+  call run
+    text </bin/sh>
+    read arguments
+
+# the first of the next eight events whose path ends in `suffix`, or the empty event when none does or the watcher
+# closed
+task event-ending
+  mark async
+  take eye, like watcher
+  take suffix, like text
+  like watch-event
+  save left, code 8
+  walk test
+    hook test
+      call is-above
+        read left
+        code 0
+    hook hold
+      save event
+        call next-event
+          read eye
+      fork test
+        call is-equal
+          read event/kind
+          text <>
+        hook hold
+          send back, read event
+      fork test
+        call ends-with
+          read event/path
+          read suffix
+        hook hold
+          send back, read event
+      save left
+        call subtract
+          read left
+          code 1
+  send back
+    make watch-event
+      bind kind, text <>
+      bind path, text <>
+
+# what a watch on `path` raised: its note when `failure` (the only raise it has), or `no` when it opened (and is
+# closed again)
+task watch-said
+  mark async
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save eye
+      call watch-path
+        read path
+        true
+    call close-watch
+      read eye
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+
+test <a watch on a directory that is there opens and raises nothing>
+  save dir
+    call make-fixture
+  save said
+    call watch-said
+      read dir
+  want hold
+    call is-equal
+      read said
+      text <no>
+
+test <a watch on a missing path raises failure with node's ENOENT message, which names the path>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/nowhere>
+  save said
+    call watch-said
+      read path
+  want hold
+    call is-equal
+      read said
+      text <ENOENT: no such file or directory, watch '{{path}}'>
+
+test <a watch on a path under a file raises failure with node's ENOTDIR message>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt/x>
+  save said
+    call watch-said
+      read path
+  want hold
+    call is-equal
+      read said
+      text <ENOTDIR: not a directory, watch '{{path}}'>
+
+test <a watch on a directory the run may not read raises failure with node's EACCES message, unless the run is root's>
+  save dir
+    call make-fixture
+  save path
+    call make-shut
+  save expected, text <EACCES: permission denied, watch '{{path}}'>
+  fork test
+    hook test
+      call exists-path
+        text <{{dir}}/as-root>
+    hook hold
+      save expected, text <no>
+  save said
+    call watch-said
+      read path
+  want hold
+    call is-equal
+      read said
+      read expected
+
+test <a deep watch of a directory holding a folder the run may not read opens and raises nothing>
+  save dir
+    call make-shut-tree
+  save said
+    call watch-said
+      read dir
+  want hold
+    call is-equal
+      read said
+      text <no>
+
+test <a watch on a plain file opens and reports a write to it with the file's own path>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt>
+  save eye
+    call watch-path
+      read path
+      true
+  call write-file
+    read path
+    text <hello>
+  save event
+    call event-ending
+      read eye
+      text <plain.txt>
+  call close-watch
+    read eye
+  save new
+    call or
+      call is-equal
+        read event/kind
+        text <create>
+      call is-equal
+        read event/kind
+        text <change>
+  save doubled
+    call ends-with
+      read event/path
+      text <plain.txt/plain.txt>
+  want hold
+    call and
+      read new
+      call not
+        read doubled

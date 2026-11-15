@@ -1,4 +1,4 @@
-# The compiler cache's decisions (call/code/cache-store.ts, `<kind>/<version>/<shard>/<key>.json.gz`): the byte budget
+# The compiler cache's decisions (call/code/work/cache/entry-layout.tree, `<kind>/<version>/<shard>/<key>.json`): the byte budget
 # of each kind, which version namespaces are dead, and which entries go when a namespace is
 # over its budget. Everything a cache holds is rebuildable, so none of this can change a result: the worst case is a
 # slower next build.
@@ -16,19 +16,23 @@ load @term/base/ordering
   find ordering
 
 # the byte budget per kind, enforced against the CURRENT version's directory. Generous on purpose: a project that trips
-# it is doing something the author should hear about rather than something routine
+# it is doing something the author should hear about rather than something routine.
+#
+# In MiB: 4 GiB for mill and unit and 2 GiB for output while entries were gzip, each times 6.0793, the measured ratio of
+# the plain text entries to the gzip ones on one `deck/base` build (2,993 entries, 34,646,123 bytes against 5,699,002,
+# item term-self-host-001-1390, decision 169 point 4), so the same working set fits
 task budget-for
   take kind, like text
   like number
 
   fork test, is-equal(kind, <mill>)
     hold
-      back multiply(4, multiply(1024, multiply(1024, 1024)))
+      back multiply(24900, multiply(1024, 1024))
   # the separate build's units, machine-wide, the standard library's shared by every project
   fork test, is-equal(kind, <unit>)
     hold
-      back multiply(4, multiply(1024, multiply(1024, 1024)))
-  back multiply(2, multiply(1024, multiply(1024, 1024)))
+      back multiply(24900, multiply(1024, 1024))
+  back multiply(12450, multiply(1024, 1024))
 
 form namespace
   link name, like text

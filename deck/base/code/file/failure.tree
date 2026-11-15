@@ -2,19 +2,28 @@
 # as amended by ruling 1469).
 #
 # The host gives only the refusal's identity, as a list of text: the POSIX code name (`ENOTDIR`), the step that
-# failed as node's `syscall` names it (`open`, `read`, `write`, `scandir`, `mkdir`), and the host's own text.
+# failed as node's `syscall` names it (`open`, `read`, `write`, `scandir`, `mkdir`, and a remove's `lstat`, `unlink`
+# and `rmdir`), and the host's own text.
 # The code name is the empty text when the call was carried out, and `?` for a refusal the host gives no POSIX name.
 # `raise-file-failure` raises it as the text raise `halt <note>`, which is `failure` with that note and no `thing`
 # on every backend, the note worded by `word-file-failure`: node's own message, `<CODE>: <libuv's text>, <step>`, and
-# ` '<path>'` after it when the step names a path, as node's errors do (`open`, `scandir` and `mkdir` do, `read`
-# and `write` on a descriptor do not). A code outside the table is worded by the host's own text. Nothing else in Term
+# ` '<path>'` after it when the step names a path, as node's errors do (`open`, `scandir`, `mkdir`, `lstat`, `unlink`
+# and `rmdir` do, `read` and `write` on a descriptor do not). A code outside the table is worded by the host's own text. Nothing else in Term
 # words a file failure.
 #
-# Raised by `read` and `list` of [blocking.tree](blocking.tree) and by each backend's `write-file` binding
-# (native/<env>/file.tree), on node, Rust, Swift and Kotlin. A path that is not there still raises `absence`, asked
+# Raised by `watch` of [watch.tree](watch.tree) (step `watch`, term-self-host-001-1519), by `read` and `list` of [blocking.tree](blocking.tree), by [create.tree](create.tree), by
+# [remove.tree](remove.tree) and by each backend's `write-file` and `read-file` binding (native/<env>/file.tree), on
+# node, Rust, Swift and Kotlin. A whole-file read raises through `raise-read-failure`: `absence`, its `thing` the
+# path, only when the host says the path is not there (ENOENT), and every other refusal as `failure` (item 1499,
+# option A). A path existsSync calls absent is not absence: a file linked to itself (ELOOP) or under a folder no one
+# may search (EACCES) or under a file (ENOTDIR) is a refusal. Elsewhere a path that is not there still raises
+# `absence`, asked
 # first. No shim answers a record defined here: about 25 modules per backend dock the aio shim without loading this.
 
 mark unstable
+
+load @term/base/exception
+  find absence
 
 # libuv's text for a POSIX code name, the text node's message holds, or the empty text for a code outside the table
 task libuv-file-text
@@ -113,7 +122,8 @@ task libuv-file-text
       send back, text <directory not empty>
   send back, text <>
 
-# whether node's message for a step names the path after it
+# whether node's message for a step names the path after it: `open`, `scandir` and `mkdir`, the three steps of
+# a whole-folder remove ([remove.tree](remove.tree)), `lstat`, `unlink` and `rmdir`, and fs.watch's `watch`
 task step-names-path
   take step, like text
   like boolean
@@ -128,7 +138,35 @@ task step-names-path
     hook test
       call is-equal
         read step
+        text <watch>
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal
+        read step
         text <scandir>
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal
+        read step
+        text <lstat>
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal
+        read step
+        text <unlink>
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal
+        read step
+        text <rmdir>
     hook hold
       send back, true
   send back
@@ -180,3 +218,20 @@ task raise-file-failure
           read path
           read refusal/2
       halt <{worded}>
+
+# a refused whole-file read: `absence`, its `thing` the path, when the host says nothing is there (ENOENT), and any
+# other refusal `failure` as `raise-file-failure` raises it. A carried out read raises nothing
+task raise-read-failure
+  take refusal, like list, like text
+  take path, like text
+  fork test
+    hook test
+      call is-equal
+        read refusal/0
+        text <ENOENT>
+    hook hold
+      halt absence
+        bind thing, read path
+  call raise-file-failure
+    read refusal
+    read path

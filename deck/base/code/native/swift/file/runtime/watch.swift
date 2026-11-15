@@ -24,6 +24,9 @@ enum watchFile {
     var ready: [WatchEvent] = []
     var waiting: CheckedContinuation<WatchEvent, Never>?
     var closed = false
+    // what the host refused when the watch was opened (refusal.swift), the empty code name when it opened:
+    // file/watch raises it (term-self-host-001-1519)
+    var refusal: [String] = ["", "", ""]
     let path: String
 
     init(path: String) {
@@ -53,11 +56,29 @@ enum watchFile {
     }
   }
 
+  // runtime-include: refusal.swift
+
+  // A path is refused where node's fs.watch refuses it: node opens the path to read first (libuv's open(2)), so a
+  // missing path is ENOENT, one under a file ENOTDIR and one the run may not read EACCES, though O_EVTONLY would
+  // watch the last. The read open is that same check, closed at once
   static func watchOpen(_ path: String, _ deep: Bool) async -> Watcher {
     let watcher = Watcher(path: path)
+    let reading = open(path, O_RDONLY)
+
+    guard reading >= 0 else {
+      watcher.refusal = refused(errno, "watch")
+      watcher.closed = true
+
+      return watcher
+    }
+
+    close(reading)
     let descriptor = open(path, O_EVTONLY)
 
     guard descriptor >= 0 else {
+      watcher.refusal = refused(errno, "watch")
+      watcher.closed = true
+
       return watcher
     }
 
@@ -95,6 +116,10 @@ enum watchFile {
     source.resume()
 
     return watcher
+  }
+
+  static func watchRefusal(_ watcher: Watcher) -> [String] {
+    watcher.refusal
   }
 
   // the next change. A closed watcher answers with the empty event rather than waiting forever, so a loop over

@@ -2,7 +2,8 @@
 # Key-values card does: one `deck` item, the name as its subject and the version as a fact, the description as its
 # message, license and authors as fields, and the dependencies as a list (section 14). Ported from call/code/note.ts
 # (term-cli-in-term-0061). The `deck` it takes names the package to read, none for the project's own: found the way
-# `load <deck>` finds it from the project root, through resolvePackagePath (decision cli-in-term/017 part 2).
+# `load <deck>` finds it from the project root, through package-paths-disk's resolvers (decision cli-in-term/017
+# part 2, self-host decision 168).
 
 load @term/base/list
   find join
@@ -12,21 +13,22 @@ load @term/base/maybe
   find some
   find none
 
+# the printer's typed tasks (decision 167 point 5), as halting, memory and scaffold call them: the node-only face
+# (printer-input.tree) reads a caller's object key by key through binds with no rust case (item term-self-host-001-1382)
 load @term/call/work/output/printer
   find count
   find field
+  find run-opening
+  find open-typed-run
+  find item-input
+  find make-typed-item
+  find report-typed
+  find run-closing
+  find close-typed-run
 
-load @term/call/work/output/printer-input
-  find close-run
-  find make-item
-  find open-run
-  find report
-
-# a row of the item's list: the output library's own, since the item `make-item` answers is the printer's event
+# a row of the item's list: the output library's own, since the item `make-typed-item` answers is the printer's event
 # (term-cli-in-term-0069), where the output module took any record
 load @term/call/work/item/event
-  find tally
-  find item-field
   find list-entry
 
 # the manifest and its version, read by @term/deck's ports (term-cli-in-term-0236), where the package
@@ -40,51 +42,34 @@ load @term/deck/package/grammar-reading
 load @term/deck/version
   find show-code
 
-dock load
-  load <@term/make/code/resolve>, name resolve-module
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
-  load <global:Error>, name host-error
-  load <global:String>, name host-string
-  load <global:Boolean>, name host-boolean
+# a folder's parent, whether a path is there and a host value's truth through @term/base, where node:path, node:fs and
+# the global Boolean were docked (item term-self-host-001-1488): node's dirname, existsSync and Boolean on node
+load @term/base/path
+  find directory, name parent-folder
 
-form plain-open
-  link verb, like text
-  link root, like text
+load @term/base/file/blocking
+  find exists, name path-there
 
-form deck-item-ask
-  link glyph, like text
-  link verb, like text
-  link subject, like text
-  link facts, like list, like text
-  link message, like list, like text
-  link fields, like list, like item-field
+load @term/base/truth
+  find is-truthy
 
+# the package resolvers themselves, Term over @term/base/file/blocking, where the resolve.ts face was docked (decision
+# 168, item term-self-host-001-1496)
+load @term/make/package-paths-disk
+  find make-code-roots
+  find code-root-on-disk
+  find package-resolver
+  find apply-package-resolver
+  find link-resolver-of
+  find sibling-resolver-from
+  find stdlib-resolver-from
 
-form counted-close
-  link verdict, like text
-  link counts, like list, like tally
+# the stdlib walk starts from the running program's own file, as the face's walk started from its import.meta.url
+load @term/base/process/current
+  find program-file
 
-form problem-item
-  link glyph, like text
-  link kind, like text
-  link subject, like text
-
-form next-close
-  link verdict, like text
-  link next, like text
-
-# the message of a failure the host raised, as the original printed it: an Error's message, else the value as text
-task message-of
-  take error, like dynamic
-  like text
-  mark private
-
-  # `error instanceof Error`
-  fork test, host-error/prototype/is-prototype-of(error)
-    hold
-      back error/message
-  back host-string/call(<>, error)
+load @term/base/text
+  find replace-all
 
 # the host's truth of a value
 task holds
@@ -92,7 +77,7 @@ task holds
   like boolean
   mark private
 
-  back host-boolean/call(<>, value)
+  back is-truthy(value)
 
 task note-package
   take root, like text
@@ -121,26 +106,72 @@ task note-package
   fork test, holds(manifest/head)
     hold
       message/push(<{manifest/head}>)
-  save item, make-item(make(deck-item-ask, bind(glyph, <info>), bind(verb, <deck>), bind(subject, full-name), bind(facts, facts), bind(message, message), bind(fields, fields)))
+  # no kind: the item's own, a step, as the original's had none
+  save item, make-typed-item(make(item-input, bind(glyph, <info>), bind(verb, <deck>), bind(subject, full-name), bind(facts, facts), bind(message, message), bind(fields, fields)))
   save entries, make list
   walk manifest/link
     take dependency
     entries/push(make(list-entry, bind(label, <{dependency/name}>), bind(detail, <>)))
   save item/entries, entries
-  report(item)
+  report-typed(item)
   save counts, make list
   counts/push(count(manifest/link/length, <dependencies>, <dependency>))
-  close-run(make(counted-close, bind(verdict, <{full-name} read>), bind(counts, counts)))
+  close-typed-run(make(run-closing, bind(verdict, <{full-name} read>), bind(counts, counts)))
 
-# the entry `load <deck>` reaches from the project root: the link dir, the in-tree packages, then the stdlib, each
-# through resolvePackagePath (make/code/resolve.ts). The empty text when it reaches none
-bind note-package-entry
-  take resolving, like dynamic
+# the file a resolver, when there is one, finds for `deck` with no base. The empty text when there is none or it finds
+# none
+task resolved-file
+  take resolver, like maybe, like package-resolver
+  take deck, like text
+  like text
+  mark private
+
+  sift resolver
+    case some
+      link held
+      sift apply-package-resolver(held, deck, make none)
+        case some
+          link source
+          back source/file
+        case none
+          back <>
+    case none
+      back <>
+
+# the `file:` URL of the running program's file, a `%` in its path written `%25`, so the walk reads the path back whole
+task program-url
+  like text
+  mark private
+
+  save escaped, replace-all(program-file(), <%>, <%25>)
+  back <file://{escaped}>
+
+# the entry `load <deck>` reaches from the project root: the link dir, the in-tree packages, then the stdlib, in that
+# order, each through package-paths-disk's resolver over one code-root cache. The empty text when it reaches none
+task note-package-entry
   take root, like text
   take deck, like text
   like text
-  case node
-    text <<((from) => ($resolving.linkResolver($root)($deck, from) ?? $resolving.siblingResolver()?.($deck, from) ?? $resolving.stdlibResolver()?.($deck, from))?.file ?? "")($root + "/deck.tree")>>
+  mark private
+
+  save roots, make-code-roots()
+  save code-root-of
+    task
+      take dir, like text
+      like text
+      back code-root-on-disk(roots, dir)
+  # saved first: make(case, f(x)) misparses (self-host trap T013)
+  save link-resolver, link-resolver-of(root, code-root-of)
+  save linked, resolved-file(make(some, link-resolver), deck)
+  fork test, is-unequal(linked, <>)
+    hold
+      back linked
+  save url, program-url()
+  save sibling, resolved-file(sibling-resolver-from(url, code-root-of), deck)
+  fork test, is-unequal(sibling, <>)
+    hold
+      back sibling
+  back resolved-file(stdlib-resolver-from(url, code-root-of), deck)
 
 # the full name a folder's deck.tree declares, the empty text when it has none or it cannot be read as a manifest
 task manifest-name
@@ -148,7 +179,7 @@ task manifest-name
   like text
   mark private
 
-  fork test, not(holds(node-file/exists-sync(<{dir}/deck.tree>)))
+  fork test, not(path-there(<{dir}/deck.tree>))
     hold
       back <>
   save named, <>
@@ -173,14 +204,14 @@ task package-folder
   like text
   mark private
 
-  save dir, <{node-path/dirname(entry)}>
+  save dir, parent-folder(entry)
   walk test
     hook test, true
     hook hold
       fork test, is-equal(manifest-name(dir), deck)
         hold
           back dir
-      save parent, <{node-path/dirname(dir)}>
+      save parent, parent-folder(dir)
       fork test, is-equal(parent, dir)
         hold
           back <>
@@ -194,25 +225,27 @@ task call-note
     fall make none
   like void
 
-  open-run(make(plain-open, bind(verb, <note>), bind(root, root)))
+  open-typed-run(make(run-opening, bind(verb, <note>), bind(root, root)))
   fork
     mark unsafe
     sift deck
       case some
-        save entry, note-package-entry(resolve-module, root, value)
+        save entry, note-package-entry(root, value)
         save dir, <>
         fork test, is-unequal(entry, <>)
           hold
             save dir, package-folder(entry, value)
         fork test, is-equal(dir, <>)
           hold
-            report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no package named {value} here>)))
-            close-run(make(next-close, bind(verdict, <No package to read>), bind(next, <term note, for this package>)))
+            report-typed(make-typed-item(make(item-input, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no package named {value} here>))))
+            close-typed-run(make(run-closing, bind(verdict, <No package to read>), bind(next, <term note, for this package>)))
           miss
             note-package(dir)
       case none
         note-package(root)
   halt take
+    # a caught raise reads its note on every backend (term/compiler decision 021 point 10a): a host Error's message, a
+    # Term raise's note, any other value's text, what the original printed
     take error
-    report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, message-of(error))))
-    close-run(make(next-close, bind(verdict, <No package to read>), bind(next, <term wake, to make a package here>)))
+    report-typed(make-typed-item(make(item-input, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, error/note))))
+    close-typed-run(make(run-closing, bind(verdict, <No package to read>), bind(next, <term wake, to make a package here>)))

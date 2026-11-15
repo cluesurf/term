@@ -231,8 +231,12 @@ load @term/base/file/watch
   find watch-event
   find watcher
 
+load @term/base/native/node/file/refusal
+  find node-refusal
+
 # a watch: the host watcher, the changes no one has asked for yet, the answer of whoever waits for the next one
-# (`asked`), and whether it is closed
+# (`asked`), whether it is closed, and the refusal fs.watch threw (its code name, empty when the watch opened, its
+# syscall and its message), which file/watch raises (term-self-host-001-1519)
 form watch-dock
   link watcher, like dynamic
   link open, like boolean
@@ -240,6 +244,23 @@ form watch-dock
   link waiting, like dynamic
   link asked, like boolean
   link closed, like boolean
+  link refusal, like list, like text
+  # whether the watched path is a file: fs.watch then names the file itself, so a change is the watched path, as on
+  # rust, swift and kotlin, never the path joined with the file's own name
+  link single, like boolean
+
+# the refusal of a watch that opened: the empty code name, step and text
+task watch-carried
+  like list, like text
+  save out, like list, like text
+    make list
+  call out/push
+    text <>
+  call out/push
+    text <>
+  call out/push
+    text <>
+  send back, read out
 
 # a promise of the next change, its answer kept on the watch for whoever posts it
 bind watch-wait
@@ -285,6 +306,9 @@ task watch-open
       bind waiting, make void
       bind asked, false
       bind closed, false
+      bind refusal
+        call watch-carried
+      bind single, false
   save on-change
     task change-seen
       take change, like text
@@ -295,10 +319,15 @@ task watch-open
       fork test
         hook test, read name
         hook hold
-          save whole
-            call file-path/join
-              read path
-              call name/to-string
+          fork test
+            hook test
+              call not
+                read held/single
+            hook hold
+              save whole
+                call file-path/join
+                  read path
+                  call name/to-string
       save kind, text <change>
       fork test
         hook test
@@ -328,13 +357,32 @@ task watch-open
         read on-change
     save held/watcher, read host-watcher
     save held/open, true
+    save stats
+      call file-sync-fs/stat-sync
+        read path
+    fork test
+      hook test
+        call stats/is-directory
+      hook miss
+        save held/single, true
   halt take
     take problem
     save held/closed, true
+    save held/refusal
+      call node-refusal
+        read problem
   send back
     make watcher
       bind dock, read held
       bind path, read path
+
+# what fs.watch refused when the watch was opened, or the empty code name when it opened
+task watch-refusal
+  take watcher, like watcher
+  like list, like text
+  save held, like watch-dock
+    read watcher/dock
+  send back, read held/refusal
 
 # the next change. A closed watcher answers with the empty event rather than waiting forever, so a loop over
 # `watch-next` ends after `watch-close`.

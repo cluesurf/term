@@ -7,19 +7,87 @@
 # and compile work of a prior run. Writes are atomic (a temp file, then a rename), so a killed build never leaves a
 # truncated entry a later run would trust. Handed to `CompileCache` (compile/cache.ts) as a host `{ load, save }`.
 #
+# An entry is its JSON as plain UTF-8 text in `<key>.json`, read and written through @term/base on every backend, and
+# so is every file and folder this module touches (decisions 169 and 170 of term/self-host/change/001-finish-self-host,
+# item term-self-host-001-1390). The one node-only piece, the TypeScript `CompileCache` node's driver takes and the
+# store's miss as that class reads it, is node-compile-cache.tree.
+#
 # THE CACHE IS WORTH HAVING: on `deck/base`, 532 files, a second build of identical sources went 5.8s to 2.9s, the
 # output level answering 532 of 532 reads.
 
 load @term/base/list
   find list
   find push
-  find join
+  find sort
 
 load @term/base/maybe
   find maybe
 
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find ends-with
+
+load @term/base/float
+  find round-down
+
+load @term/base/path
+  find join, name path-join
+  find directory, name path-directory
+
+# the blocking file calls (node's *Sync calls on node): existsSync, readFileSync, readdirSync with each entry's own
+# kind, lstatSync's kind, statSync, renameSync and writeFileSync
+load @term/base/file/blocking
+  find exists, name path-exists
+  find read, name read-path
+  find list, name list-entries
+  find path-kind
+  find stat, name stat-path
+  find rename-path
+  find write-path
+  find path-entry
+  find path-stat
+  find entry-kind
+
+# mkdirSync with `recursive`, raising on a refusal
+load @term/base/file/create
+  find make-folder
+
+# rmSync with `recursive` and `force`, raising on a refusal
+load @term/base/file/remove
+  find remove-all
+
+load @term/base/process/current
+  find read, name read-current
+  find program-file
+
+# a version, a versions record and a package manifest are host values: a text or a function, an object, parsed JSON
+load @term/base/json
+  find parse, name parse-json
+  find field-text
+  find get-field
+  find is-null
+  find is-text
+  find as-text
+  find make-null
+  find make-object
+  find set-field
+  find from-text
+
 load @term/make/term/hash
   find hash-key
+
+# JavaScript's default `sort()` order of texts, by UTF-16 unit
+load @term/make/check/eliminate
+  find utf16-order
+
+# the cache format epoch, and the files each kind's version is fingerprinted against, both Term (decision 169 point 6)
+load @term/make/compile/cache-store
+  find cache-epoch
+
+load @term/make/compile/cache-scope
+  find cache-scope
 
 load @term/call/work/small/home-folder
   find project-home
@@ -34,6 +102,11 @@ load ./entry-layout
   find enforce-budget
   find is-shared-kind
 
+# the TypeScript `CompileCache` and the store's miss as it reads one, node only
+load ./node-compile-cache
+  find new-compile-cache
+  find host-entry
+
 # the package store's folders: @term/deck's file-store port (term-cli-in-term-0234, where its face package/store.ts was
 # docked)
 load @term/deck/package/file-store
@@ -47,20 +120,15 @@ load @term/make/compile/loading-parses
 load @term/make/compile/loading
   find source
 
-dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
-  load <@term/make/code/compile/cache>, name compile-cache-module
-  load <@term/make/code/compile/cache-scope>, name cache-scope-module
-
-form folder-ask
-  link recursive, like boolean
-
-# one disk store's state: the slug of each kind, the shard folders made, the kinds swept this process
+# one disk store's state: the version of each kind, the slug of each kind, the shard folders made, the kinds swept this
+# process
 form disk-state
   mark shared
   link dir, like text
-  link version, like dynamic
+  link version-of
+    like task
+      take kind, like text
+      like text
   link slugs, like hash, like text, like text
   link ensured, like hash, like text, like boolean
   link swept, like hash, like text, like boolean
@@ -70,10 +138,11 @@ form cache-store-face
   link load, like dynamic
   link save, like dynamic
 
-# the counter that makes each temp name of this process unique
+# the counter that makes each temp name of this process unique, and this process's id once read
 host counters, make hash
+host pids, make hash
 
-# the package root once found (the empty text for none), the running bundle's hash, each kind's version
+# the package root once found (the empty text for none), the running program's fingerprint, each kind's version
 host roots, make hash
 host running, make hash
 host versions, make hash
@@ -82,187 +151,43 @@ host versions, make hash
 host process-caches, make hash
 host parse-memos, make hash
 
-bind nothing
-  like dynamic
-  case node
-    text <undefined>
-
-bind is-nothing
-  take value, like dynamic
-  like boolean
-  case node
-    text <(($value) === undefined)>
-
-bind pid
-  like number
-  case node
-    text <process.pid>
-
-# a version given as a text for every kind, or as a function of the kind
-bind version-text
-  take version, like dynamic
-  take kind, like text
-  like text
-  case node
-    text <(typeof ($version) === "string" ? ($version) : ($version)($kind))>
-
-bind gunzip-text
-  take bytes, like dynamic
-  like text
-  case node
-    text <process.getBuiltinModule("node:zlib").gunzipSync($bytes).toString("utf8")>
-
-bind gzip-text
-  take value, like text
-  like dynamic
-  case node
-    text <process.getBuiltinModule("node:zlib").gzipSync(Buffer.from($value, "utf8"), \{ level: 6 \})>
-
-# the folder this module is in, as `path.dirname(fileURLToPath(import.meta.url))` reads it
-bind this-folder
-  like text
-  case node
-    text <process.getBuiltinModule("node:path").dirname(process.getBuiltinModule("node:url").fileURLToPath(import.meta.url))>
-
-# the running script and this module's own file, the two a bundle's hash is looked for in
-bind running-candidates
-  like list, like dynamic
-  case node
-    text <[process.argv[1], process.getBuiltinModule("node:url").fileURLToPath(import.meta.url)]>
-
-bind is-script
-  take file, like dynamic
-  like boolean
-  case node
-    text <Boolean(($file) && (($file).endsWith(".js") || ($file).endsWith(".mjs")))>
-
-bind as-text
-  take value, like dynamic
-  like text
-  case node
-    text <($value)>
-
-bind is-term-manifest
-  take text, like text
-  like boolean
-  case node
-    text <((__termName) =\> __termName === "@cluesurf/term" || __termName === "@cluesurf/seed.tree")(JSON.parse($text).name)>
-
-bind manifest-version
-  take text, like text
-  like text
-  case node
-    text <(JSON.parse($text).version ?? "0")>
-
-bind ends-ts
-  take name, like text
-  like boolean
-  case node
-    text <($name).endsWith(".ts")>
-
-bind sorted-texts
-  take names, like list, like text
-  like list, like text
-  case node
-    text <($names).sort()>
-
-# `<file>:<size>:<whole mtime>`, one line of a fingerprint
-bind stat-line
-  take full, like text
-  take stat, like dynamic
-  like text
-  case node
-    text <(($full) + ":" + ($stat).size + ":" + Math.floor(($stat).mtimeMs))>
-
-bind is-link
-  take stat, like dynamic
-  like boolean
-  case node
-    text <($stat).isSymbolicLink()>
-
-bind is-directory
-  take stat, like dynamic
-  like boolean
-  case node
-    text <($stat).isDirectory()>
-
-# compile/cache.ts `CACHE_EPOCH`, read by its exact name (a dock read of an UPPER_SNAKE name loses its underscores)
-bind cache-epoch
-  take module, like dynamic
-  like text
-  case node
-    text <($module).CACHE_EPOCH>
-
-# the files a kind's version is fingerprinted against (compile/cache-scope.tree, whose `cache-scope` answers a hash),
-# for a kind that is given
-bind scope-files
-  take module, like dynamic
-  take kind, like dynamic
-  like dynamic
-  case node
-    text <(($kind) ? ($module).cacheScope().get($kind) : undefined)>
-
-bind as-texts
-  take value, like dynamic
-  like list, like text
-  case node
-    text <($value)>
-
-bind scope-kinds
-  take module, like dynamic
-  like list, like text
-  case node
-    text <[...($module).cacheScope().keys()]>
-
-bind kind-key
-  take kind, like dynamic
-  like text
-  case node
-    text <(($kind) ?? "*")>
-
-bind entry-of
-  take key, like text
-  take value, like text
-  like dynamic
-  case node
-    text <[$key, $value]>
-
-bind record-of
-  take entries, like list, like dynamic
-  like dynamic
-  case node
-    text <Object.fromEntries($entries)>
-
-bind member-of
-  take record, like dynamic
-  take key, like text
-  like dynamic
-  case node
-    text <(($record)[$key])>
-
-bind new-compile-cache
-  take module, like dynamic
-  take store, like dynamic
-  take version, like dynamic
-  take cap, like dynamic
-  like dynamic
-  case node
-    text <new (($module).CompileCache)($store, $version, $cap)>
-
 # ---- the disk store ----
 
 task make-disk-state
   take dir, like text
-  take version, like dynamic
+  take version-of
+    like task
+      take kind, like text
+      like text
   like disk-state
 
   back
     make disk-state
       bind dir, dir
-      bind version, version
+      bind version-of, version-of
       bind slugs, make hash
       bind ensured, make hash
       bind swept, make hash
+
+# A version given as a text, one namespace for every kind, or as a function of the kind (a host value either way: the
+# TypeScript callers hand both), as a task of the kind
+task version-task
+  take version, like dynamic
+  like task
+    take kind, like text
+    like text
+  mark private
+
+  fork test, is-text(version)
+    hold
+      save fixed, as-text(version)
+      save always
+        task
+          take kind, like text
+          like text
+          back fixed
+      back always
+  back version
 
 task slug-for
   take state, like disk-state
@@ -273,7 +198,8 @@ task slug-for
   fork test, state/slugs/has(kind)
     hold
       back state/slugs/get(kind)
-  save slug, version-slug(version-text(state/version, kind))
+  save version-of, state/version-of
+  save slug, version-slug(version-of(kind))
   save state/slugs/{kind}, slug
   back slug
 
@@ -299,6 +225,16 @@ task sweep
     take problem
     back
 
+task shard-dir
+  take state, like disk-state
+  take kind, like text
+  take key, like text
+  like text
+  mark private
+
+  back path-join(path-join(path-join(state/dir, kind), slug-for(state, kind)), shard-of(key))
+
+# the shard folder, made once per process (a refusal raises, and the write it was for does not happen)
 task dir-for
   take state, like disk-state
   take kind, like text
@@ -306,27 +242,28 @@ task dir-for
   like text
   mark private
 
-  save sub, node-path/join(state/dir, kind, slug-for(state, kind), shard-of(key))
+  save sub, shard-dir(state, kind, key)
   fork test, not(state/ensured/has(sub))
     hold
-      node-file/mkdir-sync(sub, make(folder-ask, bind(recursive, true)))
+      make-folder(sub)
       save state/ensured/{sub}, true
   back sub
 
-# an entry's text, or undefined: absent, unreadable, or written by an older layout are all a miss, never a crash
+# an entry's text, or none: absent, unreadable, or written by an older layout are all a miss, never a crash
 task load-entry
   take state, like disk-state
   take kind, like text
   take key, like text
-  like dynamic
+  like maybe, like text
 
   sweep(state, kind)
   fork
     mark unsafe
-    back gunzip-text(node-file/read-file-sync(entry-path-by-slug(state/dir, kind, slug-for(state, kind), key)))
+    save text, read-path(entry-path-by-slug(state/dir, kind, slug-for(state, kind), key))
+    back make(some, text)
   halt take
     take problem
-    back nothing()
+    back make none
 
 task next-temp
   like number
@@ -340,31 +277,43 @@ task next-temp
   save counters/{name}, add(at, 1)
   back at
 
+# this process's id, read once
+task pid
+  like number
+  mark private
+
+  save name, <pid>
+  fork test, pids/has(name)
+    hold
+      back pids/get(name)
+  save info, read-current()
+  save id, info/id
+  save pids/{name}, id
+  back id
+
 # atomic: a unique temp, then a rename over the target. True when the entry landed
 task write-entry
   take state, like disk-state
   take kind, like text
   take key, like text
-  take bytes, like dynamic
+  take value, like text
   like boolean
   mark private
 
-  save file, node-path/join(dir-for(state, kind, key), <{key}.json.gz>)
+  save file, path-join(dir-for(state, kind, key), <{key}.json>)
   save temp, <{file}.{pid()}.{next-temp()}.tmp>
+  fork test, write-path(temp, value)
+    hold
+      fork test, rename-path(temp, file)
+        hold
+          back true
   fork
     mark unsafe
-    node-file/write-file-sync(temp, bytes)
-    node-file/rename-sync(temp, file)
-    back true
+    remove-all(temp)
   halt take
-    take problem
-    fork
-      mark unsafe
-      node-file/unlink-sync(temp)
-    halt take
-      # the temp may not exist
-      take missing
-    back false
+    # the temp may not exist
+    take missing
+  back false
 
 # One retry, with the shard made again. `ensured` remembers each shard folder for the life of the process, and another
 # process's reclaim-stale-versions removes a namespace by mtime, not by use, so a long-lived process (the language
@@ -378,13 +327,12 @@ task save-entry
   like void
 
   sweep(state, kind)
-  save bytes, gzip-text(value)
   fork
     mark unsafe
-    fork test, not(write-entry(state, kind, key, bytes))
+    fork test, not(write-entry(state, kind, key, value))
       hold
-        state/ensured/remove(node-path/join(state/dir, kind, slug-for(state, kind), shard-of(key)))
-        write-entry(state, kind, key, bytes)
+        state/ensured/remove(shard-dir(state, kind, key))
+        write-entry(state, kind, key, value)
   halt take
     # the shard could not be made again: a miss later, never a crash now
     take problem
@@ -400,7 +348,7 @@ task face-of
       take kind, like text
       take key, like text
       like dynamic
-      back load-entry(state, kind, key)
+      back host-entry(load-entry(state, kind, key))
   save saver
     task
       take kind, like text
@@ -418,7 +366,7 @@ task disk-cache-store
   take version, like dynamic
   like dynamic
 
-  back face-of(make-disk-state(dir, version))
+  back face-of(make-disk-state(dir, version-task(version)))
 
 # A store that routes the per-module `mill` level (and the separate build's units) to a shared dir, reused across
 # projects, and the whole-graph `output` level to the project-local dir
@@ -428,8 +376,20 @@ task shared-cache-store
   take version, like dynamic
   like dynamic
 
-  save local, make-disk-state(local-dir, version)
-  save shared, make-disk-state(shared-dir, version)
+  back shared-store-of(local-dir, shared-dir, version-task(version))
+
+task shared-store-of
+  take local-dir, like text
+  take shared-dir, like text
+  take version-of
+    like task
+      take kind, like text
+      like text
+  like dynamic
+  mark private
+
+  save local, make-disk-state(local-dir, version-of)
+  save shared, make-disk-state(shared-dir, version-of)
   save loader
     task
       take kind, like text
@@ -437,8 +397,8 @@ task shared-cache-store
       like dynamic
       fork test, is-shared-kind(kind)
         hold
-          back load-entry(shared, kind, key)
-      back load-entry(local, kind, key)
+          back host-entry(load-entry(shared, kind, key))
+      back host-entry(load-entry(local, kind, key))
   save saver
     task
       take kind, like text
@@ -455,7 +415,12 @@ task shared-cache-store
 # ---- the compiler's version ----
 
 # The package root, RELATIVE TO WHICH the compiler's folders are named: the directory whose `package.json` is this
-# package, under either name it has had. The empty text for none. Found once
+# package, under either name it has had, walked up from the running program's own folder. The empty text for none.
+# Found once.
+#
+# Diverges: original, walked up from this module's own folder (its module URL); new, from the folder of
+# `program-file` (decision 169 point 5). Reason: on native every module is the one program file, and under line.js,
+# a worker, tsx and vitest the first Term manifest above the running program is the same package root
 task package-root
   like text
 
@@ -463,22 +428,30 @@ task package-root
   fork test, roots/has(name)
     hold
       back roots/get(name)
-  save root, find-package-root(this-folder())
+  save root, find-package-root(path-directory(program-file()))
   save roots/{name}, root
   back root
+
+task is-term-manifest
+  take text, like text
+  like boolean
+  mark private
+
+  save named, field-text(parse-json(text), <name>)
+  back or(is-equal(named, <@cluesurf/term>), is-equal(named, <@cluesurf/seed.tree>))
 
 task find-package-root
   take dir, like text
   like text
   mark private
 
-  save manifest, node-path/join(dir, <package.json>)
-  fork test, node-file/exists-sync(manifest)
+  save manifest, path-join(dir, <package.json>)
+  fork test, path-exists(manifest)
     hold
       save named, false
       fork
         mark unsafe
-        save named, is-term-manifest(node-file/read-file-sync(manifest, <utf8>))
+        save named, is-term-manifest(read-path(manifest))
       halt take
         # keep walking up
         take problem
@@ -486,7 +459,7 @@ task find-package-root
       fork test, named
         hold
           back dir
-  save up, node-path/dirname(dir)
+  save up, path-directory(dir)
   fork test, is-equal(up, dir)
     hold
       back <>
@@ -501,11 +474,23 @@ task compiler-dirs
   dirs/push <deck/call/code>
   back dirs
 
+# `<file>:<size>:<whole mtime>`, one line of a fingerprint
+task stat-line
+  take full, like text
+  take stat, like path-stat
+  like text
+  mark private
+
+  back <{full}:{stat/size}:{round-down(stat/changed)}>
+
 # Fingerprint the compiler's own SOURCE, by path, size and mtime: the same from the CLI, from `tsx` and from a worker.
-# A KIND IS FINGERPRINTED AGAINST ONLY THE CODE THAT CAN REACH IT (compile/cache-scope.tree); without a kind,
-# every `.ts` under the compiler's folders
+# A KIND IS FINGERPRINTED AGAINST ONLY THE CODE THAT CAN REACH IT (compile/cache-scope.tree); without a kind (the empty
+# text), every `.ts` under the compiler's folders.
+#
+# Diverges: original, a listed file by its lstat; new, by its stat. Reason: @term/base answers a size and a change time
+# only through `stat`, and the listed files are the compiler's own sources, which are never links
 task compiler-source-hash
-  take kind, like dynamic
+  take kind, like text
   like text
 
   save root, package-root()
@@ -513,15 +498,16 @@ task compiler-source-hash
     hold
       back <>
   save parts, make list
-  save scoped, scope-files(cache-scope-module, kind)
-  fork test, not(is-nothing(scoped))
+  save scope, cache-scope()
+  fork test, and(is-unequal(kind, <>), scope/has(kind))
     hold
-      walk as-texts(scoped)
+      walk scope/get(kind)
         take file
-        save full, node-path/join(root, file)
+        save full, path-join(root, file)
         fork
           mark unsafe
-          parts/push stat-line(full, node-file/lstat-sync(full))
+          save stat, stat-path(full)
+          parts/push stat-line(full, stat)
         halt take
           # a listed file that is gone is itself a change, and contributes nothing
           take problem
@@ -530,8 +516,8 @@ task compiler-source-hash
 
   walk compiler-dirs()
     take dir
-    save full, node-path/join(root, dir)
-    fork test, node-file/exists-sync(full)
+    save full, path-join(root, dir)
+    fork test, path-exists(full)
       hold
         walk-sources(full, parts)
   back hash-or-empty(parts)
@@ -544,44 +530,54 @@ task hash-or-empty
   fork test, is-equal(parts/length, 0)
     hold
       back <>
-  back hash-key(join(parts, <\n>))
+  back hash-key(parts/join(<\n>))
 
+task entry-order
+  take a, like path-entry
+  take b, like path-entry
+  like ordering
+  mark private
+
+  back utf16-order(a/name, b/name)
+
+# every `.ts` under `at`, in name order, a link never followed
 task walk-sources
   take at, like text
   take parts, like list, like text
   like void
   mark private
 
-  save names, make list
+  save entries, make list
   fork
     mark unsafe
-    save names, sorted-texts(node-file/readdir-sync(at))
+    save entries, sort(list-entries(at), entry-order)
   halt take
     take problem
     back
 
-  walk names
-    take name
-    save full, node-path/join(at, name)
-    fork
-      mark unsafe
-      save stat, node-file/lstat-sync(full)
-      fork test, is-link(stat)
-        hold
-          turn next
-      fork test, is-directory(stat)
-        hold
-          walk-sources(full, parts)
-        miss
-          fork test, ends-ts(name)
-            hold
+  walk entries
+    take entry
+    save full, path-join(at, entry/name)
+    sift entry/kind
+      case directory
+        walk-sources(full, parts)
+      case file
+        fork test, ends-with(entry/name, <.ts>)
+          hold
+            fork
+              mark unsafe
+              save stat, stat-path(full)
               parts/push stat-line(full, stat)
-    halt take
-      # unreadable entries simply do not contribute
-      take problem
-      turn next
+            halt take
+              # unreadable entries simply do not contribute
+              take problem
+              turn next
+      case link
+        turn next
+      case other
+        turn next
 
-# the running bundle's hash, for an installed package with no sources beside it. Once per process
+# the running program's fingerprint, for an installed package with no sources beside it. Once per process
 task running-file-hash
   like text
 
@@ -593,27 +589,28 @@ task running-file-hash
   save running/{name}, hash
   back hash
 
+# Diverges: original, the hash of the running bundle's text, and only when it ends `.js` or `.mjs`; new, the hash of
+# the program file's stat line (path, size, change time), whatever its extension (decision 169 point 5). Reason: the
+# native program is a binary whose bytes are not text, which the original skipped, so an installed native `term` got a
+# fixed version and served stale entries across an upgrade
 task hash-running-file
   like text
   mark private
 
-  walk running-candidates()
-    take file
-    fork
-      mark unsafe
-      fork test, is-script(file)
-        hold
-          fork test, node-file/exists-sync(as-text(file))
-            hold
-              back hash-key(node-file/read-file-sync(as-text(file), <utf8>))
-    halt take
-      # try the next candidate
-      take problem
-      turn next
-  back <>
+  save file, program-file()
+  fork test, is-equal(file, <>)
+    hold
+      back <>
+  fork
+    mark unsafe
+    save stat, stat-path(file)
+    back hash-key(stat-line(file, stat))
+  halt take
+    take problem
+    back <>
 
 task compiler-code-hash
-  take kind, like dynamic
+  take kind, like text
   like text
   mark private
 
@@ -633,36 +630,42 @@ task package-version
       back <0>
   fork
     mark unsafe
-    back manifest-version(node-file/read-file-sync(node-path/join(root, <package.json>), <utf8>))
+    save version, field-text(parse-json(read-path(path-join(root, <package.json>))), <version>)
+    fork test, is-equal(version, <>)
+      hold
+        back <0>
+    back version
   halt take
     take problem
     back <0>
 
-# The fingerprint of the running compiler FOR ONE CACHE KIND (every kind when none is given): the cache-format epoch,
-# the package version and the code's fingerprint. Memoized per kind
+# The fingerprint of the running compiler FOR ONE CACHE KIND (every kind when none is given, the empty text): the
+# cache-format epoch, the package version and the code's fingerprint. Memoized per kind
 task compiler-version
-  take kind, like dynamic, fall nothing()
+  take kind, like text, fall <>
   like text
 
-  save at, kind-key(kind)
+  save at, kind
+  fork test, is-equal(kind, <>)
+    hold
+      save at, <*>
   fork test, versions/has(at)
     hold
       back versions/get(at)
-  save version, <{cache-epoch(compile-cache-module)}:{package-version()}:{compiler-code-hash(kind)}>
+  save version, <{cache-epoch()}:{package-version()}:{compiler-code-hash(kind)}>
   save versions/{at}, version
   back version
 
-# every kind's version, for handing to a build worker in one record
+# every kind's version, for handing to a build worker in one record (a host object of kind to version)
 task compiler-versions
   like dynamic
 
-  # typed where it is made: each entry is a [kind, version] pair, a host value
-  save entries, like list, like dynamic
-    make list
-  walk scope-kinds(cache-scope-module)
+  save record, make-object()
+  save scope, cache-scope()
+  walk scope/keys()
     take kind
-    entries/push entry-of(kind, compiler-version(kind))
-  back record-of(entries)
+    set-field(record, kind, from-text(compiler-version(kind)))
+  back record
 
 # ---- the caches ----
 
@@ -692,22 +695,23 @@ task version-for-kind
   like text
   mark private
 
-  save given, member-of(versions-given, kind)
-  fork test, is-nothing(given)
+  save given, get-field(versions-given, kind)
+  fork test, is-null(given)
     hold
       back compiler-version(kind)
   back as-text(given)
 
 # A persistent compile cache for a project: per-module mills shared machine-wide, the project's compiled output local.
-# `version` is every kind's version, which a BUILD WORKER is handed because it cannot work it out for itself
+# `version` is every kind's version (a host record), which a BUILD WORKER is handed because it cannot work it out for
+# itself; `mill-cap` the milled modules held in memory. Null or none for either is the default
 task project-cache
   take project-root, like text
-  take version, like dynamic, fall nothing()
-  take mill-cap, like dynamic, fall nothing()
+  take version, like dynamic, fall make-null()
+  take mill-cap, like dynamic, fall make-null()
   like dynamic
 
   save given, version
-  fork test, is-nothing(given)
+  fork test, is-null(given)
     hold
       save given, compiler-versions()
   save for-kind
@@ -715,8 +719,8 @@ task project-cache
       take kind, like text
       like text
       back version-for-kind(given, kind)
-  save store, shared-cache-store(project-cache-dir(project-root), cache-home(), for-kind)
-  back new-compile-cache(compile-cache-module, store, for-kind, mill-cap)
+  save store, shared-store-of(project-cache-dir(project-root), cache-home(), for-kind)
+  back new-compile-cache(store, for-kind, mill-cap)
 
 # ONE CACHE PER PROJECT FOR THE LIFE OF THE PROCESS, for every compile a dev loop runs
 task process-cache

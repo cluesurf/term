@@ -15,7 +15,6 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
-import { gunzipSync, gzipSync } from 'node:zlib'
 import {
   buildSession,
   compileProjectSeparate,
@@ -68,7 +67,7 @@ const files = (dir: string): string[] =>
 
     return statSync(full).isDirectory()
       ? files(full)
-      : full.endsWith('.json.gz')
+      : full.endsWith('.json')
         ? [full]
         : []
   })
@@ -109,7 +108,7 @@ entries.forEach((file, at) => {
   } else if (at % 3 === 1) {
     writeFileSync(file, Buffer.from('not a cache entry'))
   } else {
-    writeFileSync(file, gzipSync(Buffer.from('{}')))
+    writeFileSync(file, '{}')
   }
 })
 
@@ -130,7 +129,7 @@ const readable = files(store).filter(file => {
   try {
     return (
       JSON.stringify(
-        JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')),
+        JSON.parse(readFileSync(file, 'utf8')),
       ) !== '{}'
     )
   } catch {

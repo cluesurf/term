@@ -13,8 +13,14 @@ load @term/deck/package/grammar-reading
 load @term/deck/version
   find show-code
 
-dock load
-  load <node:fs>, name node-file
+# a whole file read without waiting through @term/base, where node:fs was docked (item term-self-host-001-1488):
+# readFileSync on node. A file that is not there raises `absence` and one the host refuses `failure`, each caught below
+# as node's own error was
+load @term/base/file/blocking
+  find read, name file-text
+
+load @term/base/text
+  find contains, name text-holds
 
 # the mark this manifest text declares, the empty text for none. A manifest that does not read has no mark, and the
 # parsed default 0.0.0 is no mark either (the publish rule refuses it as a version)
@@ -43,7 +49,7 @@ task manifest-mark-of
   save text, <>
   fork
     mark unsafe
-    save text, node-file/read-file-sync(file, <utf8>)
+    save text, file-text(file)
   halt take
     take problem
     back <>
@@ -73,11 +79,11 @@ task manifest-line-of
   save body, <>
   fork
     mark unsafe
-    save body, node-file/read-file-sync(file, <utf8>)
+    save body, file-text(file)
   halt take
     take problem
     back <>
-  fork test, not(body/includes(<line>))
+  fork test, not(text-holds(body, <line>))
     hold
       back <>
   save named, <>

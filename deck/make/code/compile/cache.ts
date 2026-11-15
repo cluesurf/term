@@ -17,6 +17,7 @@
 import type { Program, Twin } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import {
+  cacheEpoch,
   contentHash as contentHashPort,
   hashFields as hashFieldsPort,
   makeCompileCache,
@@ -83,7 +84,11 @@ import type { CompileCache as CacheState } from '@term/make/code/compile/cache-s
 // term-self-host-001-0740), so a stored answer of a program that fitted before may no longer stand.
 // '25': an output entry is compile/program-entry.tree's `compile-result`, not compile.ts's `CompileResult` (item
 // term-self-host-001-1237), so an output stored at '24' has another shape under the same key.
-export const CACHE_EPOCH = '25'
+// '26': an entry is its JSON as plain UTF-8 text in `<key>.json`, not gzip in `<key>.json.gz` (decisions 169 point 4
+// and 170 of term/self-host/change/001-finish-self-host, item term-self-host-001-1390), so no gzip entry is ever read
+// as text: the old version folders are swept as any old epoch's are.
+// The number is compile/cache-store.tree's `cache-epoch`, so the Term store reads the same one on every backend.
+export const CACHE_EPOCH: string = cacheEpoch()
 
 // a bigint (an integer literal past 2^53) is stored tagged, the way program-json.ts renders it, since JSON has no
 // integer wider than a double and `Number()` would store a different integer. The cache's own entries are tagged and

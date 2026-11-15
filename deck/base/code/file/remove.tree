@@ -1,0 +1,38 @@
+# A whole-folder remove that RAISES when the host refuses, on node, Rust, Swift and Kotlin (term/compiler decision 021,
+# the shape of point 1b). Answered WITHOUT awaiting, as [blocking.tree](blocking.tree) is.
+#
+# `remove-all` removes what is at a path and, for a folder, everything in it, as node's `fs.rm` with `recursive` and
+# `force` does: nothing there is no refusal, a link is removed and never followed. Node's own steps, in its order: the
+# path's `lstat` (a refusal other than ENOENT is raised, as fs.rm's option check raises it), then for a folder its
+# `rmdir`, and only when that answers ENOTEMPTY, EEXIST or EPERM its entries (`scandir`), each removed the same way (a
+# file by `unlink`), then the `rmdir` again. A refused `rmdir` of a folder that is not empty, under a read-only parent,
+# raises at once and leaves its entries there, as node does.
+#
+# Any refusal raises `failure`, its note node's own message, worded once by [failure.tree](failure.tree): each binding
+# answers the refusal's code name (empty when carried out), the step as node's `syscall` names it, the host's text,
+# and the path the step named, which is the path given or an entry under it
+# (`EACCES: permission denied, rmdir '/x/.base/@term/code/log'`).
+#
+# A new module, never a change to the absorbing call: `remove` of [directory.tree](directory.tree) stays total, as
+# `make` stays beside [create.tree](create.tree)'s `make-folder` (decision 021 point 1b, ruling 1473).
+#
+# Browser: there is no file system there, so this module has no browser binding.
+
+mark unstable
+
+load @term/base/native/{platform}/file/remove
+  find remove-path
+
+load @term/base/file/failure
+  find raise-file-failure
+
+# what is at `path`, and for a folder everything in it. Nothing there is carried out
+task remove-all
+  take path, like text
+  like void
+  save raw
+    call remove-path
+      read path
+  call raise-file-failure
+    read raw
+    read raw/3

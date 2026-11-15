@@ -27,6 +27,22 @@ mod watch_file {
         // change that landed just before `watch_close` is still delivered afterwards, and a caller looping until
         // the empty event gets one more change than the watcher was open for. This flag is the actual close.
         pub shut: AtomicBool,
+        // what the host refused when the watch was opened (refusal.rs), the empty code name when it opened: file/watch
+        // raises it (term-self-host-001-1519)
+        pub refusal: Vec<String>,
+    }
+
+    // runtime-include: refusal.rs
+
+    // a notify error as a refusal of the `watch` step: an io error by its code, a path notify found missing as ENOENT
+    fn notify_refused(failure: notify::Error) -> Vec<String> {
+        let text = failure.to_string();
+
+        match failure.kind {
+            notify::ErrorKind::Io(failure) => refused(&failure, "watch"),
+            notify::ErrorKind::PathNotFound => vec!["ENOENT".to_string(), "watch".to_string(), text],
+            _ => vec!["?".to_string(), "watch".to_string(), text],
+        }
     }
 
     pub type Watcher = Arc<WatchState>;
@@ -47,10 +63,24 @@ mod watch_file {
         }
     }
 
+    // A path is refused where node's fs.watch refuses it: node opens the path to read first (libuv's open(2) on darwin,
+    // inotify's read check on Linux), so a missing path is ENOENT, one under a file ENOTDIR and one the run may not read
+    // EACCES, though FSEvents would watch the last. The open is that same check, closed at once
     pub async fn watch_open(path: String, deep: bool) -> Watcher {
         use notify::Watcher as _;
 
         let (send, take) = channel();
+
+        if let Err(failure) = std::fs::File::open(&path) {
+            return Arc::new(WatchState {
+                keep: Mutex::new(None),
+                take: Mutex::new(take),
+                shut: AtomicBool::new(true),
+                refusal: refused(&failure, "watch"),
+            });
+        }
+
+        let mut refusal = carried();
         let watcher = notify::recommended_watcher(
             move |event: notify::Result<notify::Event>| {
                 let event = match event {
@@ -74,18 +104,31 @@ mod watch_file {
                 } else {
                     notify::RecursiveMode::NonRecursive
                 };
-                let _ = watcher.watch(std::path::Path::new(&path), mode);
-
-                Some(watcher)
+                match watcher.watch(std::path::Path::new(&path), mode) {
+                    Ok(_) => Some(watcher),
+                    Err(failure) => {
+                        refusal = notify_refused(failure);
+                        None
+                    }
+                }
             }
-            Err(_) => None,
+            Err(failure) => {
+                refusal = notify_refused(failure);
+                None
+            }
         };
+        let shut = keep.is_none();
 
         Arc::new(WatchState {
             keep: Mutex::new(keep),
             take: Mutex::new(take),
-            shut: AtomicBool::new(false),
+            shut: AtomicBool::new(shut),
+            refusal,
         })
+    }
+
+    pub fn watch_refusal(watcher: Watcher) -> Vec<String> {
+        watcher.refusal.clone()
     }
 
     // the next change. A closed watcher answers with the empty event rather than blocking forever, so a caller

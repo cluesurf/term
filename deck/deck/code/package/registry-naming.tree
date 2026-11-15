@@ -14,14 +14,30 @@
 #     which every reader copied)
 #   - `resolve-registry` takes the scope routes as a hash, empty for none, and a route to the empty text counts as no
 #     route, as the original's truthiness read it
-#   - the patterns, trims and slices are host binds, each the original's own expression, so they cut UTF-16 units and
-#     trim JavaScript's whitespace as it did
+#   - the patterns, trims and slices are Term over @term/base, so they read the same on every backend (item
+#     term-self-host-001-1401, where each was a node-only bind of the original's own expression). Every cut falls next
+#     to an ASCII `@`, `/` or `.tree`, so code points and UTF-16 units cut the same text, and a scope's root space is
+#     the first `/` segment, which is `slice(0, indexOf("/"))` with no count at all. The trim strips JavaScript's own
+#     whitespace (`trim-host-space`), U+FEFF included, which @term/base's `trim` keeps
 
 load @term/base/list
   find list
+  find get
+  find join
 
 load @term/base/hash
   find hash
+
+load @term/base/text
+  find split
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
 
 form scope-parts
   link scope, like text
@@ -48,82 +64,132 @@ task show-default-oci-host
 
   back default-oci-host
 
-bind naming-ends-with-tree
+task naming-ends-with-tree
   take name, like text
   like boolean
-  case node
-    text <$name.endsWith(".tree")>
+  mark private
 
-bind naming-without-tree
+  back ends-with(name, <.tree>)
+
+# the name with its `.tree` cut off, asked only of a name that ends with it: five code points, five UTF-16 units
+task naming-without-tree
   take name, like text
   like text
-  case node
-    text <$name.slice(0, -5)>
+  mark private
 
-bind naming-starts-with-at
+  back substring(name, 0, subtract(char-count(name), 5))
+
+task naming-starts-with-at
   take name, like text
   like boolean
-  case node
-    text <$name.startsWith("@")>
+  mark private
 
-bind naming-trim
+  back starts-with(name, <@>)
+
+# whether a code point is whitespace or a line end to JavaScript's `trim`: tab to carriage return, the space, U+00A0,
+# U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F, U+3000 and U+FEFF. Also the set `parseInt` sets aside
+# first (grammar-reading.tree's leading-integer-of)
+task is-host-space
+  take code, like number
+  like boolean
+
+  fork test, and(is-minimum(code, 9), is-maximum(code, 13))
+    hold
+      back true
+  fork test, and(is-minimum(code, 8192), is-maximum(code, 8202))
+    hold
+      back true
+  fork test, or(is-equal(code, 32), or(is-equal(code, 160), is-equal(code, 5760)))
+    hold
+      back true
+  fork test, or(is-equal(code, 8232), or(is-equal(code, 8233), is-equal(code, 8239)))
+    hold
+      back true
+  fork test, or(is-equal(code, 8287), or(is-equal(code, 12288), is-equal(code, 65279)))
+    hold
+      back true
+  back false
+
+# the text with JavaScript's whitespace cut from both ends, as the original's `trim()`
+task naming-trim
   take value, like text
   like text
-  case node
-    text <$value.trim()>
+  mark private
 
-bind naming-has-scheme
+  save runes, to-runes(value)
+  save start, 0
+  save stop, runes/length
+  walk test
+    hook test, is-below(start, stop)
+    hook hold
+      fork test, not(is-host-space(get(runes, start)))
+        hold
+          halt
+      save start, add(start, 1)
+  walk test
+    hook test, is-above(stop, start)
+    hook hold
+      fork test, not(is-host-space(get(runes, subtract(stop, 1))))
+        hold
+          halt
+      save stop, subtract(stop, 1)
+  back substring(value, start, stop)
+
+# `oci://`, `http://` or `https://` first, as the original's `/^(oci|https?):\/\//`
+task naming-has-scheme
   take value, like text
   like boolean
-  case node
-    text <</^(oci|https?):\/\//.test($value)>>
+  mark private
 
-bind naming-without-slashes
+  back or(starts-with(value, <oci://>), or(starts-with(value, <http://>), starts-with(value, <https://>)))
+
+# every leading `/` cut, as the original's `replace(/^\/+/, "")`
+task naming-without-slashes
   take value, like text
   like text
-  case node
-    text <<$value.replace(/^\/+/, "")>>
+  mark private
 
-bind naming-without-at
+  save rest, value
+  walk test
+    hook test, starts-with(rest, </>)
+    hook hold
+      save rest, substring(rest, 1)
+  back rest
+
+# one leading `@` cut, as the original's `replace(/^@/, "")`
+task naming-without-at
   take value, like text
   like text
-  case node
-    text <$value.replace(/^@/, "")>
+  mark private
 
-bind naming-parts
+  fork test, starts-with(value, <@>)
+    hold
+      back substring(value, 1)
+  back value
+
+task naming-parts
   take name, like text
   like list, like text
-  case node
-    text <$name.split("/")>
+  mark private
 
-bind naming-join-slice
+  back split(name, </>)
+
+# the parts from `start` up to, not including, `end`, joined by `/`
+task naming-join-slice
   take parts, like list, like text
   take start, like number
   take end, like number
   like text
-  case node
-    text <$parts.slice($start, $end).join("/")>
+  mark private
 
-bind naming-index-of-slash
-  take value, like text
-  like number
-  case node
-    text <$value.indexOf("/")>
-
-bind naming-slice
-  take value, like text
-  take start, like number
-  take end, like number
-  like text
-  case node
-    text <$value.slice($start, $end)>
-
-bind naming-from
-  take value, like text
-  take start, like number
-  like text
-  case node
-    text <$value.slice($start)>
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      kept/push(get(parts, at))
+      save at, add(at, 1)
+  back join(kept, </>)
 
 # the default scope to registry map. Any scope not listed falls back to the config's `registry` field (npmjs.org
 # unless overridden), which is what keeps a mixed dependency tree working. A value is an npm-style https registry or an
@@ -219,7 +285,7 @@ task resolve-registry
 
   fork test, not(is-equal(root, <>))
     hold
-      back <oci://{default-oci-host}/{naming-from(root, 1)}>
+      back <oci://{default-oci-host}/{naming-without-at(root)}>
 
   back registry
 
@@ -264,10 +330,5 @@ task root-scope
   take scope, like text
   like text
 
-  save slash, naming-index-of-slash(scope)
-
-  fork test, is-equal(slash, -1)
-    hold
-      back scope
-
-  back naming-slice(scope, 0, slash)
+  # the first `/` segment, the whole scope when it has no `/`
+  back get(split(scope, </>), 0)

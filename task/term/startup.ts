@@ -65,6 +65,10 @@ const CASES: Case[] = [
   { name: 'halt -p 59997', args: ['halt', '-p', '59997'], cwd: TERM, runs: RUNS, budget: [10, 15] },
   { name: 'mind', args: ['mind'], cwd: TERM, runs: RUNS, budget: [10, 15] },
   { name: 'wake /dev/null/demo', args: ['wake', '/dev/null/demo'], cwd: TERM, runs: RUNS, budget: [10, 15] },
+  // feed, native since item term-self-host-001-1381: it refuses and names `term boot` (exit 2), serving nothing
+  { name: 'feed', args: ['feed'], cwd: TERM, runs: RUNS, budget: [10, 15] },
+  // note, native since item term-self-host-001-1523 (its line item 1504): the Term root's own deck.tree, read only
+  { name: 'note', args: ['note'], cwd: TERM, runs: RUNS, budget: [10, 15] },
 ]
 
 if (withMake) {

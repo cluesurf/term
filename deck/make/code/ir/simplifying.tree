@@ -3197,6 +3197,84 @@ task forwarder-target
     miss
       back make none
 
+# whether a type is the host's dynamic value: `unknown` or `dynamic`
+task is-dynamic-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case unknown
+          back true
+        case dynamic
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# whether a value of this type is a plain value, not one the backends already hold by reference: a text, a number,
+# a truth, the unit or a form's record (a list, a hash or a task is held by a reference Rust turns into its dynamic
+# value as it stands)
+task is-plain-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back true
+        case number
+          back true
+        case float
+          back true
+        case boolean
+          back true
+        case unit
+          back true
+        case named
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# whether a forwarder's call to a native member hands it, through a parameter typed `unknown` or `dynamic`, a plain
+# value of the call being rewritten. The parameter is where that value becomes the host's dynamic one (Rust boxes it
+# into Rc<dyn Any>), and the member has no parameter types to box by: `holds(manifest/host)` collapsed to
+# `compare-runtime/is-truthy(manifest.host)` handed rustc a String (E0308, item term-self-host-001-1523). Such a call
+# stops at the forwarder, whose own parameter boxes it
+task crosses-boundary
+  take inner, like expression
+  take given, like list, like expression
+  like boolean
+  mark private
+
+  sift inner
+    case call
+      sift callee
+        case member
+          save i, 0
+          walk args
+            take arg
+            fork test, is-below(i, given/length)
+              hold
+                fork test, and(is-dynamic-type(expression-type(arg)), is-plain-type(expression-type(get(given, i))))
+                  hold
+                    back true
+            save i, add(i, 1)
+          back false
+        miss
+          back false
+    miss
+      back false
+
 task rewrite-expression
   take node, like expression
   take forwarders, like hash, like text, like expression
@@ -3241,11 +3319,13 @@ task rewrite-expression
               link callee-name
               fork test, and(forwarders/has(callee-name), not(seen/has(callee-name)))
                 hold
-                  save seen/{callee-name}, true
                   save inner, forwarders/get(callee-name)
-                  save chained, callee-of(inner)
-                  save framed, join-frames(frames-of(inner), framed)
-                  save going, true
+                  fork test, not(crosses-boundary(inner, new-args))
+                    hold
+                      save seen/{callee-name}, true
+                      save chained, callee-of(inner)
+                      save framed, join-frames(frames-of(inner), framed)
+                      save going, true
             miss
               save nothing, 0
       save copy, shallow-copy(node)

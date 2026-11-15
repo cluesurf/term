@@ -22,7 +22,6 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
-import { gunzipSync } from 'node:zlib'
 import {
   buildSession,
   compileProjectSeparate,
@@ -70,12 +69,8 @@ const entries = (at: string): string[] =>
       })
     : []
 
-const read = (file: string): string => {
-  const raw = readFileSync(file)
-  return raw[0] === 0x1f
-    ? gunzipSync(raw).toString('utf8')
-    : raw.toString('utf8')
-}
+// an entry is its JSON as plain UTF-8 text (decision 169 point 4)
+const read = (file: string): string => readFileSync(file, 'utf8')
 
 const build = (root: string, store: string) =>
   compileProjectSeparate(

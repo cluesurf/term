@@ -13,18 +13,33 @@ load ./file/metadata
 
 load @term/base/file/failure
   find raise-file-failure
+  find raise-read-failure
 
 load @term/base/native/node/file/refusal
   find node-refusal
 
+# a read node refuses raises `absence` when node says nothing is there (ENOENT) and any other refusal as `failure`,
+# its note node's own message, as on every backend (item 1499, option A): the host Error is caught here and handed up
+# as its code, syscall and message
 task read-file
   mark async
   take path, like text
   like text
-  send back
-    call fs/read-file
+  fork
+    mark unsafe
+    save body, like text
+      call fs/read-file
+        read path
+        text <utf8>
+        wait true
+    send back, read body
+  halt take
+    take problem
+    call raise-read-failure
+      call node-refusal
+        read problem
       read path
-      text <utf8>
+  send back, text <>
 
 # a write node refuses raises `failure` worded by @term/base/file/failure, its note node's own message, as on every
 # backend (term/compiler decision 021 point 4a): the host Error is caught here and handed up as its code, syscall and

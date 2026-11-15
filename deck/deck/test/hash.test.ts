@@ -29,11 +29,11 @@ describe('verifyHash', () => {
   it('returns true for matching hash', async () => {
     const data = Buffer.from('test data')
     const hash = await hashBuffer({ data })
-    expect(verifyHash({ data, expected: hash })).toBe(true)
+    expect(await verifyHash({ data, expected: hash })).toBe(true)
   })
 
-  it('returns false for non-matching hash', () => {
+  it('returns false for non-matching hash', async () => {
     const data = Buffer.from('test data')
-    expect(verifyHash({ data, expected: 'badhash' })).toBe(false)
+    expect(await verifyHash({ data, expected: 'badhash' })).toBe(false)
   })
 })

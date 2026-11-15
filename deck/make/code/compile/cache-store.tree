@@ -117,6 +117,15 @@ form compile-cache
 
 host text-hash-cap, code 67108864
 
+# THE CACHE FORMAT EPOCH, the first part of every kind's version (call/code/work/cache/compile-store.tree
+# `compiler-version`). compile/cache.ts exports it as `CACHE_EPOCH` and keeps the history of each bump. Here, in Term, so
+# the store reads it on every backend instead of docking the TypeScript module (decision 169 point 6 of
+# term/self-host/change/001-finish-self-host)
+task cache-epoch
+  like text
+
+  back <26>
+
 task make-text-hashes
   like text-hashes
 

@@ -25,12 +25,13 @@ load @term/call/work/output/printer-input
 load @term/call/work/item/event
   find item-field
 
+# the clock through @term/base, where the global Date was docked (item term-self-host-001-1488): Date.now() on node
+load @term/base/time
+  find now, name clock-now
+
 dock load
   # the global, not node:process: `on` is inherited from EventEmitter, and a builtin's namespace holds own fields only
   load <global:process>, name host-process
-  load <global:Error>, name host-error
-  load <global:String>, name host-string
-  load <global:Date>, name host-date
 
 form work-open
   link verb, like text
@@ -68,18 +69,6 @@ form stopped-close
 # the daemon running in this process, for the ctrl-c handler
 host running, make hash
 
-# the message of a failure the host raised, as the original printed it: an Error's message, else the value as text
-task message-of
-  take error, like dynamic
-  like text
-  mark private
-
-  # `error instanceof Error`
-  fork test, host-error/prototype/is-prototype-of(error)
-    hold
-      back error/message
-  back host-string/call(<>, error)
-
 # Ctrl-C: ○ and exit 130 (section 18), as `term boot` and `term feed` end
 task stop-on-interrupt
   like void
@@ -104,7 +93,7 @@ task start-worker
   save running/{slot}, daemon
   save fields, make list
   fields/push(field(<route>, <POST /analyze \{file, text\}, answers diagnostics>))
-  save took, subtract(host-date/now(), started)
+  save took, subtract(clock-now(), started)
   report(make(start-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <http://localhost:{port}>), bind(duration, took), bind(fields, fields)))
   host-process/on(<SIGINT>, stop-on-interrupt)
 
@@ -122,7 +111,7 @@ task call-work
   save facts, make list
   facts/push(target)
   open-run(make(work-open, bind(verb, <work>), bind(root, root), bind(facts, facts)))
-  save started, host-date/now()
+  save started, clock-now()
   save chosen, 5179
   sift port
     case some
@@ -134,8 +123,11 @@ task call-work
     mark unsafe
     start-worker(root, chosen, target, started)
   halt take
+    # a caught raise reads its note on every backend (term/compiler decision 021 point 10a): a host Error's message, a
+    # Term raise's note, any other value's text, what the original printed (`err instanceof Error ? err.message :
+    # String(err)`)
     take error
     save said, make list
-    said/push(message-of(error))
+    said/push(error/note)
     report(make(failed-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <The compiler worker did not start>), bind(message, said)))
     close-run(make(plain-close, bind(verdict, <Not started>)))

@@ -21,6 +21,12 @@ task read-process
       bind executable
         call current/executable
 
+# the executable, made real by the shim
+task read-program-file
+  like text
+  send back
+    call current/program-file
+
 task exit-process
   take
     code

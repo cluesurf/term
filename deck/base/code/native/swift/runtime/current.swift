@@ -23,6 +23,16 @@ enum current {
         Foundation.ProcessInfo.processInfo.arguments.first ?? ""
     }
 
+    // the executable with every link followed, the empty text when it cannot be read. The path is Foundation's
+    // (_NSGetExecutablePath on Darwin, /proc/self/exe on Linux), not `executable`'s first argument, which is a bare
+    // name when the program was found on PATH, and realpath would read that against the working directory
+    static func programFile() -> String {
+        guard let path = Bundle.main.executablePath, let resolved = realpath(path, nil) else { return "" }
+        defer { free(resolved) }
+
+        return String(cString: resolved)
+    }
+
     static func exit(_ code: Int) {
         Foundation.exit(Int32(code))
     }

@@ -3422,6 +3422,34 @@ task emit-array
     miss
       back <>
 
+# whether a task variable stored in a task field is read again after: rendered bare (no clone, no wrapping), no cell's
+# handle, not the one read the task holds, and not its last use. Two stores of one closure moved it twice (E0382
+# borrow of moved value `code_root_of`: package-note.tree's link-resolver-of and sibling-resolver-from inlined into
+# note-package-entry, item term-self-host-001-1523)
+task is-task-read-again
+  take value, like expression
+  take rendered, like text
+  take st, like rust-state
+  take facts, like rust-facts
+  like boolean
+  mark private
+
+  sift value
+    case variable
+      link variable-name
+      fork test, is-unequal(rendered, vname(variable-name))
+        hold
+          back false
+      fork test, st/cell-vars/has(variable-name)
+        hold
+          back false
+      fork test, and(st/move-args/has(variable-name), is-equal(st/closure-depth, 0))
+        hold
+          back false
+      back not(last-move(value, st, facts))
+    miss
+      back false
+
 task field-entry
   take name, like text
   take value, like text
@@ -3542,6 +3570,10 @@ task emit-record
                 fork test, or(has-payload, not(facts/recursive-fields/has(key)))
                   hold
                     save value, owned(field/value, st, facts)
+                    # a task read again after this case keeps it: cloned, as a record's task field is (below)
+                    fork test, and(is-equal(kind-of-node(field/value), <function>), is-task-read-again(field/value, value, st, facts))
+                      hold
+                        save value, <{value}.clone()>
                   miss
                     fork test, is-reusable(owner-form, facts)
                       hold
@@ -3718,6 +3750,11 @@ task emit-record
               hold
                 save st/value-slot, into
             save rendered-field, owned(field/value, st, facts)
+            # a task value kept in a task field is its `Rc<dyn Fn>`: owned never clones a task (a lent `impl Fn` has
+            # no clone), so a task variable read again after it is stored here is cloned here
+            fork test, and(is-equal(kind-of(into), <function>), is-task-read-again(field/value, rendered-field, st, facts))
+              hold
+                save rendered-field, <{rendered-field}.clone()>
             save st/value-slot, make none
             save value, box-unknown(into, field/value, rendered-field, facts)
         push(parts, field-entry(field/name, value))

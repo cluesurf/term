@@ -210,41 +210,40 @@ fs.rmSync(dir, { recursive: true, force: true })
 // 8. THE LAYOUT AND ITS HOUSEKEEPING (build-cache-size). Every one of these guards a specific way the cache grew to
 // 101 GB on a laptop before 2026-09-01, so each is stated as the thing that went wrong.
 
-// entries are gzipped on disk, not stored as the raw JSON they used to be (13.1x on real entries)
-const gzDir = fs.mkdtempSync(
-  nodePath.join(os.tmpdir(), 'seed-cache-gz-'),
+// an entry is its JSON as plain UTF-8 text in `<key>.json`, never gzip (decisions 169 point 4 and 170 of
+// term/self-host/change/001-finish-self-host): the bytes on disk are the value the store was handed
+const textDir = fs.mkdtempSync(
+  nodePath.join(os.tmpdir(), 'seed-cache-text-'),
 )
-const gzStore = diskCacheStore(gzDir, 'v1')
-gzStore.save(
-  'output',
-  'aabbcc',
-  JSON.stringify({ padding: 'x'.repeat(20000) }),
-)
+const savedText = JSON.stringify({ padding: 'x'.repeat(20000) })
+const textStore = diskCacheStore(textDir, 'v1')
+textStore.save('output', 'aabbcc', savedText)
 
 // the entries: the namespace's `.budget` stamp (when the byte budget was last held) is housekeeping, not an entry
-const written = walkFiles(gzDir).filter(
+const written = walkFiles(textDir).filter(
   f => nodePath.basename(f) !== '.budget',
 )
 expect(
   'layout: the budget stamp sits in the namespace, beside the shards',
-  walkFiles(gzDir).some(f =>
+  walkFiles(textDir).some(f =>
     f.endsWith(nodePath.join(versionSlug('v1'), '.budget')),
   ),
   true,
 )
 expect(
-  'layout: an entry is written gzipped',
-  written.every(f => f.endsWith('.json.gz')),
+  'layout: an entry is written as <key>.json',
+  written.length === 1 &&
+    written.every(f => nodePath.basename(f) === 'aabbcc.json'),
   true,
 )
 expect(
-  'layout: gzip actually shrinks the entry',
-  written.reduce((n, f) => n + fs.statSync(f).size, 0) < 2000,
+  'layout: the entry on disk is the JSON text itself',
+  written.every(f => fs.readFileSync(f, 'utf8') === savedText),
   true,
 )
 expect(
-  'layout: a gzipped entry reads back',
-  gzStore.load('output', 'aabbcc') !== undefined,
+  'layout: a text entry reads back as it was saved',
+  textStore.load('output', 'aabbcc') === savedText,
   true,
 )
 
@@ -267,10 +266,10 @@ expect(
 // A COMPILER CHANGE STRANDS A NAMESPACE, and the strand is what has to be reclaimed. This is the whole 73 GB:
 // `deck/base` held 20,216 output entries for a 532-file package, 38 stranded copies of every file.
 for (const version of ['v2', 'v3', 'v4']) {
-  diskCacheStore(gzDir, version).save('output', 'aabbcc', '{}')
+  diskCacheStore(textDir, version).save('output', 'aabbcc', '{}')
 }
 
-const kept = fs.readdirSync(nodePath.join(gzDir, 'output'))
+const kept = fs.readdirSync(nodePath.join(textDir, 'output'))
 expect(
   `reclaim: only ${KEEP_VERSIONS} version namespaces survive`,
   kept.length === KEEP_VERSIONS,
@@ -303,8 +302,8 @@ for (let n = 0; n < 40; n++) {
 }
 
 const before = walkFiles(budgetDir)
-// half of what is actually on disk, measured rather than guessed: the entries are gzipped, and a guessed byte
-// budget over compressible padding is met before a single entry has to go, so the check passes without evicting
+// half of what is actually on disk, measured rather than guessed: a guessed byte budget can be met before a single
+// entry has to go, so the check would pass without evicting
 const budget = Math.floor(
   before.reduce((n, f) => n + fs.statSync(f).size, 0) / 2,
 )
@@ -430,7 +429,7 @@ expect(
 )
 
 for (const temp of [
-  gzDir,
+  textDir,
   budgetDir,
   linkDir,
   outside,

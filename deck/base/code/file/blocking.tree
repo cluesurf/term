@@ -7,14 +7,15 @@
 # drag every caller after it. Nothing here awaits, on any backend. Reach for `file` (async) unless the caller cannot
 # wait.
 #
-# A path that is not there makes `read`, `stat`, `list` and `resolve-real` raise `absence`, its `thing` the path,
-# decided here in Term before the binding runs, as [../file.tree](../file.tree) does for `read`: node threw its own
-# error and the other three read a missing file as the empty text. `exists` never raises.
+# `read` and `list` raise `absence`, its `thing` the path, only when the host says nothing is there (ENOENT), and
+# every other refusal as `failure`, its note node's own message (`ENOTDIR: not a directory, scandir '/x/memory'`,
+# `ELOOP: too many symbolic links encountered, open '/x/deck.tree'`), on every backend: each binding answers the
+# refusal's code name, step and host text first in its list of text, and [failure.tree](failure.tree) words and raises
+# it (term/compiler decision 021 part 1, item 1499 option A). `exists` is not asked first: it is false for a file
+# linked to itself and for a path under a folder no one may search or under a file, which are refusals, not absence.
 #
-# A path that IS there and that the host refuses makes `read` and `list` raise `failure`, its note node's own message
-# (`ENOTDIR: not a directory, scandir '/x/memory'`), on every backend: each binding answers the refusal's code name,
-# step and host text first in its list of text, and [failure.tree](failure.tree) words and raises it (term/compiler
-# decision 021 part 1). Rust, Swift and Kotlin read such a path as the empty text or the empty list before.
+# A path `exists` calls absent makes `stat` and `resolve-real` raise `absence`, its `thing` the path, decided here in
+# Term before the binding runs: their bindings answer no refusal yet. `exists` never raises.
 #
 # `path-kind` asks the path itself with links not followed, so a link to nothing is a `link`, and it raises `absence`
 # only when not even a link is there. The four that change the disk (`rename-path`, `remove-empty-folder`,
@@ -42,7 +43,7 @@ load @term/base/exception
   find absence
 
 load @term/base/file/failure
-  find raise-file-failure
+  find raise-read-failure
 
 load @term/base/list
   find length, name list-length
@@ -82,17 +83,10 @@ form stat-raw
 task read
   take path, like text
   like text
-  fork test
-    hook test
-      call blocking-exists
-        read path
-    hook miss
-      halt absence
-        bind thing, read path
   save raw
     call blocking-read
       read path
-  call raise-file-failure
+  call raise-read-failure
     read raw
     read path
   send back, read raw/3
@@ -135,17 +129,10 @@ task list
   take path, like text
   like list
     like path-entry
-  fork test
-    hook test
-      call blocking-exists
-        read path
-    hook miss
-      halt absence
-        bind thing, read path
   save raw
     call blocking-list
       read path
-  call raise-file-failure
+  call raise-read-failure
     read raw
     read path
   save entries

@@ -23,6 +23,14 @@ mod current {
             .unwrap_or_default()
     }
 
+    // the executable with every link followed, the empty text when either step is refused
+    pub fn program_file() -> String {
+        std::env::current_exe()
+            .and_then(std::fs::canonicalize)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default()
+    }
+
     pub fn exit(code: i64) -> ! {
         std::process::exit(code as i32)
     }

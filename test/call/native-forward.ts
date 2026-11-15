@@ -327,7 +327,50 @@ const VERB_CASES: Record<string, string[][]> = {
     ['wake', '/dev/null/a/b', '--log', 'json'],
     ['wake', '/dev/null/a/b', '--plain'],
   ],
+  // feed (item term-self-host-001-1381: browser-serving.tree's printer calls on printer.tree's typed run made its
+  // closure build on Rust): `term feed` refuses and names `term boot` (refuse-feed, exit 2), bare and with the entry,
+  // port and env the retired line named, in the line view, under --log json and --plain. The server itself is
+  // `term boot`'s, which stays forwarded
+  feed: [
+    ['feed'],
+    ['feed', '--log', 'json'],
+    ['feed', '--plain'],
+    ['feed', 'code/app.tree', '-p', '4100', '--env', 'node'],
+    ['feed', 'code/app.tree', '-p', '4100', '--env', 'node', '--log', 'json'],
+    ['feed', 'code/app.tree', '-p', '4100', '--env', 'node', '--plain'],
+    ['feed', '-p', '4100'],
+    ['feed', '-p', '4100', '--log', 'json'],
+    ['feed', '-p', '4100', '--plain'],
+  ],
+  // move (item term-self-host-001-1410: 1401 put manifest-reading and registry-naming on @term/base, so the hook's
+  // bump-code builds on Rust): in an empty folder, `move mark` finds no deck.tree (a caught raise, exit 1), a target
+  // that names nothing and a level that is no part of the version are usage (exit 2), in the line view, under --log
+  // json and --plain. The runs that write a deck.tree are the surface cases, each compared with the file node writes
+  'bump-code': [
+    ['move', 'mark'],
+    ['move', 'mark', '--log', 'json'],
+    ['move', 'mark', '--plain'],
+    ['move', 'nope'],
+    ['move', 'nope', '--log', 'json'],
+    ['move', 'nope', '--plain'],
+    ['move', 'mark', '1.5'],
+    ['move', 'mark', '1.5', '--log', 'json'],
+    ['move', 'mark', '1.5', '--plain'],
+  ],
+  // note (item term-self-host-001-1523: term/compiler decision 022 admits big.tree's opaque handle, note's only seed):
+  // in an empty folder, no deck.tree to read, and a deck that names nothing, in the line view, under --log json and
+  // --plain. The runs over a deck.tree are the surface cases. A linked deck, an in-tree deck and @term/base are 1504's
+  note: [
+    ['note'],
+    ['note', '--log', 'json'],
+    ['note', '--plain'],
+    ['note', 'nope'],
+    ['note', 'nope', '--log', 'json'],
+    ['note', 'nope', '--plain'],
+  ],
 }
+// the command word of a native task the hook binds under another name, for its --help (the rest are their verb)
+const VERB_WORDS: Record<string, string> = { 'bump-code': 'move' }
 const NATIVE_RECORD = process.env.NATIVE_FORWARD_RECORD ?? join(TERM, 'host', 'native', 'build.json')
 
 // THE REAL CLI, when it is built: a forwarded verb against node's host/line.js, in an empty folder
@@ -417,7 +460,128 @@ if (!existsSync(real)) {
     { verb: 'mind', name: `thrown: ${one.name}, --log json`, words: [...one.words, '--log', 'json'], setup: one.setup, check: one.check },
     { verb: 'mind', name: `thrown: ${one.name}, --plain`, words: [...one.words, '--plain'], setup: one.setup, check: one.check },
   ])
+  // MOVE WRITES deck.tree (item term-self-host-001-1410): node runs again in a folder of its own made the same way, and
+  // the deck.tree the native run left must equal the one node left there, byte for byte, and differ from the one given
+  // when the run moved the version
+  const deckOf = (text: string) => (dir: string): void => writeFileSync(join(dir, 'deck.tree'), text)
+  const RELEASED = 'deck demo\n  head <A demo>\n  mark <1.4.2>\n'
+  const PRERELEASED = 'deck demo\n  mark <1.4.2-rc.1>\n'
+  const deckRead = (dir: string): string => {
+    try {
+      return readFileSync(join(dir, 'deck.tree'), 'utf8')
+    } catch (problem) {
+      return `unread: ${(problem as NodeJS.ErrnoException).code ?? String(problem)}`
+    }
+  }
+  const writtenAlike = (words: string[], given: string, moves: boolean, runEnv: NodeJS.ProcessEnv = env) => (twin: Ran2): string => {
+    const twinDir = join(out, 'surface-node')
+    rmSync(twinDir, { recursive: true, force: true })
+    mkdirSync(twinDir, { recursive: true })
+    deckOf(given)(twinDir)
+    const again = spawnSync(process.execPath, [LINE, ...words], { cwd: twinDir, env: runEnv, encoding: 'utf8' })
+    const wrong: string[] = []
+    if (again.status !== twin.code) wrong.push(`node in a folder of its own exit ${again.status}, ${twin.code} in the first`)
+    const node = deckRead(twinDir)
+    const native = deckRead(join(out, 'surface'))
+    if (node !== native) wrong.push(`deck.tree: node ${JSON.stringify(node)}, native ${JSON.stringify(native)}`)
+    if (moves && node === given) wrong.push(`node left deck.tree as given: ${JSON.stringify(node)}`)
+    return wrong.join('\n        ')
+  }
+  const MOVES: Array<{ name: string; words: string[]; given: string; moves: boolean; env?: NodeJS.ProcessEnv }> = [
+    { name: 'the patch', words: ['move', 'mark'], given: RELEASED, moves: true },
+    { name: 'the patch, --log json', words: ['move', 'mark', '--log', 'json'], given: RELEASED, moves: true },
+    { name: 'the patch, --plain', words: ['move', 'mark', '--plain'], given: RELEASED, moves: true },
+    { name: 'the minor', words: ['move', 'mark', '2'], given: RELEASED, moves: true },
+    { name: 'the major', words: ['move', 'mark', '1'], given: RELEASED, moves: true },
+    { name: 'the patch named 3', words: ['move', 'mark', '3'], given: RELEASED, moves: true },
+    { name: 'a pre-release started', words: ['move', 'mark', 'rc'], given: RELEASED, moves: true },
+    { name: 'a pre-release moved', words: ['move', 'mark', 'rc'], given: PRERELEASED, moves: true },
+    { name: 'a pre-release renamed', words: ['move', 'mark', 'beta'], given: PRERELEASED, moves: true },
+    { name: 'a pre-release released', words: ['move', 'mark'], given: PRERELEASED, moves: true },
+    { name: 'code, the old spelling', words: ['move', 'code', '2'], given: RELEASED, moves: true },
+    { name: 'a level that is no part of the version', words: ['move', 'mark', '1.5'], given: RELEASED, moves: false },
+    { name: 'a target that names nothing', words: ['move', 'nope'], given: RELEASED, moves: false },
+    { name: 'a deck.tree with no mark', words: ['move', 'mark'], given: 'deck demo\n', moves: false },
+    { name: '--quiet after the verb', words: ['move', 'mark', '--quiet'], given: RELEASED, moves: true },
+    { name: '--strict after the verb', words: ['move', 'mark', '--strict'], given: RELEASED, moves: true },
+    { name: '--color never after the verb, NO_COLOR unset', words: ['move', 'mark', '--color', 'never'], given: RELEASED, moves: true, env: colourless },
+    { name: '--color always after the verb', words: ['move', 'mark', '--color', 'always'], given: RELEASED, moves: true },
+  ]
+  const moveCases: SurfaceCase[] = MOVES.map(one => ({
+    verb: 'bump-code',
+    name: one.name,
+    words: one.words,
+    setup: deckOf(one.given),
+    env: one.env,
+    check: writtenAlike(one.words, one.given, one.moves, one.env ?? env),
+  }))
+  // a deck.tree that is a folder: the read raises, node's fail-run words (exit 1) in each view
+  const deckFolder = (dir: string): void => {
+    mkdirSync(join(dir, 'deck.tree'), { recursive: true })
+  }
+  for (const view of [[], ['--log', 'json'], ['--plain']]) {
+    moveCases.push({ verb: 'bump-code', name: `thrown: deck.tree is a folder${view.length > 0 ? `, ${view.join(' ')}` : ''}`, words: ['move', 'mark', ...view], setup: deckFolder, check: thrownOnNode })
+  }
+  // NOTE READS deck.tree (item term-self-host-001-1523): the project's own manifest in each view, one with no mark, and
+  // a deck.tree that is a folder (the read raises: node's words, exit 1)
+  const noteCases: SurfaceCase[] = []
+  for (const view of [[], ['--log', 'json'], ['--plain']]) {
+    const shown = view.length > 0 ? `, ${view.join(' ')}` : ''
+    noteCases.push({ verb: 'note', name: `the project's deck.tree${shown}`, words: ['note', ...view], setup: deckOf(RELEASED) })
+    noteCases.push({ verb: 'note', name: `thrown: deck.tree is a folder${shown}`, words: ['note', ...view], setup: deckFolder, check: thrownOnNode })
+  }
+  noteCases.push({ verb: 'note', name: 'a deck.tree with no mark', words: ['note'], setup: deckOf('deck demo\n') })
+  noteCases.push({ verb: 'note', name: '--quiet after the verb', words: ['note', '--quiet'], setup: deckOf(RELEASED) })
+  noteCases.push({ verb: 'note', name: '--color never after the verb, NO_COLOR unset', words: ['note', '--color', 'never'], setup: deckOf(RELEASED), env: colourless })
+  noteCases.push({ verb: 'note', name: '--color always after the verb', words: ['note', '--color', 'always'], setup: deckOf(RELEASED) })
+  // NOTE OF A NAMED DECK (item term-self-host-001-1504): each leg of package-note.tree's resolution (decision 168), the
+  // link dir (a linked deck, one with its own code root, a link shadowing the in-tree @term/deck, a link to nothing),
+  // a deck under the project's deck/ (no leg finds it: node's refusal), and the stdlib walk from the program's own file
+  // (@term/base, and the in-tree decks beside it), in the line view, under --log json and --plain. The linked decks live outside the project
+  // folder, made once, so both sides read the same targets
+  const noteStore = folderAt('note store')
+  const manifestAt = (at: string, text: string, code = 'code'): void => {
+    mkdirSync(join(at, code), { recursive: true })
+    writeFileSync(join(at, 'deck.tree'), text)
+    writeFileSync(join(at, code, 'base.tree'), 'task hello\n  like text\n  back <hello>\n')
+  }
+  manifestAt(join(noteStore, 'linked'), 'deck @demo/linked\n  head <A linked one>\n  mark <0.3.0>\n')
+  manifestAt(join(noteStore, 'rooted'), 'deck @demo/rooted\n  code ./src\n  mark <0.4.0>\n', 'src')
+  manifestAt(join(noteStore, 'shadow'), 'deck @term/deck\n  head <A linked copy>\n  mark <9.9.9>\n')
+  const NOTING = 'deck @demo/tools\n  head <Small tools>\n  mark <1.4.2>\n  link @term/base, mark <0.0.x>\n  link @term/deck, mark <0.0.x>\n'
+  const noteProject = (dir: string): void => {
+    writeFileSync(join(dir, 'deck.tree'), NOTING)
+    const link = (scope: string, name: string, target: string): void => {
+      mkdirSync(join(dir, 'link', scope), { recursive: true })
+      symlinkSync(target, join(dir, 'link', scope, name))
+    }
+    link('@demo', 'linked', join(noteStore, 'linked'))
+    link('@demo', 'rooted', join(noteStore, 'rooted'))
+    link('@term', 'deck', join(noteStore, 'shadow'))
+    link('@demo', 'gone', join(noteStore, 'nowhere'))
+    manifestAt(join(dir, 'deck', 'inner'), 'deck @demo/inner\n  mark <0.2.0>\n')
+  }
+  const NOTE_LEGS: Array<[string, string]> = [
+    ['@demo/linked', 'a linked deck'],
+    ['@demo/rooted', 'a linked deck with its own code root'],
+    ['@term/deck', 'a link shadowing the in-tree @term/deck'],
+    ['@demo/gone', 'a link to nothing'],
+    ['@demo/inner', 'a deck under the project\'s deck/, which names no package'],
+    ['@term/base', 'the stdlib'],
+  ]
+  for (const [deck, what] of NOTE_LEGS) {
+    for (const view of [[], ['--log', 'json'], ['--plain']]) {
+      const shown = view.length > 0 ? `, ${view.join(' ')}` : ''
+      noteCases.push({ verb: 'note', name: `${what}${shown}`, words: ['note', deck, ...view], setup: noteProject })
+    }
+  }
+  // the in-tree decks, the stdlib's siblings found by the same walk, and the stdlib, in a project that links nothing
+  noteCases.push({ verb: 'note', name: 'an in-tree deck, @term/deck unlinked', words: ['note', '@term/deck'], setup: deckOf(RELEASED) })
+  noteCases.push({ verb: 'note', name: 'an in-tree deck, @term/make unlinked', words: ['note', '@term/make'], setup: deckOf(RELEASED) })
+  noteCases.push({ verb: 'note', name: 'the stdlib, @term/base unlinked', words: ['note', '@term/base'], setup: deckOf(RELEASED) })
   const SURFACE_CASES: SurfaceCase[] = [
+    ...moveCases,
+    ...noteCases,
     { verb: 'halt', name: '--quiet after the verb', words: [...ON_PORT, '--quiet'] },
     { verb: 'halt', name: '--strict after the verb (a warning fails the run)', words: [...ON_PORT, '--strict'], check: (twin: Ran2) => (twin.code === 1 ? '' : `node exit ${twin.code}, not 1`) },
     { verb: 'halt', name: '--color never after the verb, NO_COLOR unset', words: [...ON_PORT, '--color', 'never'], env: colourless },
@@ -432,6 +596,12 @@ if (!existsSync(real)) {
     { verb: 'wake', name: '--strict after the verb', words: [...NO_DIR, '--strict'] },
     { verb: 'wake', name: '--color never after the verb, NO_COLOR unset', words: [...NO_DIR, '--color', 'never'], env: colourless },
     { verb: 'wake', name: 'a file where the project folder goes', words: ['wake', 'demo'], setup: dir => writeFileSync(join(dir, 'demo'), 'a file\n') },
+    { verb: 'feed', name: 'in a project', words: ['feed'], setup: dir => writeFileSync(join(dir, 'deck.tree'), 'deck demo\n  mark <0.0.1>\n') },
+    { verb: 'feed', name: '--quiet after the verb', words: ['feed', '--quiet'] },
+    { verb: 'feed', name: '--strict after the verb', words: ['feed', '--strict'] },
+    { verb: 'feed', name: '--color never after the verb, NO_COLOR unset', words: ['feed', '--color', 'never'], env: colourless },
+    { verb: 'feed', name: '--color always after the verb', words: ['feed', '-p', '4100', '--color', 'always'] },
+    { verb: 'feed', name: 'exits 2, usage', words: ['feed'], check: (twin: Ran2) => (twin.code === 2 ? '' : `node exit ${twin.code}, not 2`) },
   ]
   // GLOBALS BEFORE THE VERB (item term-self-host-001-1459): a global take written before the verb is the same take as
   // after it, short or valued, inline or not, on node and natively. Each case names the line with the take after the
@@ -453,6 +623,12 @@ if (!existsSync(real)) {
     { verb: 'wake', name: '-q before the verb', words: ['-q', ...NO_DIR], after: [...NO_DIR, '-q'] },
     { verb: 'wake', name: '--log json before the verb', words: ['--log', 'json', ...NO_DIR], after: [...NO_DIR, '--log', 'json'] },
     { verb: 'wake', name: '--color never before the verb, NO_COLOR unset', words: ['--color', 'never', ...NO_DIR], after: [...NO_DIR, '--color', 'never'], env: colourless },
+    { verb: 'feed', name: '--log json before the verb', words: ['--log', 'json', 'feed', '-p', '4100'], after: ['feed', '-p', '4100', '--log', 'json'] },
+    { verb: 'feed', name: '-q before the verb', words: ['-q', 'feed'], after: ['feed', '-q'] },
+    { verb: 'bump-code', name: '--log json before the verb', words: ['--log', 'json', 'move', 'mark'], after: ['move', 'mark', '--log', 'json'] },
+    { verb: 'bump-code', name: '-q before the verb', words: ['-q', 'move', 'nope'], after: ['move', 'nope', '-q'] },
+    { verb: 'note', name: '--log json before the verb', words: ['--log', 'json', 'note'], after: ['note', '--log', 'json'] },
+    { verb: 'note', name: '-q before the verb', words: ['-q', 'note', 'nope'], after: ['note', 'nope', '-q'] },
   ]
   for (const one of BEFORE_CASES) {
     const dir = join(out, 'surface')
@@ -569,12 +745,13 @@ if (!existsSync(real)) {
       }
       // the verb's own --help, byte for byte: it is the console's usage text, no clock in it (item 1409)
       if (cases.length > 0) {
-        const ask = { words: [task, '--help'], cwd: empty, env }
+        const verb = VERB_WORDS[task] ?? task
+        const ask = { words: [verb, '--help'], cwd: empty, env }
         const twin = await run([process.execPath, LINE], ask)
         const native = await run([real], ask)
-        ok(`verb ${task}: term ${task} --help exit equals node's`, native.code === twin.code, `node ${twin.code}, native ${native.code}`)
-        ok(`verb ${task}: term ${task} --help stdout equals node's byte for byte`, native.out === twin.out && twin.out.length > 0, `node ${JSON.stringify(twin.out.slice(0, 400))}\nnative ${JSON.stringify(native.out.slice(0, 400))}`)
-        ok(`verb ${task}: term ${task} --help stderr equals node's byte for byte`, native.err === twin.err, `node ${JSON.stringify(twin.err.slice(0, 400))}\nnative ${JSON.stringify(native.err.slice(0, 400))}`)
+        ok(`verb ${task}: term ${verb} --help exit equals node's`, native.code === twin.code, `node ${twin.code}, native ${native.code}`)
+        ok(`verb ${task}: term ${verb} --help stdout equals node's byte for byte`, native.out === twin.out && twin.out.length > 0, `node ${JSON.stringify(twin.out.slice(0, 400))}\nnative ${JSON.stringify(native.out.slice(0, 400))}`)
+        ok(`verb ${task}: term ${verb} --help stderr equals node's byte for byte`, native.err === twin.err, `node ${JSON.stringify(twin.err.slice(0, 400))}\nnative ${JSON.stringify(native.err.slice(0, 400))}`)
       }
       for (const one of SURFACE_CASES.filter(c => c.verb === task)) await surfaceCase(one)
     }

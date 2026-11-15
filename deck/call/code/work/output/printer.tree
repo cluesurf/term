@@ -396,7 +396,8 @@ task location
   back one
 
 # an item a typed caller reports: the face's `make-item` over the keys it gives, every one of them given. The subject is
-# one plain span, the clock now
+# one plain span, the clock now. `duration` is the item's time in milliseconds, left unset when below 0, so a caller in
+# another unit reports a timed item without a local of this unit's event type (TS2305, item term-self-host-001-1491)
 form item-input
   link glyph, like text, fall <info>
   link kind, like text, fall <step>
@@ -408,6 +409,7 @@ form item-input
     fall make list
   link fields, like list, like item-field
     fall make list
+  link duration, like number, fall -1
 
 # no fields, for a caller in another unit that names none: the form's own fall, emitted in that unit, names this
 # unit's item-field type, which the caller's unit does not import (TS2304 in halting.ts)
@@ -416,6 +418,14 @@ task no-item-fields
 
   save fields, make list
   back fields
+
+# no counts, for a caller in another unit that makes a run-opening or a run-closing with none: the form's fall would
+# name this unit's tally type there, which that unit does not import (TS2304 'Tally', trap T-1451 part 2)
+task no-tallies
+  like list, like tally
+
+  save counts, make list
+  back counts
 
 task make-typed-item
   take input, like item-input
@@ -430,6 +440,9 @@ task make-typed-item
   save one/facts, input/facts
   save one/message, input/message
   save one/fields, input/fields
+  fork test, not(is-below(input/duration, 0))
+    hold
+      save one/duration, input/duration
   back one
 
 # ---- the run ----

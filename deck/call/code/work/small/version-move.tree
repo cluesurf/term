@@ -14,10 +14,16 @@ load @term/base/text
 load @term/base/list
   find get
 
-load @term/call/work/output/printer-input
-  find close-run
-  find open-run
-  find report
+# the printer's typed tasks (decision 167 point 5), as halting, memory and scaffold call them: the node-only face
+# (printer-input.tree) reads a caller's object key by key through binds with no rust case (item term-self-host-001-1382)
+load @term/call/work/output/printer
+  find run-opening
+  find open-typed-run
+  find item-input
+  find make-typed-item
+  find report-typed
+  find run-closing
+  find close-typed-run
 
 # the manifest read and written, and its version moved, by @term/deck's ports (term-cli-in-term-0236), where the package
 # manager's faces were docked
@@ -35,52 +41,14 @@ load @term/deck/version
   find bump-code
   find bump-prerelease
 
-dock load
-  load <node:fs/promises>, name fs-promise
-    mark async
-  load <node:path>, name node-path
-  load <global:Error>, name host-error
-  load <global:String>, name host-string
+# the manifest's path and its write through @term/base, where node:path and node:fs/promises were docked (item
+# term-self-host-001-1488): a write node refuses raises `failure` with node's own message as its note (@term/base
+# file/failure), the text the caught raise's item printed before
+load @term/base/path
+  find join, name path-join
 
-form move-open
-  link verb, like text
-  link root, like text
-
-form problem-item
-  link glyph, like text
-  link kind, like text
-  link subject, like text
-
-form problem-said
-  link glyph, like text
-  link kind, like text
-  link subject, like text
-  link message, like list, like text
-
-form usage-close
-  link verdict, like text
-  link next, like text
-  link failure, like text
-
-form change-item
-  link glyph, like text
-  link kind, like text
-  link verb, like text
-  link subject, like text
-  link facts, like list, like text
-
-form failed-change
-  link glyph, like text
-  link verb, like text
-  link subject, like text
-  link message, like list, like text
-
-form done-close
-  link verdict, like text
-  link done, like boolean
-
-form plain-close
-  link verdict, like text
+load @term/base/file
+  find write, name file-write
 
 task usage
   like text
@@ -132,23 +100,11 @@ task is-letter-code
       back true
   back and(is-minimum(code, 97), is-maximum(code, 122))
 
-# the message of a failure the host raised, as the original printed it: an Error's message, else the value as text
-task message-of
-  take error, like dynamic
-  like text
-  mark private
-
-  # `error instanceof Error`
-  fork test, host-error/prototype/is-prototype-of(error)
-    hold
-      back error/message
-  back host-string/call(<>, error)
-
 task close-usage
   like void
   mark private
 
-  close-run(make(usage-close, bind(verdict, <Nothing moved>), bind(next, usage()), bind(failure, <usage>)))
+  close-typed-run(make(run-closing, bind(verdict, <Nothing moved>), bind(next, usage()), bind(failure, <usage>)))
 
 # the manifest read, its version moved by `level` and written back, and the change reported
 task move-version
@@ -175,11 +131,11 @@ task move-version
   save manifest/mark, new-code
   save new-text, show-code(new-code)
   save text, write-manifest(manifest)
-  fs-promise/write-file(node-path/join(root, <deck.tree>), text, <utf-8>)
+  file-write(path-join(root, <deck.tree>), text)
   save facts, make list
   facts/push(<{old-code} → {new-text}>)
-  report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, <mark>), bind(facts, facts)))
-  close-run(make(done-close, bind(verdict, <Version is {new-text}>), bind(done, true)))
+  report-typed(make-typed-item(make(item-input, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, <mark>), bind(facts, facts))))
+  close-typed-run(make(run-closing, bind(verdict, <Version is {new-text}>), bind(done, true)))
 
 # `target` names the manifest field that moves: `mark`, the version. `code` is its old spelling (the version was
 # `code <...>` until `code` came to name the code root), still taken so a script written against it works
@@ -189,7 +145,7 @@ task call-move
   take level, like maybe, like text
   like void
 
-  open-run(make(move-open, bind(verb, <move>), bind(root, root)))
+  open-typed-run(make(run-opening, bind(verb, <move>), bind(root, root)))
   save named, <that>
   save known, false
   sift target
@@ -201,7 +157,7 @@ task call-move
       save known, false
   fork test, not(known)
     hold
-      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {named} to move>)))
+      report-typed(make-typed-item(make(item-input, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {named} to move>))))
       close-usage()
     miss
       save moved-by, level-of(level)
@@ -216,15 +172,18 @@ task call-move
               save shown, <undefined>
           save said, make list
           said/push(<1, 2 or 3 moves the major, minor or patch, and a word such as rc starts or moves a pre-release>)
-          report(make(problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{shown} is not a part of the version>), bind(message, said)))
+          report-typed(make-typed-item(make(item-input, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{shown} is not a part of the version>), bind(message, said))))
           close-usage()
         miss
           fork
             mark unsafe
             move-version(root, moved-by)
           halt take
+            # a caught raise reads its note on every backend (term/compiler decision 021 point 10a): a host Error's
+            # message, a Term raise's note, any other value's text, what the original printed
             take error
             save said, make list
-            said/push(message-of(error))
-            report(make(failed-change, bind(glyph, <failed>), bind(verb, <change>), bind(subject, <mark>), bind(message, said)))
-            close-run(make(plain-close, bind(verdict, <Version not moved>)))
+            said/push(error/note)
+            # no kind: the item's own, a step, as the original's had none
+            report-typed(make-typed-item(make(item-input, bind(glyph, <failed>), bind(verb, <change>), bind(subject, <mark>), bind(message, said))))
+            close-typed-run(make(run-closing, bind(verdict, <Version not moved>)))

@@ -19,7 +19,6 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
-import { gunzipSync, gzipSync } from 'node:zlib'
 import {
   buildSession,
   compileProjectSeparate,
@@ -80,7 +79,7 @@ const entries = (dir: string): string[] =>
 
     return statSync(full).isDirectory()
       ? entries(full)
-      : full.endsWith('.json.gz')
+      : full.endsWith('.json')
         ? [full]
         : []
   })
@@ -160,15 +159,10 @@ const units = entries(store).filter(
 )
 let planted = 0
 for (const file of units) {
-  const text = gunzipSync(readFileSync(file)).toString('utf8')
+  const text = readFileSync(file, 'utf8')
 
   if (text.includes('planted-name')) {
-    writeFileSync(
-      file,
-      gzipSync(
-        Buffer.from(text.split('planted-name').join('PLANTED-NAME')),
-      ),
-    )
+    writeFileSync(file, text.split('planted-name').join('PLANTED-NAME'))
     planted++
   }
 }

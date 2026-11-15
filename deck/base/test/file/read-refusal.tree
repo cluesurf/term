@@ -1,0 +1,248 @@
+# A whole-file read raises `absence` only when the host says nothing is there (ENOENT), and every other refusal as
+# `failure`, its note node's own message, on every backend (item 1499, option A, by term/compiler decision 021): `read`
+# of @term/base/file, `read` and `list` of @term/base/file/blocking. A file linked to itself (ELOOP), a path under a
+# file (ENOTDIR) and a path under a folder no one may search (EACCES) are all paths node's existsSync calls absent, so
+# the old exists-first read raised `absence` for them where node prints its message. Each expected note is the message
+# node's fs gives for the same call (tmp/self-host/1503/raw.ts in the Term repository's tmp, never landed). Held by
+# `pnpm term:base-gate`.
+#
+# The fixture is built by one `sh` run through `process/run`, as in test/file/failure.tree. Its folder sits under the
+# system's temporary directory and is left for it to clear: nothing here removes a file. `locked` is mode 000 and holds
+# `held.txt`, which root reads anyway, so the fixture marks a run as root with `as-root` and those cases then hold
+# without asking.
+
+load @term/base/file/blocking
+  find read, name read-path
+  find list, name list-path
+  find exists, name exists-path
+
+load @term/base/file
+  find read, name read-file
+
+load @term/base/exception
+  find failure
+  find absence
+
+load @term/base/process/run
+  find run
+
+# a new folder holding `plain.txt`, the folder `inner`, the link `loop` to itself and the mode 000 folder `locked`
+# holding `held.txt`, and `as-root` when the run is root's. It answers the folder's path, printed without a newline
+task make-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); printf %s x \> "$d/plain.txt"; mkdir "$d/inner" "$d/locked"; printf %s x \> "$d/locked/held.txt"; ln -s loop "$d/loop"; chmod 000 "$d/locked"; if [ "$(id -u)" = 0 ]; then printf %s x \> "$d/as-root"; fi; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# what a blocking read raised: its note when `failure`, `absence` when absence, or `no` when it raised nothing
+task blocking-said
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call read-path
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+      case absence
+        send back, text <absence>
+
+task list-said
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call list-path
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+      case absence
+        send back, text <absence>
+
+task file-said
+  mark async
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call read-file
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case failure
+        send back, read note
+      case absence
+        send back, text <absence>
+
+# the absence a missing path raises still names the path as its `thing`
+task absent-thing
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call read-path
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case absence
+        send back, read thing
+      case failure
+        send back, text <failure>
+
+test <a missing path raises absence on every read, its thing the path>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/nowhere>
+  save file-read-said
+    call file-said
+      read path
+  want hold
+    call and
+      call is-equal
+        call blocking-said
+          read path
+        text <absence>
+      call and
+        call is-equal
+          call list-said
+            read path
+          text <absence>
+        call and
+          call is-equal
+            read file-read-said
+            text <absence>
+          call is-equal
+            call absent-thing
+              read path
+            read path
+
+test <a file linked to itself raises failure with node's ELOOP message, which names the path>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/loop>
+  save file-read-said
+    call file-said
+      read path
+  want hold
+    call and
+      call is-equal
+        call exists-path
+          read path
+        false
+      call and
+        call is-equal
+          call blocking-said
+            read path
+          text <ELOOP: too many symbolic links encountered, open '{{path}}'>
+        call and
+          call is-equal
+            read file-read-said
+            text <ELOOP: too many symbolic links encountered, open '{{path}}'>
+          call is-equal
+            call list-said
+              read path
+            text <ELOOP: too many symbolic links encountered, scandir '{{path}}'>
+
+test <a path under a file raises failure with node's ENOTDIR message>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt/x>
+  save file-read-said
+    call file-said
+      read path
+  want hold
+    call and
+      call is-equal
+        call blocking-said
+          read path
+        text <ENOTDIR: not a directory, open '{{path}}'>
+      call and
+        call is-equal
+          read file-read-said
+          text <ENOTDIR: not a directory, open '{{path}}'>
+        call is-equal
+          call list-said
+            read path
+          text <ENOTDIR: not a directory, scandir '{{path}}'>
+
+test <a path under a folder no one may search raises failure with node's EACCES message, unless the run is root's>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/locked/held.txt>
+  save deeper, text <{{dir}}/locked/deeper>
+  save read-expected, text <EACCES: permission denied, open '{{path}}'>
+  save list-expected, text <EACCES: permission denied, scandir '{{deeper}}'>
+  fork test
+    hook test
+      call exists-path
+        text <{{dir}}/as-root>
+    hook hold
+      save read-expected, text <no>
+      save list-expected, text <absence>
+  save file-read-said
+    call file-said
+      read path
+  want hold
+    call and
+      call is-equal
+        call blocking-said
+          read path
+        read read-expected
+      call and
+        call is-equal
+          read file-read-said
+          read read-expected
+        call is-equal
+          call list-said
+            read deeper
+          read list-expected
+
+test <a folder read by the file module raises failure with node's EISDIR message, which names no path>
+  save dir
+    call make-fixture
+  want hold
+    call is-equal
+      call file-said
+        text <{{dir}}/inner>
+      text <EISDIR: illegal operation on a directory, read>
+
+test <a readable file still reads on both modules>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/plain.txt>
+  save read-text
+    call read-file
+      read path
+  want hold
+    call and
+      call is-equal
+        call read-path
+          read path
+        text <x>
+      call is-equal
+        read read-text
+        text <x>

@@ -20,6 +20,11 @@ task read-process
       bind executable
         call process/executable
 
+# a page is no file
+task read-program-file
+  like text
+  send back, text <>
+
 task exit-process
   take
     code

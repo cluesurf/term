@@ -4,6 +4,7 @@ load @term/base/native/{platform}/process/current
   find read-process
   find exit-process
   find listen-process
+  find read-program-file
 
 form process-info
   link id, like size
@@ -19,6 +20,14 @@ task read
   like process-info
   send back
     call read-process
+
+# the real absolute path of the file of the program that is running, every link in it followed: on node the main
+# script (`host/line.js` when term runs, never the node binary `read` names as the executable), on rust, swift and
+# kotlin the executable. The empty text when no such file can be read (a page, `node -e`), never a raise
+task program-file
+  like text
+  send back
+    call read-program-file
 
 task exit
   take

@@ -23,7 +23,13 @@ load @term/base/exception
 
 # a file that is not there is `absence`, its `thing` the path, on every backend: node threw its own error, with no
 # form, and Rust, Swift and Kotlin read it as the empty text, so a missing file and an empty one could not be told
-# apart (guides: library/files, 2026-10-04). Asked of the path first, in Term, so all five agree
+# apart (guides: library/files, 2026-10-04). Asked of the path first, in Term, so all five agree.
+#
+# A path `file-exists` calls absent is not yet absence: a file linked to itself (ELOOP), or under a folder no one may
+# search (EACCES) or under a file (ENOTDIR), is a refusal. So the host is asked why: the node, Rust, Swift and Kotlin
+# bindings raise `absence` only when the host says nothing is there (ENOENT) and every other refusal as `failure`, its
+# note node's own message, through @term/base/file/failure (item 1499, option A). A backend whose binding answers
+# instead (the browser, a cask's page) raises `absence` here, as before
 task read
   mark async
   take path, like text
@@ -33,6 +39,8 @@ task read
       call file-exists
         read path
     hook miss
+      call read-file
+        read path
       halt absence
         bind thing, read path
   send back

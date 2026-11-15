@@ -1,19 +1,16 @@
 note <The SHA-512 of bytes or a text, and a check of bytes against one>
 
 # Ported from hash.test.ts by statement (item 0580). The original held code/package/hash.ts, a face whose logic is
-# code/package/content-hash.tree: this holds that module itself.
+# code/package/content-hash.tree: this holds that module itself. The FIPS 180-4 vectors hold the digest itself on
+# every backend (item term-self-host-001-1511).
 
 load ../code/package/content-hash
   find hash-buffer
   find hash-text
   find verify-hash
 
-# host value: a Buffer of a text's UTF-8 bytes
-bind bytes-of
-  take value, like text
-  like dynamic
-  case node
-    text <Buffer.from($value)>
+load @term/base/bytes
+  find from-text, name bytes-of
 
 test <hashBuffer: hashes a buffer consistently>
   host data, bytes-of(<hello world>)
@@ -32,6 +29,14 @@ test <hashText: hashes text consistently>
   host first, hash-text(<hello>)
   host second, hash-text(<hello>)
   want hold, is-equal(first, second)
+
+test <hashBuffer and hashText: the FIPS 180-4 vectors>
+  host empty, <cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e>
+  host abc, <ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f>
+  want hold, is-equal(hash-buffer(bytes-of(<>)), empty)
+  want hold, is-equal(hash-text(<>), empty)
+  want hold, is-equal(hash-buffer(bytes-of(<abc>)), abc)
+  want hold, is-equal(hash-text(<abc>), abc)
 
 test <verifyHash: returns true for matching hash>
   host data, bytes-of(<test data>)

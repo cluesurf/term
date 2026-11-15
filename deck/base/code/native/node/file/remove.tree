@@ -1,0 +1,98 @@
+# node's whole-folder remove, over node:fs's *Sync calls. node's `fs.rm` (the call `term wash tail` made) checks its
+# options by an `lstat` of the path first, which `rmSync` skips under `force`, so its words for a path under a file
+# differ (`unlink`, where fs.rm says `lstat`): the lstat is made here first, as fs.rm makes it, then `rmSync` with
+# `recursive` and `force`. A refusal is caught as node's own Error and answered as its code, syscall, message and
+# path, the list of text every backend hands @term/base/file/failure (the code empty when carried out), so node raises
+# the one `failure` the public module words (term/compiler decision 021 points 4 and 5). Internal: reached only through
+# the public file/remove API.
+
+dock load
+  load <node:fs>, name remove-fs
+
+load @term/base/native/node/file/refusal
+  find node-refusal
+
+load @term/base/list
+  find push
+
+# the options node's fs takes to remove a folder and everything in it, nothing there carried out
+bind remove-options
+  like dynamic
+  case node
+    text <(\{ recursive: true, force: true \})>
+
+# the path node's Error names, or the empty text when it names none
+bind node-refusal-path
+  take problem, like dynamic
+  like text
+  case node
+    text <(typeof ($problem)?.path === "string" ? String(($problem).path) : "")>
+
+# the list of text a carried out call answers: no code name, no step, no host text, no path
+task remove-carried
+  like list, like text
+  save out, like list, like text
+    make list
+  call push
+    read out
+    text <>
+  call push
+    read out
+    text <>
+  call push
+    read out
+    text <>
+  call push
+    read out
+    text <>
+  send back, read out
+
+# node's refusal and the path it names (the path given when it names none). ENOENT is no refusal: nothing is there
+task remove-refused
+  take problem, like dynamic
+  take path, like text
+  like list, like text
+  save out
+    call node-refusal
+      read problem
+  fork test
+    hook test
+      call is-equal
+        read out/0
+        text <ENOENT>
+    hook hold
+      send back
+        call remove-carried
+  save named
+    call node-refusal-path
+      read problem
+  fork test
+    hook test
+      call is-equal
+        read named
+        text <>
+    hook hold
+      save named, read path
+  call push
+    read out
+    read named
+  send back, read out
+
+task remove-path
+  take path, like text
+  like list, like text
+  fork
+    mark unsafe
+    call remove-fs/lstat-sync
+      read path
+    call remove-fs/rm-sync
+      read path
+      call remove-options
+  halt take
+    take problem
+    send back
+      call remove-refused
+        read problem
+        read path
+  send back
+    call remove-carried

@@ -76,8 +76,12 @@ load ./lockfile-shape
   find lock-need
   find lockfile
 
+load @term/base/text/number
+  find parse-integer
+
 load ./registry-naming
   find scope-name
+  find is-host-space
 
 load ./deck-grammar-text
   find deck-grammar-text
@@ -85,8 +89,59 @@ load ./deck-grammar-text
 load ./lock-grammar-text
   find lock-grammar-text
 
-dock load
-  load <global:Number>, name host-number
+# A whole number read as the original's `Number.parseInt(text, 10)` read it when `Number.isFinite` held, none when it
+# did not: JavaScript's whitespace first set aside, an optional `+` or `-`, then the longest run of ASCII digits, and
+# whatever follows ignored. No digits is none (NaN). Term over @term/base (item term-self-host-001-1401), where
+# `global:Number` was docked, and the one copy every reader of a count or a lockfile version calls.
+#
+# A run of more than 15 digits past its leading zeros is none, where parseInt answered a float: a `like number` is a
+# whole number, which holds every 15-digit run exactly on every backend, and no float of 16 digits or more can be one
+# on TypeScript without losing digits (traps T-0044). Every run of at most 15 reads as parseInt read it
+task leading-integer-of
+  take value, like text
+  like maybe, like number
+
+  save runes, to-runes(value)
+  save at, 0
+  walk test
+    hook test, is-below(at, runes/length)
+    hook hold
+      fork test, not(is-host-space(get(runes, at)))
+        hold
+          halt
+      save at, add(at, 1)
+  save sign, <>
+  fork test, is-below(at, runes/length)
+    hold
+      save lead, get(runes, at)
+      fork test, is-equal(lead, 45)
+        hold
+          save sign, <->
+          save at, add(at, 1)
+      fork test, is-equal(lead, 43)
+        hold
+          save at, add(at, 1)
+  save start, at
+  save first-digit, -1
+  walk test
+    hook test, is-below(at, runes/length)
+    hook hold
+      save digit, get(runes, at)
+      fork test, or(is-below(digit, 48), is-above(digit, 57))
+        hold
+          halt
+      fork test, and(is-equal(first-digit, -1), not(is-equal(digit, 48)))
+        hold
+          save first-digit, at
+      save at, add(at, 1)
+  fork test, is-equal(at, start)
+    hold
+      back make none
+  fork test, and(not(is-equal(first-digit, -1)), is-above(subtract(at, first-digit), 15))
+    hold
+      back make none
+  save count, parse-integer(<{sign}{substring(value, start, at)}>)
+  back make(some, count)
 
 # the deck and lockfile grammars, each read the first time it is asked for
 form manifest-grammars
@@ -410,13 +465,7 @@ task have-of
   sift have-text
     case some
       link written
-      save parsed, host-number/parse-int(written, 10)
-      fork test, host-number/is-finite(parsed)
-        hold
-          save count, 0
-          save count, parsed
-          back make(some, count)
-      back make none
+      back leading-integer-of(written)
     case none
       back make none
 
@@ -943,11 +992,13 @@ task parse-lockfile-mill
       halt <lock.tree does not fit the lockfile grammar{line-note(mined/at)}>
 
   save version-text, site-word(first-capture(captures-at(mined/match, <head>)), <version>)
-  save stated, host-number/parse-int(text-or-empty(version-text), 10)
   save version, 1
-  fork test, host-number/is-finite(stated)
-    hold
+  sift leading-integer-of(text-or-empty(version-text))
+    case some
+      link stated
       save version, stated
+    case none
+      save nothing, 0
 
   save decks, make list
   walk matches-at(mined/match, <deck>)

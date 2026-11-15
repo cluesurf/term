@@ -58,7 +58,6 @@ dock load
   load <node:fs>, name dock-file
   load <node:os>, name dock-os
   load <node:path>, name dock-path
-  load <node:zlib>, name dock-zlib
 
 bind is-folder
   take stat, like dynamic
@@ -214,7 +213,7 @@ task written-keys
       hold
         save op, parts/1
         save path, parts/2
-        fork test, and(starts-with(path, <unit/>), ends-with(path, <.json.gz>))
+        fork test, and(starts-with(path, <unit/>), ends-with(path, <.json>))
           hold
             fork test, or(or(starts-with(op, <rename>), starts-with(op, <promises.rename>)), not(ends-with(path, <.tmp>)))
               hold
@@ -253,9 +252,9 @@ task traced
   save refused, 0
   walk files-under(dock-path/join(home, <unit>))
     take file, like text
-    fork test, ends-with(file, <.json.gz>)
+    fork test, ends-with(file, <.json>)
       hold
-        save text, bytes-text(dock-zlib/gunzipSync(dock-file/readFileSync(file)))
+        save text, bytes-text(dock-file/readFileSync(file))
         # a name pointer (`surface:`) holds a key alone, an answer its stored entry. A trace pointer (`trace:` and the
         # locators the unit's last build consulted, decision 103 item 4) is advisory, not an answer
         fork test, and(not(is-below(text/length, 200)), not(starts-with(text, <\{"portable":"trace:>)))

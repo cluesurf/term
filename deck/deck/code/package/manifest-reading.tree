@@ -9,7 +9,11 @@
 #     tree-reading.tree (term-cli-in-term-0076) and answers a `deck-manifest` (manifest-shape.tree): a field the
 #     original left undefined is left out, so on TypeScript the object has the original's keys
 #   - a refusal is a `failure` with the original's message; a read that fails for any reason but a missing file is
-#     passed on as the very error the file system raised
+#     passed on as a `failure` whose note is the message the file system raised (node's own, `ELOOP: too many symbolic
+#     links encountered, open '/x/deck.tree'`), read through @term/base/file where node:fs/promises was docked (item
+#     term-self-host-001-1401): the host says absence only for ENOENT (item 1499 option A)
+#   - a `have` count is grammar-reading.tree's `leading-integer-of`, the one Term reading of `Number.parseInt(x, 10)`
+#     and `Number.isFinite`, where `global:Number` was docked
 #   - `DEFAULT_BOOK_ROOT` is `default-book-root`, a task, since a top-level `host` is private to its module (self-host
 #     traps T022)
 
@@ -46,6 +50,7 @@ load ../version
 load ./grammar-reading
   find manifest-grammars
   find parse-manifest-mill
+  find leading-integer-of
 
 load ./tree-reading
   find tree-form
@@ -68,12 +73,14 @@ load ./manifest-shape
 load ./registry-naming
   find scope-name
 
-dock load
-  load <node:fs/promises>, name fs-promise
-    mark async
-  load <node:path>, name node-path
-  load <global:Promise>, name host-promise
-  load <global:Number>, name host-number
+load @term/base/path
+  find join, name path-join
+
+load @term/base/file
+  find read, name read-text
+
+load @term/base/exception
+  find absence
 
 # the first bare word, as `terms[0]`
 task first-term
@@ -161,13 +168,7 @@ task have-of
   sift deep-value-of(form, <have>)
     case some
       link have-text
-      save parsed, host-number/parse-int(have-text, 10)
-      fork test, host-number/is-finite(parsed)
-        hold
-          save count, 0
-          save count, parsed
-          back make(some, count)
-      back make none
+      back leading-integer-of(have-text)
     case none
       back make none
 
@@ -589,18 +590,19 @@ task load-manifest
   take grammars, like manifest-grammars
   like deck-manifest
 
-  save file, node-path/join(dir, <deck.tree>)
+  save file, path-join(dir, <deck.tree>)
   save text, <>
   fork
     mark unsafe
-    save text, fs-promise/read-file(file, <utf-8>)
+    save text, read-text(file)
   halt take
     take error
-    fork test, is-equal(error/code, <ENOENT>)
-      hold
+    sift error
+      case absence
         halt <no deck.tree here, so this is not a Term project. Run `term wake \<name\>` to start one, or change to a directory that has one.>
-    # any other failure passes on as the very error it was
-    wait host-promise/reject(error)
+      miss
+        # any other refusal passes on with the file system's own message
+        halt <{error/note}>
 
   back parse-manifest(text, grammars)
 
