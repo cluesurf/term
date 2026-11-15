@@ -69,10 +69,7 @@ load @term/call/work/output/printer
   find output-flags
   find make-output-setting
   find set-typed-output
-  find is-bug-form
-  find fail-typed-run
-  find write-typed-crash-log
-  find show-path
+  find fail-noted-run
 
 # the native term's answer to a raise (catch-console, at the end): the folder its crash log goes under
 load @term/base/environment
@@ -1128,9 +1125,9 @@ task fail-console
 # THE NATIVE TERM ANSWERS A RAISE HERE (term/compiler decision 021 points 6 to 9, item term-self-host-001-1464). The
 # lowered console calls this when a verb it runs natively raises, each parameter bound by its name: the raise's note
 # and form, the lines an unhandled raise prints (`<form>: <note>` and its frames), the console's mark and the verb.
-# It answers as node's fail-run does through the same printer task: a defect is a bug in Term (a crash log under the
-# working folder and exit 70), any other raise the run's failure (exit 1). A Term raise carries no quote on node, so
-# none is handed here. Node's run never calls it: fail-console answers there
+# It answers as node's fail-run does through the printer's fail-noted-run (item term-self-host-001-1478), the one body
+# fail-raised-run runs too: a defect is a bug in Term (a crash log under the working folder and exit 70), any other
+# raise the run's failure (exit 1). Node's run never calls it: fail-console answers there
 task catch-console
   take note, like text
   take form, like text
@@ -1138,39 +1135,12 @@ task catch-console
   take mark, like text
   take verb, like text
   like number
-  save bug
-    call is-bug-form
-      read form
-  save shown, text <>
-  fork test
-    hook test
-      read bug
-    hook hold
-      save root
-        call current-directory
-      save log
-        call write-typed-crash-log
-          read stack
-          read root
-      fork test
-        hook test
-          call is-unequal
-            read log
-            text <>
-        hook hold
-          save shown
-            call show-path
-              read log
-              read root
-  save quote
-    make list
   send back
-    call fail-typed-run
+    call fail-noted-run
       read note
-      text <>
-      read bug
-      read quote
-      read shown
+      read form
+      read stack
+      call current-directory
 
 # THE NATIVE TERM OPENS ITS RUN HERE (term/compiler decision 019, item term-self-host-001-1451). The lowered console calls
 # this once before a verb it runs natively (halt, mind, wake), each parameter bound by its name to the program hook's

@@ -80,6 +80,11 @@ load @term/call/work/item/format
 # the crash log (write-typed-crash-log), named apart from the face's own finds of these modules
 load @term/base/text
   find replace-all
+  find split, name split-frames
+
+# a caught raise (fail-raised-run)
+load @term/base/exception
+  find exception
 
 load @term/base/path
   find join, name crash-join
@@ -963,6 +968,45 @@ task write-typed-crash-log
     take failed
     back <>
   back <>
+
+# a raise ends the run (term/compiler decision 021 point 10, item term-self-host-001-1478), from its note, its form's
+# name and the lines an unhandled raise prints (`<form>: <note>` and its frames): a defect is a bug in Term (a crash log
+# under the root holding the stack, exit 70), any other form the run's failure (exit 1). A Term raise carries no quote
+# on node, so none is handed on. The native term's catch-console (line/base.tree) and fail-raised-run answer here
+task fail-noted-run
+  take note, like text
+  take form, like text
+  take stack, like text
+  take root, like text
+  like number
+
+  save bug, is-bug-form(form)
+  save shown, <>
+  fork test, bug
+    hold
+      save log, write-typed-crash-log(stack, root)
+      fork test, is-unequal(log, <>)
+        hold
+          save shown, show-path(log, root)
+  save quote, make list
+  back fail-typed-run(note, <>, bug, quote, shown)
+
+# a raise Term code caught (`halt take`) ends the run (term/compiler decision 021 point 10, item term-self-host-001-1478):
+# its form, its note and its stack as an unhandled raise prints it, `<form>: <note>` then an `  at <frame>` line per
+# frame (a frame text holds several a line apart where a task was inlined), through fail-noted-run. A host value a
+# guard caught reads a form and a note too (point 10a), so a work file needs no node read of it
+task fail-raised-run
+  take raised, like exception
+  take root, like text
+  like number
+
+  save stack, <{raised/form}: {raised/note}>
+  walk raised/flow
+    take frames
+    walk split-frames(frames, <\n>)
+      take frame
+      save stack, <{stack}\n  at {frame}>
+  back fail-noted-run(raised/note, raised/form, stack, root)
 
 bind is-data-terminal
   like boolean
