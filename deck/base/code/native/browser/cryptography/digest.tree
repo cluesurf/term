@@ -5,6 +5,10 @@ dock load
 
 load @term/base/native/shared/cryptography/sha256
   find calculate-sha256-text
+  find calculate-sha256
+
+load @term/base/bytes
+  find to-byte-list
 
 # SHA-256 of a text, synchronous. SubtleCrypto's digest is a promise only, so the browser answers from the Term
 # definition itself (native/shared/cryptography/sha256), which every other backend's native digest is held equal to
@@ -14,6 +18,15 @@ task digest-sha256-text
   send back
     call calculate-sha256-text
       read input
+
+# SHA-256 of bytes, synchronous, from the Term definition as above
+task digest-sha256-bytes-text
+  take input, like bytes
+  like text
+  send back
+    call calculate-sha256
+      call to-byte-list
+        read input
 
 task digest-sha256
   mark async

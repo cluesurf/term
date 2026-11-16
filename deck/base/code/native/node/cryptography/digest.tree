@@ -35,6 +35,21 @@ task digest-sha256-text
     call updated/digest
       text <hex>
 
+# SHA-256 of bytes, synchronous: `update` takes the Uint8Array as it is and `digest` with `hex` answers the 64 lowercase
+# digits. Held to the Term reference by deck/base/test/sha256-bytes.tree
+task digest-sha256-bytes-text
+  take input, like bytes
+  like text
+  save hasher
+    call node-crypto/create-hash
+      text <sha256>
+  save updated
+    call hasher/update
+      read input
+  send back
+    call updated/digest
+      text <hex>
+
 task digest-sha512
   mark async
   take input, like bytes

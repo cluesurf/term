@@ -1,0 +1,136 @@
+# SHA-256 of bytes (`digest-sha256-bytes-text`, decision 080 of note/project/term/self-host/change/001-finish-self-host):
+# the FIPS 180-4 vectors (the empty message, "abc", the 448-bit two-block message, one million "a"), four bytes that
+# are no UTF-8, the 256 byte values and those 256 doubled to 4 MiB, each through the env's own fast path (node:crypto,
+# sha2, CryptoKit, MessageDigest) and, but for the 4 MiB, through the Term reference
+# (native/shared/cryptography/sha256's calculate-sha256, the browser's path). The same answer on every backend.
+#
+# Run with: term test
+
+load @term/base/native/shared/cryptography/sha256
+  find calculate-sha256
+
+load @term/base/cryptography/digest
+  find digest-sha256-bytes-text
+  find digest-sha256-text
+
+load @term/base/bytes
+  find from-hex
+  find from-text
+  find from-byte-list
+  find to-byte-list
+  find concat
+  find length
+
+load @term/base/text/string
+  find repeat
+
+load @term/base/text/unicode
+  find rune-to-text
+
+# the vector through both paths, and the two agree
+task both-say
+  take value, like bytes
+  take want, like text
+  like boolean
+  save fast, call(digest-sha256-bytes-text, read(value))
+  save reference, call(calculate-sha256, call(to-byte-list, read(value)))
+  send back, call(and, call(is-equal, read(fast), read(want)), call(is-equal, read(reference), read(want)))
+
+# the 256 byte values in order
+task every-byte
+  like bytes
+  save out, make list
+  save k, code 0
+  walk test
+    hook test
+      call is-below(read(k), code(256))
+    hook hold
+      call out/push(read(k))
+      save k, call increment(read k)
+  send back, call(from-byte-list, read(out))
+
+# the 256 byte values doubled 14 times: 4,194,304 bytes
+task four-mebibytes
+  like bytes
+  save out, call every-byte
+  save k, code 0
+  walk test
+    hook test
+      call is-below(read(k), code(14))
+    hook hold
+      save out, call(concat, read(out), read(out))
+      save k, call increment(read k)
+  send back, read out
+
+test sha256-bytes-empty
+  want hold
+    call both-say
+      call from-byte-list
+        make list
+      text <e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855>
+
+test sha256-bytes-abc
+  want hold
+    call both-say
+      call from-hex
+        text <616263>
+      text <ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad>
+
+# 448 bits: the padding no longer fits the first block, so the length lands in a second
+test sha256-bytes-two-blocks
+  want hold
+    call both-say
+      call from-text
+        text <abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq>
+      text <248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1>
+
+test sha256-bytes-one-million-a
+  want hold
+    call both-say
+      call from-text
+        call repeat
+          text <a>
+          code 1000000
+      text <cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0>
+
+# FF FE 80 00: no UTF-8 text holds them, so a digest that went through a text would differ
+test sha256-bytes-not-utf-8
+  want hold
+    call both-say
+      call from-hex
+        text <fffe8000>
+      text <c388c13343bf32eb671a4d9bdca38ee528a60763477a55869b668e04365bc9e5>
+
+test sha256-bytes-every-byte
+  want hold
+    call both-say
+      call every-byte
+      text <40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880>
+
+# a blob of the size an image layer has: the fast path only
+test sha256-bytes-four-mebibytes
+  save blob
+    call four-mebibytes
+  want hold
+    call and
+      call is-equal
+        call length
+          read blob
+        code 4194304
+      call is-equal
+        call digest-sha256-bytes-text
+          read blob
+        text <2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e>
+
+# a text's UTF-8 bytes digest as the text does (U+1D11E, four bytes)
+test sha256-bytes-of-text
+  save value
+    call rune-to-text
+      code 119070
+  want hold
+    call is-equal
+      call digest-sha256-bytes-text
+        call from-text
+          read value
+      call digest-sha256-text
+        read value

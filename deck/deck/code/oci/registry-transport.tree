@@ -18,21 +18,40 @@
 # The decisions:
 #   - the constants are tasks: manifest-media-type(), index-media-type(), manifest-limit()
 #   - every task takes positional parameters: verify-digest(digest, bytes, what); http-transport(host, credentials,
-#     insecure, fetcher, chunk-size, monolithic, retries, env), each of the last seven none (undefined) where the
-#     original left it out, defaulted as the original's `??` did
+#     insecure, chunk-size, monolithic, retries, env), the last five need-false maybes (decision 176 rule 1), since
+#     absent differs from empty (an explicit insecure false keeps https on loopback, retries 0 retries nothing),
+#     sifted and defaulted as the original's `??` did. The face transport.ts hands them boxed. `credentials` asks for
+#     the registry's credentials (registry-credentials.tree's record, or the host's nothing), once, the first time a
+#     registry asks for them
+#   - there is no fetch seam (decision 179 rule 1): a test fakes the registry with a loopback server, and the scheme a
+#     host is spoken to over is read without the network from the public registry-front (rule 2)
 #   - the transport is the form oci-transport, the original's record of a label and seven methods, each taking the
 #     original's one record as a form of its own (blob-query, blob-request, blob-upload, manifest-request,
 #     manifest-upload, tag-request, referrer-request) and answering one (fetched-manifest, manifest-receipt), a field
 #     the original left out a need-false maybe, so on TypeScript the records are the original's and the unported
 #     callers read them unchanged (item term-self-host-001-1546, ruling 1545). A maybe field is sifted before a bind
-#     reads it, and get-manifest and referrers answer like dynamic, since a maybe value is boxed on TypeScript. Its state (the token per scope, the
-#     credentials asked once) sits in a host record made when the transport is, read and written by binds, and the
-#     wire stays on its node binds until @term/base http carries bytes and manual redirects (item 1544). `fetcher`
-#     is the node-only seam a test hands its own fetch through
+#     reads it, and get-manifest and referrers answer like dynamic, since a maybe value is boxed on TypeScript. Its
+#     state (the token per scope, the credentials asked once) is the form wire-state
+#   - the wire is @term/base/network/http's exchange (item 1580, decision 179): open-exchange with redirects manual
+#     (refused for a token call, the original's `redirect: "error"`), read-exchange against the limit, cancel-exchange
+#     for a body left unread. Each exchange has a deadline of 30 s plus 1 s per 64 KiB of the bytes it sends and reads
+#     (rule 6). Every raise of the exchange is turned into `failure` with a fixed text and no host message (rule 4),
+#     so the retries see a network failure or a timeout as they saw the host's TypeError; a body over its limit is the
+#     original's oci-failure (rule 5)
+#   - the URL work is @term/base/url, and a query is written as URLSearchParams writes it (the
+#     application/x-www-form-urlencoded serializer over @term/base/url/percent); the JSON reads are @term/base/json
+#   - the bytes answered to a caller are the host's own buffer on node (host-buffer): the unported readers of a blob or
+#     manifest (archive, artifact-format, toolchain-release, the faces' tests) call Buffer methods on it
+#   - what is not the wire is Term (item 1530): the environment is @term/base/environment's when no env is given, the
+#     host tests and the repository grammar are @term/base/text and regex, a token scope is a list of text, the wait
+#     between tries is @term/base/clock's sleep, a request's options are the form request-plan and a try's outcome the
+#     form wire-try, each absent part a need-false maybe sifted before a bind reads it
 #   - every OciError is a halt of oci-failure, `thing` the original's message and `status` where it passed one; the
 #     retries test the caught value's form and status (is-oci-failure, oci-failure-status), never a class
-#   - a failure that is not an oci-failure (a network TypeError, a JSON SyntaxError) passes through unchanged, as in
-#     the original; the bodies of the retries are guarded whole, as the original's try held them
+#   - a failure that is not an oci-failure (a network failure, a timeout) passes through unchanged, as in the
+#     original; the bodies of the retries are guarded whole, as the original's try held them
+#   - a digest is @term/base/cryptography/digest's synchronous SHA-256 of bytes, prefixed sha256: (item 1581), so the
+#     file docks no host module
 #   - parse-challenge and basic-header are registry-credentials.tree's (auth.ts was docked until
 #     term-cli-in-term-0115 loaded the port)
 
@@ -50,15 +69,182 @@ load ./registry-credentials
   find parse-challenge
   find basic-header
 
-dock load
-  load <node:crypto>, name node-crypto
-  load <global:process>, name host-process
+load @term/base/environment
+  find variable, name env-variable
 
+load @term/base/text
+  find split
+  find trim
+  find to-lower-case
+  find char-count
+  find char-at
+  find char-code-at
+  find replace-all
+  find starts-with
+  find ends-with
+  find index-of
+  find substring
+
+load @term/base/regex
+  find matches
+  find replace-matches
+  find find-match
+  find match-group
+
+load @term/base/list
+  find list
+  find sort, name sort-list
+  find join
+
+load @term/base/hash
+  find hash
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/clock
+  find sleep
+  find now, name clock-now
+
+load @term/base/random
+  find integer, name random-integer
+
+load @term/base/math
+  find minimum
+  find maximum
+  find power
+
+load @term/base/float
+  find round-down, name float-floor
+  find round-up, name float-ceiling
+  find to-number, name float-to-number
+  find to-decimal
+
+load @term/base/text/number
+  find read-number
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/bytes
+  find length, name bytes-length
+  find slice, name bytes-slice
+  find from-text, name bytes-from-text
+  find to-text, name bytes-to-text
+  find to-byte-list
+
+load @term/base/json
+  find parse, name json-parse
+  find get-field, name json-field
+  find is-text, name json-is-text
+  find as-text, name json-as-text
+  find as-number, name json-as-number
+  find is-null, name json-is-null
+  find is-object, name json-is-object
+  find is-array, name json-is-array
+  find array-size, name json-array-size
+  find array-item, name json-array-item
+  find json-kind
+  find make-null, name json-null
+
+load @term/base/url
+  find url
+  find make-url
+  find href, name url-href
+  find origin, name url-origin
+
+load @term/base/url/percent
+  find percent-encode
+  find percent-decode
+  find utf-8-decode
+  find encode-set-urlencoded
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/network/http
+  find http-exchange
+  find open-exchange
+  find read-exchange
+  find cancel-exchange
+
+load @term/base/exception
+  find outage
+  find timeout
+  find refusal
+  find absence
+  find exclusion
+  find excess
+  find failure
+
+load @term/base/cryptography/digest
+  find digest-sha256-bytes-text
+
+# one try's outcome: finished with its answer, failed with what was raised, or neither (a status worth trying again)
 form wire-try
   link failed, like boolean
   link finished, like boolean
-  link problem, like dynamic
-  link answer, like dynamic
+  link problem
+    like maybe, like exception
+    need false
+  link answer
+    like maybe, like http-exchange
+    need false
+
+# one try of an upload: its outcome (present, mounted, uploaded), or what it raised
+form upload-try
+  link finished, like boolean
+  link problem
+    like maybe, like exception
+    need false
+  link outcome
+    like maybe, like text
+    need false
+
+# a request's options, as the original's `send` took them: the method, the scope its token needs, the headers and
+# the body where there are some, and the most bytes its answer is read to (0 for an answer read as its status only),
+# which with the body sizes its deadline
+form request-plan
+  link method, like text
+  link scope, like list, like text
+  link headers
+    like maybe
+      like hash
+        like text
+        like text
+    need false
+  link body
+    like maybe, like bytes
+    need false
+  link reading, like number
+
+# a token held for a set of scopes: the Authorization header it goes as, and the clock's milliseconds it lasts until
+form token-entry
+  link header, like text
+  link expires, like number
+
+# the transport's state: the registry's host (lower case), whether it is spoken to over plain http, its front and
+# origin, the upload sizes, the tries, the token per scope key, the credentials once asked (empty until then) and the
+# asker of them
+form wire-state
+  link host, like text
+  link plain, like boolean
+  link front, like text
+  link origin, like text
+  link chunk, like number
+  link whole, like number
+  link retries, like number
+  link tokens
+    like hash
+      like text
+      like token-entry
+  link held
+    like list, like dynamic
+  link asker
+    like task
+      mark async
+      like dynamic
 
 # --- the transport's records, each the original's input or answer
 
@@ -167,517 +353,27 @@ bind wire-nothing
   case node
     text <undefined>
 
-bind wire-sha256
-  take hashing, like dynamic
-  take bytes, like dynamic
-  like text
-  case node
-    text <<("sha256:" + $hashing.createHash("sha256").update($bytes).digest("hex"))>>
-
-bind wire-is-loopback
-  take host, like text
-  like boolean
-  case node
-    text <<((bare) => bare === "localhost" || bare === "::1" || /^127\.\d+\.\d+\.\d+$/.test(bare))($host.replace(/:\d+$/, "").replace(/^\[|\]$/g, ""))>>
-
-# `TERM_OCI_INSECURE=host1,host2` names the non-loopback hosts that may be spoken to over plain http
-bind wire-is-insecure-host
-  take env, like dynamic
-  take host, like text
-  like boolean
-  case node
-    text <<new Set(($env["TERM_OCI_INSECURE"] ?? "").split(",").map(each => each.trim().toLowerCase()).filter(Boolean)).has($host)>>
-
-bind wire-lower
-  take value, like dynamic
-  like text
-  case node
-    text <$value.toLowerCase()>
-
-bind wire-or
-  take value, like dynamic
-  take fallback, like dynamic
-  like dynamic
-  case node
-    text <($value ?? $fallback)>
-
-bind wire-fetch-or
-  take given, like dynamic
-  like dynamic
-  case node
-    text <($given ?? fetch)>
-
-bind wire-truthy
-  take value, like dynamic
-  like boolean
-  case node
-    text <Boolean($value)>
-
-# the transport's state: the registry's front and origin (made, and refused, as the original made them), the fetch,
-# the sizes, the token per scope and the credentials asked once
-bind wire-context
-  take host, like text
-  take plain, like dynamic
-  take fetcher, like dynamic
-  take chunk, like dynamic
-  take whole, like dynamic
-  take retries, like dynamic
-  take asker, like dynamic
-  like dynamic
-  case node
-    text <<((front) => ({ host: $host, plain: $plain, front, origin: new URL(front).origin, fetcher: $fetcher, chunk: $chunk, whole: $whole, retries: $retries, tokens: new Map(), held: { creds: undefined }, asker: $asker }))(`${$plain ? "http" : "https"}://${$host}`)>>
-
-bind wire-load-credentials
-  take wire, like dynamic
-  like dynamic
-  case node
-    text <<($wire.held.creds ??= ($wire.asker?.() ?? Promise.resolve(undefined)))>>
-
-bind wire-scope-key
-  take scope, like dynamic
-  like text
-  case node
-    text <<($scope ?? []).slice().sort().join(" ")>>
-
-bind wire-token-set
-  take wire, like dynamic
-  take key, like text
-  take entry, like dynamic
-  like void
-  case node
-    text <$wire.tokens.set($key, $entry)>
-
-bind wire-basic-entry
-  take header, like text
-  like dynamic
-  case node
-    text <<({ header: $header, expires: Number.POSITIVE_INFINITY })>>
-
-bind wire-sleep
-  take ms, like number
-  like dynamic
-  case node
-    text <<new Promise(wake => setTimeout(wake, $ms))>>
-
-bind wire-backoff
-  take attempt, like number
-  take after, like dynamic
-  like number
-  case node
-    text <<((stated) => (Number.isFinite(stated) && stated >= 0 ? Math.min(stated * 1000, 30000) : Math.min(250 * 2 ** $attempt, 8000) + Math.floor(Math.random() * 100)))($after ? Number($after) : Number.NaN)>>
-
 bind wire-raise-again
   take problem, like dynamic
   like void
   case node
     text <(() =\> \{ throw $problem \})()>
 
-# a request's options: the method, the scope its token needs, the headers and the body, each undefined where none
-bind wire-init
-  take method, like text
-  take scope, like dynamic
-  take headers, like dynamic
-  take body, like dynamic
-  like dynamic
+# the bytes as the host's own buffer: on node a Buffer over the same memory (base bytes are a plain Uint8Array, and
+# the unported readers of a blob or manifest call Buffer methods on it, traps T-1532), the bytes themselves elsewhere
+bind host-buffer
+  take bytes, like bytes
+  like bytes
   case node
-    text <<({ method: $method, scope: $scope, headers: $headers, body: $body })>>
-
-bind wire-pull
-  take repository, like dynamic
-  like dynamic
-  case node
-    text <<[`repository:${$repository}:pull`]>>
-
-bind wire-push
-  take repository, like dynamic
-  like dynamic
-  case node
-    text <<[`repository:${$repository}:pull,push`]>>
-
-bind wire-push-and-pull
-  take repository, like dynamic
-  take mounted, like dynamic
-  like dynamic
-  case node
-    text <<[`repository:${$repository}:pull,push`, `repository:${$mounted}:pull`]>>
-
-bind wire-header
-  take response, like dynamic
-  take name, like text
-  like dynamic
-  case node
-    text <$response.headers.get($name)>
-
-bind wire-has-header
-  take response, like dynamic
-  take name, like text
-  like boolean
-  case node
-    text <$response.headers.has($name)>
-
-bind wire-status
-  take response, like dynamic
-  like number
-  case node
-    text <$response.status>
-
-bind wire-ok
-  take response, like dynamic
-  like boolean
-  case node
-    text <Boolean($response.ok)>
-
-bind wire-cancel
-  take response, like dynamic
-  like dynamic
-  case node
-    text <$response.body?.cancel()>
-
-bind wire-length
-  take bytes, like dynamic
-  like number
-  case node
-    text <$bytes.length>
-
-bind wire-empty-bytes
-  like dynamic
-  case node
-    text <Buffer.alloc(0)>
-
-bind wire-utf8
-  take bytes, like dynamic
-  like text
-  case node
-    text <$bytes.toString("utf8")>
-
-bind wire-parse
-  take text, like text
-  like dynamic
-  case node
-    text <JSON.parse($text)>
-
-# --- the URL work, as the original did it
-
-bind wire-url
-  take target, like dynamic
-  take front, like text
-  like dynamic
-  case node
-    text <new URL($target, $front)>
-
-bind wire-pathname
-  take url, like dynamic
-  like text
-  case node
-    text <$url.pathname>
-
-bind wire-origin-of
-  take url, like dynamic
-  like text
-  case node
-    text <$url.origin>
-
-bind wire-protocol
-  take url, like dynamic
-  like text
-  case node
-    text <$url.protocol>
-
-bind wire-url-text
-  take url, like dynamic
-  like text
-  case node
-    text <$url.toString()>
-
-bind wire-path-and-search
-  take url, like dynamic
-  like text
-  case node
-    text <($url.pathname + $url.search)>
-
-bind wire-set-param
-  take url, like dynamic
-  take name, like text
-  take value, like dynamic
-  like void
-  case node
-    text <$url.searchParams.set($name, $value)>
-
-bind wire-append-param
-  take url, like dynamic
-  take name, like text
-  take value, like dynamic
-  like void
-  case node
-    text <$url.searchParams.append($name, $value)>
-
-bind wire-is-redirect
-  take status, like number
-  like boolean
-  case node
-    text <[301, 302, 303, 307, 308].includes($status)>
-
-# --- one request, as the original's `send` made it
-
-bind wire-request-headers
-  take wire, like dynamic
-  take init, like dynamic
-  take url, like dynamic
-  like dynamic
-  case node
-    text <<((made) => { if ($url.origin === $wire.origin) { const entry = $wire.tokens.get(($init.scope ?? []).slice().sort().join(" ")); if (entry && entry.expires > Date.now()) made["authorization"] = entry.header } return made })({ "user-agent": "term", ...$init.headers })>>
-
-# a Buffer from a pooled allocation can be detached mid-request by undici, so the body goes as a copy
-bind wire-fetch
-  take wire, like dynamic
-  take url, like dynamic
-  take init, like dynamic
-  take headers, like dynamic
-  like dynamic
-  case node
-    text <<$wire.fetcher($url, { method: $init.method, headers: $headers, body: $init.body === undefined ? undefined : new Blob([new Uint8Array($init.body)]), redirect: "manual" })>>
-
-bind wire-method
-  take init, like dynamic
-  like text
-  case node
-    text <$init.method>
-
-bind wire-scope
-  take init, like dynamic
-  like dynamic
-  case node
-    text <($init.scope ?? [])>
-
-# --- the token flow
-
-bind wire-authenticate-header
-  take response, like dynamic
-  like dynamic
-  case node
-    text <<$response.headers.get("www-authenticate")>>
-
-bind wire-kind
-  take value, like dynamic
-  like dynamic
-  case node
-    text <$value?.kind>
-
-bind wire-realm-url
-  take realm, like dynamic
-  like dynamic
-  case node
-    text <new URL($realm)>
-
-bind wire-pull-only
-  take scope, like dynamic
-  like boolean
-  case node
-    text <<($scope.length > 0 && $scope.every(entry => /:pull$/.test(entry)))>>
-
-# the refresh-token exchange for an identity credential: a form POST, never redirected
-bind wire-identity-ask
-  take wire, like dynamic
-  take realm, like dynamic
-  take service, like dynamic
-  take scope, like dynamic
-  take creds, like dynamic
-  like dynamic
-  case node
-    text <<((asked) => { if ($service) asked.set("service", $service); if ($scope.length > 0) asked.set("scope", $scope.join(" ")); return $wire.fetcher($realm, { method: "POST", headers: { "user-agent": "term", "content-type": "application/x-www-form-urlencoded" }, body: asked.toString(), redirect: "error" }) })(new URLSearchParams({ grant_type: "refresh_token", refresh_token: $creds.token, client_id: "term" }))>>
-
-# the token GET: the service and each scope on the realm's query, basic credentials on the request when there are some
-bind wire-token-get
-  take wire, like dynamic
-  take realm, like dynamic
-  take service, like dynamic
-  take scope, like dynamic
-  take header, like dynamic
-  like dynamic
-  case node
-    text <<((sent) => { if ($service) $realm.searchParams.set("service", $service); for (const entry of $scope) $realm.searchParams.append("scope", entry); if ($header !== undefined) sent["authorization"] = $header; return $wire.fetcher($realm, { method: "GET", headers: sent, redirect: "error" }) })({ "user-agent": "term" })>>
-
-bind wire-token-of
-  take body, like dynamic
-  like dynamic
-  case node
-    text <($body.token ?? $body.access_token)>
-
-bind wire-bearer-entry
-  take token, like dynamic
-  take body, like dynamic
-  like dynamic
-  case node
-    text <<((life) => ({ header: `Bearer ${$token}`, expires: Date.now() + (life - 10) * 1000 }))(Math.max(30, Math.min($body.expires_in ?? 60, 3600)))>>
-
-# --- answers
-
-bind wire-error-text
-  take text, like text
-  like text
-  case node
-    text <<((said) => { try { const first = JSON.parse(said).errors?.[0]; if (first) return ` ${first.code ?? ""}${first.message ? `: ${first.message}` : ""}`.slice(0, 300); return said ? ` ${said.slice(0, 300)}` : "" } catch { return "" } })($text)>>
-
-bind wire-declared-length
-  take response, like dynamic
-  like number
-  case node
-    text <<Number($response.headers.get("content-length"))>>
-
-bind wire-is-finite
-  take value, like number
-  like boolean
-  case node
-    text <Number.isFinite($value)>
-
-bind wire-has-body
-  take response, like dynamic
-  like boolean
-  case node
-    text <Boolean($response.body)>
-
-bind wire-reader
-  take response, like dynamic
-  like dynamic
-  case node
-    text <$response.body.getReader()>
-
-bind wire-read
-  take reader, like dynamic
-  like dynamic
-  case node
-    text <$reader.read()>
-
-bind wire-reader-cancel
-  take reader, like dynamic
-  like dynamic
-  case node
-    text <$reader.cancel()>
-
-bind wire-push-part
-  take parts, like dynamic
-  take part, like dynamic
-  like void
-  case node
-    text <$parts.push($part)>
-
-bind wire-parts
-  like dynamic
-  case node
-    text <[]>
-
-bind wire-concat
-  take parts, like dynamic
-  take total, like number
-  like dynamic
-  case node
-    text <Buffer.concat($parts, $total)>
-
-bind wire-manifest-media-type
-  take bytes, like dynamic
-  take header, like dynamic
-  like text
-  case node
-    text <<((given) => { try { const parsed = JSON.parse($bytes.toString("utf8")); if (typeof parsed.mediaType === "string") return parsed.mediaType } catch {} return given?.split(";")[0]?.trim() || "application/vnd.oci.image.manifest.v1+json" })($header)>>
-
-# a `Link: </v2/x/tags/list?n=1000&last=y>; rel="next"` header, kept only when it stays on the registry
-bind wire-next-link
-  take header, like dynamic
-  take origin, like text
-  like dynamic
-  case node
-    text <<((said) => { if (!said) return undefined; const match = /<([^>]+)>\s*;\s*rel="?next"?/i.exec(said); if (!match) return undefined; const linked = new URL(match[1], $origin); return linked.origin === $origin ? linked.pathname + linked.search : undefined })($header)>>
-
-bind wire-is-descriptor
-  take value, like dynamic
-  like boolean
-  case node
-    text <<((entry) => typeof entry === "object" && entry !== null && typeof entry.mediaType === "string" && typeof entry.digest === "string" && /^sha256:[a-f0-9]{64}$/.test(entry.digest) && Number.isSafeInteger(entry.size) && entry.size >= 0)($value)>>
-
-bind wire-is-repository
-  take repository, like dynamic
-  like boolean
-  case node
-    text <<(/^[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(\/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*$/.test($repository) && $repository.length <= 255)>>
-
-bind wire-content-range
-  take at, like number
-  take size, like number
-  like dynamic
-  case node
-    text <<({ "content-type": "application/octet-stream", "content-range": `${$at}-${$at + $size - 1}` })>>
-
-bind wire-octet-headers
-  like dynamic
-  case node
-    text <<({ "content-type": "application/octet-stream" })>>
-
-bind wire-accept-headers
-  take accept, like text
-  like dynamic
-  case node
-    text <<({ accept: $accept })>>
-
-bind wire-type-headers
-  take kind, like text
-  like dynamic
-  case node
-    text <<({ "content-type": $kind })>>
-
-bind wire-subarray
-  take bytes, like dynamic
-  take start, like number
-  take stop, like number
-  like dynamic
-  case node
-    text <$bytes.subarray($start, Math.min($stop, $bytes.length))>
-
-bind wire-field
-  take record, like dynamic
-  take name, like text
-  like dynamic
-  case node
-    text <$record[$name]>
-
-bind wire-starts-with
-  take value, like dynamic
-  take start, like text
-  like boolean
-  case node
-    text <<(typeof $value === "string" && $value.startsWith($start))>>
-
-bind wire-limit-of
-  take limit, like number
-  take size, like dynamic
-  like number
-  case node
-    text <($size === undefined ? $limit : Math.min($limit, $size))>
-
-bind wire-tags-of
-  take body, like dynamic
-  like dynamic
-  case node
-    text <<($body.tags ?? []).filter(tag => typeof tag === "string" && /^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$/.test(tag))>>
-
-bind wire-push-all
-  take into, like dynamic
-  take items, like dynamic
-  like void
-  case node
-    text <$into.push(...$items)>
-
-bind wire-descriptors-of
-  take index, like dynamic
-  like dynamic
-  case node
-    text <<($index.manifests ?? []).filter(entry => typeof entry === "object" && entry !== null && typeof entry.mediaType === "string" && typeof entry.digest === "string" && /^sha256:[a-f0-9]{64}$/.test(entry.digest) && Number.isSafeInteger(entry.size) && entry.size >= 0)>>
-
-bind wire-of-type
-  take found, like dynamic
-  take kind, like dynamic
-  like dynamic
-  case node
-    text <<($kind ? $found.filter(entry => entry.artifactType === $kind) : $found)>>
+    text <<((given) => Buffer.from(given.buffer, given.byteOffset, given.byteLength))($bytes)>>
+  case browser
+    text <$bytes>
+  case rust
+    text <$bytes>
+  case swift
+    text <$bytes>
+  case kotlin
+    text <$bytes>
 
 task manifest-media-type
   like text
@@ -701,16 +397,185 @@ task accept-manifest
 
   back <application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json>
 
-task sha256-digest
-  take bytes, like dynamic
+# whether a host is this machine: localhost, ::1 or 127.x.y.z once its port and its IPv6 brackets are dropped
+task is-loopback
+  take host, like text
+  like boolean
+  mark private
+
+  save bare, replace-matches(<<^\[|\]$>>, replace-matches(<<:[0-9]+$>>, host, <>), <>)
+  back or(or(is-equal(bare, <localhost>), is-equal(bare, <::1>)), matches(<<^127\.[0-9]+\.[0-9]+\.[0-9]+$>>, bare))
+
+# whether `TERM_OCI_INSECURE=host1,host2` (the text `listed`) names this non-loopback host, which may then be spoken
+# to over plain http
+task is-insecure-host
+  take listed, like text
+  take host, like text
+  like boolean
+  mark private
+
+  walk split(listed, <,>)
+    take each
+    save named, to-lower-case(trim(each))
+    fork test, and(not(is-equal(named, <>)), is-equal(named, host))
+      hold
+        back true
+  back false
+
+# TERM_OCI_INSECURE from an env the caller gave, the empty text where it holds none
+task env-insecure-text
+  take env, like dynamic
+  like text
+  mark private
+
+  save listed, json-field(env, <TERM_OCI_INSECURE>)
+  fork test, json-is-text(listed)
+    hold
+      back json-as-text(listed)
+  back <>
+
+# whether a host is spoken to over plain http: loopback or named by TERM_OCI_INSECURE (the given env's, else the
+# process's), unless an explicit insecure, true or false, says otherwise, as the original's `??`
+task is-plain
+  take host, like text
+  take insecure
+    like maybe, like boolean
+    need false
+  take env
+    like maybe, like dynamic
+    need false
+  like boolean
+  mark private
+
+  save listed, env-variable(<TERM_OCI_INSECURE>)
+  sift env
+    case some
+      link given-env
+      save listed, env-insecure-text(given-env)
+    case none
+      save unset-env, 0
+  save plain, or(is-loopback(host), is-insecure-host(listed, host))
+  sift insecure
+    case some
+      link given-insecure
+      save plain, given-insecure
+    case none
+      save unset-insecure, 0
+  back plain
+
+# the front a host is spoken to over, `http://<host>` or `https://<host>` (the host in lower case), as http-transport
+# makes it: read without the network, so a test reads the scheme a host gets (decision 179 rule 2)
+task registry-front
+  take host-name, like text
+  take insecure
+    like maybe, like boolean
+    need false
+  take env
+    like maybe, like dynamic
+    need false
   like text
 
-  back wire-sha256(node-crypto, bytes)
+  save host, to-lower-case(host-name)
+  fork test, is-plain(host, insecure, env)
+    hold
+      back <http://{host}>
+  back <https://{host}>
+
+# the scopes a token is asked for: pull, push, or push here and pull from the repository a blob is mounted from
+task pull-scope
+  take repository, like text
+  like list, like text
+  mark private
+
+  back make(list, <repository:{repository}:pull>)
+
+task push-scope
+  take repository, like text
+  like list, like text
+  mark private
+
+  back make(list, <repository:{repository}:pull,push>)
+
+task push-and-pull-scope
+  take repository, like text
+  take mounted, like text
+  like list, like text
+  mark private
+
+  back make(list, <repository:{repository}:pull,push>, <repository:{mounted}:pull>)
+
+# the key a token is held by: its scopes sorted and joined by spaces
+task scope-key
+  take scope, like list, like text
+  like text
+  mark private
+
+  save key, <>
+  save first, true
+  walk sort-list(scope, from-texts)
+    take entry
+    fork test, first
+      hold
+        save key, entry
+        save first, false
+      miss
+        save key, <{key} {entry}>
+  back key
+
+# whether every scope only pulls (and there is one)
+task is-pull-only
+  take scope, like list, like text
+  like boolean
+  mark private
+
+  save some-scope, false
+  walk scope
+    take entry
+    fork test, not(ends-with(entry, <:pull>))
+      hold
+        back false
+    save some-scope, true
+  back some-scope
+
+# a request's options with neither headers nor a body, its answer read to `reading` bytes
+task bare-plan
+  take method, like text
+  take scope, like list, like text
+  take reading, like number
+  like request-plan
+  mark private
+
+  back make(request-plan, bind(method, method), bind(scope, scope), bind(reading, reading))
+
+# the statuses a redirect answers with
+task is-redirect
+  take status, like number
+  like boolean
+  mark private
+
+  back or(or(is-equal(status, 301), is-equal(status, 302)), or(or(is-equal(status, 303), is-equal(status, 307)), is-equal(status, 308)))
+
+# the OCI digest of bytes: sha256: and the 64 lowercase hex digits, synchronous. The host digest's failure (a dock call
+# raises failure, never on bytes) is turned into oci-failure, which every caller with a raise set already declares
+task sha256-digest
+  take bytes, like bytes
+  like text
+  halt oci-failure
+
+  save hex, <>
+  fork
+    mark unsafe
+    save hex, digest-sha256-bytes-text(bytes)
+  halt take
+    take problem
+    halt oci-failure
+      bind thing, <SHA-256 of {bytes-length(bytes)} bytes failed>
+  back <sha256:{hex}>
 
 # refuse bytes whose digest is not the one they were asked for
 task verify-digest
   take digest, like text
-  take bytes, like dynamic
+  take bytes, like bytes
   take what, like text
   like void
   halt oci-failure
@@ -721,143 +586,656 @@ task verify-digest
       halt oci-failure
         bind thing, <{what} failed verification: asked for {digest}, received {actual}>
 
+# a separator between two runs of letters and digits in a repository component: one ., one _, two _ or any run of -
+task is-name-separator
+  take run, like text
+  like boolean
+  mark private
+
+  back or(or(is-equal(run, <.>), is-equal(run, <_>)), or(is-equal(run, <__>), is-equal(replace-all(run, <->, <>), <>)))
+
+# the spec's repository grammar, read a character at a time: components joined by /, each lower-case letters and
+# digits joined by a separator (`^[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(\/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*$`)
+task is-repository-name
+  take name, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  # wanted: a letter or digit must come next (at the start, and after a /). run: the separators since the last one
+  save wanted, true
+  save run, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(name, at)
+      save lettered, or(and(not(is-below(code, 97)), not(is-above(code, 122))), and(not(is-below(code, 48)), not(is-above(code, 57))))
+      fork test, lettered
+        hold
+          fork test, and(not(is-equal(run, <>)), not(is-name-separator(run)))
+            hold
+              back false
+          save run, <>
+          save wanted, false
+        miss
+          fork test, wanted
+            hold
+              back false
+          fork test, is-equal(code, 47)
+            hold
+              fork test, not(is-equal(run, <>))
+                hold
+                  back false
+              save wanted, true
+            miss
+              fork test, not(or(is-equal(code, 46), or(is-equal(code, 95), is-equal(code, 45))))
+                hold
+                  back false
+              save run, <{run}{char-at(name, at)}>
+      save at, add(at, 1)
+  back and(not(wanted), is-equal(run, <>))
+
+# the spec's repository grammar, at most 255 characters
 task assert-repository
-  take repository, like dynamic
+  take repository, like text
   like void
   halt oci-failure
 
-  fork test, not(wire-is-repository(repository))
+  fork test, not(and(is-repository-name(repository), not(is-above(char-count(repository), 255))))
     hold
       halt oci-failure
         bind thing, <not an OCI repository name: {repository}>
 
+# --- the JSON reads, each guarded: a value of another shape reads as none, as the original's optional reads did
+
+# a field of a parsed value as text, the empty text when it is missing or not text
+task text-field
+  take value, like dynamic
+  take key, like text
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    save found, json-field(value, key)
+    fork test, json-is-text(found)
+      hold
+        back json-as-text(found)
+    back <>
+  halt take
+    take problem
+    back <>
+
+# whether a parsed value is a number that is a whole number from 0 up to 2^53 - 1 (the original's
+# `Number.isSafeInteger(size) && size >= 0`)
+task is-size
+  take value, like dynamic
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    fork test, not(is-equal(json-kind(value), <number>))
+      hold
+        back false
+    save size, json-as-number(value)
+    back and(is-equal(float-floor(size), size), and(not(is-below(size, 0.0)), not(is-above(size, 9007199254740991.0))))
+  halt take
+    take problem
+    back false
+
+# a parsed JSON text, or none when the text is not JSON
+task parse-or-none
+  take said, like text
+  like maybe, like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    save parsed, json-parse(said)
+    back make(some, parsed)
+  halt take
+    take problem
+    back make(none)
+
+# whether a value is an OCI descriptor: an object with a media type, a sha256 digest and a whole size. Never raises,
+# as the original's test never threw (its callers declare no raise of it)
 task is-descriptor
   take value, like dynamic
   like boolean
 
-  back wire-is-descriptor(value)
+  fork
+    mark unsafe
+    fork test, not(json-is-object(value))
+      hold
+        back false
+    fork test, not(json-is-text(json-field(value, <mediaType>)))
+      hold
+        back false
+    save digest, json-field(value, <digest>)
+    fork test, not(json-is-text(digest))
+      hold
+        back false
+    fork test, not(matches(<<^sha256:[a-f0-9]{64}$>>, text-field(value, <digest>)))
+      hold
+        back false
+    back is-size(json-field(value, <size>))
+  halt take
+    take problem
+    back false
 
-# a response body, refused the moment it passes `limit` bytes
-task read-limited
-  take response, like dynamic
-  take limit, like number
-  like dynamic
-  halt oci-failure
+# the registry's error body, `{"errors":[{"code","message"}]}`, short, for a message: the first error's code and
+# message, else the body itself, or nothing when the body is not JSON
+task error-text-of
+  take said, like text
+  like text
+  mark private
 
-  save declared, wire-declared-length(response)
-  fork test, and(wire-is-finite(declared), is-above(declared, limit))
-    hold
-      wait wire-cancel(response)
-      halt oci-failure
-        bind thing, <response of {declared} bytes is over the {limit} byte limit>
-
-  fork test, not(wire-has-body(response))
-    hold
-      back wire-empty-bytes()
-
-  save reader, wire-reader(response)
-  save parts, wire-parts()
-  save total, 0
-  save reading, true
-  walk test
-    hook test, reading
-    hook hold
-      save chunk, wait wire-read(reader)
-      fork test, wire-truthy(wire-field(chunk, <done>))
+  sift parse-or-none(said)
+    case some
+      link parsed
+      # `null.errors` threw, and the original's catch answered nothing
+      fork test, json-is-null(parsed)
         hold
-          save reading, false
-        miss
-          save part, wire-field(chunk, <value>)
-          save total, add(total, wire-length(part))
-          fork test, is-above(total, limit)
+          back <>
+      save errors, json-field(parsed, <errors>)
+      fork test, and(json-is-array(errors), is-above(json-array-size(errors), 0))
+        hold
+          save first, json-array-item(errors, 0)
+          fork test, json-is-object(first)
             hold
-              wait wire-reader-cancel(reader)
-              halt oci-failure
-                bind thing, <response passed the {limit} byte limit>
-          wire-push-part(parts, part)
-  back wire-concat(parts, total)
+              save message, text-field(first, <message>)
+              save code, text-field(first, <code>)
+              save out, < {code}>
+              fork test, not(is-equal(message, <>))
+                hold
+                  save out, < {code}: {message}>
+              back substring(out, 0, 300)
+      fork test, is-equal(said, <>)
+        hold
+          back <>
+      back < {substring(said, 0, 300)}>
+    case none
+      back <>
 
-# the registry's error body, `{"errors":[{"code","message"}]}`, short, for a message. Never throws
+# the token a token response holds (`token`, else `access_token`), the empty text when it holds none
+task token-of
+  take body, like dynamic
+  like text
+  mark private
+
+  save field, <token>
+  fork test, json-is-null(json-field(body, <token>))
+    hold
+      save field, <access_token>
+  back text-field(body, field)
+
+# a bearer token held until 10 s before the life the response states, kept from 30 s to an hour, 60 s when it states
+# none
+task bearer-entry
+  take token, like text
+  take body, like dynamic
+  like token-entry
+  mark private
+
+  save life, 60
+  fork
+    mark unsafe
+    save stated, json-field(body, <expires_in>)
+    fork test, is-equal(json-kind(stated), <number>)
+      hold
+        save life, float-to-number(json-as-number(stated))
+  halt take
+    take problem
+    save life, 60
+  save life, maximum(30, minimum(life, 3600))
+  back make(token-entry, bind(header, <Bearer {token}>), bind(expires, add(clock-now(), multiply(subtract(life, 10), 1000))))
+
+# a tag as the spec's grammar writes one
+task is-tag-text
+  take tag, like text
+  like boolean
+  mark private
+
+  back matches(<<^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$>>, tag)
+
+# the tags of a tags list body that are tags
+task tags-of
+  take body, like dynamic
+  like list, like text
+  mark private
+
+  save out, make(list)
+  save tags, json-field(body, <tags>)
+  fork test, not(json-is-array(tags))
+    hold
+      back out
+  save count, json-array-size(tags)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save tag, json-array-item(tags, at)
+      fork test, json-is-text(tag)
+        hold
+          save named, json-as-text(tag)
+          fork test, is-tag-text(named)
+            hold
+              out/push(named)
+      save at, add(at, 1)
+  back out
+
+# the descriptors of an index's `manifests`, the entries that are descriptors, as they are
+task descriptors-of
+  take index, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make(list)
+  save manifests, json-field(index, <manifests>)
+  fork test, not(json-is-array(manifests))
+    hold
+      back out
+  save count, json-array-size(manifests)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save entry, json-array-item(manifests, at)
+      fork test, is-descriptor(entry)
+        hold
+          out/push(entry)
+      save at, add(at, 1)
+  back out
+
+# the media type a manifest states, else the content type it was served as, else an image manifest's
+task manifest-media-type-of
+  take bytes, like bytes
+  take header, like text
+  like text
+  mark private
+
+  sift parse-or-none(bytes-to-text(bytes))
+    case some
+      link parsed
+      save stated, json-field(parsed, <mediaType>)
+      fork test, json-is-text(stated)
+        hold
+          back json-as-text(stated)
+    case none
+      save unparsed, 0
+  save parts, split(header, <;>)
+  save given, trim(parts/0)
+  fork test, is-equal(given, <>)
+    hold
+      back manifest-media-type()
+  back given
+
+# --- the URL work, as the original's URL and URLSearchParams did it
+
+# a URL, `target` resolved against `base`; one that does not parse is the original's `Invalid URL`
+task wire-url
+  take target, like text
+  take base, like text
+  like url
+  mark private
+
+  fork
+    mark unsafe
+    back make-url(target, base)
+  halt take
+    take problem
+    halt <Invalid URL>
+
+# the original's `url.protocol`: the scheme and a colon
+task protocol-of
+  take address, like url
+  like text
+  mark private
+
+  back <{address/scheme}:>
+
+# the original's `url.pathname + url.search`
+task path-and-search
+  take address, like url
+  like text
+  mark private
+
+  fork test, is-equal(address/query, <>)
+    hold
+      back address/path
+  back <{address/path}?{address/query}>
+
+# one name or value as application/x-www-form-urlencoded writes it: a space as +, the rest percent-encoded
+task form-encode
+  take value, like text
+  like text
+  mark private
+
+  back replace-all(percent-encode(value, encode-set-urlencoded), <%20>, <+>)
+
+# one name or value of a form-urlencoded query read back: + as a space, then percent-decoded as UTF-8
+task form-decode
+  take value, like text
+  like text
+  mark private
+
+  save runes, to-runes(replace-all(value, <+>, < >))
+  back from-runes(utf-8-decode(percent-decode(runes)))
+
+# a query's names and values, in order, as URLSearchParams reads it: split on &, each at its first =
+task query-pairs
+  take query, like text
+  like list, like list, like text
+  mark private
+
+  save out, make(list)
+  walk split(query, <&>)
+    take part
+    fork test, not(is-equal(part, <>))
+      hold
+        save at, index-of(part, <=>)
+        fork test, is-below(at, 0)
+          hold
+            out/push(make(list, form-decode(part), <>))
+          miss
+            out/push(make(list, form-decode(substring(part, 0, at)), form-decode(substring(part, add(at, 1)))))
+  back out
+
+# names and values written as a query, as URLSearchParams writes them
+task query-text
+  take pairs, like list, like list, like text
+  like text
+  mark private
+
+  save parts, make(list)
+  walk pairs
+    take pair
+    parts/push(<{form-encode(pair/0)}={form-encode(pair/1)}>)
+  back join(parts, <&>)
+
+# the URL with this query, none when it is empty, as URLSearchParams sets a URL's query
+task with-query
+  take address, like url
+  take pairs, like list, like list, like text
+  like url
+  mark private
+
+  save query, query-text(pairs)
+  back make(url, bind(scheme, address/scheme), bind(username, address/username), bind(password, address/password), bind(host, address/host), bind(has-host, address/has-host), bind(port, address/port), bind(path, address/path), bind(query, query), bind(has-query, not(is-equal(query, <>))), bind(fragment, address/fragment), bind(has-fragment, address/has-fragment))
+
+# the original's `url.searchParams.set(name, value)`: the first pair of that name takes the value and the others go,
+# or the pair is added at the end
+task set-param
+  take address, like url
+  take name, like text
+  take value, like text
+  like url
+  mark private
+
+  save out, make(list)
+  save placed, false
+  walk query-pairs(address/query)
+    take pair
+    fork test, is-equal(pair/0, name)
+      hold
+        fork test, not(placed)
+          hold
+            out/push(make(list, name, value))
+            save placed, true
+      miss
+        out/push(pair)
+  fork test, not(placed)
+    hold
+      out/push(make(list, name, value))
+  back with-query(address, out)
+
+# the original's `url.searchParams.append(name, value)`
+task append-param
+  take address, like url
+  take name, like text
+  take value, like text
+  like url
+  mark private
+
+  save out, query-pairs(address/query)
+  out/push(make(list, name, value))
+  back with-query(address, out)
+
+# --- the wire: base http's exchange, each raise turned into failure (decision 179 rule 4)
+
+# the milliseconds an exchange may take, from its opening to its body's last byte: 30 s, and 1 s for every 64 KiB it
+# sends and reads (decision 179 rule 6)
+task exchange-timeout
+  take bytes, like number
+  like number
+  mark private
+
+  save blocks, float-to-number(float-ceiling(divide(to-decimal(bytes), 65536.0)))
+  back add(30000, multiply(blocks, 1000))
+
+# one exchange opened: its status and headers, the body left to read. `redirect` is `manual` or `refuse`
+task wire-open
+  take method, like text
+  take address, like text
+  take body, like bytes
+  take headers
+    like hash
+      like text
+      like text
+  take deadline, like number
+  take redirect, like text
+  like http-exchange
+  mark private
+
+  fork
+    mark unsafe
+    back open-exchange(method, address, body, headers, deadline, redirect)
+  halt take
+    take problem
+    sift problem
+      case outage
+        halt <{method} {address}: unreachable>
+      case timeout
+        halt <{method} {address}: timed out after {deadline} ms>
+      case refusal
+        link reason
+        halt <{method} {address}: redirect refused ({reason})>
+      case exclusion
+        halt <{method} {address}: exclusion>
+      case failure
+        halt <{method} {address}: failed>
+
+# a response body, refused the moment it passes `limit` bytes: at once when its content-length says it is over, else
+# when the read passes it, the body let go either way
+task read-limited
+  take response, like http-exchange
+  take limit, like number
+  like bytes
+  halt oci-failure
+  halt failure
+
+  back read-within(<GET>, response, limit)
+
+# read-limited for a request of `method`, which a failure of the read names
+task read-within
+  take method, like text
+  take response, like http-exchange
+  take limit, like number
+  like bytes
+  halt oci-failure
+  halt failure
+  mark private
+
+  save headers, response/headers
+  fork test, headers/has(<content-length>)
+    hold
+      sift read-number(headers/get-or-default(<content-length>, <>))
+        case some
+          link declared
+          fork test, is-above(declared, to-decimal(limit))
+            hold
+              cancel-exchange(response)
+              halt oci-failure
+                bind thing, <response of {float-to-number(declared)} bytes is over the {limit} byte limit>
+        case none
+          save undeclared, 0
+
+  save address, response/url
+  fork
+    mark unsafe
+    back host-buffer(read-exchange(response, limit))
+  halt take
+    take problem
+    sift problem
+      case excess
+        halt oci-failure
+          bind thing, <response passed the {limit} byte limit>
+      case outage
+        halt <{method} {address}: unreachable>
+      case timeout
+        halt <{method} {address}: timed out after {response/timeout} ms>
+      case absence
+        halt <{method} {address}: absence>
+      case failure
+        halt <{method} {address}: failed>
+
+# a response header, the empty text when the server sent none
+task header-of
+  take response, like http-exchange
+  take name, like text
+  like text
+  mark private
+
+  back response/headers/get-or-default(name, <>)
+
+# the registry's error body, short, for a message. Never throws
 task error-text
-  take response, like dynamic
+  take response, like http-exchange
   like text
   mark private
 
   fork
     mark unsafe
     save bytes, read-limited(response, 65536)
-    back wire-error-text(wire-utf8(bytes))
+    back error-text-of(bytes-to-text(bytes))
   halt take
     take problem
     back <>
 
 task upload-location
-  take response, like dynamic
+  take response, like http-exchange
   take front, like text
   like text
   mark private
 
-  save location, wire-header(response, <location>)
-  fork test, not(wire-truthy(location))
+  save location, header-of(response, <location>)
+  fork test, is-equal(location, <>)
     hold
       halt oci-failure
         bind thing, <upload session answered with no location>
-  save url, wire-url(location, front)
-  save protocol, wire-protocol(url)
+  save address, wire-url(location, front)
+  save protocol, protocol-of(address)
   fork test, and(not(is-equal(protocol, <https:>)), not(is-equal(protocol, <http:>)))
     hold
       halt oci-failure
         bind thing, <upload location has scheme {protocol}>
-  fork test, and(is-equal(wire-protocol(wire-url(front, front)), <https:>), is-equal(protocol, <http:>))
+  fork test, and(starts-with(front, <https:>), is-equal(protocol, <http:>))
     hold
       halt oci-failure
         bind thing, <upload location downgrades https to http>
-  back wire-url-text(url)
+  back url-href(address)
 
 # --- the token flow
+
+# the credentials, asked once: the first call asks the asker, every later one reads what it answered
+task load-credentials
+  take wire, like wire-state
+  like dynamic
+  mark private
+
+  save held, wire/held
+  fork test, is-above(held/length, 0)
+    hold
+      back held/0
+  save asker, wire/asker
+  save creds, asker()
+  held/push(creds)
+  back creds
+
+# the token request itself: an identity credential's refresh-token POST, else a GET with basic credentials when there
+# are some, neither ever redirected
+task token-exchange
+  take realm, like url
+  take service, like text
+  take scope, like list, like text
+  take creds, like dynamic
+  like http-exchange
+  mark private
+
+  save kind, text-field(creds, <kind>)
+  fork test, is-equal(kind, <identity>)
+    hold
+      save asked, make(list, make(list, <grant_type>, <refresh_token>), make(list, <refresh_token>, text-field(creds, <token>)), make(list, <client_id>, <term>))
+      fork test, not(is-equal(service, <>))
+        hold
+          asked/push(make(list, <service>, service))
+      fork test, is-above(scope/length, 0)
+        hold
+          asked/push(make(list, <scope>, join(scope, < >)))
+      save headers, make(hash)
+      headers/set(<user-agent>, <term>)
+      headers/set(<content-type>, <application/x-www-form-urlencoded>)
+      back wire-open(<POST>, url-href(realm), bytes-from-text(query-text(asked)), headers, exchange-timeout(0), <refuse>)
+
+  save asking, realm
+  fork test, not(is-equal(service, <>))
+    hold
+      save asking, set-param(asking, <service>, service)
+  walk scope
+    take entry
+    save asking, append-param(asking, <scope>, entry)
+  save headers, make(hash)
+  headers/set(<user-agent>, <term>)
+  fork test, is-equal(kind, <basic>)
+    hold
+      headers/set(<authorization>, basic-header(creds))
+  back wire-open(<GET>, url-href(asking), bytes-from-text(<>), headers, exchange-timeout(0), <refuse>)
 
 # credentials traded for a token at the realm a challenge named. A READ WHOSE CREDENTIAL IS REFUSED IS ASKED AGAIN
 # WITH NONE: a public package needs no credential, and GHCR answers a stale or foreign one with 403 rather than with an
 # anonymous token. A pull that only a credential can make still fails, naming the refusal, and a push never falls back
 task fetch-token
-  take wire, like dynamic
-  take realm-text, like dynamic
-  take service, like dynamic
-  take scope, like dynamic
+  take wire, like wire-state
+  take realm-text, like text
+  take service, like text
+  take scope, like list, like text
   take anonymous, like boolean
-  like dynamic
+  like token-entry
   mark private
 
-  save realm, wire-realm-url(realm-text)
-  save protocol, wire-protocol(realm)
-  save plain, wire-truthy(wire-field(wire, <plain>))
+  save realm, wire-url(realm-text, <>)
+  save protocol, protocol-of(realm)
+  save plain, wire/plain
   fork test, and(not(is-equal(protocol, <https:>)), not(and(is-equal(protocol, <http:>), plain)))
     hold
       halt oci-failure
-        bind thing, <token realm {wire-origin-of(realm)} is not https, refusing to send credentials to it>
+        bind thing, <token realm {url-origin(realm)} is not https, refusing to send credentials to it>
 
-  save creds, wire-nothing()
+  save creds, json-null()
   fork test, not(anonymous)
     hold
-      save creds, wait wire-load-credentials(wire)
+      save creds, load-credentials(wire)
 
-  save response, wire-nothing()
-  fork test, is-equal(wire-kind(creds), <identity>)
-    hold
-      save response, wait wire-identity-ask(wire, realm, service, scope, creds)
-    miss
-      save header, wire-nothing()
-      fork test, is-equal(wire-kind(creds), <basic>)
-        hold
-          save header, basic-header(creds)
-      save response, wait wire-token-get(wire, realm, service, scope, header)
+  save response, token-exchange(realm, service, scope, creds)
 
-  fork test, not(wire-ok(response))
+  fork test, not(and(not(is-below(response/status, 200)), is-below(response/status, 300)))
     hold
-      save status, wire-status(response)
+      save status, response/status
       save said, error-text(response)
-      save refusal, <token request to {wire-origin-of(realm)} failed: {status}{said}>
-      fork test, and(wire-truthy(creds), and(wire-pull-only(scope), or(is-equal(status, 401), is-equal(status, 403))))
+      save refusal, <token request to {url-origin(realm)} failed: {status}{said}>
+      fork test, and(not(json-is-null(creds)), and(is-pull-only(scope), or(is-equal(status, 401), is-equal(status, 403))))
         hold
           fork
             mark unsafe
@@ -869,111 +1247,183 @@ task fetch-token
         bind thing, refusal
         bind status, status
 
-  save body, wire-parse(wire-utf8(read-limited(response, 1048576)))
-  save token, wire-token-of(body)
-  fork test, not(wire-truthy(token))
+  save asked-with, <GET>
+  fork test, is-equal(text-field(creds, <kind>), <identity>)
+    hold
+      save asked-with, <POST>
+  save said, bytes-to-text(read-within(asked-with, response, 1048576))
+  save token, <>
+  save body, json-null()
+  sift parse-or-none(said)
+    case some
+      link parsed
+      save body, parsed
+      save token, token-of(parsed)
+    case none
+      halt <token response from {url-origin(realm)} is not JSON>
+  fork test, is-equal(token, <>)
     hold
       halt oci-failure
-        bind thing, <token response from {wire-origin-of(realm)} held no token>
-  back wire-bearer-entry(token, body)
+        bind thing, <token response from {url-origin(realm)} held no token>
+  back bearer-entry(token, body)
 
 task authorize
-  take wire, like dynamic
-  take response, like dynamic
-  take scope, like dynamic
+  take wire, like wire-state
+  take response, like http-exchange
+  take scope, like list, like text
   like boolean
   mark private
 
-  save challenge, parse-challenge(wire-authenticate-header(response))
-  fork test, not(wire-truthy(challenge))
+  save challenge, parse-challenge(header-of(response, <www-authenticate>))
+  fork test, json-is-null(challenge)
     hold
       back false
 
-  fork test, is-equal(wire-field(challenge, <scheme>), <basic>)
+  fork test, is-equal(text-field(challenge, <scheme>), <basic>)
     hold
-      save creds, wait wire-load-credentials(wire)
-      fork test, not(is-equal(wire-kind(creds), <basic>))
+      save creds, load-credentials(wire)
+      fork test, not(is-equal(text-field(creds, <kind>), <basic>))
         hold
           back false
-      save plain, wire-truthy(wire-field(wire, <plain>))
-      save host, wire-field(wire, <host>)
-      fork test, or(not(plain), wire-is-loopback(host))
+      fork test, or(not(wire/plain), is-loopback(wire/host))
         hold
-          wire-token-set(wire, wire-scope-key(scope), wire-basic-entry(basic-header(creds)))
+          wire/tokens/set(scope-key(scope), make(token-entry, bind(header, basic-header(creds)), bind(expires, 9007199254740991)))
           back true
       back false
 
-  save realm, wire-field(challenge, <realm>)
-  fork test, not(wire-truthy(realm))
+  save realm, text-field(challenge, <realm>)
+  fork test, is-equal(realm, <>)
     hold
       back false
 
-  save entry, fetch-token(wire, realm, wire-field(challenge, <service>), scope, false)
-  wire-token-set(wire, wire-scope-key(scope), entry)
+  save entry, fetch-token(wire, realm, text-field(challenge, <service>), scope, false)
+  wire/tokens/set(scope-key(scope), entry)
   back true
+
+# the headers a request goes with: term's user agent, the plan's own, and the token held for its scopes while the
+# request stays on the registry's origin
+task request-headers
+  take wire, like wire-state
+  take plan, like request-plan
+  take address, like url
+  like hash
+    like text
+    like text
+  mark private
+
+  save made, make(hash)
+  made/set(<user-agent>, <term>)
+  save given, plan/headers
+  sift given
+    case some
+      link listed
+      walk listed/keys()
+        take name
+        made/set(name, listed/get-or-default(name, <>))
+    case none
+      save unlisted, 0
+  fork test, is-equal(url-origin(address), wire/origin)
+    hold
+      save key, scope-key(plan/scope)
+      save tokens, wire/tokens
+      fork test, tokens/has(key)
+        hold
+          save entry, tokens/get(key)
+          fork test, is-above(entry/expires, clock-now())
+            hold
+              made/set(<authorization>, entry/header)
+  back made
 
 # one request, authorized, redirects followed by hand. The Authorization header is attached only for the registry's
 # own origin, so a 307 to blob storage reaches it without the token
 task send-request
-  take wire, like dynamic
-  take target, like dynamic
-  take init, like dynamic
-  like dynamic
+  take wire, like wire-state
+  take target, like text
+  take init, like request-plan
+  like http-exchange
   mark private
 
-  save front, wire-field(wire, <front>)
-  save origin, wire-field(wire, <origin>)
-  save method, wire-method(init)
-  save url, wire-url(target, front)
+  save front, wire/front
+  save home, wire/origin
+  save method, init/method
+  save body, bytes-from-text(<>)
+  save given, init/body
+  sift given
+    case some
+      link given-body
+      save body, given-body
+    case none
+      save unbodied, 0
+  save deadline, exchange-timeout(add(bytes-length(body), init/reading))
+  save address, wire-url(target, front)
   save authorized, false
   save hop, 0
   walk test
     hook test, not(is-above(hop, 5))
     hook hold
-      save headers, wire-request-headers(wire, init, url)
-      save response, wait wire-fetch(wire, url, init, headers)
-      save status, wire-status(response)
-      save here, is-equal(wire-origin-of(url), origin)
+      save headers, request-headers(wire, init, address)
+      save response, wire-open(method, url-href(address), body, headers, deadline, <manual>)
+      save status, response/status
+      save here, is-equal(url-origin(address), home)
       fork test, and(is-equal(status, 401), and(here, not(authorized)))
         hold
-          wait wire-cancel(response)
+          cancel-exchange(response)
           save authorized, true
-          save granted, authorize(wire, response, wire-scope(init))
+          save granted, authorize(wire, response, init/scope)
           fork test, not(granted)
             hold
               back response
         miss
-          fork test, not(wire-is-redirect(status))
+          fork test, not(is-redirect(status))
             hold
               back response
-          save location, wire-header(response, <location>)
-          wait wire-cancel(response)
-          fork test, not(wire-truthy(location))
+          save location, header-of(response, <location>)
+          cancel-exchange(response)
+          fork test, is-equal(location, <>)
             hold
               halt oci-failure
-                bind thing, <{method} {wire-pathname(url)} redirected with no location>
-          save next, wire-url(location, wire-url-text(url))
-          save next-protocol, wire-protocol(next)
+                bind thing, <{method} {address/path} redirected with no location>
+          save next, wire-url(location, url-href(address))
+          save next-protocol, protocol-of(next)
           fork test, and(not(is-equal(next-protocol, <https:>)), not(is-equal(next-protocol, <http:>)))
             hold
               halt oci-failure
                 bind thing, <refusing a redirect to {next-protocol}>
           # never downgrade an https request to http
-          fork test, and(is-equal(wire-protocol(url), <https:>), is-equal(next-protocol, <http:>))
+          fork test, and(is-equal(protocol-of(address), <https:>), is-equal(next-protocol, <http:>))
             hold
               halt oci-failure
-                bind thing, <refusing a redirect from https to http ({wire-origin-of(next)})>
-          save url, next
+                bind thing, <refusing a redirect from https to http ({url-origin(next)})>
+          save address, next
           save hop, add(hop, 1)
 
+  save asked-path, wire-url(target, front)/path
   halt oci-failure
-    bind thing, <too many redirects for {method} {wire-pathname(wire-url(target, front))}>
+    bind thing, <too many redirects for {method} {asked-path}>
+
+# how long to wait before another try: what Retry-After states (`after`, the empty text where it says nothing), at most
+# 30 s, else 250 ms doubled each try up to 8 s, and up to 99 ms more at random
+task wire-backoff
+  take attempt, like number
+  take after, like text
+  like number
+  mark private
+
+  sift read-number(after)
+    case some
+      link stated
+      fork test, not(is-below(stated, 0.0))
+        hold
+          back minimum(float-to-number(multiply(stated, 1000.0)), 30000)
+    case none
+      save unstated, 0
+  back add(minimum(multiply(250, power(2, attempt)), 8000), random-integer(0, 99))
 
 # one try of a GET or HEAD: the answer, or the failure, guarded whole as the original's try was
 task try-idempotent
-  take wire, like dynamic
-  take target, like dynamic
-  take init, like dynamic
+  take wire, like wire-state
+  take target, like text
+  take init, like request-plan
   take attempt, like number
   take retries, like number
   like wire-try
@@ -981,52 +1431,62 @@ task try-idempotent
 
   fork
     mark unsafe
-    save response, send-request(wire,target, init)
-    save status, wire-status(response)
+    save response, send-request(wire, target, init)
+    save status, response/status
     fork test, and(not(is-equal(status, 429)), is-below(status, 500))
       hold
-        back make(wire-try, bind(failed, false), bind(finished, true), bind(problem, wire-nothing()), bind(answer, response))
+        back make(wire-try, bind(failed, false), bind(finished, true), bind(answer, make(some, response)))
     fork test, is-equal(attempt, retries)
       hold
-        back make(wire-try, bind(failed, false), bind(finished, true), bind(problem, wire-nothing()), bind(answer, response))
-    wait wire-cancel(response)
-    wait wire-sleep(wire-backoff(attempt, wire-header(response, <retry-after>)))
-    back make(wire-try, bind(failed, false), bind(finished, false), bind(problem, wire-nothing()), bind(answer, wire-nothing()))
+        back make(wire-try, bind(failed, false), bind(finished, true), bind(answer, make(some, response)))
+    cancel-exchange(response)
+    sleep(wire-backoff(attempt, header-of(response, <retry-after>)))
+    back make(wire-try, bind(failed, false), bind(finished, false))
   halt take
     take problem
-    back make(wire-try, bind(failed, true), bind(finished, false), bind(problem, problem), bind(answer, wire-nothing()))
+    back make(wire-try, bind(failed, true), bind(finished, false), bind(problem, make(some, problem)))
 
 # GET and HEAD, retried on what is worth retrying: a network failure, a 429 or a 5xx. An oci-failure is an answer
 task send-idempotent
-  take wire, like dynamic
-  take target, like dynamic
-  take init, like dynamic
-  like dynamic
+  take wire, like wire-state
+  take target, like text
+  take init, like request-plan
+  like http-exchange
   mark private
 
-  save retries, wire-field(wire, <retries>)
+  save retries, wire/retries
   save last, wire-nothing()
   save attempt, 0
   walk test
     hook test, not(is-above(attempt, retries))
     hook hold
       save tried, try-idempotent(wire, target, init, attempt, retries)
-      fork test, tried/finished
-        hold
-          back tried/answer
-      fork test, tried/failed
-        hold
-          fork test, or(is-oci-failure(tried/problem), is-equal(attempt, retries))
+      # a finished try holds its answer, a failed one what it raised: each a maybe, sifted
+      save answer, tried/answer
+      sift answer
+        case some
+          link answered
+          back answered
+        case none
+          save unanswered, 0
+      save problem, tried/problem
+      sift problem
+        case some
+          link raised
+          fork test, or(is-oci-failure(raised), is-equal(attempt, retries))
             hold
-              wire-raise-again(tried/problem)
-          save last, tried/problem
-          wait wire-sleep(wire-backoff(attempt, wire-nothing()))
+              wire-raise-again(raised)
+          save last, raised
+          sleep(wire-backoff(attempt, <>))
+        case none
+          save unraised, 0
       save attempt, add(attempt, 1)
   wire-raise-again(last)
-  back wire-nothing()
+  # never reached: the last try answers or raises again above
+  halt <{init/method} {target}: no try was made>
 
 task repo-path
-  take repository, like dynamic
+  take repository, like text
   take rest, like text
   like text
   mark private
@@ -1037,7 +1497,7 @@ task repo-path
 # --- the methods, each taking the original's one record
 
 task wire-has-blob
-  take wire, like dynamic
+  take wire, like wire-state
   take asked, like blob-query
   like boolean
   mark private
@@ -1045,28 +1505,28 @@ task wire-has-blob
   save repository, asked/repository
   save digest, asked/digest
   assert-digest(digest)
-  save response, send-idempotent(wire, repo-path(repository, <blobs/{digest}>), wire-init(<HEAD>, wire-pull(repository), wire-nothing(), wire-nothing()))
-  wait wire-cancel(response)
-  save status, wire-status(response)
+  save response, send-idempotent(wire, repo-path(repository, <blobs/{digest}>), bare-plan(<HEAD>, pull-scope(repository), 0))
+  cancel-exchange(response)
+  save status, response/status
   fork test, is-equal(status, 200)
     hold
       back true
   fork test, is-equal(status, 404)
     hold
       back false
-  save host, wire-field(wire, <host>)
+  save host, wire/host
   halt oci-failure
     bind thing, <HEAD blob {digest} on {host}/{repository}: {status}>
     bind status, status
 
 task upload-once
-  take wire, like dynamic
+  take wire, like wire-state
   take asked, like blob-upload
   like text
   mark private
 
-  save host, wire-field(wire, <host>)
-  save front, wire-field(wire, <front>)
+  save host, wire/host
+  save front, wire/front
   save repository, asked/repository
   save digest, asked/digest
   save bytes, asked/bytes
@@ -1080,25 +1540,26 @@ task upload-once
       save mount-from, given-from
     case none
       save unmounted, 0
-  save mounting, wire-truthy(mount-from)
-  save scope, wire-push(repository)
+  save mounting, not(is-equal(mount-from, <>))
+  save scope, push-scope(repository)
   fork test, mounting
     hold
-      save scope, wire-push-and-pull(repository, mount-from)
+      save scope, push-and-pull-scope(repository, mount-from)
   save start, wire-url(repo-path(repository, <blobs/uploads/>), front)
 
   fork test, mounting
     hold
       assert-repository(mount-from)
-      wire-set-param(start, <mount>, digest)
-      wire-set-param(start, <from>, mount-from)
+      save start, set-param(start, <mount>, digest)
+      save start, set-param(start, <from>, mount-from)
 
-  # an empty body rather than none, so the request carries `content-length: 0`, which some registries require
-  save opened, send-request(wire,start, wire-init(<POST>, scope, wire-nothing(), wire-empty-bytes()))
-  save opened-status, wire-status(opened)
+  # an empty body: fetch sends a POST without one with `content-length: 0`, which some registries require
+  save empty, bytes-from-text(<>)
+  save opened, send-request(wire, url-href(start), make(request-plan, bind(method, <POST>), bind(scope, scope), bind(body, make(some, empty)), bind(reading, 0)))
+  save opened-status, opened/status
   fork test, and(is-equal(opened-status, 201), mounting)
     hold
-      wait wire-cancel(opened)
+      cancel-exchange(opened)
       back <mounted>
 
   fork test, not(is-equal(opened-status, 202))
@@ -1108,11 +1569,11 @@ task upload-once
         bind thing, <start upload of {digest} to {host}/{repository}: {opened-status}{said}>
         bind status, opened-status
 
-  wait wire-cancel(opened)
+  cancel-exchange(opened)
   save location, upload-location(opened, front)
-  save size, wire-length(bytes)
-  save whole, wire-field(wire, <whole>)
-  save chunk, wire-field(wire, <chunk>)
+  save size, bytes-length(bytes)
+  save whole, wire/whole
+  save chunk, wire/chunk
 
   fork test, is-above(size, whole)
     hold
@@ -1120,27 +1581,32 @@ task upload-once
       walk test
         hook test, is-below(at, size)
         hook hold
-          save part, wire-subarray(bytes, at, add(at, chunk))
-          save patched, send-request(wire,location, wire-init(<PATCH>, scope, wire-content-range(at, wire-length(part)), part))
-          save patched-status, wire-status(patched)
+          save part, bytes-slice(bytes, at, minimum(add(at, chunk), size))
+          save part-size, bytes-length(part)
+          save range, make(hash)
+          range/set(<content-type>, <application/octet-stream>)
+          range/set(<content-range>, <{at}-{subtract(add(at, part-size), 1)}>)
+          save patched, send-request(wire, location, make(request-plan, bind(method, <PATCH>), bind(scope, scope), bind(headers, make(some, range)), bind(body, make(some, part)), bind(reading, 0)))
+          save patched-status, patched/status
           fork test, not(is-equal(patched-status, 202))
             hold
               save said, error-text(patched)
               halt oci-failure
                 bind thing, <upload chunk at {at} of {digest}: {patched-status}{said}>
                 bind status, patched-status
-          wait wire-cancel(patched)
+          cancel-exchange(patched)
           save location, upload-location(patched, front)
           save at, add(at, chunk)
 
-  save finish, wire-url(location, front)
-  wire-set-param(finish, <digest>, digest)
-  save body, wire-empty-bytes()
+  save finish, set-param(wire-url(location, front), <digest>, digest)
+  save body, bytes-from-text(<>)
   fork test, not(is-above(size, whole))
     hold
       save body, bytes
-  save closed, send-request(wire,finish, wire-init(<PUT>, scope, wire-octet-headers(), body))
-  save closed-status, wire-status(closed)
+  save octet, make(hash)
+  octet/set(<content-type>, <application/octet-stream>)
+  save closed, send-request(wire, url-href(finish), make(request-plan, bind(method, <PUT>), bind(scope, scope), bind(headers, make(some, octet)), bind(body, make(some, body)), bind(reading, 0)))
+  save closed-status, closed/status
   fork test, and(not(is-equal(closed-status, 201)), not(is-equal(closed-status, 204)))
     hold
       save said, error-text(closed)
@@ -1148,11 +1614,11 @@ task upload-once
         bind thing, <finish upload of {digest}: {closed-status}{said}>
         bind status, closed-status
 
-  wait wire-cancel(closed)
+  cancel-exchange(closed)
   back <uploaded>
 
 task wire-get-blob
-  take wire, like dynamic
+  take wire, like wire-state
   take asked, like blob-request
   like bytes
   mark private
@@ -1167,15 +1633,17 @@ task wire-get-blob
   sift size
     case some
       link limit-size
-      save limit, wire-limit-of(limit, limit-size)
+      fork test, is-below(limit-size, limit)
+        hold
+          save limit, limit-size
     case none
       save unlimited, 0
-  save response, send-idempotent(wire, repo-path(repository, <blobs/{digest}>), wire-init(<GET>, wire-pull(repository), wire-nothing(), wire-nothing()))
+  save response, send-idempotent(wire, repo-path(repository, <blobs/{digest}>), bare-plan(<GET>, pull-scope(repository), limit))
 
-  fork test, not(wire-ok(response))
+  fork test, not(and(not(is-below(response/status, 200)), is-below(response/status, 300)))
     hold
-      save status, wire-status(response)
-      save host, wire-field(wire, <host>)
+      save status, response/status
+      save host, wire/host
       save said, error-text(response)
       halt oci-failure
         bind thing, <GET blob {digest} from {host}/{repository}: {status}{said}>
@@ -1185,10 +1653,10 @@ task wire-get-blob
   sift size
     case some
       link stated
-      fork test, not(is-equal(wire-length(bytes), stated))
+      fork test, not(is-equal(bytes-length(bytes), stated))
         hold
           halt oci-failure
-            bind thing, <blob {digest} is {wire-length(bytes)} bytes, its descriptor says {stated}>
+            bind thing, <blob {digest} is {bytes-length(bytes)} bytes, its descriptor says {stated}>
     case none
       save unstated, 0
 
@@ -1197,21 +1665,21 @@ task wire-get-blob
 
 # one try of an upload: the outcome, or the failure
 task try-upload
-  take wire, like dynamic
+  take wire, like wire-state
   take asked, like blob-upload
-  like wire-try
+  like upload-try
   mark private
 
   fork
     mark unsafe
     save outcome, upload-once(wire, asked)
-    back make(wire-try, bind(failed, false), bind(finished, true), bind(problem, wire-nothing()), bind(answer, outcome))
+    back make(upload-try, bind(finished, true), bind(outcome, make(some, outcome)))
   halt take
     take problem
-    back make(wire-try, bind(failed, true), bind(finished, false), bind(problem, problem), bind(answer, wire-nothing()))
+    back make(upload-try, bind(finished, false), bind(problem, make(some, problem)))
 
 task wire-put-blob
-  take wire, like dynamic
+  take wire, like wire-state
   take asked, like blob-upload
   like text
   mark private
@@ -1225,17 +1693,27 @@ task wire-put-blob
     hold
       back <present>
 
-  save retries, wire-field(wire, <retries>)
+  save retries, wire/retries
   save last, wire-nothing()
   save attempt, 0
   walk test
     hook test, not(is-above(attempt, retries))
     hook hold
       save tried, try-upload(wire, asked)
-      fork test, tried/finished
-        hold
-          back tried/answer
-      save last, tried/problem
+      save outcome, tried/outcome
+      sift outcome
+        case some
+          link answered
+          back answered
+        case none
+          save unanswered, 0
+      save problem, tried/problem
+      sift problem
+        case some
+          link raised
+          save last, raised
+        case none
+          save unraised, 0
       # a 4xx other than 429 is an answer, not a hiccup
       save status, oci-failure-status(last)
       fork test, and(not(is-below(status, 0)), and(is-below(status, 500), not(is-equal(status, 429))))
@@ -1243,14 +1721,14 @@ task wire-put-blob
           wire-raise-again(last)
       fork test, is-below(attempt, retries)
         hold
-          wait wire-sleep(wire-backoff(attempt, wire-nothing()))
+          sleep(wire-backoff(attempt, <>))
       save attempt, add(attempt, 1)
   wire-raise-again(last)
   back <>
 
 # a manifest by tag or digest, verified against the digest when one was asked for, or none on 404
 task wire-get-manifest
-  take wire, like dynamic
+  take wire, like wire-state
   take asked, like manifest-request
   like dynamic
   mark private
@@ -1262,16 +1740,18 @@ task wire-get-manifest
     hold
       assert-tag(reference)
 
-  save response, send-idempotent(wire, repo-path(repository, <manifests/{reference}>), wire-init(<GET>, wire-pull(repository), wire-accept-headers(accept-manifest()), wire-nothing()))
-  save status, wire-status(response)
+  save accepting, make(hash)
+  accepting/set(<accept>, accept-manifest())
+  save response, send-idempotent(wire, repo-path(repository, <manifests/{reference}>), make(request-plan, bind(method, <GET>), bind(scope, pull-scope(repository)), bind(headers, make(some, accepting)), bind(reading, manifest-limit())))
+  save status, response/status
   fork test, is-equal(status, 404)
     hold
-      wait wire-cancel(response)
+      cancel-exchange(response)
       back wire-nothing()
 
-  fork test, not(wire-ok(response))
+  fork test, not(and(not(is-below(status, 200)), is-below(status, 300)))
     hold
-      save host, wire-field(wire, <host>)
+      save host, wire/host
       save said, error-text(response)
       halt oci-failure
         bind thing, <GET manifest {repository}:{reference} from {host}: {status}{said}>
@@ -1285,18 +1765,18 @@ task wire-get-manifest
         bind thing, <manifest {reference} failed verification: received {digest}>
 
   # the server's own statement of the digest, when it makes one, must agree with the bytes
-  save stated, wire-header(response, <docker-content-digest>)
-  fork test, and(wire-starts-with(stated, <sha256:>), not(is-equal(stated, digest)))
+  save stated, header-of(response, <docker-content-digest>)
+  fork test, and(starts-with(stated, <sha256:>), not(is-equal(stated, digest)))
     hold
       halt oci-failure
         bind thing, <manifest {repository}:{reference} is {digest}, the registry says {stated}>
 
-  save media-type, wire-manifest-media-type(bytes, wire-header(response, <content-type>))
+  save media-type, manifest-media-type-of(bytes, header-of(response, <content-type>))
   save fetched, make(fetched-manifest, bind(digest, digest), bind(media-type, media-type), bind(bytes, bytes))
   back fetched
 
 task wire-put-manifest
-  take wire, like dynamic
+  take wire, like wire-state
   take asked, like manifest-upload
   like manifest-receipt
   mark private
@@ -1308,69 +1788,105 @@ task wire-put-manifest
     hold
       assert-tag(reference)
 
-  save size, wire-length(bytes)
+  save size, bytes-length(bytes)
   fork test, is-above(size, manifest-limit())
     hold
       halt oci-failure
         bind thing, <manifest is {size} bytes, over the {manifest-limit()} byte limit registries enforce>
 
   save digest, sha256-digest(bytes)
-  save response, send-request(wire,repo-path(repository, <manifests/{reference}>), wire-init(<PUT>, wire-push(repository), wire-type-headers(asked/media-type), bytes))
-  save status, wire-status(response)
+  save typed, make(hash)
+  typed/set(<content-type>, asked/media-type)
+  save response, send-request(wire, repo-path(repository, <manifests/{reference}>), make(request-plan, bind(method, <PUT>), bind(scope, push-scope(repository)), bind(headers, make(some, typed)), bind(body, make(some, bytes)), bind(reading, 0)))
+  save status, response/status
   fork test, and(not(is-equal(status, 201)), and(not(is-equal(status, 200)), not(is-equal(status, 202))))
     hold
-      save host, wire-field(wire, <host>)
+      save host, wire/host
       save said, error-text(response)
       halt oci-failure
         bind thing, <PUT manifest {repository}:{reference} to {host}: {status}{said}>
         bind status, status
 
-  wait wire-cancel(response)
-  save stated, wire-header(response, <docker-content-digest>)
-  fork test, and(wire-starts-with(stated, <sha256:>), not(is-equal(stated, digest)))
+  cancel-exchange(response)
+  save stated, header-of(response, <docker-content-digest>)
+  fork test, and(starts-with(stated, <sha256:>), not(is-equal(stated, digest)))
     hold
       halt oci-failure
         bind thing, <registry stored manifest as {stated}, expected {digest}>
 
-  save accepted, wire-has-header(response, <oci-subject>)
+  save accepted, response/headers/has(<oci-subject>)
   back make(manifest-receipt, bind(digest, digest), bind(subject-accepted, accepted))
 
+# a `Link: </v2/x/tags/list?n=1000&last=y>; rel="next"` header's target, kept only when it stays on the registry (its
+# path and query), else the empty text
+task next-link
+  take header, like text
+  take home, like text
+  like text
+  mark private
+
+  fork test, is-equal(header, <>)
+    hold
+      back <>
+  sift find-match(<<(?i)<([^>]+)>\s*;\s*rel="?next"?>>, header)
+    case some
+      link found
+      sift match-group(found, 1)
+        case some
+          link target
+          save linked, wire-url(target, home)
+          fork test, is-equal(url-origin(linked), home)
+            hold
+              back path-and-search(linked)
+          back <>
+        case none
+          back <>
+    case none
+      back <>
+
 task wire-list-tags
-  take wire, like dynamic
+  take wire, like wire-state
   take asked, like tag-request
   like list, like text
   mark private
 
   save repository, asked/repository
-  save tags, wire-parts()
+  save tags, make(list)
   save listed, repo-path(repository, <tags/list>)
   save next, <{listed}?n=1000>
   save page, 0
   walk test
-    hook test, and(wire-truthy(next), is-below(page, 10000))
+    hook test, and(not(is-equal(next, <>)), is-below(page, 10000))
     hook hold
-      save response, send-idempotent(wire, next, wire-init(<GET>, wire-pull(repository), wire-nothing(), wire-nothing()))
-      save status, wire-status(response)
+      save response, send-idempotent(wire, next, bare-plan(<GET>, pull-scope(repository), 16777216))
+      save status, response/status
       fork test, is-equal(status, 404)
         hold
-          wait wire-cancel(response)
+          cancel-exchange(response)
           back tags
-      fork test, not(wire-ok(response))
+      fork test, not(and(not(is-below(status, 200)), is-below(status, 300)))
         hold
-          save host, wire-field(wire, <host>)
+          save host, wire/host
           save said, error-text(response)
           halt oci-failure
             bind thing, <list tags of {host}/{repository}: {status}{said}>
             bind status, status
-      save body, wire-parse(wire-utf8(read-limited(response, 16777216)))
-      wire-push-all(tags, wire-tags-of(body))
-      save next, wire-next-link(wire-header(response, <link>), wire-field(wire, <origin>))
+      save said, bytes-to-text(read-limited(response, 16777216))
+      sift parse-or-none(said)
+        case some
+          link body
+          walk tags-of(body)
+            take tag
+            tags/push(tag)
+        case none
+          halt <list tags of {wire/host}/{repository}: the answer is not JSON>
+      save next, next-link(header-of(response, <link>), wire/origin)
       save page, add(page, 1)
   back tags
 
 # the referrers of a manifest, or none when the registry has no referrers API
 task wire-referrers
-  take wire, like dynamic
+  take wire, like wire-state
   take asked, like referrer-request
   like dynamic
   mark private
@@ -1388,61 +1904,122 @@ task wire-referrers
     case none
       save every-kind, 0
   assert-digest(digest)
-  save out, wire-parts()
-  save first, wire-url(repo-path(repository, <referrers/{digest}>), wire-field(wire, <front>))
-  fork test, wire-truthy(kind)
+  save out, make(list)
+  save first, wire-url(repo-path(repository, <referrers/{digest}>), wire/front)
+  fork test, not(is-equal(kind, <>))
     hold
-      wire-set-param(first, <artifactType>, kind)
+      save first, set-param(first, <artifactType>, kind)
 
-  save next, wire-path-and-search(first)
+  save next, path-and-search(first)
+  save indexing, make(hash)
+  indexing/set(<accept>, index-media-type())
   save page, 0
   walk test
-    hook test, and(wire-truthy(next), is-below(page, 1000))
+    hook test, and(not(is-equal(next, <>)), is-below(page, 1000))
     hook hold
-      save response, send-idempotent(wire, next, wire-init(<GET>, wire-pull(repository), wire-accept-headers(index-media-type()), wire-nothing()))
-      save status, wire-status(response)
+      save response, send-idempotent(wire, next, make(request-plan, bind(method, <GET>), bind(scope, pull-scope(repository)), bind(headers, make(some, indexing)), bind(reading, manifest-limit())))
+      save status, response/status
       fork test, is-equal(status, 404)
         hold
-          wait wire-cancel(response)
+          cancel-exchange(response)
           # 404 on the first page means the API is not there. A registry with the API answers 200 and an empty list
           fork test, is-equal(page, 0)
             hold
               back wire-nothing()
-          back out
-      fork test, not(wire-ok(response))
+          back of-type(out, kind)
+      fork test, not(and(not(is-below(status, 200)), is-below(status, 300)))
         hold
-          save host, wire-field(wire, <host>)
+          save host, wire/host
           save said, error-text(response)
           halt oci-failure
             bind thing, <referrers of {digest} on {host}/{repository}: {status}{said}>
             bind status, status
-      save index, wire-parse(wire-utf8(read-limited(response, manifest-limit())))
-      wire-push-all(out, wire-descriptors-of(index))
-      save next, wire-next-link(wire-header(response, <link>), wire-field(wire, <origin>))
+      save said, bytes-to-text(read-limited(response, manifest-limit()))
+      sift parse-or-none(said)
+        case some
+          link index
+          walk descriptors-of(index)
+            take entry
+            out/push(entry)
+        case none
+          halt <referrers of {digest} on {wire/host}/{repository}: the answer is not JSON>
+      save next, next-link(header-of(response, <link>), wire/origin)
       save page, add(page, 1)
 
-  back wire-of-type(out, kind)
+  back of-type(out, kind)
+
+# the descriptors of one artifact type, or every one when no type is asked for
+task of-type
+  take found, like list, like dynamic
+  take kind, like text
+  like list, like dynamic
+  mark private
+
+  fork test, is-equal(kind, <>)
+    hold
+      back found
+  save out, make(list)
+  walk found
+    take entry
+    fork test, is-equal(text-field(entry, <artifactType>), kind)
+      hold
+        out/push(entry)
+  back out
 
 # An OCI registry over HTTP. The credentials are asked for once, lazily, the first time a registry asks for them, so
 # an anonymous pull from a public registry never reads the docker config at all
 task http-transport
   take host-name, like text
-  take credentials, like dynamic
-  take insecure, like dynamic
-  take fetcher, like dynamic
-  take chunk-size, like dynamic
-  take monolithic, like dynamic
-  take retries, like dynamic
-  take env, like dynamic
+  take credentials
+    like task
+      mark async
+      like dynamic
+  take insecure
+    like maybe, like boolean
+    need false
+  take chunk-size
+    like maybe, like number
+    need false
+  take monolithic
+    like maybe, like number
+    need false
+  take retries
+    like maybe, like number
+    need false
+  take env
+    like maybe, like dynamic
+    need false
   like oci-transport
 
-  save environment, wire-or(env, host-process/env)
-  save host, wire-lower(host-name)
-  save plain, wire-or(insecure, or(wire-is-loopback(host), wire-is-insecure-host(environment, host)))
-  # 4 MiB a PATCH chunk (GHCR refuses a chunk over 4 MiB), and up to 16 MiB a blob in one PUT
-  save chunk, wire-or(chunk-size, 4194304)
-  save whole, wire-or(monolithic, wire-or(chunk-size, 16777216))
-  save wire, wire-context(host, plain, wire-fetch-or(fetcher), chunk, whole, wire-or(retries, 4), credentials)
+  save host, to-lower-case(host-name)
+  save plain, is-plain(host, insecure, env)
+  save front, registry-front(host-name, insecure, env)
+  save home, url-origin(wire-url(front, <>))
+  # 4 MiB a PATCH chunk (GHCR refuses a chunk over 4 MiB), and up to 16 MiB a blob in one PUT, or the chunk size when
+  # one is given
+  save chunk, 4194304
+  save whole, 16777216
+  sift chunk-size
+    case some
+      link given-chunk
+      save chunk, given-chunk
+      save whole, given-chunk
+    case none
+      save unset-chunk, 0
+  sift monolithic
+    case some
+      link given-whole
+      save whole, given-whole
+    case none
+      save unset-whole, 0
+  save tries, 4
+  sift retries
+    case some
+      link given-tries
+      save tries, given-tries
+    case none
+      save unset-tries, 0
+  save wire, make(wire-state, bind(host, host), bind(plain, plain), bind(front, front), bind(origin, home), bind(chunk, chunk), bind(whole, whole), bind(retries, tries), bind(tokens, make(hash)), bind(held, make(list)), bind(asker, credentials))
 
   save has-blob
     task

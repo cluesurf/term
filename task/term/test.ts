@@ -603,8 +603,10 @@ const SUITES: Suite[] = [
   { name: 'compile/compose-work', file: 'test/compile/compose-work.ts', needs: ['kotlinc', 'java'], timeout: 1200, slow: 90, env: { COMPOSE_WORK_ONLY: 'compose' } },
   { name: 'compile/compose-work android', file: 'test/compile/compose-work.ts', needs: ['kotlinc', 'java'], timeout: 1800, slow: 180, env: { COMPOSE_WORK_ONLY: 'compose-android' }, holds: 'emulator' },
   // the CLI, the package manager, the language server, the dev loop. The two that need another machine are left out of
-  // the sweep and registered below with the machine each needs, so they skip, naming it, rather than fail without one
-  ...each('call', 'call', ['cli.ts', 'self-release-windows.ts', 'update-app-remote.ts', 'emit-build.ts', 'make-env.ts', 'update-app-android.ts', 'port-build-skip.ts']),
+  // the sweep and registered below with the machine each needs, so they skip, naming it, rather than fail without one.
+  // native-forward.ts is left out too and registered once below with needs cargo: swept as well, the gate ran its 417
+  // cases twice at once (item term-self-host-001-1577)
+  ...each('call', 'call', ['cli.ts', 'self-release-windows.ts', 'update-app-remote.ts', 'emit-build.ts', 'make-env.ts', 'update-app-android.ts', 'port-build-skip.ts', 'native-forward.ts']),
   // emit-fragment.ts (WGSL and HVM through `--emit`) runs from the `each` above, and so does emit-llvm-wasm.ts (LLVM IR
   // and WASI through the Rust), which skips itself without rustc and checks the rustup refusals where llc or the
   // wasm32-wasip1 target is absent

@@ -135,8 +135,7 @@ task transport-for
     task
       like dynamic
       back credentials-for(host, routing-nothing(), routing-nothing())
-  save absent, routing-nothing()
-  save made, http-transport(host, credentials, absent, absent, absent, absent, absent, absent)
+  save made, http-transport(host, credentials)
   save transports/{host}, made
   back made
 

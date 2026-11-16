@@ -7,6 +7,7 @@ load @term/base/native/{platform}/cryptography/digest
   find digest-sha512
   find digest-md5
   find digest-sha256-text, name native-sha256-text
+  find digest-sha256-bytes-text, name native-sha256-bytes-text
 
 form digest-algorithm
   case sha-256
@@ -66,6 +67,17 @@ task digest-sha256-text
   like text
   send back
     call native-sha256-text
+      read input
+
+# SHA-256 of bytes as 64 lowercase hex digits, SYNCHRONOUS on every backend: `digest-sha256-text` for bytes that are
+# no text (an archive, an image layer), where the async `sha256` cannot be waited. The same definition and fast paths
+# (native/shared/cryptography/sha256's calculate-sha256 in the browser, the native digest elsewhere), held to the FIPS
+# 180-4 vectors and a 4 MiB input by deck/base/test/sha256-bytes.tree
+task digest-sha256-bytes-text
+  take input, like bytes
+  like text
+  send back
+    call native-sha256-bytes-text
       read input
 
 task md5

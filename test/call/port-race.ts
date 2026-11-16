@@ -58,7 +58,8 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-// the clone port-build-skip.ts makes: the package's deck/ without caches and outputs other than the ports
+// the clone port-build-skip.ts makes: the package's deck/ without caches and outputs other than the ports (and the
+// root's host/unit/, which clone() adds)
 const LEAVE = new Set([
   'node_modules',
   'target',
@@ -94,6 +95,14 @@ function clone(): void {
         host < 0 || at.length === host + 1 || at[host + 1] === 'port'
       )
     },
+  })
+
+  // the units every port shim re-exports from (port-build --units, decision 162): since the units switch a port such as
+  // deck/call/host/port/code/home-ignore.ts, which port-build reaches through call/code/home.ts, is a shim over
+  // host/unit/, so a clone without it died at import with ERR_MODULE_NOT_FOUND (item term-self-host-001-1569)
+  cpSync(join(TERM, 'host', 'unit'), join(copy, 'host', 'unit'), {
+    recursive: true,
+    mode: constants.COPYFILE_FICLONE,
   })
 
   mkdirSync(join(copy, 'task'))

@@ -7,8 +7,12 @@ mod crypto {
     // SHA-256 of a text's UTF-8 bytes as 64 lowercase hex digits (a Rust text is valid UTF-8, so it never holds a lone
     // surrogate). Held to the Term reference by test/compile/digest-text-native.ts
     pub fn sha256_text(input: String) -> String {
+        sha256_bytes_text(input.into_bytes())
+    }
+    // SHA-256 of bytes as 64 lowercase hex digits. Held to the Term reference by deck/base/test/sha256-bytes.tree
+    pub fn sha256_bytes_text(input: Vec<u8>) -> String {
         const HEX: &[u8; 16] = b"0123456789abcdef";
-        let digest = Sha256::digest(input.as_bytes());
+        let digest = Sha256::digest(&input);
         let mut out = String::with_capacity(64);
         for byte in digest.iter() {
             out.push(HEX[(byte >> 4) as usize] as char);

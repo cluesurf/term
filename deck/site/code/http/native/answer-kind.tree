@@ -1,11 +1,22 @@
 # What both web transports (./node/serve, ./cloudflare/serve) decide about an answer before they write it
 # (term-self-host-001-0731, from the two transport shims' shared lines): a content type by file extension, which
-# extensions carry bytes as base64, whether a type is tree/code, and whether a body is an HTML page. The tables and
-# decisions are Term, the host's text questions are binds. `cloudflare` reaches the `browser` cases through its chain.
+# extensions carry bytes as base64, whether a type is tree/code, and whether a body is an HTML page. Every table and
+# question is Term, over the stdlib's text and hash. They were node and browser binds, which the check of a shared
+# bind refuses (a bind outside a `native/<env>/` file with two to four of the five backends), item 1589.
 
 load @term/base/hash
   find hash
   find get-or-default
+  find keys
+
+load @term/base/text
+  find last-index-of
+  find substring
+  find split
+  find to-lower-case
+  find trim
+  find trim-start
+  find starts-with
 
 load @term/base/list
   find list
@@ -76,49 +87,105 @@ host binary-extensions
     like text
 
 # the request path's extension in lower case, or empty text for a path with no dot
-bind answer-path-extension
+task answer-path-extension
   take path, like text
   like text
-  case node
-    text <((path: string): string =\> \{ const dot = path.lastIndexOf('.'); return dot \>= 0 ? path.slice(dot + 1).toLowerCase() : '' \})($path)>
-  case browser
-    text <((path: string): string =\> \{ const dot = path.lastIndexOf('.'); return dot \>= 0 ? path.slice(dot + 1).toLowerCase() : '' \})($path)>
+  save dot
+    call last-index-of
+      read path
+      text <.>
+  fork test
+    hook test
+      call is-below
+        read dot
+        code 0
+    hook hold
+      send back, text <>
+  send back
+    call to-lower-case
+      call substring
+        read path
+        call add
+          read dot
+          code 1
 
-# tree/code (note/project/term/host/10-code.md): bytes on the wire, base64 inside the program
-bind answer-is-tree-code
+# tree/code (note/project/term/host/10-code.md): bytes on the wire, base64 inside the program. The type's own part,
+# before any `;` parameter, trimmed and in lower case
+task answer-is-tree-code
   take type, like text
   like boolean
-  case node
-    text <($type.toLowerCase().split(';')[0]?.trim() === 'application/tree+code')>
-  case browser
-    text <($type.toLowerCase().split(';')[0]?.trim() === 'application/tree+code')>
+  save parts
+    call split
+      call to-lower-case
+        read type
+      text <;>
+  send back
+    call is-equal
+      call trim
+        read parts/0
+      text <application/tree+code>
 
 # an SSR page: the body's first characters say so, since the answer carries no type of its own
-bind answer-is-html
+task answer-is-html
   take body, like text
   like boolean
-  case node
-    text <((head: string): boolean =\> head.startsWith('\<!doctype') || head.startsWith('\<html'))($body.trimStart().slice(0, 14).toLowerCase())>
-  case browser
-    text <((head: string): boolean =\> head.startsWith('\<!doctype') || head.startsWith('\<html'))($body.trimStart().slice(0, 14).toLowerCase())>
+  save head
+    call to-lower-case
+      call substring
+        call trim-start
+          read body
+        code 0
+        code 14
+  send back
+    call or
+      call starts-with
+        read head
+        text <\<!doctype>
+      call starts-with
+        read head
+        text <\<html>
 
 # whether the handler set a content type, under any case of its name
-bind answer-has-type
+task answer-has-type
   take headers, like hash, like text, like text
   like boolean
-  case node
-    text <[...$headers.keys()].some((name: string) =\> name.toLowerCase() === 'content-type')>
-  case browser
-    text <[...$headers.keys()].some((name: string) =\> name.toLowerCase() === 'content-type')>
+  walk list
+    call keys
+      read headers
+    hook next
+      take site, name key
+      fork test
+        hook test
+          call is-equal
+            call to-lower-case
+              read key
+            text <content-type>
+        hook hold
+          send back, true
+  send back, false
 
-# the content type the handler set, or empty text
-bind answer-given-type
+# the content type the handler set, or empty text: the first header whose name is content-type under any case
+task answer-given-type
   take headers, like hash, like text, like text
   like text
-  case node
-    text <([...$headers].find(([name]: [string, string]) =\> name.toLowerCase() === 'content-type')?.[1] ?? '')>
-  case browser
-    text <([...$headers].find(([name]: [string, string]) =\> name.toLowerCase() === 'content-type')?.[1] ?? '')>
+  walk list
+    call keys
+      read headers
+    hook next
+      take site, name key
+      fork test
+        hook test
+          call is-equal
+            call to-lower-case
+              read key
+            text <content-type>
+        hook hold
+          send back
+            call get-or-default
+              read headers
+              read key
+              text <>
+  send back, text <>
 
 # a known asset extension's content type, or empty text
 task asset-type

@@ -70,6 +70,11 @@ task backends
 # meaning stays D10's. This warns at each such argument of a call in the file being compiled, naming the field and the
 # bind, and `--strict` makes the warning fail the run. A typed parameter, or a maybe read first with a `sift`, is not
 # warned about.
+#
+# Decision 176 rule 5 widens it to EVERY argument the checker typed `maybe T`: a local saved from a field read, a task's
+# maybe answer, a maybe parameter, a maybe field that is not `need false`. Each is the boxed maybe on TypeScript, so a
+# truthy test in the bind's host code is always true (put-blob's `wire-truthy(mount-from)` mounted every upload, trap
+# T-1546). A maybe as a `fork test` condition needs no warning: the checker already refuses it (`expected boolean`).
 
 # whether a type is `maybe T`
 task is-maybe-of
@@ -195,6 +200,80 @@ task dynamic-maybe-warning
   save kind, make maybe-to-dynamic
   back diagnose(kind, input)
 
+# the same warning for any other argument the checker typed `maybe T`, named as `value-name` writes it
+task maybe-value-warning
+  take file, like text
+  take where, like span
+  take value, like text
+  take called, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, where
+      bind message, make(some, <`{value}` is a maybe, and the bind `{called}` takes it as `like dynamic`, so its host code gets the Term maybe (on TypeScript a box, always truthy), never the host's value or nothing>)
+      bind hint, make(some, <read `{value}` with a `sift` and hand `{called}` the value, or give its parameter a type, such as `like maybe, like \<form\>`>)
+  save kind, make maybe-to-dynamic
+  back diagnose(kind, input)
+
+# whether the checker typed an expression `maybe T`
+task is-maybe-typed
+  take given, like expression
+  like boolean
+  mark private
+
+  sift expression-type(given)
+    case some
+      link known
+      back is-maybe-of(known)
+    case none
+      back false
+
+# how a warning names an argument: a variable by its name, a field read as `<form>/<field>` (or `<value>/<field>` when
+# its target's type is no form), a call as `<task>(...)`, anything else as `this value`. Never recursive: a deeper
+# target reads `.../<field>`
+task value-name
+  take given, like expression
+  like text
+  mark private
+
+  sift given
+    case variable
+      link variable-name
+      back variable-name
+    case member
+      link member-target
+      link member-name
+      sift expression-type(member-target)
+        case some
+          link target-type
+          sift target-type
+            case named
+              link owner
+              back <{owner}/{member-name}>
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      sift member-target
+        case variable
+          link target-name
+          back <{target-name}/{member-name}>
+        miss
+          back <.../{member-name}>
+    case call
+      link call-callee
+      sift call-callee
+        case variable
+          link callee-name
+          back <{callee-name}(...)>
+        miss
+          back <this value>
+    miss
+      back <this value>
+
 task warn-maybe-to-dynamic
   take program, like list, like statement
   take file, like text
@@ -215,10 +294,8 @@ task warn-maybe-to-dynamic
   fork test, is-equal(binds/keys()/length, 0)
     hold
       back out
+  # the field reads keep 136's wording; every other maybe argument is found by its type (decision 176 rule 5)
   save fields, optional-maybe-fields(program)
-  fork test, is-equal(fields/keys()/length, 0)
-    hold
-      back out
   walk program
     take one
     sift one
@@ -259,10 +336,17 @@ task warn-maybe-to-dynamic
                 fork test, is-below(place, labels/length)
                   hold
                     save label, get(labels, place)
+                fork test, not(fills-dynamic(params, label, place))
+                  hold
+                    turn next
                 save read-field, optional-maybe-read(arg, fields)
-                fork test, and(is-unequal(read-field, <>), fills-dynamic(params, label, place))
+                fork test, is-unequal(read-field, <>)
                   hold
                     push(out, dynamic-maybe-warning(file, call-span, read-field, called))
+                    turn next
+                fork test, is-maybe-typed(arg)
+                  hold
+                    push(out, maybe-value-warning(file, call-span, value-name(arg), called))
             miss
               turn next
       miss

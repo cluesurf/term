@@ -8,6 +8,12 @@ note <a need false maybe field handed to a like dynamic parameter of a bind is t
 # maybe read first with a `sift`, a bind whose parameter is typed, a maybe field that is not `need false`, and a `need
 # false` field that is not a maybe are not warned about; and the warning is a warning, so the build still succeeds. Each
 # program compiles lean, as a library, under the node env over the stdlib.
+#
+# Decision 176 rule 5 (item term-self-host-001-1554) widens it to every argument typed maybe: a maybe local, a task's
+# maybe answer, a maybe parameter and a maybe field that is not `need false` each warn once, naming the value and the
+# bind, and trap T-1546's real case (put-blob's `wire-truthy(mount-from)` and `wire-limit-of(limit, size)`) warns at
+# both. A maybe as a `fork test` stays refused by the checker; a truth test through `is-some`, a sift, and a plain field
+# read stay quiet.
 
 load ../support/compiling
   find compile-text
@@ -21,10 +27,20 @@ load @term/base/list
 load @term/base/text
   find contains, name text-contains
 
-host head-text, <load @term/base/maybe\n  find maybe\n\nform spot\n  link line, like number\n\nform gap\n  link form, like text\n  link span\n    like maybe, like spot\n    need false\n  link kept\n    like maybe, like spot\n  link count\n    like number\n    need false\n\nbind value-or\n  take value, like dynamic\n  take fallback, like dynamic\n  like dynamic\n  case node\n    text \<($value ?? $fallback)\>\n  case browser\n    text \<($value ?? $fallback)\>\n  case rust\n    text \<$value\>\n  case swift\n    text \<$value\>\n  case kotlin\n    text \<$value\>\n\nbind spot-or\n  take value, like maybe, like spot\n  take fallback, like dynamic\n  like dynamic\n  case node\n    text \<($value ?? $fallback)\>\n  case browser\n    text \<($value ?? $fallback)\>\n  case rust\n    text \<$value\>\n  case swift\n    text \<$value\>\n  case kotlin\n    text \<$value\>\n\ntask no-spot\n  like spot\n\n  back\n    make spot\n      bind line, 0\n>
+host head-text, <load @term/base/maybe\n  find maybe\n  find is-some\n\nform spot\n  link line, like number\n\nform gap\n  link form, like text\n  link span\n    like maybe, like spot\n    need false\n  link kept\n    like maybe, like spot\n  link count\n    like number\n    need false\n\nbind value-or\n  take value, like dynamic\n  take fallback, like dynamic\n  like dynamic\n  case node\n    text \<($value ?? $fallback)\>\n  case browser\n    text \<($value ?? $fallback)\>\n  case rust\n    text \<$value\>\n  case swift\n    text \<$value\>\n  case kotlin\n    text \<$value\>\n\nbind spot-or\n  take value, like maybe, like spot\n  take fallback, like dynamic\n  like dynamic\n  case node\n    text \<($value ?? $fallback)\>\n  case browser\n    text \<($value ?? $fallback)\>\n  case rust\n    text \<$value\>\n  case swift\n    text \<$value\>\n  case kotlin\n    text \<$value\>\n\ntask no-spot\n  like spot\n\n  back\n    make spot\n      bind line, 0\n\ntask find-spot\n  take line, like number\n  like maybe, like spot\n\n  fork test, is-above(line, 0)\n    hold\n      back make(some, make(spot, bind(line, line)))\n  back make none\n>
 
 # the 1074 case (tmp/self-host/1074/case/maybe-host.tree)
 host flagged-text, <task span-or\n  take value, like gap\n  like dynamic\n\n  back value-or(value/span, no-spot())\n>
+
+# trap T-1546's real case, cut from tmp/self-host/1546's first draft of deck/deck/code/oci/registry-transport.tree:
+# put-blob saved the need-false maybe `mount-from` to a local and handed it to the bind `wire-truthy`, which tested the
+# box (always truthy, so every upload mounted), and `wire-limit-of` got the maybe `size` (NaN)
+host transport-head, <load @term/base/maybe\n  find maybe\n\nform blob-upload\n  link repository, like text\n  link mount-from\n    like maybe, like text\n    need false\n\nform blob-query\n  link repository, like text\n  link size\n    like maybe, like number\n    need false\n  link limit, like number\n\nbind wire-truthy\n  take value, like dynamic\n  like boolean\n  case node\n    text \<Boolean($value)\>\n  case browser\n    text \<Boolean($value)\>\n  case rust\n    text \<true\>\n  case swift\n    text \<true\>\n  case kotlin\n    text \<true\>\n\nbind wire-limit-of\n  take limit, like number\n  take size, like dynamic\n  like number\n  case node\n    text \<($size === undefined ? $limit : Math.min($limit, $size))\>\n  case browser\n    text \<($size === undefined ? $limit : Math.min($limit, $size))\>\n  case rust\n    text \<$limit\>\n  case swift\n    text \<$limit\>\n  case kotlin\n    text \<$limit\>\n>
+
+host transport-broken, <task is-mounting\n  take asked, like blob-upload\n  like boolean\n\n  save mount-from, asked/mount-from\n  back wire-truthy(mount-from)\n\ntask limit-of\n  take asked, like blob-query\n  like number\n\n  save size, asked/size\n  back wire-limit-of(asked/limit, size)\n>
+
+# 1546's landed form: the maybe sifted to its text first, the bind handed the text
+host transport-fixed, <task is-mounting\n  take asked, like blob-upload\n  like boolean\n\n  save mount-from, <>\n  sift asked/mount-from\n    case some\n      link given-from\n      save mount-from, given-from\n    case none\n      save unmounted, 0\n  back wire-truthy(mount-from)\n>
 
 # the program, the head and then `body`, compiled as maybe-to-dynamic.tree
 task build
@@ -32,6 +48,55 @@ task build
   like compile-outcome
 
   back compile-text(<{head-text}\n{body}>, make(compile-choice, bind(file, <maybe-to-dynamic.tree>), bind(lean, true), bind(library, true), bind(stdlib, <node>)))
+
+# T-1546's program, the transport head and then `body`
+task build-transport
+  take body, like text
+  like compile-outcome
+
+  back compile-text(<{transport-head}\n{body}>, make(compile-choice, bind(file, <maybe-to-dynamic.tree>), bind(lean, true), bind(library, true), bind(stdlib, <node>)))
+
+# whether one message names both the value and the bind
+task names-value-and-bind
+  take messages, like list, like text
+  take value, like text
+  take called, like text
+  like boolean
+
+  fork test, is-unequal(messages/length, 1)
+    hold
+      back false
+  back and(text-contains(messages/0, <`{value}`>), text-contains(messages/0, <`{called}`>))
+
+# whether some message names both the value and the bind
+task any-names
+  take messages, like list, like text
+  take value, like text
+  take called, like text
+  like boolean
+
+  walk messages
+    take message
+    fork test, and(text-contains(message, <`{value}`>), text-contains(message, <`{called}`>))
+      hold
+        back true
+  back false
+
+# whether a refused compile names this diagnostic
+task refused-as
+  take out, like compile-outcome
+  take name, like text
+  like boolean
+
+  fork test, out/ok
+    hold
+      back false
+  walk out/names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
 
 # the messages of the maybe-to-dynamic warnings a compile gave
 task said
@@ -76,8 +141,41 @@ test <a bind whose parameter is typed is not warned about>
   host out, build(<task span-or\n  take value, like gap\n  like dynamic\n\n  back spot-or(value/span, no-spot())\n>)
   want hold, and(out/ok, is-equal(said(out)/length, 0))
 
-test <a maybe field that is not need false is not warned about>
+test <a maybe field that is not need false is warned about, boxed like any maybe>
   host out, build(<task kept-or\n  take value, like gap\n  like dynamic\n\n  back value-or(value/kept, no-spot())\n>)
+  want hold, and(out/ok, names-value-and-bind(said(out), <gap/kept>, <value-or>))
+
+test <a maybe local is warned about once, by its name>
+  host out, build(<task span-or\n  take value, like gap\n  like dynamic\n\n  save span, value/span\n  back value-or(span, no-spot())\n>)
+  want hold, and(out/ok, names-value-and-bind(said(out), <span>, <value-or>))
+
+test <a task's maybe answer is warned about once>
+  host out, build(<task span-or\n  take line, like number\n  like dynamic\n\n  back value-or(find-spot(line), no-spot())\n>)
+  want hold, and(out/ok, names-value-and-bind(said(out), <find-spot(...)>, <value-or>))
+
+test <a maybe parameter is warned about once>
+  host out, build(<task span-or\n  take span, like maybe, like spot\n  like dynamic\n\n  back value-or(span, no-spot())\n>)
+  want hold, and(out/ok, names-value-and-bind(said(out), <span>, <value-or>))
+
+test <a maybe as a fork test is refused by the checker>
+  host out, build(<task has-span\n  take value, like gap\n  like boolean\n\n  save span, value/span\n  fork test, span\n    hold\n      back true\n  back false\n>)
+  want hold, refused-as(out, <type-mismatch>)
+
+test <a truth test through is-some is not warned about>
+  host out, build(<task has-span\n  take value, like gap\n  like boolean\n\n  save span, value/span\n  fork test, is-some(span)\n    hold\n      back true\n  back false\n>)
+  want hold, and(out/ok, is-equal(said(out)/length, 0))
+
+test <a plain field read is not warned about>
+  host out, build(<task line-or\n  take value, like spot\n  like dynamic\n\n  back value-or(value/line, 0)\n>)
+  want hold, and(out/ok, is-equal(said(out)/length, 0))
+
+test <trap T-1546's case builds and warns at both binds>
+  host out, build-transport(transport-broken)
+  host messages, said(out)
+  want hold, and(out/ok, and(is-equal(messages/length, 2), and(any-names(messages, <mount-from>, <wire-truthy>), any-names(messages, <size>, <wire-limit-of>))))
+
+test <trap T-1546's fix, the maybe sifted first, is not warned about>
+  host out, build-transport(transport-fixed)
   want hold, and(out/ok, is-equal(said(out)/length, 0))
 
 test <a need false field that is not a maybe is not warned about>

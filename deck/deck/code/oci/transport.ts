@@ -116,34 +116,43 @@ export const assertRepository = (repository: string): void =>
 export const isDescriptor = (value: unknown): value is Descriptor =>
   p.isDescriptor!(value) as boolean
 
-export const readLimited = (
-  response: Response,
-  limit: number,
-): Promise<Buffer> =>
-  liftAsync(() => p.readLimited!(response, limit) as Promise<Buffer>)
+/** The front a registry host is spoken to over, `http://<host>` or `https://<host>` (decision 179 rule 2). */
+export const registryFront = (input: {
+  host: string
+  insecure?: boolean
+  env?: NodeJS.ProcessEnv
+}): string =>
+  p.registryFront!(input.host, boxed(input.insecure), boxed(input.env)) as string
 
 export function httpTransport(input: {
   host: string
   credentials?: () => Promise<OciCredentials | undefined>
   insecure?: boolean
-  fetch?: typeof fetch
   chunkSize?: number
   monolithic?: number
   retries?: number
   env?: NodeJS.ProcessEnv
 }): OciTransport {
+  // no credentials asks for none, as the original's `asker?.() ?? undefined`
+  const credentials = input.credentials ?? (async () => undefined)
   const made = lift(
     () =>
       p.httpTransport!(
         input.host,
-        input.credentials,
-        input.insecure,
-        input.fetch,
-        input.chunkSize,
-        input.monolithic,
-        input.retries,
-        input.env,
+        credentials,
+        boxed(input.insecure),
+        boxed(input.chunkSize),
+        boxed(input.monolithic),
+        boxed(input.retries),
+        boxed(input.env),
       ) as OciTransport,
   )
   return liftRecord(made)
+}
+
+/** A value the port takes as a maybe (decision 176 rule 1): some when the caller set it, none when it is undefined. */
+function boxed<T>(
+  value: T | undefined,
+): { form: 'some'; value: T } | { form: 'none' } {
+  return value === undefined ? { form: 'none' } : { form: 'some', value }
 }

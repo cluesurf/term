@@ -8,10 +8,14 @@ enum crypto {
     // SHA-256 of a text's UTF-8 bytes as 64 lowercase hex digits (a Swift String holds no lone surrogate). Held to the
     // Term reference by test/compile/digest-text-native.ts
     static func sha256Text(_ input: String) -> String {
+        return sha256BytesText(Data(input.utf8))
+    }
+    // SHA-256 of bytes as 64 lowercase hex digits. Held to the Term reference by deck/base/test/sha256-bytes.tree
+    static func sha256BytesText(_ input: Data) -> String {
         let hex: [Character] = Array("0123456789abcdef")
         var out = ""
         out.reserveCapacity(64)
-        for byte in SHA256.hash(data: Data(input.utf8)) {
+        for byte in SHA256.hash(data: input) {
             out.append(hex[Int(byte >> 4)])
             out.append(hex[Int(byte & 15)])
         }

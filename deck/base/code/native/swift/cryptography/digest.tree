@@ -20,6 +20,15 @@ task digest-sha256-text
     call crypto/sha256-text
       read input
 
+# SHA-256 of bytes as 64 lowercase hex digits, synchronous (CryptoKit). Held to the Term reference by
+# deck/base/test/sha256-bytes.tree
+task digest-sha256-bytes-text
+  take input, like bytes
+  like text
+  send back
+    call crypto/sha256-bytes-text
+      read input
+
 task digest-sha512
   mark async
   take input, like bytes

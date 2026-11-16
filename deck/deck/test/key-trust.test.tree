@@ -1,0 +1,533 @@
+note <a scope's key sets over a loopback registry: every generation a client accepts, and every one it refuses, with the reason it gives>
+
+# From the key-trust probe of item term-self-host-001-1532 (item term-self-host-001-1568). The subject is
+# code/oci/key-trust.tree through its face code/oci/keys.ts, docked as oci.test.tree docks it (decision 106). The
+# registry is oci-server.tree on 127.0.0.1 at a port of its own, one per test. The keys are TEST keys made here from
+# fixed one-byte seeds, so no key is kept anywhere. Each test opens its own registry and trust folder, closes both,
+# then checks what it saw.
+#
+# Three refusals reach the signature itself: a generation signed by a MEMBER of the one before over another statement,
+# one whose keys changed after signing, and a first generation whose signature is broken. Every other refusal here is
+# met by a sequence, shape or membership check first, so only these three fail when signed-by skips verify-id (trap
+# T-1532).
+
+load ./oci-server
+  find start-oci-server
+  find close-oci-server
+  find retag
+
+dock load
+  load <@term/deck/code/object/sign>, name sign-face
+  load <@term/deck/code/oci/keys>, name keys-face
+  load <@term/deck/code/oci/transport>, name transport-face
+  load <node:crypto>, name dock-crypto
+  load <node:fs>, name dock-file
+  load <node:os>, name dock-os
+  load <node:path>, name dock-path
+
+bind empty-record
+  like dynamic
+  case node
+    text <({})>
+
+bind set-field
+  take record, like dynamic
+  take field, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($record[$field] = $value, $record)>
+
+# a copy of a record with one field set, the rest in their order
+bind with-field
+  take record, like dynamic
+  take field, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$record, [$field]: $value \})>
+
+# a copy of a record without one field
+bind without-field
+  take record, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <<(({ [$field]: _gone, ...rest }) => rest)($record)>>
+
+bind json-null
+  like dynamic
+  case node
+    text <null>
+
+bind bytes-of
+  take value, like text
+  like dynamic
+  case node
+    text <Buffer.from($value, "utf8")>
+
+bind base64-of
+  take bytes, like dynamic
+  like text
+  case node
+    text <Buffer.from($bytes).toString("base64")>
+
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind message-of
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind tag-digest
+  take tags, like dynamic
+  take repository, like text
+  take tag, like text
+  like text
+  case node
+    text <$tags.get($repository)?.get($tag)>
+
+bind untag
+  take tags, like dynamic
+  take repository, like text
+  take tag, like text
+  like boolean
+  case node
+    text <$tags.get($repository)?.delete($tag)>
+
+# PKCS8 DER of an ed25519 key whose 32-byte seed is one byte repeated: the fixed header, then the seed
+bind seed-der
+  take seed, like number
+  like dynamic
+  case node
+    text <Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.alloc(32, $seed)])>
+
+# the signature with its first base64 character changed
+bind broken-sig
+  take sig, like text
+  like text
+  case node
+    text <$sig.replace(/^ed25519:./, "ed25519:B")>
+
+# a record from its parts, a field name then its value, again and again
+task record
+  take parts, like list, like dynamic
+  like dynamic
+
+  host made, empty-record()
+  save field, <>
+  save named, false
+  walk parts
+    take part, like dynamic
+    fork test, named
+      hold
+        set-field(made, field, part)
+        save named, false
+      miss
+        save field, part
+        save named, true
+  back made
+
+# a TEST keypair from a one-byte seed, as sign.ts keeps one: the SPKI public key and the PKCS8 key, both base64 DER
+task test-key
+  take seed, like number
+  like dynamic
+
+  save der, seed-der(seed)
+  save secret, dock-crypto/createPrivateKey(record(make(list, <key>, der, <format>, <der>, <type>, <pkcs8>)))
+  save spki, dock-crypto/createPublicKey(secret)
+  save exported, spki/export(record(make(list, <type>, <spki>, <format>, <der>)))
+  back record(make(list, <publicKey>, base64-of(exported), <privateKey>, base64-of(der)))
+
+form trust-fixture
+  link server, like dynamic
+  link transport, like dynamic
+  link work, like text
+  link a, like dynamic
+  link b, like dynamic
+  link c, like dynamic
+
+task opened
+  like trust-fixture
+  mark async
+
+  save server, start-oci-server()
+  save transport, transport-face/httpTransport(record(make(list, <host>, server/host, <credentials>, tester, <retries>, 0)))
+  save work, dock-file/mkdtempSync(dock-path/join(dock-os/tmpdir(), <term-key-trust->))
+  back make(trust-fixture, bind(server, server), bind(transport, transport), bind(work, work), bind(a, test-key(1)), bind(b, test-key(2)), bind(c, test-key(3)))
+
+task closed
+  take fixture, like trust-fixture
+  like void
+  mark async
+
+  close-oci-server(fixture/server)
+  dock-file/rmSync(fixture/work, record(make(list, <recursive>, true, <force>, true)))
+
+task tester
+  like dynamic
+  mark async
+
+  back record(make(list, <kind>, <basic>, <username>, <tester>, <password>, <secret>))
+
+# what the client trusts with this trust folder, as JSON, `none` when no key set is served, or what it raised
+task trusted
+  take fixture, like trust-fixture
+  take dir, like text
+  take env, like dynamic
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    save found, wait keys-face/trustedKeys(record(make(list, <transport>, fixture/transport, <repository>, <term>, <scope>, <@term>, <host>, fixture/server/host, <trustDir>, dock-path/join(fixture/work, dir), <env>, env)))
+    fork test, is-absent(found)
+      hold
+        back <none>
+    back json-text(found)
+  halt take
+    take cause
+    back <raised: {message-of(cause)}>
+
+task ensure
+  take fixture, like trust-fixture
+  take keypair, like dynamic
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    save made, wait keys-face/ensurePublisher(record(make(list, <transport>, fixture/transport, <repository>, <term>, <scope>, <@term>, <keypair>, keypair)))
+    back json-text(made)
+  halt take
+    take cause
+    back <raised: {message-of(cause)}>
+
+task rotate
+  take fixture, like trust-fixture
+  take keypair, like dynamic
+  take add, like dynamic
+  take remove, like dynamic
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    save made, wait keys-face/rotateKeys(record(make(list, <transport>, fixture/transport, <repository>, <term>, <scope>, <@term>, <keypair>, keypair, <add>, add, <remove>, remove)))
+    back json-text(made)
+  halt take
+    take cause
+    back <raised: {message-of(cause)}>
+
+# what trusted answers for these keys, from this source, at this generation
+task trust-of
+  take keys, like list, like text
+  take source, like text
+  take sequence, like number
+  like text
+
+  back json-text(record(make(list, <keys>, keys, <source>, source, <sequence>, sequence)))
+
+task rotated-to
+  take sequence, like number
+  take keys, like list, like text
+  like text
+
+  back json-text(record(make(list, <sequence>, sequence, <keys>, keys)))
+
+# the body of a key set of @term
+task key-set
+  take sequence, like dynamic
+  take keys, like dynamic
+  take previous, like dynamic
+  like dynamic
+
+  back record(make(list, <v>, 1, <scope>, <@term>, <sequence>, sequence, <keys>, keys, <previous>, previous))
+
+# a body with its signer and a signature, by that signer, over the statement of `over`
+task signed-over
+  take body, like dynamic
+  take signer, like dynamic
+  take over, like dynamic
+  like dynamic
+
+  save sig, sign-face/signId(record(make(list, <id>, keys-face/keySetStatement(over), <privateKey>, signer/privateKey)))
+  back with-field(with-field(body, <signer>, signer/publicKey), <sig>, sig)
+
+task signed
+  take body, like dynamic
+  take signer, like dynamic
+  like dynamic
+
+  back signed-over(body, signer, body)
+
+# a set's bytes served under a tag of the keys repository, as the registry would hold it: its manifest's digest
+task push-bytes
+  take fixture, like trust-fixture
+  take bytes, like dynamic
+  take tag, like text
+  take kind, like text
+  like text
+  mark async
+
+  save config, record(make(list, <mediaType>, keys-face/KEYS_CONFIG_MEDIA_TYPE, <digest>, transport-face/sha256Digest(bytes), <size>, bytes/length))
+  wait fixture/transport/putBlob(record(make(list, <repository>, <term>, <digest>, config/digest, <bytes>, bytes)))
+  # the empty layer, which a registry with no key set yet does not hold
+  save empty, bytes-of(<\{\}>)
+  wait fixture/transport/putBlob(record(make(list, <repository>, <term>, <digest>, transport-face/sha256Digest(empty), <bytes>, empty)))
+  save layers, make list
+  layers/push(record(make(list, <mediaType>, <application/vnd.oci.empty.v1+json>, <digest>, transport-face/sha256Digest(empty), <size>, 2)))
+  save manifest, bytes-of(json-text(record(make(list, <schemaVersion>, 2, <mediaType>, <application/vnd.oci.image.manifest.v1+json>, <artifactType>, kind, <config>, config, <layers>, layers))))
+  save put, wait fixture/transport/putManifest(record(make(list, <repository>, <term>, <reference>, tag, <bytes>, manifest, <mediaType>, <application/vnd.oci.image.manifest.v1+json>)))
+  back put/digest
+
+task push
+  take fixture, like trust-fixture
+  take set, like dynamic
+  take tag, like text
+  like text
+  mark async
+
+  back push-bytes(fixture, bytes-of(json-text(set)), tag, keys-face/KEYS_ARTIFACT_TYPE)
+
+# three generations, each pinned in the trust folder t1 as it is made: a creates 1, a adds b and c for 2, b removes a
+# for 3. The served keys tag is generation 3
+task chained
+  take fixture, like trust-fixture
+  like void
+  mark async
+
+  ensure(fixture, fixture/a)
+  trusted(fixture, <t1>, empty-record())
+  rotate(fixture, fixture/a, make(list, fixture/c/publicKey, fixture/b/publicKey, fixture/c/publicKey), void)
+  trusted(fixture, <t1>, empty-record())
+  rotate(fixture, fixture/b, void, make(list, fixture/a/publicKey))
+  trusted(fixture, <t1>, empty-record())
+
+# a generation 4 over generation 3, served under keys, as t1 (pinned at 3) reads it
+task generation-4
+  take fixture, like trust-fixture
+  take set, like dynamic
+  like text
+  mark async
+
+  push(fixture, set, <keys>)
+  back trusted(fixture, <t1>, empty-record())
+
+task body-4
+  take fixture, like trust-fixture
+  like dynamic
+
+  back key-set(4, make(list, fixture/b/publicKey, fixture/c/publicKey), tag-digest(fixture/server/tags, <term>, <keys>))
+
+host not-signed-by-3, <raised: key set 4 of @term is not signed by generation 3>
+host malformed, <raised: key set of @term is malformed>
+
+test <key trust: the signed statement of a first and a later generation, field for field>
+  save a, test-key(1)
+  save b, test-key(2)
+  save c, test-key(3)
+  want hold, is-equal(keys-face/KEYS_ARTIFACT_TYPE, <application/vnd.cluesurf.term.keys.v1>)
+  want hold, is-equal(keys-face/KEYS_CONFIG_MEDIA_TYPE, <application/vnd.cluesurf.term.keys.v1+json>)
+  want hold, is-equal(keys-face/KEYS_TAG, <keys>)
+  save first, keys-face/keySetStatement(key-set(1, make(list, b/publicKey, a/publicKey), json-null()))
+  want hold, is-equal(first, json-text(record(make(list, <type>, <application/vnd.cluesurf.term.keys.v1>, <scope>, <@term>, <sequence>, 1, <keys>, make(list, b/publicKey, a/publicKey), <previous>, json-null()))))
+  save previous, <sha256:abababababababababababababababababababababababababababababababab>
+  save next, keys-face/keySetStatement(key-set(7, make(list, c/publicKey, a/publicKey, b/publicKey), previous))
+  # the statement lists the keys sorted: c, b, a for these seeds
+  want hold, is-equal(next, json-text(record(make(list, <type>, <application/vnd.cluesurf.term.keys.v1>, <scope>, <@term>, <sequence>, 7, <keys>, make(list, c/publicKey, b/publicKey, a/publicKey), <previous>, previous))))
+
+test <key trust: the first publisher creates generation 1, and an outsider or an early rotation is refused>
+  save got, opened()
+  save a, got/a
+  save c, got/c
+  save none-yet, trusted(got, <t1>, empty-record())
+  save early, rotate(got, a, make(list, got/b/publicKey), void)
+  save created, ensure(got, a)
+  save again, ensure(got, a)
+  save outside, ensure(got, c)
+  save first-use, trusted(got, <t1>, empty-record())
+  save pinned, trusted(got, <t1>, empty-record())
+  closed(got)
+  want hold, is-equal(none-yet, <none>)
+  want hold, is-equal(early, <raised: @term has no key set yet. The first term host to it creates one>)
+  want hold, is-equal(created, <\{"created":true,"sequence":1\}>)
+  want hold, is-equal(again, <\{"created":false,"sequence":1\}>)
+  want hold, is-equal(outside, <raised: this machine's key is not in the key set of @term (generation 1). A holder of a key in the set adds it with: term host --trust {c/publicKey}>)
+  want hold, is-equal(first-use, trust-of(make(list, a/publicKey), <first-use>, 1))
+  want hold, is-equal(pinned, trust-of(make(list, a/publicKey), <pinned>, 1))
+
+test <key trust: a pin from the environment wins, and one naming no key of the scope is passed over>
+  save got, opened()
+  save a, got/a
+  save b, got/b
+  save c, got/c
+  ensure(got, a)
+  save env-pin, trusted(got, <t9>, record(make(list, <TERM_TRUSTED_KEYS>, < @other = {b/publicKey} ; @term= {c/publicKey}, not-a-key ,{a/publicKey}>)))
+  save no-key, trusted(got, <t9>, record(make(list, <TERM_TRUSTED_KEYS>, <@term=not-a-key>)))
+  save other-scope, trusted(got, <t9>, record(make(list, <TERM_TRUSTED_KEYS>, <@other={b/publicKey}>)))
+  closed(got)
+  want hold, is-equal(env-pin, json-text(record(make(list, <keys>, make(list, c/publicKey, a/publicKey), <source>, <env>))))
+  want hold, is-equal(no-key, trust-of(make(list, a/publicKey), <first-use>, 1))
+  want hold, is-equal(other-scope, trust-of(make(list, a/publicKey), <pinned>, 1))
+
+test <key trust: rotates only by a member, to sound keys and never to none, and a removed key can no longer publish>
+  save got, opened()
+  save a, got/a
+  save b, got/b
+  save c, got/c
+  ensure(got, a)
+  trusted(got, <t1>, empty-record())
+  save by-outsider, rotate(got, c, make(list, b/publicKey), void)
+  save bad-key, rotate(got, a, make(list, b/publicKey, <short>, <also bad>), void)
+  save to-none, rotate(got, a, void, make(list, a/publicKey))
+  save second, rotate(got, a, make(list, c/publicKey, b/publicKey, c/publicKey), void)
+  save rotated, trusted(got, <t1>, empty-record())
+  save third, rotate(got, b, void, make(list, a/publicKey))
+  save rotated-twice, trusted(got, <t1>, empty-record())
+  save walked, trusted(got, <t2>, empty-record())
+  save removed, ensure(got, a)
+  closed(got)
+  want hold, is-equal(by-outsider, <raised: this machine's key is not in the key set of @term, so it cannot rotate it>)
+  want hold, is-equal(bad-key, <raised: not an ed25519 public key: short>)
+  want hold, is-equal(to-none, <raised: refusing to leave @term with no keys>)
+  want hold, is-equal(second, rotated-to(2, make(list, c/publicKey, b/publicKey, a/publicKey)))
+  want hold, is-equal(rotated, trust-of(make(list, c/publicKey, b/publicKey, a/publicKey), <rotated>, 2))
+  want hold, is-equal(third, rotated-to(3, make(list, c/publicKey, b/publicKey)))
+  want hold, is-equal(rotated-twice, trust-of(make(list, c/publicKey, b/publicKey), <rotated>, 3))
+  want hold, is-equal(walked, trust-of(make(list, c/publicKey, b/publicKey), <first-use>, 3))
+  want hold, is-equal(removed, <raised: this machine's key is not in the key set of @term (generation 3). A holder of a key in the set adds it with: term host --trust {a/publicKey}>)
+
+test <key trust: refuses a key set rolled back to a generation before the pinned one>
+  save got, opened()
+  chained(got)
+  save generation-2, tag-digest(got/server/tags, <term>, <keys.2>)
+  retag(got/server, <term>, <keys>, generation-2)
+  save rollback, trusted(got, <t1>, empty-record())
+  closed(got)
+  want hold, is-equal(rollback, <raised: the registry serves key set 2 of @term, but generation 3 was already accepted: a rollback or a replaced key set>)
+
+test <key trust: refuses a generation signed by a member of the one before, over another statement>
+  save got, opened()
+  chained(got)
+  save body, body-4(got)
+  save refused, generation-4(got, signed-over(body, got/b, with-field(body, <sequence>, 99)))
+  closed(got)
+  want hold, is-equal(refused, not-signed-by-3)
+
+test <key trust: refuses a generation signed well by a key outside the one before>
+  save got, opened()
+  chained(got)
+  save refused, generation-4(got, signed(body-4(got), got/a))
+  closed(got)
+  want hold, is-equal(refused, not-signed-by-3)
+
+test <key trust: refuses a generation whose keys changed after a member signed it>
+  save got, opened()
+  chained(got)
+  save tampered, with-field(signed(body-4(got), got/b), <keys>, make(list, got/b/publicKey, got/a/publicKey))
+  save refused, generation-4(got, tampered)
+  closed(got)
+  want hold, is-equal(refused, not-signed-by-3)
+
+test <key trust: refuses a generation whose previous names an older generation>
+  save got, opened()
+  chained(got)
+  save skip, key-set(4, make(list, got/b/publicKey), tag-digest(got/server/tags, <term>, <keys.2>))
+  save refused, generation-4(got, signed(skip, got/b))
+  closed(got)
+  want hold, is-equal(refused, not-signed-by-3)
+
+test <key trust: refuses a fresh chain an attacker signs alone>
+  save got, opened()
+  chained(got)
+  save c, got/c
+  save forged-1, push(got, signed(key-set(1, make(list, c/publicKey), json-null()), c), <forged.1>)
+  save refused, generation-4(got, signed(key-set(4, make(list, c/publicKey), forged-1), c))
+  closed(got)
+  want hold, is-equal(refused, not-signed-by-3)
+
+test <key trust: accepts a well-formed generation 4, and keeps the pin when the served set is deleted>
+  save got, opened()
+  chained(got)
+  save b, got/b
+  save c, got/c
+  save accepted, generation-4(got, signed(body-4(got), b))
+  untag(got/server/tags, <term>, <keys>)
+  save kept, trusted(got, <t1>, empty-record())
+  save gone, trusted(got, <m-gone>, empty-record())
+  closed(got)
+  want hold, is-equal(accepted, trust-of(make(list, b/publicKey, c/publicKey), <rotated>, 4))
+  want hold, is-equal(kept, trust-of(make(list, b/publicKey, c/publicKey), <pinned>, 4))
+  want hold, is-equal(gone, <none>)
+
+# a set served under keys, read by a trust folder that has never pinned one
+task first-read
+  take fixture, like trust-fixture
+  take set, like dynamic
+  take dir, like text
+  like text
+  mark async
+
+  push(fixture, set, <keys>)
+  back trusted(fixture, dir, empty-record())
+
+test <key trust: refuses every malformed key set, a set that is not JSON, and an artifact that is not a key set>
+  save got, opened()
+  chained(got)
+  save b, got/b
+  save good, signed(body-4(got), b)
+  save version-2, first-read(got, with-field(good, <v>, 2), <m-1>)
+  save other-scope, first-read(got, with-field(good, <scope>, <@other>), <m-2>)
+  save sequence-0, first-read(got, with-field(good, <sequence>, 0), <m-3>)
+  save sequence-half, first-read(got, with-field(good, <sequence>, 1.5), <m-4>)
+  save empty-keys, make list
+  save no-keys, first-read(got, with-field(good, <keys>, empty-keys), <m-5>)
+  save not-a-key, first-read(got, with-field(good, <keys>, make(list, <short>)), <m-6>)
+  save first-with-previous, first-read(got, with-field(good, <sequence>, 1), <m-7>)
+  save later-without, first-read(got, with-field(good, <previous>, json-null()), <m-8>)
+  save previous-bad, first-read(got, with-field(good, <previous>, <sha256:xyz>), <m-9>)
+  save first-no-field, first-read(got, without-field(signed(key-set(1, make(list, b/publicKey), json-null()), b), <previous>), <m-10>)
+  save no-signer, first-read(got, record(make(list, <v>, 1, <scope>, <@term>, <sequence>, 4, <keys>, make(list, b/publicKey), <previous>, tag-digest(got/server/tags, <term>, <keys.3>), <sig>, <ed25519:AA==>)), <m-11>)
+  save a-list, first-read(got, make(list, 1, 2), <m-12>)
+  push-bytes(got, bytes-of(<\{ not json>), <keys>, keys-face/KEYS_ARTIFACT_TYPE)
+  save not-json, trusted(got, <m-json>, empty-record())
+  push-bytes(got, bytes-of(json-text(good)), <keys>, <application/vnd.example.other>)
+  save not-artifact, trusted(got, <m-artifact>, empty-record())
+  closed(got)
+  want hold, is-equal(version-2, malformed)
+  want hold, is-equal(other-scope, malformed)
+  want hold, is-equal(sequence-0, malformed)
+  want hold, is-equal(sequence-half, malformed)
+  want hold, is-equal(no-keys, malformed)
+  want hold, is-equal(not-a-key, malformed)
+  want hold, is-equal(first-with-previous, malformed)
+  want hold, is-equal(later-without, malformed)
+  want hold, is-equal(previous-bad, malformed)
+  want hold, is-equal(first-no-field, malformed)
+  want hold, is-equal(no-signer, malformed)
+  want hold, is-equal(a-list, malformed)
+  want hold, is-equal(not-json, <raised: key set of @term is not JSON>)
+  want hold, is-equal(not-artifact, <raised: term:keys is not a Term key set>)
+
+test <key trust: refuses a first generation signed by an outsider, or with a broken signature by its own key>
+  save got, opened()
+  save a, got/a
+  save lone, key-set(1, make(list, a/publicKey), json-null())
+  save outsider, first-read(got, signed(lone, got/b), <m-first>)
+  save good, signed(lone, a)
+  save broken, first-read(got, with-field(good, <sig>, broken-sig(good/sig)), <m-first-sig>)
+  closed(got)
+  want hold, is-equal(outsider, <raised: the first key set of @term is not signed by one of its own keys>)
+  want hold, is-equal(broken, <raised: the first key set of @term is not signed by one of its own keys>)

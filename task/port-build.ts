@@ -609,7 +609,36 @@ function readManifest(path: string): Manifest | undefined {
 // The queue's other check variables (TSX, LINE, TMPDIR) are no TERM_, SEED_ or NODE_ name, its TERM_DEPTH is removed
 // and launch-only anyway, and its NODE_OPTIONS is a heap flag (buildValue). Port-build's own list, not launch-only.ts:
 // that list says how a process was started, and this one says what a compile never reads
-const NOT_READ_BY_A_COMPILE = new Set(['TERM_NATIVE_CACHE'])
+//   THE GATE'S (item term-self-host-001-1570): task/term/test.ts starts every suite with these, and a port-build a
+//   suite runs (test/call/port-build-units.ts) read each run as another print, so its fast path compiled every unit
+//   cold (373 s, '0 built, 693 unchanged') and removed the namespace make:line had filled:
+//   TERM_GATE_TRACK     the folder the gate's read tracker appends to, named for the gate's pid: another in every run.
+//                       Read only by task/term/gate/track.cjs
+//   TERM_WINDOW_AWAY    a test app's window opens off screen. Read only at RUN time by the native view and cask shells
+//   TERM_SYSTEM_TEMP    the real temporary folder behind a suite's scratch TMPDIR. Read only by test harnesses
+//   TERM_MEMO           `--fresh` turns the suites' per-item memo off (test/memo.ts)
+//   TERM_HELD           the machine-wide holds a suite runs under (test/compile/shared/device-hold.ts)
+const NOT_READ_BY_A_COMPILE = new Set(['TERM_NATIVE_CACHE', 'TERM_GATE_TRACK', 'TERM_WINDOW_AWAY', 'TERM_SYSTEM_TEMP', 'TERM_MEMO', 'TERM_HELD'])
+
+// the gate's read tracker (task/term/gate/track.cjs), which the gate adds to NODE_OPTIONS as `--require <path>` for
+// every tracked suite. It records what a process reads and never changes what a call returns (its own header), so it
+// is no input of a compile: the print leaves exactly that flag out, and keeps every other `--require` (item 1570). By
+// its path's tail, since the gate names its own tree's tracker, and a private copy (port-build-units --bind) builds in
+// another tree under the started one's gate
+const isGateTracker = (word: string | undefined): boolean => word !== undefined && word.split(sep).join('/').endsWith('/task/term/gate/track.cjs')
+
+function printedValue(name: string, value: string): string | undefined {
+  const kept = buildValue({ name, value })
+
+  if (name !== 'NODE_OPTIONS' || kept === undefined) {
+    return kept
+  }
+
+  const words = kept.split(' ')
+  const left = words.filter((word, at) => !(word === '--require' && isGateTracker(words[at + 1])) && !(isGateTracker(word) && words[at - 1] === '--require'))
+
+  return left.length === 0 ? undefined : left.join(' ')
+}
 
 async function fingerprint(stage0Id: string): Promise<string | undefined> {
   try {
@@ -635,7 +664,7 @@ async function fingerprint(stage0Id: string): Promise<string | undefined> {
     // are the variables no compile reads (NOT_READ_BY_A_COMPILE below)
     for (const name of Object.keys(process.env).sort()) {
       if (/^(TERM|SEED|NODE)_/.test(name) && !isLaunchOnly(name) && !NOT_READ_BY_A_COMPILE.has(name)) {
-        const value = buildValue({ name, value: process.env[name] ?? '' })
+        const value = printedValue(name, process.env[name] ?? '')
 
         if (value !== undefined) {
           // THE UNITS: a path inside this tree (TERM_STDLIB) names the same input in every clone of it

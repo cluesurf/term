@@ -19,7 +19,11 @@ object crypto {
         val encoded = encoder.encode(java.nio.CharBuffer.wrap(input))
         val bytes = ByteArray(encoded.remaining())
         encoded.get(bytes)
-        val digest = digestBytes("SHA-256", bytes)
+        return sha256BytesText(bytes)
+    }
+    // SHA-256 of bytes as 64 lowercase hex digits. Held to the Term reference by deck/base/test/sha256-bytes.tree
+    fun sha256BytesText(input: ByteArray): String {
+        val digest = digestBytes("SHA-256", input)
         val hex = "0123456789abcdef"
         val out = StringBuilder(64)
         for (byte in digest) {

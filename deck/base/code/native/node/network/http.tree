@@ -36,6 +36,14 @@ bind http-text-of
   case node
     text <String($value)>
 
+# the name of a caught host error (TimeoutError, AbortError), as the http-exchange shim reads it. A bind, since an
+# exception has no `name` field
+bind http-error-name
+  take value, like dynamic
+  like text
+  case node
+    text <String($value?.name)>
+
 # the init fetch takes with no body (fetch refuses a body on GET)
 bind make-fetch-init
   take method, like text
@@ -146,7 +154,9 @@ task send-request
   halt take
     take problem
     save kind, text <outage>
-    save name, read problem/name
+    save name
+      call http-error-name
+        read problem
     fork test
       hook test
         call or
