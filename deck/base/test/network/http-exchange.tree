@@ -7,9 +7,8 @@
 # browser.
 #
 # Every request goes to this program's own server on 127.0.0.1: nothing reaches the network. network/server on port 0
-# answers the bytes, the echo and the redirect; the two limit cases ask a raw TCP listener (ports 47941 and 47942,
-# clear of test/tree/tcp.tree's 47923 and 47925), which answers 65,536 bytes with or without `content-length`, as
-# network/server does not let a handler choose. network/server reads a request's body as text and /echo answers that
+# answers the bytes, the echo and the redirect; the two limit cases ask a raw TCP listener (on a port draw-port picks),
+# which answers 65,536 bytes with or without `content-length`, as network/server does not let a handler choose. network/server reads a request's body as text and /echo answers that
 # text, so the bytes sent come back as what it read: each byte no utf8 text holds as U+FFFD (`efbfbd`) and each other
 # byte as itself, which tells the bytes sent from any text they might have been sent as.
 
@@ -56,6 +55,19 @@ load @term/base/exception
   find refusal
   find absence
   find exclusion
+
+load @term/base/random
+  find integer, name draw-integer
+
+# a port for the raw listener, drawn at random below every system's ephemeral range (32768 on Linux, 49152 on macOS and
+# Windows), never a fixed one: a fixed port collides with any other run of this file at the same moment (a base gate
+# beside a term test of it in one landing window, term-self-host-001-1595)
+task draw-port
+  like number
+  send back
+    call draw-integer
+      code 20000
+      code 32767
 
 # the bytes 0 to 255, each once, in order
 task every-byte
@@ -390,7 +402,7 @@ test <the bytes 0 to 255 come back as themselves>
 test <a body whose length passes the limit is refused before it is read>
   save said
     call raw-said
-      code 47941
+      call draw-port
       true
       code 1000
       wait true
@@ -402,7 +414,7 @@ test <a body whose length passes the limit is refused before it is read>
 test <a body with no length is refused one byte past the limit>
   save said
     call raw-said
-      code 47942
+      call draw-port
       false
       code 1000
       wait true

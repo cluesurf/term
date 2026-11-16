@@ -1,0 +1,68 @@
+note <A receiver's label names the self of a form's method, whether or not the program defines a task of the method's name>
+
+# Item term-self-host-001-1592. `call push` with `bind list, read out` (deck/base/code/tone.tree) is a call of the list
+# method `push`, its labels documentation, and `list` names the receiver. In a program that ALSO holds a top-level task
+# named `push` (deck/deck/test/key-trust.test.tree), the import binding sends the call to the method by its own name,
+# `list_push` (check/disambiguate.tree method-meant), and the named arguments were checked against its parameters,
+# `self, item`: `"list_push" has no parameter "list"`. The merged build refused key-trust.test.tree for it and the
+# separate build took it. The form's name now names `self` there too, and a label that names nothing is still refused.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find compile-outcome
+  find prelude-text
+  find refused-saying
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+# the method called by its receiver's label, twice, in the method's order (a call left to receiver dispatch refuses
+# labels written out of it)
+host grow, <load @term/base/list\n  find list\n  find push\n\ntask grow\n  take out, like list, like text\n  call push\n    bind list, read out\n    bind item, text \<x\>\n  call push\n    bind list, read out\n    bind item, text \<y\>\n>
+
+# a label that names neither a parameter nor the receiver's form
+host grow-wrong, <load @term/base/list\n  find list\n  find push\n\ntask grow\n  take out, like list, like text\n  call push\n    bind lst, read out\n    bind item, text \<x\>\n>
+
+# the entry defines a task named `push` of its own
+host with-push, <load @app/grow\n  find grow\n\ntask push\n  take a, like text\n  like text\n  send back, read a\n\ntask run\n  like text\n  save xs, make list\n  call grow\n    read xs\n  send back\n    call push\n      read xs/1\n>
+
+# the same entry with its task named apart
+host without-push, <load @app/grow\n  find grow\n\ntask echo\n  take a, like text\n  like text\n  send back, read a\n\ntask run\n  like text\n  save xs, make list\n  call grow\n    read xs\n  send back\n    call echo\n      read xs/1\n>
+
+task built
+  take main, like text
+  take helper, like text
+  like compile-outcome
+
+  back compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(files, make list(make(compiling-source, bind(file, <@app/grow>), bind(text, helper), bind(answer, <grow.tree>))))))
+
+task answer-of
+  take main, like text
+  like text
+
+  save out, built(main, grow)
+  save folder, temp-folder(<term-receiver-label->)
+  back typescript-answer(out, <process.stdout.write(String(run()))>, folder, <module>, prelude-text(out, <node>))
+
+test <the method's call builds where no task shares its name>
+  host out, built(without-push, grow)
+  want hold, out/ok
+
+test <the method's call builds beside a task of the same name>
+  host out, built(with-push, grow)
+  want hold, out/ok
+
+test <beside a task of the same name, the receiver and the item reach their places: the second push is y>
+  want hold, is-equal(answer-of(with-push), <y>)
+
+test <where no task shares the name, the second push is y>
+  want hold, is-equal(answer-of(without-push), <y>)
+
+test <beside a task of the same name, a label naming nothing is still refused>
+  host out, built(with-push, grow-wrong)
+  want hold, refused-saying(out, <type-mismatch>, <has no parameter "lst">)

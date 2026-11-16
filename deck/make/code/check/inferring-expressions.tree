@@ -818,6 +818,37 @@ task narrows-case
     miss
       back narrowed-of(false, node)
 
+# A RECEIVER'S LABEL is its form's name: `bind list` names the `self` of `list_push`. A call left to receiver dispatch
+# reads it so (the labels-in-order check below), and a call the import binding sent to the method by its own name
+# (check/disambiguate.tree method-meant, once a task of the program shares the name) must read it the same, or a file
+# that builds alone is refused inside a program that merely defines a task of the method's name
+# (term-self-host-001-1592: tone.tree's `push` with `bind list`, refused once key-trust.test.tree defined `push`)
+task names-receiver
+  take st, like infer-state
+  take callee, like text
+  take params, like list, like text
+  take label, like text
+  like boolean
+  mark private
+
+  fork test, or(is-equal(params/length, 0), not(st/method-files/has(callee)))
+    hold
+      back false
+  fork test, is-unequal(text-at(params, 0), <self>)
+    hold
+      back false
+  fork test, not(st/method-table/has(label))
+    hold
+      back false
+  save methods, st/method-table/get(label)
+  save found, false
+  walk methods/keys()
+    take method
+    fork test, is-equal(methods/get(method), callee)
+      hold
+        save found, true
+  back found
+
 # a call's arguments put in the callee's declared positions, its defaults filled, its lean labels placed (part 6)
 task arrange-arguments
   take st, like infer-state
@@ -995,6 +1026,9 @@ task arrange-arguments
               save next, add(next, 1)
         miss
           save index, position-of(signature/names, name)
+          fork test, and(is-below(index, 0), names-receiver(st, callee, signature/names, name))
+            hold
+              save index, 0
           fork test, is-below(index, 0)
             hold
               save taken, signature/names/join(<, >)

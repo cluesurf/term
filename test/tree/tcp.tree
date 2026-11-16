@@ -14,10 +14,21 @@ load @term/base/code/text
 load @term/base/code/network/http
   find fetch
 
+load @term/base/code/random
+  find integer, name draw-integer
+
+# each case listens on a port drawn at random below every system's ephemeral range (32768 on Linux, 49152 on macOS
+# and Windows), never a fixed one: a fixed port collides with any other run of this file at the same moment (a base
+# gate beside a term test of it in one landing window, term-self-host-001-1595), and the case then fails on whichever
+# run binds second
 test <loopback echo round-trips a message>
+  save port
+    call draw-integer
+      code 20000
+      code 32767
   save server
     call listen
-      code 47923
+      read port
       text <127.0.0.1>
       false
       text <>
@@ -26,7 +37,7 @@ test <loopback echo round-trips a message>
   save client
     call connect
       text <127.0.0.1>
-      code 47923
+      read port
       false
       wait true
   save peer
@@ -67,9 +78,13 @@ test <loopback echo round-trips a message>
 # a listener that accepts and never answers: an HTTP request to it raises `timeout` once its wait is spent, on every
 # backend (the request side is network/http.tree)
 test <an http request nobody answers times out>
+  save port
+    call draw-integer
+      code 20000
+      code 32767
   save silent
     call listen
-      code 47925
+      read port
       text <127.0.0.1>
       false
       text <>
@@ -79,7 +94,7 @@ test <an http request nobody answers times out>
   fork
     mark unsafe
     call fetch
-      text <http://127.0.0.1:47925/>
+      text <http://127.0.0.1:{{port}}/>
       bind timeout, code 300
       wait true
   halt take
