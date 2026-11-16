@@ -2061,6 +2061,10 @@ form raise-state
     like task
       take node, like expression
       like boolean
+  # the caught name of the handler being scanned, `<>` outside one or where the handler saves over it, and whether the
+  # handler raised that name again (`halt kink, e`, term/compiler decision 023 point 3)
+  link caught, like text
+  link again, like boolean
 
 # `checked-division` is the one place an emitter tells the raise sets which integer `/` and `%` it writes checked
 # (divisor/spec.md section 3.1, 4.1). Every check-time caller passes nothing, and nothing changes for it
@@ -2160,6 +2164,8 @@ task raise-sets-of
       bind called, make list
       bind jobs, <>
       bind checked-division, checked-division
+      bind caught, <>
+      bind again, false
   # named apart from a task's own `raises`, which the arm over a task binds
   save raised-by, make hash
   save via, make hash
@@ -2548,7 +2554,13 @@ task scan
           hold
             save state/direct, add-text(state/direct, raised)
           miss
-            save state/direct, add-text(state/direct, thrown-exception(state, thrown))
+            # `halt kink, e` of the handler's own caught name raises what its guard caught, added at the guard; any
+            # other raise again raises `exception` (term/compiler decision 023 point 3)
+            fork test, and(read(again), is-caught-read(thrown, state/caught))
+              hold
+                save state/again, true
+              miss
+                save state/direct, add-text(state/direct, thrown-exception(state, thrown))
         # a division in the thrown value is written checked like any other
         mark-divisions(state, thrown)
       case guard
@@ -2556,7 +2568,22 @@ task scan
         sift catch
           case some
             link clause
+            save outer-caught, state/caught
+            save outer-again, state/again
+            save state/caught, <>
+            fork test, not(saves-over(clause/body, clause/name))
+              hold
+                save state/caught, clause/name
+            save state/again, false
             scan(state, clause/body)
+            save re-raised, state/again
+            save state/caught, outer-caught
+            save state/again, outer-again
+            # a handler that raises what it caught again raises exactly what the guarded body raises: the body's
+            # own scan (decision 002)
+            fork test, re-raised
+              hold
+                scan(state, body)
           case none
             save nothing, 0
       case while
@@ -2647,6 +2674,53 @@ task thrown-exception
       back <failure>
     miss
       back <exception>
+
+# whether a raised value is a bare read of the handler's caught name, `<>` when there is none to read
+task is-caught-read
+  take thrown, like expression
+  take caught-name, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(caught-name, <>)
+    hold
+      back false
+  sift thrown
+    case variable
+      back is-equal(name, caught-name)
+    miss
+      back false
+
+# WHETHER A HANDLER SAVES OVER ITS CAUGHT NAME, or binds the name again in a block inside it: a raise again of the name
+# then raises whatever it holds, `exception` (term/compiler decision 023 point 3)
+task saves-over
+  take body, like list, like statement
+  take caught-name, like text
+  like boolean
+  mark private
+
+  fork test, has-text(bound-names(body), caught-name)
+    hold
+      back true
+  walk block-handles(body)
+    take handle
+    sift handle
+      case statement-handle
+        link held
+        sift held
+          case assign
+            sift target
+              case variable
+                fork test, is-equal(name, caught-name)
+                  hold
+                    back true
+              miss
+                save nothing, 0
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back false
 
 # A CLOSURE'S RAISES ARE ITS MAKER'S. A closure's type carries no raise set, so what its body raises surfaces wherever
 # it is called: through `wait` and `gather` its raise is re-raised unchanged, and through any other call it unwinds the

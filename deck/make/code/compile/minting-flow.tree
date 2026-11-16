@@ -1107,13 +1107,33 @@ task halt-of
             make debug
               bind span, where
           back one-statement(stopped)
-      # `halt kink` propagates a callee's exception; as a statement it raises what it was given
+      # `halt kink` under a call passes the callee's exception on. As a statement, `halt kink, e` raises the caught `e`
+      # again, unchanged, and never breaks a loop (term/compiler decision 023): the checker refuses a value not typed
+      # `exception`, and a bare one has nothing to raise
       fork test, is-equal(word, <kink>)
         hold
-          save broken
-            make break
-              bind span, where
-          back one-statement(broken)
+          sift expression-of(state, first-at(held, <again>))
+            case some
+              link caught
+              save raised-again
+                make throw
+                  bind value, caught
+                  bind span, where
+                  bind again, true
+              back one-statement(raised-again)
+            case none
+              # a text or a number after it is the literal a `halt <text>` raises, never a caught value
+              fork test, has-minted(first-at(held, <seed>))
+                hold
+                  refuse(state, value, <again-not-caught: `halt kink` raises a caught value again, and a literal is not one. `halt \<text\>` raises a new `failure`>)
+                  back no-statements()
+              refuse(state, value, <`halt kink` with nothing after it has nothing to raise. Under a call it passes the callee's exception on, and as a statement it raises a caught value again: `halt kink, e` in a handler>)
+              back no-statements()
+      # the caught value's site is the halt mill's child right after the mode, which only `kink` reads
+      fork test, has-minted(first-at(held, <again>))
+        hold
+          refuse(state, value, <`halt {word}` takes no value after it: only `halt kink, e` raises a caught value again. A form raise gives its props as `bind` lines>)
+          back no-statements()
       # `halt <form>` with `bind` children RAISES that exception, the form built from the binds
       save binds, forms-at(held, <bind>)
       fork test, is-above(binds/length, 0)

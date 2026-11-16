@@ -1,0 +1,160 @@
+load @term/base/exception
+  find exception
+
+load @term/base/file
+  find read, name file-read
+
+load @term/base/list
+  find list
+
+form lost-thing
+  like exception
+    bind note, <Lost>
+    link where-from, like text
+
+# what the first handler saw, kept to compare with what the outer guard catches
+form witness
+  mark shared
+  link seen-form, like text
+  link seen-note, like text
+  link seen-code, like text
+  link seen-time, like number
+  link seen-prop, like text
+  link seen-turns, like number
+
+task fresh-witness
+  like witness
+  save made
+    make witness
+      bind seen-form, <>
+      bind seen-note, <>
+      bind seen-code, <>
+      bind seen-time, 0
+      bind seen-prop, <>
+      bind seen-turns, 0
+  back made
+
+task prop-of
+  take value, like unknown
+  like text
+  sift value
+    case text
+      back value
+    miss
+      back <none>
+
+task note-first
+  take seen, like witness
+  take problem, like exception
+  save key, <where-from>
+  save seen/seen-form, problem/form
+  save seen/seen-note, problem/note
+  save seen/seen-code, problem/code
+  save seen/seen-time, problem/time
+  save seen/seen-prop, prop-of(problem/link/{key})
+
+task same
+  take a, like text
+  take b, like text
+  like text
+  fork test, is-equal(a, b)
+    hold
+      back <same>
+  back <differs>
+
+# the outer catch beside the first: form, note, code, time and the link prop equal (the flow's frames are
+# raise-flow-native's: a caught value's `flow` read in place is not emitted on Rust or Swift)
+task compare
+  take seen, like witness
+  take problem, like exception
+  like text
+  save key, <where-from>
+  save prop, prop-of(problem/link/{key})
+  save time-same, <differs>
+  fork test, is-equal(seen/seen-time, problem/time)
+    hold
+      save time-same, <same>
+  save code-given, <empty>
+  fork test, is-unequal(problem/code, <>)
+    hold
+      save code-given, <given>
+  back <form {problem/form} {same(seen/seen-form, problem/form)}, note {same(seen/seen-note, problem/note)}, code {code-given} {same(seen/seen-code, problem/code)}, time {time-same}, prop {prop} {same(seen/seen-prop, prop)}>
+
+# a form with a link prop, raised by a task the cleanup calls
+task lose
+  like number
+  halt lost-thing
+    bind where-from, <a/b>
+
+# 1. a cleanup that passes the form it caught on, unchanged
+task clean-up
+  take seen, like witness
+  like number
+  fork
+    mark unsafe
+    back lose()
+  halt take
+    take problem
+    note-first(seen, problem)
+    halt kink, problem
+
+# 2. a native call's raise (a file read of a path that is not there, `absence`) raised again: the set is the read's
+task tidy
+  mark async
+  take seen, like witness
+  like text
+  fork
+    mark unsafe
+    back file-read(</nonexistent/term-1575/none.txt>)
+  halt take
+    take problem
+    note-first(seen, problem)
+    halt kink, problem
+
+# 3. a raise again inside a walk raises, and never breaks the loop
+task walk-again
+  take seen, like witness
+  like number
+  save turns, 0
+  save items, make list(1, 2, 3)
+  walk items
+    take item
+    save turns, add(turns, item)
+    fork
+      mark unsafe
+      save lost, lose()
+    halt take
+      take problem
+      save seen/seen-turns, turns
+      halt kink, problem
+  back turns
+
+task run
+  mark async
+  like text
+  save out, <>
+  save seen, fresh-witness()
+  fork
+    mark unsafe
+    save x, clean-up(seen)
+    save out, <{out}clean-up returned {x}\n>
+  halt take
+    take problem
+    save out, <{out}{compare(seen, problem)}\n>
+  save tidied, fresh-witness()
+  fork
+    mark unsafe
+    save y, tidy(tidied)
+    save out, <{out}tidy returned {y}\n>
+  halt take
+    take problem
+    save out, <{out}{compare(tidied, problem)}\n>
+  save walked, fresh-witness()
+  fork
+    mark unsafe
+    save turns, walk-again(walked)
+    save out, <{out}walk returned {turns}\n>
+  halt take
+    take problem
+    save out, <{out}walk raised {problem/form} after {walked/seen-turns}\n>
+  back out

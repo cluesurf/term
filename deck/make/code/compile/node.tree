@@ -921,6 +921,11 @@ form statement
     link place-row
       like number
       need false
+    # `halt kink, e` in a handler: the caught value raised again, unchanged (term/compiler decision 023). Last, so a
+    # reader that links the fields by position keeps them
+    link again
+      like boolean
+      need false
   # a verification condition
   case hold
     link expr, like expression

@@ -15,6 +15,9 @@ mint halt
     site mode
   case seed
     site seed
+  # the caught value of `halt kink, e` (term/compiler decision 023), minted as a seed is
+  case again, mint seed
+    site again
   case bind
     site bind
   case take
@@ -27,6 +30,7 @@ mint halt
     make halt
       bind mode, read mode
       bind seed, read seed
+      bind again, read again
       bind bind, read bind
       bind take, read take
       bind flow, read flow

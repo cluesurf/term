@@ -3960,8 +3960,9 @@ task result-kind
       back <>
 
 # every `hold` of a program checked, and the program's tables forgotten afterwards (hold-state.tree
-# `reset-hold-program`), as the face's `finally` did until item 0356. Term cannot raise a caught value again (decision
-# 050, term-compiler-0076), so the tables are also forgotten BEFORE the check starts: no check reads what a raised or
+# `reset-hold-program`), as the face's `finally` did until item 0356. This was ported before Term could raise a caught
+# value again (term/compiler decision 023, decision 050, term-compiler-0076), so the tables are also forgotten BEFORE the
+# check starts: no check reads what a raised or
 # stopped one left. Between a raised check and the next one the kernel's `is-linear-goal` and `order-follows` could
 # read them, where the original's were empty
 task check-holds

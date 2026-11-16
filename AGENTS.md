@@ -78,6 +78,7 @@ is the variable, `f(a, b)` is a call, `f()` calls with no arguments (a bare `f` 
 - A numeric literal is never a method receiver: `call subtract(code 24, read x)`.
 - Errors: `halt <form>` with `bind` children raises, `halt kink` passes a callee's exception on, `halt <text>` raises
   `failure`. A guarded block is a `fork` whose first line is `mark unsafe`, followed by `halt take` / `take e`.
+  `halt kink, e` in a handler raises the caught `e` again, unchanged.
   Exception names are nouns (`absence`, `excess`), never `-error`.
 - Async: `mark async` on a definition. Calls to it are awaited with nothing written. `tick f(x)` starts without
   waiting. Never `wait true` on a call to an async task. Outside a task, call an async task only with `tick`.

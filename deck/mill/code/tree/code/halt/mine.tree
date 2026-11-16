@@ -6,6 +6,7 @@ load @term/mill/tree/code/bind/mine
 
 load @term/mill/tree/code/seed/mine
   find seed
+  find seed-read
 
 load @term/mill/tree/code/tool/flow/mine
   find flow
@@ -21,6 +22,13 @@ mine halt
     mine maybe
       mine term
         site mode
+    # THE CAUGHT VALUE OF `halt kink, e` (term/compiler decision 023): a read (`read e`) or a bare word (lean `e`), the
+    # child right after the mode and nothing more general, so a `halt take` handler (whose next child is its `take`)
+    # and a `halt <form>` (its `bind` lines) lose nothing to it. Its own site, never `seed`: the minter reads it only
+    # under `kink` and refuses it under any other mode
+    mine maybe
+      mine form, like kink-value
+        site again
     # THE VALUE IS A LITERAL, and only a literal. `halt <text>` raises a failure with that message, and
     # `halt <form>` names the form, which the term above already took as the mode. Written as a general value
     # this swallowed the first statement of every `halt take` handler body, because the value alternation ends
@@ -41,3 +49,11 @@ mine halt
           site take
         mine form, like flow
           site flow
+
+# the value of `halt kink, e`: a read or a bare word, at the sites a `seed` gives them, so it mints as a seed does
+mine kink-value
+  mine any
+    mine form, like seed-read
+      site read
+    mine word
+      site word

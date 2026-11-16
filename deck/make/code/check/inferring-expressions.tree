@@ -372,9 +372,13 @@ task check-statement
       back node
     case throw
       link thrown-value
+      link thrown-span
       # a throw has no result type (it is bottom)
       save thrown-found, infer-expression(st, thrown-value, env)
       save node/value, thrown-found/node
+      fork test, is-raised-again(node)
+        hold
+          check-again(st, thrown-found/type, thrown-span)
       back node
     case break
       link break-label
@@ -398,6 +402,42 @@ task check-statement
       back node
     miss
       back node
+
+# whether a statement is `halt kink, e`, a caught value raised again (term/compiler decision 023)
+task is-raised-again
+  take node, like statement
+  like boolean
+  mark private
+
+  sift node
+    case throw
+      back read(again)
+    miss
+      back false
+
+# A RAISE AGAIN RAISES A CAUGHT VALUE, one typed `exception` (term/compiler decision 023 point 2): a handler's `take e`,
+# a field typed `exception`, an element of a list of them. Anything else is refused: a text, a number, a record, a
+# form's `make`, and an `unknown` or `dynamic` value until it is narrowed. A program with no `exception` form types a
+# caught value as a fresh variable (fresh-type-or-exception), which passes
+task check-again
+  take st, like infer-state
+  take given, like type
+  take at, like span
+  mark private
+
+  save held, resolve-held(st, given)
+  save caught, false
+  sift held
+    case named
+      link held-name
+      save caught, is-equal(held-name, <exception>)
+    case variable
+      save caught, not(st/records/has(<exception>))
+    miss
+      save nothing, 0
+  fork test, not(caught)
+    hold
+      say-hinted(st, make(type-mismatch), at, <again-not-caught: `halt kink` raises a caught value again, and this value is {show-type(held)}, not a caught `exception`>, <`halt \<text\>` raises a new `failure` and `halt \<form\>` a new form. A caught value is a handler's `take e`, a field typed `exception`, or an element of a list of them>)
 
 # whether a type is `unknown` or `dynamic`, or a list or hash holding one at any depth
 task holds-loose
@@ -523,8 +563,9 @@ task infer-wanted
           save nothing, 0
     miss
       save nothing, 0
-  # cleared after the inference. A raise is not caught to clear it: Term has no way to raise a caught value again, and
-  # no task of the check catches a raise and goes on with the same state (decision 050, D027 row 26)
+  # cleared after the inference. A raise is not caught to clear it: this was ported before Term could raise a caught
+  # value again (term/compiler decision 023), and no task of the check catches a raise and goes on with the same state
+  # (decision 050, D027 row 26)
   save answer, infer-expression(st, node, env)
   save st/wanted-element, make none
   back answer
