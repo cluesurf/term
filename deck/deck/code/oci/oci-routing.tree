@@ -8,13 +8,27 @@
 #   - the one transport per host for the life of the process is a hash held by this module, as the original's Map: a
 #     port that loads this module holds its own copy of it (traps, term-cli-in-term-0050), so a token is reused across
 #     every package of one resolve only while every caller reaches transports through one copy
-#   - a route is the original's host record; the fetch config is config-shape.tree's `fetch-config`, its scope routes a
+#   - the fetch config is config-shape.tree's `fetch-config`, its scope routes a
 #     hash read by key in Term (term-self-host-001-1402, decision of 1529: the face client.ts makes one from a
 #     caller's object)
 #   - the store folders are file-store.tree's, the scope and registry naming registry-naming.tree's, the credentials
 #     registry-credentials.tree's, the layout image-layout.tree's and the HTTP transport registry-transport.tree's
 #     (store.ts, name.ts, auth.ts, layout.ts and transport.ts were docked until term-cli-in-term-0115 loaded the
 #     ports). A transport or store made here raises oci-failure; the TypeScript face client.ts lifts it to OciError
+#   - a route is the form oci-route, made in Term (term-self-host-001-1531), its registry and repository oci-address's
+#     host values until that file types them; on TypeScript it is the original's record. The environment is read
+#     through @term/base/environment and paths joined by @term/base/path. The host's nothing handed to other files'
+#     parameters and answered by oci-route-of stays routing-nothing until decision 176's callee items type them
+#     (term-self-host-001-1556)
+
+load @term/base/environment
+  find variable
+
+load @term/base/path
+  find join
+
+load @term/base/text
+  find trim
 
 load ./oci-address
   find is-oci-registry
@@ -43,30 +57,18 @@ load ./image-layout
 load ./registry-transport
   find http-transport
 
-dock load
-  load <node:path>, name node-path
-  load <global:process>, name host-process
-
-bind routing-env-text
-  take env, like dynamic
-  take key, like text
-  like text
-  case node
-    text <($env[$key]?.trim() ?? "")>
-
 bind routing-nothing
   like dynamic
   case node
     text <undefined>
 
-bind routing-route
-  take registry, like dynamic
-  take repository, like dynamic
-  take scope, like dynamic
-  take keys, like text
-  like dynamic
-  case node
-    text <<({ registry: $registry, repository: $repository, scope: $scope, keysRepository: $keys })>>
+# where a package lives: the registry, the repository in it, the scope the config routed it by (its leading space where
+# the config named none), and the repository of the scope's key set
+form oci-route
+  link registry, like dynamic
+  link repository, like dynamic
+  link scope, like text
+  link keys-repository, like text
 
 # one transport per host for the life of the process
 host transports, make hash
@@ -84,7 +86,7 @@ task keys-repository
 task store-dir
   like text
 
-  save pinned, routing-env-text(host-process/env, <TERM_STORE>)
+  save pinned, trim(variable(<TERM_STORE>))
   fork test, not(is-equal(pinned, <>))
     hold
       back pinned
@@ -94,11 +96,11 @@ task store-dir
 task trust-dir
   like text
 
-  save pinned, routing-env-text(host-process/env, <TERM_TRUST_DIR>)
+  save pinned, trim(variable(<TERM_TRUST_DIR>))
   fork test, not(is-equal(pinned, <>))
     hold
       back pinned
-  back node-path/join(get-store-root(), <trust>)
+  back join(get-store-root(), <trust>)
 
 # the object store over the store's layout. No install reads it since OCI format v2 (item term-self-host-001-1290,
 # decision 154): it stays only while object/local-store.tree loads it, and goes with object/ (item 1044)
@@ -188,7 +190,7 @@ task oci-route-of
   fork test, is-equal(key, <>)
     hold
       save chosen, leading
-  back routing-route(reference, repository, chosen, keys)
+  back make(oci-route, bind(registry, reference), bind(repository, repository), bind(scope, chosen), bind(keys-repository, keys))
 
 # a fetch config's scope routes copied out, so no read of them writes an empty hash back into the config
 task routes-of

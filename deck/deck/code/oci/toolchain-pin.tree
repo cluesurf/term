@@ -23,6 +23,26 @@
 #     `pin-port-hold`, what code.ts did); a pin made here carries version.tree's `code`. release-route is
 #     toolchain-release.tree's (oci/release.ts was docked until term-cli-in-term-0115 loaded the port); transport-for
 #     is oci-routing.tree's
+#   - the release tags and the release's index are read by calling registry-transport.tree's oci-transport
+#     (term-self-host-001-1531, after 1546 typed it): a caller's transport is still the host value transport-for
+#     answers, typed where it is handed to the private release-tags and pin-released. The tags are kept and ordered
+#     in Term (base sort, stable, as the host's sort was), and pin-need reads its version as a maybe of text. The
+#     face shapes (pin-port-code, pin-port-hold) and the host's nothing newest-matching answers stay until decision
+#     176's term-self-host-001-1556
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/text
+  find split
+
+load @term/base/ordering
+  find ordering
+  find from-numbers
+
+load @term/base/truth
+  find is-truthy
 
 load ../version
   find code
@@ -31,6 +51,7 @@ load ../version
   find show-code
   find compare-code
   find code-match
+  find is-digits
 
 load ../package/manifest-shape
   find deck-need
@@ -43,6 +64,11 @@ load ./oci-routing
 
 load ./toolchain-release
   find release-route
+
+load ./registry-transport
+  find oci-transport
+  find tag-request
+  find manifest-request
 
 # a code in version.tree's shape, a part the caller left out written as nothing (code.ts toPort)
 bind pin-port-code
@@ -57,34 +83,6 @@ bind pin-port-hold
   like code-hold
   case node
     text <<((pinHold_) => { const pinCode_ = (pinC_) => ({ major: pinC_.major, minor: pinC_.minor, patch: pinC_.patch, prerelease: pinC_.prerelease ?? "", build: pinC_.build ?? "" }); const pinWalk_ = (pinH_) => pinH_.form === "exact" ? { form: "exact", code: pinCode_(pinH_.code) } : pinH_.form === "wild" ? { form: "wild", major: pinH_.major, minor: pinH_.minor ?? -1, patch: pinH_.patch ?? -1 } : pinH_.form === "band" ? { form: "band", base: pinCode_(pinH_.base), head: pinCode_(pinH_.head) } : { form: "test", list: pinH_.list.map(pinWalk_) }; return pinWalk_(pinHold_) })($hold)>>
-
-bind pin-list-tags
-  take transport, like dynamic
-  take repository, like text
-  like dynamic
-  case node
-    text <<$transport.listTags({ repository: $repository })>>
-
-bind pin-newest-first
-  take order, like dynamic
-  take tags, like dynamic
-  like list, like text
-  case node
-    text <<$tags.filter(pinTag_ => /^\d+\.\d+\.\d+$/.test(pinTag_)).sort($order)>>
-
-bind pin-get-manifest
-  take transport, like dynamic
-  take repository, like text
-  take reference, like text
-  like dynamic
-  case node
-    text <<$transport.getManifest({ repository: $repository, reference: $reference })>>
-
-bind pin-truthy
-  take value, like dynamic
-  like boolean
-  case node
-    text <Boolean($value)>
 
 bind pin-nothing
   like dynamic
@@ -121,17 +119,51 @@ task released-versions
   take repository, like text
   like list, like text
 
-  save tags, wait pin-list-tags(transport, repository)
-  back pin-newest-first(order-newest, tags)
+  back release-tags(transport, repository)
 
-# two release tags, the newer first: the sort the original handed the tags (`compareCode(parseCode(b), parseCode(a))`)
+# the release tags of a repository through the transport, newest first: the tags that are plain `major.minor.patch`
+# (the original's /^\d+\.\d+\.\d+$/), in the stable order of order-newest
+task release-tags
+  take transport, like oci-transport
+  take repository, like text
+  like list, like text
+  mark private
+
+  save tags, call(transport/list-tags, make(tag-request, bind(repository, repository)))
+  save kept, make list
+  walk tags
+    take tag
+    fork test, is-release-tag(tag)
+      hold
+        kept/push(tag)
+  back sort(kept, order-newest)
+
+# whether a tag is three runs of the digits 0 to 9 joined by dots
+task is-release-tag
+  take tag, like text
+  like boolean
+  mark private
+
+  save parts, split(tag, <.>)
+  fork test, not(is-equal(parts/length, 3))
+    hold
+      back false
+  walk parts
+    take part
+    fork test, not(is-digits(part))
+      hold
+        back false
+  back true
+
+# two release tags, the newer first: the order the original sorted the tags in (`compareCode(parseCode(b),
+# parseCode(a))`)
 task order-newest
   take a, like text
   take b, like text
-  like number
+  like ordering
   mark private
 
-  back compare-code(parse-code(b), parse-code(a))
+  back from-numbers(compare-code(parse-code(b), parse-code(a)), 0)
 
 # the newest version in a list (newest first) that a request accepts, or none
 task newest-matching
@@ -140,12 +172,26 @@ task newest-matching
   like dynamic
 
   save wanted, pin-port-hold(hold)
+  sift newest-in(versions, wanted)
+    case some
+      link found
+      back found
+    case none
+      back pin-nothing()
+
+# the newest version in a list (newest first) that a hold in version.tree's shape accepts
+task newest-in
+  take versions, like list, like text
+  take accepted, like code-hold
+  like maybe, like text
+  mark private
+
   walk versions
     take version
-    fork test, code-match(parse-code(version), wanted)
+    fork test, code-match(parse-code(version), accepted)
       hold
-        back version
-  back pin-nothing()
+        back make(some, version)
+  back make none
 
 # whether a pinned version still satisfies the request it was pinned for
 task pin-satisfies
@@ -188,26 +234,36 @@ task pin-need
   save route, release-route(name, pin-nothing())
   save transport, transport-for(route/registry/host, false)
   save repository, route/repository/name
-  save versions, released-versions(transport, repository)
-  save version, newest-matching(versions, need/mark)
+  back pin-released(transport, repository, need)
 
-  fork test, not(pin-truthy(version))
-    hold
+# the newest release in a need's range pinned, through the toolchain's transport: its version and index digest
+task pin-released
+  take transport, like oci-transport
+  take repository, like text
+  take need, like deck-need
+  like pin-answer
+  mark private
+
+  save name, toolchain()
+  save versions, release-tags(transport, repository)
+  sift newest-in(versions, need/mark)
+    case none
       save newest, <>
       fork test, is-above(versions/length, 0)
         hold
           save first, versions/0
           save newest, <. The newest is {first}>
       back pin-refused(<{name} has no release in the requested range{newest}>)
+    case some
+      link version
+      save index, call(transport/get-manifest, make(manifest-request, bind(repository, repository), bind(reference, version)))
+      fork test, not(is-truthy(index))
+        hold
+          back pin-refused(<{name}@{version} is listed and could not be read>)
 
-  save index, wait pin-get-manifest(transport, repository, version)
-  fork test, not(pin-truthy(index))
-    hold
-      back pin-refused(<{name}@{version} is listed and could not be read>)
-
-  save released, parse-code(version)
-  save made, make(lock-need, bind(name, name), bind(code, released), bind(hash, index/digest))
-  back make(pin-answer, bind(pin, make(some, made)), bind(kept, false))
+      save released, parse-code(version)
+      save made, make(lock-need, bind(name, name), bind(code, released), bind(hash, index/digest))
+      back make(pin-answer, bind(pin, make(some, made)), bind(kept, false))
 
 # a pin as one line a person reads: `@term/code 2.6.4 (sha256:...)`
 task show-pin
