@@ -9,6 +9,7 @@ import type {
   ResolvedDeck,
 } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/resolution'
+import { portFetchConfig } from './fetch'
 import { refused } from './grammars'
 import { code, portManifest } from './manifest'
 
@@ -75,7 +76,7 @@ export async function resolve(input: {
   const answer = await refused(() =>
     port.resolve(
       portManifest(input.manifest as never) as never,
-      input.config,
+      portFetchConfig(input.config) as never,
       lock as never,
       workspaces as never,
     ),

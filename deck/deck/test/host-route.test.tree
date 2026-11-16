@@ -52,6 +52,12 @@ test <host route: the route term load fetches the same package from>
   host fetched, oci-route-of(<@team/tools>, project-fetch-config(based))
   want hold, is-equal(route-json(published), route-json(fetched))
 
+test <host route: the project's config holds its routes as a hash, a base line's beside the defaults'>
+  host config, project-fetch-config(based)
+  host routes, config/scope-registries
+  want hold, is-equal(routes/get-or-default(<@team>, <>), <oci://localhost:5000/team/term>)
+  want hold, routes/has(<@term>)
+
 test <host route: a nested scope routes by its root space's base line>
   host route, host-route-of(<@team/@kit/tools>, <>, based)
   want hold, is-equal(route/registry/host, <localhost:5000>)

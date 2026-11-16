@@ -13,8 +13,10 @@
 # The decisions:
 #   - TOOLCHAIN is toolchain(); every task takes positional parameters, pin-need's `previous` none where left out and
 #     its `offline` given always
-#   - a need, a pin and an answer are the original's host records (an answer's `pin` and `reason` present only when
-#     set); the transport is the caller's host value
+#   - `pin-need` and `pin-satisfies` take a need as manifest-shape.tree's `deck-need` and a previous pin as a maybe of
+#     lockfile-shape.tree's `lock-need`, and `pin-need` answers a `pin-answer` (term-self-host-001-1402, the ruling on
+#     1529), its `pin` and `reason` need-false maybes, so on TypeScript an answer is the original's record (each present
+#     only when set); the face need.ts converts a caller's own shapes. The transport is the caller's host value
 #   - versions are parsed, compared, matched and shown by version.tree, loaded (term-cli-in-term-0233, where code.ts,
 #     its face, was docked). A caller's code or hold may come in the face's shape (a part it leaves out absent, where
 #     version.tree writes `""` or `-1`), so each is read into version.tree's shape first (`pin-port-code`,
@@ -29,6 +31,12 @@ load ../version
   find show-code
   find compare-code
   find code-match
+
+load ../package/manifest-shape
+  find deck-need
+
+load ../package/lockfile-shape
+  find lock-need
 
 load ./oci-routing
   find transport-for
@@ -83,25 +91,23 @@ bind pin-nothing
   case node
     text <undefined>
 
-bind pin-kept
-  take pin, like dynamic
-  like dynamic
-  case node
-    text <<({ pin: $pin, kept: true })>>
+# what pinning a need answers: the pin and whether it is the previous one kept, or no pin and why
+form pin-answer
+  link pin
+    like maybe, like lock-need
+    need false
+  link kept, like boolean
+  link reason
+    like maybe, like text
+    need false
 
-bind pin-refused
+# no pin, and why
+task pin-refused
   take reason, like text
-  like dynamic
-  case node
-    text <<({ kept: false, reason: $reason })>>
+  like pin-answer
+  mark private
 
-bind pin-made
-  take name, like text
-  take code, like dynamic
-  take hash, like dynamic
-  like dynamic
-  case node
-    text <<({ pin: { name: $name, code: $code, hash: $hash }, kept: false })>>
+  back make(pin-answer, bind(kept, false), bind(reason, make(some, reason)))
 
 # the one package a `need` may name today: the toolchain
 task toolchain
@@ -143,28 +149,28 @@ task newest-matching
 
 # whether a pinned version still satisfies the request it was pinned for
 task pin-satisfies
-  take need, like dynamic
-  take pin, like dynamic
+  take need, like deck-need
+  take pin, like maybe, like lock-need
   like boolean
 
-  fork test, not(pin-truthy(pin))
-    hold
+  sift pin
+    case none
       back false
-  fork test, not(is-equal(pin/name, need/name))
-    hold
-      back false
-  save pinned, pin-port-code(pin/code)
-  save wanted, pin-port-hold(need/mark)
-  back code-match(pinned, wanted)
+    case some
+      link held
+      fork test, not(is-equal(held/name, need/name))
+        hold
+          back false
+      back code-match(held/code, need/mark)
 
 # a project's `need` pinned: the previous pin kept while it satisfies the request, otherwise the newest released
 # version in the range resolved and its index digest read. Offline, an unsatisfied request keeps no pin rather than
 # guessing, and the caller says so
 task pin-need
-  take need, like dynamic
-  take previous, like dynamic
+  take need, like deck-need
+  take previous, like maybe, like lock-need
   take offline, like boolean
-  like dynamic
+  like pin-answer
 
   save name, toolchain()
   fork test, not(is-equal(need/name, name))
@@ -173,7 +179,7 @@ task pin-need
 
   fork test, pin-satisfies(need, previous)
     hold
-      back pin-kept(previous)
+      back make(pin-answer, bind(pin, previous), bind(kept, true))
 
   fork test, offline
     hold
@@ -199,7 +205,9 @@ task pin-need
     hold
       back pin-refused(<{name}@{version} is listed and could not be read>)
 
-  back pin-made(name, parse-code(version), index/digest)
+  save released, parse-code(version)
+  save made, make(lock-need, bind(name, name), bind(code, released), bind(hash, index/digest))
+  back make(pin-answer, bind(pin, make(some, made)), bind(kept, false))
 
 # a pin as one line a person reads: `@term/code 2.6.4 (sha256:...)`
 task show-pin

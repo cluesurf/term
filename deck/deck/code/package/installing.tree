@@ -10,9 +10,9 @@
 #   - the lockfile, the workspaces, the toolchain pin, the fetch config, the store and the name rules are their ports,
 #     loaded (term-cli-in-term-0233, where the faces lock.ts, workspace.ts, oci/need.ts, fetch.ts, store.ts and name.ts
 #     were docked): lockfile-reading, workspace-finding, toolchain-pin, registry-fetching, file-store, registry-naming.
-#     The fetch config is handed on with its scope routes an object (`installing-object-routes`, what the face
-#     fetch.ts did), the shape oci-route-of and the resolution read. `verify-install` takes no grammars record, so it
-#     reads the lockfile with one of its own
+#     The fetch config is config-shape.tree's `fetch-config`, its scope routes a hash, the shape oci-route-of and the
+#     resolution read (term-self-host-001-1402). `verify-install` takes no grammars record, so it reads the lockfile
+#     with one of its own
 #   - the toolchain pin is passed on as the host's answer: the count's `need` is the record `pin-need` answered. An
 #     OCI refusal while pinning is oci-failure (decision 007), passed on as raised
 
@@ -58,6 +58,9 @@ load ./lockfile-reading
 
 load ./workspace-finding
   find find-workspaces
+
+load ./config-shape
+  find fetch-config
 
 load ./registry-fetching
   find make-default-fetch-config
@@ -116,45 +119,12 @@ bind is-present
   case node
     text <Boolean($value)>
 
-# the port's fetch config with its scope routes an object, the shape the face package/fetch.ts handed on and
-# oci-route-of reads (`Object.fromEntries` over the hash)
-bind installing-object-routes
-  take config, like dynamic
-  like dynamic
-  case node
-    text <<({ ...$config, scopeRegistries: Object.fromEntries($config.scopeRegistries) })>>
-
-# what a host call is given for a parameter left out
-bind installing-nothing
-  like dynamic
-  case node
-    text <undefined>
-
 # a host text, or the empty text where it left it out
 bind text-or-blank
   take value, like dynamic
   like text
   case node
     text <($value ?? "")>
-
-# the config's routes with a hash of more laid over them, as `\{...a, ...b\}` lays them
-bind routes-over
-  take base, like dynamic
-  take more, like hash, like text, like text
-  like dynamic
-  case node
-    text <Object.assign(\{\}, $base, Object.fromEntries($more))>
-
-# the config with every package of one scope routed to one registry, and the bare registry that registry too, so the
-# scope's own route wins over every route a base line or a host group laid down (`--registry`). An unscoped package,
-# an empty space, has the bare registry alone
-bind installing-flag-routes
-  take given, like dynamic
-  take space, like text
-  take target, like text
-  like dynamic
-  case node
-    text <<({ ...$given, registry: $target, scopeRegistries: ($space === "" ? {} : { [$space]: $target }) })>>
 
 # a host `Code` (prerelease and build absent when there are none) as version.tree's `code`
 task code-of-host
@@ -209,16 +179,21 @@ task route-once
           halt <{scope} is routed to two registries in deck.tree: {earlier} and {registry}>
   routes/set(scope, registry)
 
-# The fetch config a project reads every registry through: the default config, its scope routes an object, with the
-# manifest's own routes (its `base` lines and `host <registry>` groups) laid over the defaults. `term load` installs
-# under it and `term host` publishes under it (`host-route-of`), so the two never disagree on where a scope lives
+# The fetch config a project reads every registry through: the default config, with the manifest's own routes (its
+# `base` lines and `host <registry>` groups) laid over the defaults, a scope the defaults route keeping its place as
+# `\{...a, ...b\}` keeps it. `term load` installs under it and `term host` publishes under it (`host-route-of`), so the
+# two never disagree on where a scope lives
 task project-fetch-config
   take manifest, like deck-manifest
-  like dynamic
+  like fetch-config
 
-  save made, make-default-fetch-config()
-  save config, installing-object-routes(made)
-  save config/scope-registries, routes-over(config/scope-registries, host-scope-registries(manifest))
+  save config, make-default-fetch-config()
+  save routes, config/scope-registries
+  save own, host-scope-registries(manifest)
+  walk own/keys()
+    take scope
+    routes/set(scope, own/get-or-default(scope, <>))
+  save config/scope-registries, routes
   back config
 
 # The route `term host` publishes a package to: the route `term load` fetches it from, under the project's fetch
@@ -234,8 +209,16 @@ task host-route-of
   save config, project-fetch-config(manifest)
   fork test, not(is-equal(registry, <>))
     hold
+      # every package of the scope routed to the one registry, and the bare registry that registry too, so the scope's
+      # own route wins over every route a base line or a host group laid down. An unscoped package, an empty space, has
+      # the bare registry alone
       save space, root-scope(parse-scope(name)/scope)
-      save config, installing-flag-routes(config, space, normalize-registry(registry))
+      save target, normalize-registry(registry)
+      save routes, make hash
+      fork test, not(is-equal(space, <>))
+        hold
+          routes/set(space, target)
+      save config, make(fetch-config, bind(registry, target), bind(scope-registries, routes), bind(concurrency, config/concurrency), bind(offline, config/offline))
   back oci-route-of(name, config)
 
 # `term load` in a project: its links in `<root>/link`, each version unpacked under `<root>/link/.base/@term/code`
@@ -306,7 +289,8 @@ task install-into
 
   # step 7: pin the toolchain the manifest's `need` asks for, keeping the previous pin while it still satisfies the
   # request. A manifest with no `need` writes none, and drops a stale one
-  save previous, make none
+  save previous, like maybe, like lock-need
+    make none
   sift lock
     case some
       link locked
@@ -319,16 +303,10 @@ task install-into
   sift loaded/need
     case some
       link asked
-      save earlier-pin, installing-nothing()
-      sift previous
-        case some
-          link earlier
-          save earlier-pin, earlier
-        case none
-          save nothing, 0
-      # the host's pin answer, a record of the original's shape (seam decision 004)
+      # toolchain-pin's pin-answer, held as the host's record of the original's shape (seam decision 004) until the
+      # count reads it in Term (term-self-host-001-1514)
       save pin-answer, like dynamic
-        pin-need(asked, earlier-pin, offline)
+        pin-need(asked, previous, offline)
       save need, make(some, pin-answer)
     case none
       save nothing, 0

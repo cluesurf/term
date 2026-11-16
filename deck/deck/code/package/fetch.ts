@@ -10,8 +10,9 @@ import * as port from '@term/deck/code/package/registry-fetching'
 import { refused, refusedNow } from './grammars'
 import { code } from './manifest'
 
-// the routes as the port holds them: a hash, from the caller's object (or a Map a port handed on)
-function toPort(config: FetchConfig): unknown {
+// the routes as the port holds them: a hash, from the caller's object (or a Map a port handed on). Every face that
+// hands a port a fetch config reads it through this (term-self-host-001-1402)
+export function portFetchConfig(config: FetchConfig): unknown {
   const routes = config.scopeRegistries as unknown
 
   return {
@@ -41,7 +42,7 @@ export async function fetchPackageMeta(input: {
   config: FetchConfig
 }): Promise<RegistryPackageMeta> {
   return (await refused(() =>
-    port.fetchPackageMeta(input.name, toPort(input.config) as never),
+    port.fetchPackageMeta(input.name, portFetchConfig(input.config) as never),
   )) as RegistryPackageMeta
 }
 
@@ -50,7 +51,7 @@ export async function fetchTarball(input: {
   config: FetchConfig
 }): Promise<Buffer> {
   return (await refused(() =>
-    port.fetchTarball(input.url, toPort(input.config) as never),
+    port.fetchTarball(input.url, portFetchConfig(input.config) as never),
   )) as Buffer
 }
 

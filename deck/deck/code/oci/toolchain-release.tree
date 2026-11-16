@@ -30,8 +30,7 @@
 #     the original's; the transport is the caller's host record, called with the original's one record per method
 #   - every OciError is a halt of oci-failure (decision 007); signatures are object/id-signing.tree's, the route
 #     oci-routing.tree's oci-route-of over registry-fetching.tree's default config, loaded (term-cli-in-term-0233),
-#     its routes made an object as oci-route-of reads them (`release-object-routes`, what the face package/fetch.ts
-#     did)
+#     its routes the hash oci-route-of reads (term-self-host-001-1402)
 
 load ./oci-failure
   find oci-failure
@@ -53,14 +52,6 @@ load ../package/registry-fetching
 
 dock load
   load <global:process>, name host-process
-
-# the fetch config with its scope routes an object, as oci-route-of reads them and the face package/fetch.ts handed
-# them on (`Object.fromEntries` over the port's hash)
-bind release-object-routes
-  take config, like dynamic
-  like dynamic
-  case node
-    text <<({ ...$config, scopeRegistries: Object.fromEntries($config.scopeRegistries) })>>
 
 bind payload-nothing
   like dynamic
@@ -112,12 +103,13 @@ bind payload-platform-table
   case node
     text <<({ "darwin-arm64": { os: "darwin", architecture: "arm64" }, "darwin-x64": { os: "darwin", architecture: "amd64" }, "linux-x64": { os: "linux", architecture: "amd64" }, "linux-arm64": { os: "linux", architecture: "arm64" }, "windows-x64": { os: "windows", architecture: "amd64" }, "windows-arm64": { os: "windows", architecture: "arm64" } })>>
 
+# TERM_RELEASE_REGISTRY trimmed, the empty text where it is unset
 bind payload-override
   take env, like dynamic
   take proc, like dynamic
-  like dynamic
+  like text
   case node
-    text <<($env ?? $proc.env)["TERM_RELEASE_REGISTRY"]?.trim()>>
+    text <<(($env ?? $proc.env)["TERM_RELEASE_REGISTRY"]?.trim() ?? "")>>
 
 bind payload-scope-of
   take name, like text
@@ -125,13 +117,6 @@ bind payload-scope-of
   case node
     text <<($name.split("/")[0] ?? $name)>>
 
-bind payload-route-scope
-  take config, like dynamic
-  take scope, like text
-  take registry, like dynamic
-  like void
-  case node
-    text <<($config.scopeRegistries = { ...$config.scopeRegistries, [$scope]: $registry })>>
 
 bind payload-statement
   take name, like dynamic
@@ -372,13 +357,15 @@ task release-route
   take env, like dynamic
   like dynamic
 
-  save made, make-default-fetch-config()
-  save config, release-object-routes(made)
+  # a fresh config, so its routes are this call's own to change
+  save config, make-default-fetch-config()
   save override, payload-override(env, host-process)
   save scope, payload-scope-of(package-name)
-  fork test, payload-truthy(override)
+  fork test, not(is-equal(override, <>))
     hold
-      payload-route-scope(config, scope, override)
+      save routes, config/scope-registries
+      routes/set(scope, override)
+      save config/scope-registries, routes
 
   save route, oci-route-of(package-name, config)
   fork test, not(payload-truthy(route))

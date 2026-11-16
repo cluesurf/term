@@ -128,6 +128,12 @@ load @term/deck/package/lockfile-reading
   find load-lockfile
   find save-lockfile
 
+load @term/deck/package/manifest-shape
+  find deck-need
+
+load @term/deck/package/lockfile-shape
+  find lock-need
+
 load @term/deck/oci/toolchain-release
   find current-platform
   find read-release-index
@@ -277,14 +283,6 @@ bind keeper-since
   like boolean
   case node
     text <($date.getTime() \>= $cutoff)>
-
-# `{ name, mark: hold }`, a manifest's `need`
-bind keeper-need
-  take name, like text
-  take hold, like dynamic
-  like dynamic
-  case node
-    text <(\{ name: $name, mark: $hold \})>
 
 # `record?.need`
 bind keeper-need-of
@@ -1420,14 +1418,31 @@ task call-self-need
           back
         case some
           link hold
-          save need, keeper-need(chain, hold)
-          save previous, keeper-need-of(lockfile)
+          save need, make(deck-need, bind(name, chain), bind(mark, hold))
+          # the lockfile's pin, a maybe of lock-need as toolchain-pin takes it (term-self-host-001-1402)
+          save previous, like maybe, like lock-need
+            make none
+          sift read-lock
+            case some
+              link held-lock
+              save previous, held-lock/need
+            case none
+              save no-previous, 0
           save pinned, pin-need(need, previous, false)
-          save pin, pinned/pin
-
-          fork test, not(keeper-truth(pin))
-            hold
-              tell-failed(<pin>, keeper-text-or(pinned/reason, <{chain} could not be pinned>))
+          save pin, keeper-nothing()
+          sift pinned/pin
+            case some
+              link made-pin
+              save pin, made-pin
+            case none
+              save reason, <{chain} could not be pinned>
+              sift pinned/reason
+                case some
+                  link said
+                  save reason, said
+                case none
+                  save no-reason, 0
+              tell-failed(<pin>, reason)
               close-failed-next(<Nothing was changed>, <environment>, <term self find>)
               back
 

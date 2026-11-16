@@ -8,7 +8,9 @@
 #   - the one transport per host for the life of the process is a hash held by this module, as the original's Map: a
 #     port that loads this module holds its own copy of it (traps, term-cli-in-term-0050), so a token is reused across
 #     every package of one resolve only while every caller reaches transports through one copy
-#   - a route is the original's host record; the fetch config is the caller's host value, read as the original read it
+#   - a route is the original's host record; the fetch config is config-shape.tree's `fetch-config`, its scope routes a
+#     hash read by key in Term (term-self-host-001-1402, decision of 1529: the face client.ts makes one from a
+#     caller's object)
 #   - the store folders are file-store.tree's, the scope and registry naming registry-naming.tree's, the credentials
 #     registry-credentials.tree's, the layout image-layout.tree's and the HTTP transport registry-transport.tree's
 #     (store.ts, name.ts, auth.ts, layout.ts and transport.ts were docked until term-cli-in-term-0115 loaded the
@@ -27,6 +29,9 @@ load ../package/registry-naming
   find parse-scope
   find root-scope
   find resolve-registry
+
+load ../package/config-shape
+  find fetch-config
 
 load ./registry-credentials
   find credentials-for
@@ -48,27 +53,6 @@ bind routing-env-text
   like text
   case node
     text <($env[$key]?.trim() ?? "")>
-
-bind routing-scope-map
-  take config, like dynamic
-  like dynamic
-  case node
-    text <($config.scopeRegistries ?? \{\})>
-
-bind routing-has-key
-  take map, like dynamic
-  take key, like dynamic
-  like boolean
-  case node
-    text <Boolean($key && $map[$key])>
-
-# the config's scope routes (an object, read by key as the original's resolveRegistry read it) as the hash
-# resolve-registry reads
-bind routing-routes
-  take routes, like dynamic
-  like hash, like text, like text
-  case node
-    text <<new Map(Object.entries($routes))>>
 
 bind routing-nothing
   like dynamic
@@ -159,22 +143,25 @@ task transport-for
 # names comes from `ghcr.io/<scope>`
 task oci-route-of
   take name, like text
-  take config, like dynamic
+  take config, like fetch-config
   like dynamic
 
   save scope, parse-scope(name)/scope
-  save map, routing-scope-map(config)
+  # the config's scope routes, an empty hash where it has none (read once: a need-false hash handed to a call is
+  # written back into the config, self-host traps T003)
+  save map, routes-of(config)
   # the leading space of a nested scope, `@cluesurf` of `@cluesurf/@wordsurf`
   save leading, root-scope(scope)
-  save key, routing-nothing()
-  fork test, routing-has-key(map, scope)
+  # the scope the config names a route for, the empty text where it names none
+  save key, <>
+  fork test, routes-name(map, scope)
     hold
       save key, scope
     miss
-      fork test, routing-has-key(map, leading)
+      fork test, routes-name(map, leading)
         hold
           save key, leading
-  save registry, resolve-registry(name, config/registry, routing-routes(map))
+  save registry, resolve-registry(name, config/registry, map)
 
   fork test, not(is-oci-registry(registry))
     hold
@@ -186,14 +173,44 @@ task oci-route-of
     hold
       halt <OCI registry {registry} needs a namespace, so its packages and key set have repositories to live in>
 
-  save repository, repository-of(name, reference, key)
+  # repository-of reads no scope where the config named none, as the original handed it undefined
+  save given, routing-nothing()
+  fork test, not(is-equal(key, <>))
+    hold
+      save given, key
+  save repository, repository-of(name, reference, given)
   save keys, <{namespace}/{keys-repository()}>
   fork test, is-equal(repository/name, keys)
     hold
       halt <{name}: `{keys-repository()}` is reserved for the scope's key set, so no package can be named it>
 
   save chosen, key
-  fork test, not(routing-has-key(map, key))
+  fork test, is-equal(key, <>)
     hold
       save chosen, leading
   back routing-route(reference, repository, chosen, keys)
+
+# a fetch config's scope routes copied out, so no read of them writes an empty hash back into the config
+task routes-of
+  take config, like fetch-config
+  like hash, like text, like text
+  mark private
+
+  save routes, make hash
+  walk config/scope-registries/keys()
+    take scope
+    routes/set(scope, config/scope-registries/get-or-default(scope, <>))
+  back routes
+
+# whether the routes name a registry for a scope, as the original's `Boolean(key && routes[key])` read it: a scope that
+# is not the empty text, routed to a registry that is not
+task routes-name
+  take routes, like hash, like text, like text
+  take scope, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(scope, <>)
+    hold
+      back false
+  back not(is-equal(routes/get-or-default(scope, <>), <>))

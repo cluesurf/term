@@ -3,6 +3,7 @@
 // The logic is Term; this file only converts shapes for TypeScript callers.
 import type { FetchConfig, ResolutionMap } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/linking'
+import { portFetchConfig } from './fetch'
 import { GRAMMARS, refused } from './grammars'
 
 type AnyCode = {
@@ -38,7 +39,11 @@ export async function linkPackages(input: {
   )
 
   await refused(() =>
-    port.linkPackages(input.root, { decks } as never, input.config),
+    port.linkPackages(
+      input.root,
+      { decks } as never,
+      portFetchConfig(input.config) as never,
+    ),
   )
 }
 

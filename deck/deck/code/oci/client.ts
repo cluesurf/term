@@ -5,7 +5,9 @@
 //
 // oci-routing.tree loads image-layout.tree and registry-transport.tree, so a transport or store it makes raises
 // oci-failure (decision 007); each is handed to a TypeScript caller lifted, its failures the original's OciError.
+import type { FetchConfig } from '@term/deck/code/form'
 import * as port from '@term/deck/code/oci/oci-routing'
+import { portFetchConfig } from '../package/fetch'
 import { liftRecord, ociErrorOf } from './transport'
 
 export type OciRoute = {
@@ -30,12 +32,16 @@ export const transportFor = (input: {
     port.transportFor(input.host, input.offline ?? false) as object,
   )
 
+// the fetch config is the port's (term-self-host-001-1402), its scope routes a hash made from the caller's object
 export const ociRouteOf = (input: {
   name: string
   config: unknown
 }): OciRoute | undefined => {
   try {
-    return port.ociRouteOf(input.name, input.config) as
+    return port.ociRouteOf(
+      input.name,
+      portFetchConfig(input.config as FetchConfig) as never,
+    ) as
       | OciRoute
       | undefined
   } catch (error) {
