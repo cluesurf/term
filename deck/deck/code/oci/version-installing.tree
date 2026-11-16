@@ -326,16 +326,25 @@ task read-oci-version
       halt oci-failure
         bind thing, <{package-name}@{version} is signed by a different key than lock.tree pins. If the scope rotated its keys on purpose, delete the entry from lock.tree and load again>
 
-  save trust, trusted-keys(transport, keys-repository, scope, host, trust-dir, env)
-  fork test, install-truthy(trust)
-    hold
-      fork test, not(install-has-key(install-field(trust, <keys>), key))
+  # trusted-keys answers a maybe (decision 176 rule 2), sifted here: the version record carries the trusted key set
+  # itself, or the host's undefined, as the original's `trust` did
+  save trust, install-nothing()
+  save trusting, false
+  save found-trust, trusted-keys(transport, keys-repository, scope, host, trust-dir, env)
+  sift found-trust
+    case some
+      link trusted
+      save trust, trusted
+      save trusting, true
+      fork test, not(install-has-key(trusted/keys, key))
         hold
-          save source, install-field(trust, <source>)
+          save source, trusted/source
           halt oci-failure
             bind thing, <{package-name}@{version} is signed by a key outside the key set of {scope} ({source})>
+    case none
+      save trusting, false
 
-  fork test, and(not(install-truthy(trust)), not(install-truthy(pinned-key)))
+  fork test, and(not(trusting), not(install-truthy(pinned-key)))
     hold
       install-warn(warn, <{scope} publishes no key set: trusting the signer of {package-name}@{version} on first use, pinned in lock.tree>)
 

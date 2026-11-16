@@ -50,17 +50,18 @@ export const trustedKeys = (input: {
   trustDir: string
   env?: NodeJS.ProcessEnv
 }): Promise<TrustedKeys | undefined> =>
-  liftAsync(
-    () =>
-      p.trustedKeys!(
-        input.transport,
-        input.repository,
-        input.scope,
-        input.host,
-        input.trustDir,
-        input.env,
-      ) as Promise<TrustedKeys | undefined>,
-  )
+  // the port answers a Term maybe (decision 176 rule 2): unboxed here to the record or undefined
+  liftAsync(async () => {
+    const found = (await p.trustedKeys!(
+      input.transport,
+      input.repository,
+      input.scope,
+      input.host,
+      input.trustDir,
+      input.env,
+    )) as { form: 'some'; value: TrustedKeys } | { form: 'none' }
+    return found.form === 'some' ? found.value : undefined
+  })
 
 export const ensurePublisher = (input: {
   transport: OciTransport

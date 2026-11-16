@@ -380,11 +380,13 @@ bind layout-limit-of
   case node
     text <($size === undefined ? $limit : Math.min($limit, $size))>
 
+# a Buffer or @term/base bytes (a plain Uint8Array, whose toString joins the numbers): key-trust.tree's key set
+# manifests are base bytes (item term-self-host-001-1532)
 bind layout-parse
   take bytes, like dynamic
   like dynamic
   case node
-    text <JSON.parse($bytes.toString("utf8"))>
+    text <JSON.parse(Buffer.from($bytes).toString("utf8"))>
 
 bind layout-fetched
   take digest, like text

@@ -13,7 +13,8 @@
 # `mkdir`. The second waits, then finds the first one's result.
 #
 # The registry is @term/deck's ports, loaded (term-cli-in-term-0235, where @cluesurf/deck.tree's faces were docked):
-# toolchain-release, toolchain-pin, oci-routing and key-trust. Their answers are host values read by their fields. A
+# toolchain-release, toolchain-pin, oci-routing and key-trust. Their answers are host values read by their fields, but
+# key-trust's trusted-keys, a maybe of its form trusted-key-set, which is sifted (decision 176 rule 2). A
 # registry refusal is oci-failure (decision 007), whose message is its pinned note, so a caught failure is said by its
 # `thing` (`install-message-of`). What this module answers keeps the original's shapes: a field the original left out
 # is a need-false maybe.
@@ -409,15 +410,17 @@ task verify-release
     mark unsafe
     save release, read-release(transport, route/repository/name, release-package(), input/version, input/platform)
     save trusted-at, trust-dir()
-    save trusted, trusted-keys(transport, route/keys-repository, route/scope, route/registry/host, trusted-at, nothing())
+    # trusted-keys answers a maybe (decision 176 rule 2), sifted here
+    save found-trust, trusted-keys(transport, route/keys-repository, route/scope, route/registry/host, trusted-at, nothing())
     save scope, route/scope
-    fork test, not(host-truth(trusted))
-      hold
+    sift found-trust
+      case none
         save host, route/registry/host
         save keys-repository, route/keys-repository
         save answer, not-verified(<{scope} publishes no key set at {host}/{keys-repository}>)
-      miss
-        fork test, not(trusted/keys/includes(release/config/key))
+      case some
+        link trusted
+        fork test, not(trusted/keys/contains(release/config/key))
           hold
             save version, input/version
             save package, release-package()

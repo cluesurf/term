@@ -397,9 +397,11 @@ task one-field
   back out
 
 # the input's flag as a one-item list, or the empty list when it is not given
+# one given key as the list rotate-keys takes (its add and remove are lists of text: decision 176 rule 1), none when
+# the flag was left out or empty
 task given-list
-  take value, like dynamic
-  like list, like dynamic
+  take value, like text
+  like list, like text
   mark private
 
   save out, make list
