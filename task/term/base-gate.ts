@@ -105,8 +105,10 @@ const NATIVES: Native[] = ['rust', 'swift', 'kotlin']
 // never a pass. test/machine.tree: @term/base/machine answers node:os facts (count-cores, read-platform,
 // read-architecture) for the parallel walk's pool, and a page has no os module, so it has no binding (T048, item 0026).
 // deck/test/test/corpus.tree lists a folder's files (@term/base/file/directory has no browser native), and
-// deck/test/test/self.tree starts `term` as a child process (item 1240)
+// deck/test/test/self.tree starts `term` as a child process (item 1240). test/network/ serves its own requests through
+// network/server and a raw TCP listener, which a page has neither of (item term-self-host-001-1544)
 const BROWSER_GAP = [
+  'test/network/',
   'test/file/',
   'test/tree/file.tree',
   'tcp.tree',
@@ -132,6 +134,14 @@ const NATIVE_FILE_GAP: { env: Native; file: string; reason: string }[] = [
     env: 'swift',
     file: 'deck/base/test/file/watch.tree',
     reason: 'watch.swift reports the directory, not the file, and ignores deep (D026)',
+  },
+  // network/server's swift runtime is Hummingbird over swift-nio: the flags here make those modules importable, and
+  // their libraries are not linked, so a program that serves fails to link (HTTPTypes and NIOCore symbols not found,
+  // item term-self-host-001-1544). `term test --env swift` builds it as a package and runs it
+  {
+    env: 'swift',
+    file: 'deck/base/test/network/http-exchange.tree',
+    reason: 'network/server links Hummingbird and swift-nio, which the gate imports but does not link: term test --env swift runs it',
   },
 ]
 const REPORT = 'gate-report'

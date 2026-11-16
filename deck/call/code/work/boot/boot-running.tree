@@ -14,7 +14,9 @@
 # (feed.ts, imported when it runs, as the original did) and esbuild. The resolver, deck finder, role readers, unit names
 # and the tree watcher are the build lane's ports, the process's compile cache and the remote cache the cache lane's
 # (cache/compile-store loaded since term-cli-in-term-0214), the units bundle the bundle lane's (bundle/unit-writing,
-# loaded since term-cli-in-term-0066), and the rest this lane's.
+# loaded since term-cli-in-term-0066), and the rest this lane's. The disk, paths, the clock, the environment and JSON
+# are @term/base's (item term-self-host-001-1500); the child processes, the signals and the compiler's values are
+# still the host's, each named by the item that owns it.
 
 load @term/call/boot-plan
   find boot-mode, name read-boot-mode
@@ -26,6 +28,66 @@ load @term/call/boot-plan
 
 load @term/base/maybe
   find maybe
+
+# the disk, paths, the clock, the environment, JSON and truth over @term/base, where node:fs, node:path, global:Date
+# and node-only binds stood (item term-self-host-001-1500, procedure task/native-surface.md section A)
+load @term/base/file
+  find copy, name copy-file
+  find write, name write-file
+
+load @term/base/file/blocking
+  find read, name read-whole
+  find exists, name path-exists
+  find write-path
+  find make-folder-link
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/path
+  find join, name path-join
+  find directory, name path-directory
+  find file-name, name path-file-name
+  find relative-path
+  find resolve-path
+
+load @term/base/time
+  find now, name clock-now
+
+load @term/base/environment
+  find variable, name env-variable
+  find set-variable, name set-env-variable
+
+load @term/base/json
+  find parse, name json-parse
+  find stringify, name json-stringify
+  find make-object, name json-object
+  find make-array, name json-array
+  find set-field, name json-set
+  find push-item, name json-push
+  find from-text, name json-text
+  find from-boolean, name json-boolean
+  find array-size, name json-size
+  find array-item, name json-item
+  find field-text, name json-field-text
+  find as-number, name json-number
+  find is-null, name json-is-null
+
+load @term/base/float
+  find to-number, name whole-number
+
+load @term/base/truth
+  find is-truthy
+
+load @term/base/text
+  find split
+  find substring
+  find char-count
+  find contains, name text-contains
+
+load @term/base/list
+  find get, name list-get
+  find join, name list-join
 
 # the command routes of a compiled program, the Term dispatcher's (work/hook/parsing.tree), where hook-dispatch.ts was
 # docked until term-cli-in-term-0224
@@ -152,14 +214,11 @@ load @term/call/work/item/event
   find item-field
 
 dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
   # an inherited method (on, exit) is reached only through the global (traps.md)
   load <global:process>, name host-process
-  load <global:Date>, name host-date
 
 # ---- the module's state ----
 
@@ -356,57 +415,95 @@ form whole-options
   link role-of, like dynamic
   link lean-of, like dynamic
 
-form folder-ask
-  link recursive, like boolean
+# ---- over @term/base ----
 
-# ---- the host's ----
-
-bind boot-given
+# `value ?? fallback`'s test: neither undefined nor null. A word the line did not give is undefined (publishing.tree
+# hands `nothing()`) and never null, so this is also the original's `!== undefined` where it read that
+task boot-present
   take value, like dynamic
   like boolean
-  case node
-    text <($value !== undefined)>
 
-# `value ?? fallback`'s test: neither undefined nor null
-bind boot-present
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value != null)>
+  back not(json-is-null(value))
 
-bind boot-truthy
-  take value, like dynamic
-  like boolean
-  case node
-    text <Boolean($value)>
-
-bind boot-number
+# a port or an exit code the host handed over, a whole number
+task boot-number
   take value, like dynamic
   like number
-  case node
-    text <$value>
 
-bind boot-production
+  back whole-number(json-number(value))
+
+task boot-production
   like boolean
-  case node
-    text <(process.env.NODE_ENV === "production")>
+  mark private
 
-bind boot-set-mode
-  take mode, like text
-  like void
-  case node
-    text <void (process.env.NODE_ENV = $mode)>
+  back is-equal(env-variable(<NODE_ENV>), <production>)
 
-bind boot-merged-forced
+task boot-merged-forced
   like boolean
-  case node
-    text <(process.env.TERM_BOOT_MERGED === "1")>
+  mark private
 
-bind boot-last-segment
+  back is-equal(env-variable(<TERM_BOOT_MERGED>), <1>)
+
+task joined-lines
+  take parts, like list, like text
+  like text
+
+  back list-join(parts, <\n>)
+
+# the text after the last `/`, the whole text when it has none
+task boot-last-segment
   take text, like text
   like text
-  case node
-    text <$text.split("/").pop()>
+
+  save parts, split(text, </>)
+  back list-get(parts, subtract(parts/length, 1))
+
+# whether a character of one code point is a word character of a regular expression's `\w`, [A-Za-z0-9_]
+task is-word-character
+  take character, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(character, <>)
+    hold
+      back false
+  back text-contains(<ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_>, character)
+
+# whether an emitted module wraps pages in the document shell (`/(?<![A-Za-z0-9_])documentShell(?![A-Za-z0-9_])/`):
+# an occurrence with no word character on either side. Split on the word, so every position is a code point's (traps
+# T-1401: never index-of beside substring), and the word cannot overlap itself, so the seam after part `at` - 1 is one
+# occurrence. The character before it is the last of that part, or the `l` ending the occurrence before when the part
+# is empty (none at the start); the one after it the first of part `at`, or the `d` of the next occurrence when that
+# part is empty (none at the end)
+task boot-shell-in
+  take code, like text
+  like boolean
+
+  save parts, split(code, <documentShell>)
+  save seams, parts/length
+  save at, 1
+  walk test
+    hook test, is-below(at, seams)
+    hook hold
+      save before, list-get(parts, subtract(at, 1))
+      save size, char-count(before)
+      save last, substring(before, subtract(size, 1), size)
+      fork test, is-equal(size, 0)
+        hold
+          save last, <>
+          fork test, is-above(at, 1)
+            hold
+              save last, <l>
+      save after, list-get(parts, at)
+      save following, substring(after, 0, 1)
+      fork test, and(is-equal(following, <>), is-below(add(at, 1), seams))
+        hold
+          save following, <d>
+      fork test, and(not(is-word-character(last)), not(is-word-character(following)))
+        hold
+          back true
+      save at, add(at, 1)
+  back false
 
 bind boot-items
   take value, like dynamic
@@ -420,13 +517,6 @@ bind boot-size
   case node
     text <$value.length>
 
-# whether an emitted module wraps pages in the document shell (`/\bdocumentShell\b/`, the boundaries spelled out)
-bind boot-shell-in
-  take code, like text
-  like boolean
-  case node
-    text </(?\<![A-Za-z0-9_])documentShell(?![A-Za-z0-9_])/.test($code)>
-
 bind boot-module-shell
   take modules, like list, like dynamic
   like boolean
@@ -439,46 +529,69 @@ bind boot-route-input
   case node
     text <[...($built.surface ?? []), ...$built.docks]>
 
-bind boot-joined
-  take parts, like list, like text
-  like text
-  case node
-    text <$parts.join(String.fromCharCode(10))>
-
-bind boot-comma-joined
-  take parts, like list, like text
-  like text
-  case node
-    text <$parts.join(", ")>
-
-# esbuild's settings for the program's bundle, in the original's key order: the cache key holds them as JSON. `docks`
-# names the tsconfig whose paths are inlined (test-running.tree `bundle-docks`), the empty text for none
-bind boot-bundle-config
+# esbuild's settings for the program's bundle as the JSON the cache key holds, in the original's key order: `bundle`,
+# `format`, `platform`, `docks`, and `banner` off the browser. `docks` names the tsconfig whose paths are inlined
+# (test-running.tree `bundle-docks`), the empty text for none
+task boot-bundle-config-json
   take env, like text
   take docks, like text
   take banner, like text
-  like dynamic
-  case node
-    text <(\{ bundle: true, format: "esm", platform: $env === "browser" ? "browser" : "node", docks: $docks, ...($env === "browser" ? \{\} : \{ banner: \{ js: $banner \} \}) \})>
+  like text
 
-# what a kept bundle inlined, read back from its list
-bind boot-inlined-of
+  save platform, <node>
+  fork test, is-equal(env, <browser>)
+    hold
+      save platform, <browser>
+  save config, json-object()
+  json-set(config, <bundle>, json-boolean(true))
+  json-set(config, <format>, json-text(<esm>))
+  json-set(config, <platform>, json-text(platform))
+  json-set(config, <docks>, json-text(docks))
+  fork test, is-unequal(env, <browser>)
+    hold
+      save shown, json-object()
+      json-set(shown, <js>, json-text(banner))
+      json-set(config, <banner>, shown)
+  back json-stringify(config)
+
+# what a kept bundle inlined, read back from its list: `[{"path":..,"hash":..},...]`
+task boot-inlined-of
   take raw, like text
   like list, like inlined-source
-  case node
-    text <<JSON.parse($raw)>>
 
-bind boot-inlined-json
+  save parsed, json-parse(raw)
+  save inlined, make list
+  save size, json-size(parsed)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, json-item(parsed, at)
+      save path, json-field-text(one, <path>)
+      save hash, json-field-text(one, <hash>)
+      inlined/push(make(inlined-source, bind(path, path), bind(hash, hash)))
+      save at, add(at, 1)
+  back inlined
+
+task boot-inlined-json
   take inlined, like list, like inlined-source
   like text
-  case node
-    text <<JSON.stringify($inlined)>>
 
-bind boot-json
-  take value, like dynamic
+  save listed, json-array()
+  walk inlined
+    take one, like inlined-source
+    save entry, json-object()
+    json-set(entry, <path>, json-text(one/path))
+    json-set(entry, <hash>, json-text(one/hash))
+    json-push(listed, entry)
+  back json-stringify(listed)
+
+# a text as JSON writes it, quoted and escaped
+task boot-json
+  take value, like text
   like text
-  case node
-    text <JSON.stringify($value)>
+
+  back json-stringify(json-text(value))
 
 # the route tree as data, its spans dropped: the runner never reports source positions
 bind boot-routes-json
@@ -486,13 +599,6 @@ bind boot-routes-json
   like text
   case node
     text <JSON.stringify($routes, (key, value) =\> (key === "span" ? undefined : value))>
-
-bind boot-link-folder
-  take target, like text
-  take at, like text
-  like void
-  case node
-    text <process.getBuiltinModule("node:fs").symlinkSync($target, $at, "dir")>
 
 bind boot-call
   take stop, like dynamic
@@ -574,12 +680,6 @@ bind boot-forever
   case node
     text <(await new Promise(() =\> \{\}))>
 
-bind boot-thrown-error
-  take error, like dynamic
-  like void
-  case node
-    text <(() =\> \{ throw $error \})()>
-
 # ---- the mode ----
 
 # a host word as a maybe: none for undefined
@@ -588,7 +688,7 @@ task word-of
   like maybe, like text
   mark private
 
-  fork test, boot-given(word)
+  fork test, boot-present(word)
     hold
       save given, text-of(word)
       back make(some, given)
@@ -664,15 +764,16 @@ task boot-mode
   take second, like dynamic
   like dynamic
 
-  save read, read-boot-mode(word-of(first), word-of(second))
+  # named `asked`, never `read`: @term/base/file/blocking's `read` is loaded under another name (traps T-1513)
+  save asked, read-boot-mode(word-of(first), word-of(second))
   save entry, boot-no-value()
-  sift read/entry
+  sift asked/entry
     case some
       link value
       save entry, value
     case none
       save nothing, 0
-  back boot-mode-answer(read/mode, entry)
+  back boot-mode-answer(asked/mode, entry)
 
 # ---- the run ----
 
@@ -720,11 +821,11 @@ task call-boot
   # the mode, read once: a word that is not a mode is the entry
   save mode, <>
   save entry, input/entry
-  fork test, boot-given(input/mode)
+  fork test, boot-present(input/mode)
     hold
-      save read, boot-mode(input/mode, input/entry)
-      save mode, text-of(read/mode)
-      save entry, read/entry
+      save mode-read, boot-mode(input/mode, input/entry)
+      save mode, text-of(mode-read/mode)
+      save entry, mode-read/entry
   fork test, is-equal(mode, <>)
     hold
       save mode, <development>
@@ -732,9 +833,9 @@ task call-boot
         hold
           save mode, <production>
   # everything below reads `NODE_ENV`, the child server included, so the mode is written there before any of it runs
-  boot-set-mode(mode)
+  set-env-variable(<NODE_ENV>, mode)
   # development in a browser is the hot-reloading module server, which was `term feed`. It opens its own run
-  fork test, and(is-equal(mode, <development>), and(is-equal(text-of(input/env), <browser>), and(not(boot-truthy(input/out)), owned)))
+  fork test, and(is-equal(mode, <development>), and(is-equal(text-of(input/env), <browser>), and(not(is-truthy(input/out)), owned)))
     hold
       serve-browser-development(input/root, text-of(entry), port-of(input/port), text-of(input/env), true)
     miss
@@ -742,7 +843,7 @@ task call-boot
         hold
           save facts, make list
           facts/push(mode)
-          fork test, boot-truthy(input/out)
+          fork test, is-truthy(input/out)
             hold
               facts/push(<--out>)
           open-run(make(opening, bind(verb, <boot>), bind(root, input/root), bind(facts, facts)))
@@ -767,7 +868,7 @@ task boot-entry
   save there, false
   fork test, is-unequal(entry, <>)
     hold
-      save there, node-file/exists-sync(entry)
+      save there, path-exists(entry)
   fork test, there
     hold
       boot-found(input, owned, cwd, project-root, entry)
@@ -802,7 +903,7 @@ task boot-found
   fork test, not(boot-present(app-dir))
     hold
       save app-dir, find-app-dir(cwd)
-  save has-app, boot-truthy(app-dir)
+  save has-app, is-truthy(app-dir)
   save loaded, make list
   fork test, has-app
     hold
@@ -813,11 +914,11 @@ task boot-found
       counts/push(count(loaded/length, <variables>, <variable>))
       save fields, make list
       fields/push(location(<bind/host/base.tree>))
-      fields/push(field(<names>, boot-comma-joined(loaded)))
+      fields/push(field(<names>, list-join(loaded, <, >)))
       report(make(counted-item, bind(glyph, <info>), bind(verb, <load>), bind(subject, <environment>), bind(counts, counts), bind(fields, fields)))
   # warm the local cache from a remote (Tier 5) before compiling, so a cold machine or CI reuses shared artifacts
   save cache-dir, project-home(project-root, boot-parts(<cache>, <>))
-  fork test, boot-truthy(input/remote)
+  fork test, is-truthy(input/remote)
     hold
       # a remote-cache failure must never fail the build
       fork
@@ -837,7 +938,7 @@ task boot-found
   # the CLI's own install dir (the nearest `link/` ancestor of this module), a fallback link root so an app that has not
   # run `term link` itself still resolves `@cluesurf/*` through the install's stdlib links
   # the original's link/ walk from its own folder, `host/` in the bundle: the running install's host/ (decision 006)
-  save install-root, find-project-root(node-path/join(find-install-root(), <host>))
+  save install-root, find-project-root(path-join(find-install-root(), <host>))
   # resolve modules against the APP dir (the entry's package root, holding `deck.tree`), not the link root, so the
   # app's own `@scope/...` and relative imports resolve
   save base-dir, project-root
@@ -864,14 +965,14 @@ task bin-name-for
   like text
   mark private
 
-  save deck-file, node-path/join(base-dir, <deck.tree>)
-  fork test, node-file/exists-sync(deck-file)
+  save deck-file, path-join(base-dir, <deck.tree>)
+  fork test, path-exists(deck-file)
     hold
       save deck, value-or-empty(manifest-value-of(deck-file, <deck>))
       fork test, is-unequal(boot-last-segment(deck), <>)
         hold
           back bin-name-of(deck)
-  back node-path/basename(node-path/dirname(entry))
+  back path-file-name(path-directory(entry))
 
 # the version a command-line tool answers `-v` with: the `mark` of the app's deck.tree, the empty text when it has
 # none (zone decision 002, item term-self-host-001-0983)
@@ -880,8 +981,8 @@ task mark-for
   like text
   mark private
 
-  save deck-file, node-path/join(base-dir, <deck.tree>)
-  fork test, not(node-file/exists-sync(deck-file))
+  save deck-file, path-join(base-dir, <deck.tree>)
+  fork test, not(path-exists(deck-file))
     hold
       back <>
   # read through the one mark reader, which a console the compiler lowers reads through too (item 1173)
@@ -893,7 +994,7 @@ task shown-entry
   like text
   mark private
 
-  save shown, node-path/relative(run/cwd, run/entry)
+  save shown, relative-path(run/cwd, run/entry)
   fork test, is-equal(shown, <>)
     hold
       back run/entry
@@ -916,11 +1017,11 @@ task boot-built
       finish(run, <Build failed>)
     case some
       link made
-      fork test, boot-truthy(input/out)
+      fork test, is-truthy(input/out)
         hold
           # `--out`: the bundle is the product. Nothing runs
           save fields, make list
-          fields/push(location(show-path(node-path/dirname(made/run), run/cwd)))
+          fields/push(location(show-path(path-directory(made/run), run/cwd)))
           report(make(written-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, <run.mjs, app.mjs and dock.mjs>), bind(fields, fields)))
           finish(run, <{run/bin-name} built, not run>)
         miss
@@ -984,7 +1085,7 @@ task run-server
 
   save input, run/input
   # push freshly-built artifacts to the remote (Tier 5), once, after the first successful build
-  fork test, boot-truthy(input/remote)
+  fork test, is-truthy(input/remote)
     hold
       fork
         mark unsafe
@@ -1001,7 +1102,7 @@ task run-server
         take problem
         save ignored, problem
   # the server child, spawned from the APP dir; its lines tagged with the deck's name and ADAPTED (section 15)
-  save spawned, host-date/now()
+  save spawned, clock-now()
   save run/child, boot-spawn-server(run-path, run/server-cwd)
   follow-child(run/child, run/bin-name)
   # `start` once the port takes a connection. Bounded, so a server slow to listen still gets its line, and skipped
@@ -1009,7 +1110,7 @@ task run-server
   save started, listening(run/port, run/child)
   fork test, started
     hold
-      report(make(timed-lifecycle-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, run/address), bind(duration, subtract(host-date/now(), spawned))))
+      report(make(timed-lifecycle-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, run/address), bind(duration, subtract(clock-now(), spawned))))
       serve(run)
     miss
       fork test, boot-child-alive(run/child)
@@ -1019,7 +1120,7 @@ task run-server
           # A ONE-SHOT RUN: the program returned without ever listening, so it was a program that does its work and
           # ends. The boot ends with it, its exit code passed on, and starts no watcher
           save code, boot-exited-code(run/child)
-          fork test, boot-truthy(code)
+          fork test, is-truthy(code)
             hold
               report(make(exit-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <exit>), bind(subject, <code {boot-number(code)}>), bind(exit, boot-number(code))))
           finish-uptime(run, <Done>)
@@ -1047,12 +1148,12 @@ task rebuild
   mark async
   mark private
 
-  save started, host-date/now()
+  save started, clock-now()
   sift build-once(run)
     case some
       link next
       restart(run, next/run)
-      report(make(timed-lifecycle-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <{name} changed>), bind(duration, subtract(host-date/now(), started))))
+      report(make(timed-lifecycle-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <{name} changed>), bind(duration, subtract(clock-now(), started))))
     case none
       save nothing, 0
 
@@ -1076,7 +1177,7 @@ task serve
   mark async
   mark private
 
-  fork test, and(run/dev, boot-truthy(run/app-dir))
+  fork test, and(run/dev, is-truthy(run/app-dir))
     hold
       save app-dir, text-of(run/app-dir)
       # styles hot-reload (look.css, then the reload id)
@@ -1130,7 +1231,7 @@ task serve
           save code, boot-server-exit(run/child)
         miss
           save code, boot-exited-code(run/child)
-      fork test, boot-truthy(code)
+      fork test, is-truthy(code)
         hold
           report(make(exit-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <exit>), bind(subject, <code {boot-number(code)}>), bind(exit, boot-number(code))))
       finish-uptime(run, <Stopped>)
@@ -1152,7 +1253,7 @@ task report-failed
   report-problems(entries, run/cwd)
   save counts, make list
   counts/push(count(diagnostics/length, <errors>, <error>))
-  report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(counts, counts)))
+  report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(clock-now(), started)), bind(counts, counts)))
 
 task failed-plan
   like boot-plan
@@ -1178,7 +1279,7 @@ task unit-plan
       back unit-slug(project-root, file, finder)
   # through the process's build graph (decision 094 rule 1): the entry as it is on disk, the app's env, its resolver,
   # and the checked program handed back for the command routes
-  save entry-text, node-file/read-file-sync(run/entry, <utf8>)
+  save entry-text, read-whole(run/entry)
   save answer, document-of(build-request(boot-graph-of(project-root), entry-ask(run/entry, entry-text, run/env, true, run/resolve), run/cache))
   save built, answer/result
   fork test, not(built/ok)
@@ -1202,13 +1303,14 @@ task unit-plan
   # the closure's modules beside one another, the prelude and the entry's shim, and every task a command calls, which
   # a hook table names only in its routes (zone's commands are other files' tasks)
   save keep, route-calls(cli-routes)
-  save write
+  # named `writer`, never `write`: @term/base/file's `write` is loaded under another name (traps T-1513)
+  save writer
     task
       take dir, like text
       like text
       back write-unit-bundle(make(unit-ask, bind(dir, dir), bind(entry, entry), bind(modules, listed), bind(slug, slug), bind(exports, exports), bind(prelude, prelude), bind(keep, keep)))
   # the prelude is a module of the bundle, not a banner (call/code/unit-bundle.ts)
-  back make(boot-plan, bind(state, <planned>), bind(cli-routes, cli-routes), bind(key, boot-joined(lines)), bind(banner, <>), bind(write, write))
+  back make(boot-plan, bind(state, <planned>), bind(cli-routes, cli-routes), bind(key, joined-lines(lines)), bind(banner, <>), bind(write, writer))
 
 # the program compiled whole, every module in one
 task whole-plan
@@ -1219,7 +1321,7 @@ task whole-plan
   mark private
 
   save project-root, run/project-root
-  save source, make(compile-source, bind(file, run/entry), bind(text, node-file/read-file-sync(run/entry, <utf8>)))
+  save source, make(compile-source, bind(file, run/entry), bind(text, read-whole(run/entry)))
   save options, make(whole-options, bind(resolve, run/resolve), bind(cache, run/cache), bind(parsed, process-parse()), bind(env, run/env), bind(deck-of, face-deck-finder(make-deck-finder())), bind(role-of, face-role-reader(make-role-reader(project-root))), bind(lean-of, face-lean-reader(make-role-reader(project-root))))
   save result, compile-module/compile(source, options)
   fork test, not(result/ok)
@@ -1232,28 +1334,33 @@ task whole-plan
   save cli, is-above(boot-size(cli-routes), 0)
   # for an SSR server (the node host), the browser CLIENT bundle the rendered page loads, the styles, the asset
   # manifest and the reload id. Only a program that wraps its pages in the document shell gets them
-  fork test, and(not(cli), and(is-equal(run/env, <node>), and(boot-truthy(run/app-dir), boot-shell-in(result/typescript))))
+  fork test, and(not(cli), and(is-equal(run/env, <node>), and(is-truthy(run/app-dir), boot-shell-in(result/typescript))))
     hold
       save app-dir, text-of(run/app-dir)
       save prod, boot-production()
       build-styles(app-dir)
       build-client-bundle(make(client-ask, bind(entry, run/entry), bind(app-dir, app-dir), bind(project-root, project-root), bind(install-root, run/install-root), bind(prod, prod)))
-      hash-assets(node-path/join(app-dir, <build>), prod)
+      hash-assets(path-join(app-dir, <build>), prod)
       write-build-id(app-dir)
   # the native runtime shims this program docks, in front: the prelude the build owns
   save prelude, native-module/nativePrelude(result/program, run/env, read-boot-runtime)
   save lines, make list
   lines/push(prelude)
   lines/push(result/typescript)
-  save whole, boot-joined(lines)
-  save write
+  save whole, joined-lines(lines)
+  # the bundle's write runs where the bundle is made, which does not wait, so it writes without awaiting and raises
+  # when the file was not written, as writeFileSync did (its words are this module's: the host's error is not handed
+  # back)
+  save writer
     task
       take dir, like text
       like text
-      save file, node-path/join(dir, <app.ts>)
-      node-file/write-file-sync(file, whole)
+      save file, path-join(dir, <app.ts>)
+      fork test, not(write-path(file, whole))
+        hold
+          halt <{file} could not be written>
       back file
-  back make(boot-plan, bind(state, <planned>), bind(cli-routes, cli-routes), bind(key, whole), bind(banner, <>), bind(write, write))
+  back make(boot-plan, bind(state, <planned>), bind(cli-routes, cli-routes), bind(key, whole), bind(banner, <>), bind(write, writer))
 
 # build the app ONCE: compile the entry, bundle it, and write the run entry `run.mjs`. Answers its path and whether
 # the program is a command-line tool, or none on a compile error (its problems printed, a running server left up)
@@ -1263,7 +1370,7 @@ task build-once
   mark async
   mark private
 
-  save started, host-date/now()
+  save started, clock-now()
   save plan, failed-plan()
   save whole, true
   fork test, and(is-equal(run/env, <node>), not(boot-merged-forced()))
@@ -1283,6 +1390,7 @@ task bundle-plan
   take plan, like boot-plan
   take started, like number
   like maybe, like built-run
+  mark async
   mark private
 
   save input, run/input
@@ -1290,11 +1398,11 @@ task bundle-plan
   save cli, is-above(boot-size(plan/cli-routes), 0)
   # a bundle written with `--out` ships, so it cannot name this machine's project: its `require` is anchored at the
   # bundle's own file
-  save out-given, boot-truthy(input/out)
+  save out-given, is-truthy(input/out)
   save anchor, <import.meta.url>
   fork test, not(out-given)
     hold
-      save anchor, boot-json(node-path/join(run/project-root, <index.js>))
+      save anchor, boot-json(path-join(run/project-root, <index.js>))
   fork test, and(out-given, not(cli))
     hold
       save fields, make list
@@ -1310,53 +1418,53 @@ task bundle-plan
       save node-banner-text, node-banner(anchor)
   # the folder whose tsconfig.json decides which docks are inlined: the app's, else the project's
   save dock-root, run/project-root
-  fork test, boot-truthy(run/app-dir)
+  fork test, is-truthy(run/app-dir)
     hold
       save dock-root, text-of(run/app-dir)
-  save config, boot-bundle-config(run/env, nearest-tsconfig(dock-root), node-banner-text)
+  save config, boot-bundle-config-json(run/env, nearest-tsconfig(dock-root), node-banner-text)
   # incremental cache in `.base/@term/code/boot/<hash>`: the key folds in everything that can change the output
   save parts, make list
   parts/push(boot-cache-epoch())
   parts/push(compiler-version())
   parts/push(run/env)
   parts/push(<esbuild@{esbuild-module/version}>)
-  parts/push(boot-json(config))
+  parts/push(config)
   parts/push(plan/key)
   # a stored key, so hash-key (decision 080 of note/project/term/self-host/change/001-finish-self-host)
-  save key, hash-key(boot-joined(parts))
+  save key, hash-key(joined-lines(parts))
   # the boot cache always holds the bundler's input. The bundle goes there too, unless `--out` names a folder for it
   save cached, project-home(run/project-root, boot-parts(<boot>, key))
   save out, cached
   save fields, make list
   fork test, out-given
     hold
-      save out, node-path/resolve(cwd, text-of(input/out))
-      save shown, node-path/relative(cwd, out)
+      save out, resolve-path(cwd, text-of(input/out))
+      save shown, relative-path(cwd, out)
       fork test, is-equal(shown, <>)
         hold
           save shown, <.>
       fields/push(location(shown))
-  save bundle, node-path/join(out, <app.mjs>)
+  save bundle, path-join(out, <app.mjs>)
   # what the bundle inlined, each source with its hash: a kept bundle is reused only while every one still holds it
-  save listed, node-path/join(cached, <inputs.json>)
+  save listed, path-join(cached, <inputs.json>)
   save inlined-still, false
   fork
     mark unsafe
-    fork test, node-file/exists-sync(listed)
+    fork test, path-exists(listed)
       hold
-        save inlined-still, inlined-hold(boot-inlined-of(text-of(node-file/read-file-sync(listed, <utf8>))))
+        save inlined-still, inlined-hold(boot-inlined-of(read-whole(listed)))
   halt take
     take problem
     save inlined-still, false
   # an `--out` folder is always rewritten: it is somebody's published copy, not a cache keyed by its input
-  fork test, and(not(out-given), and(node-file/exists-sync(bundle), inlined-still))
+  fork test, and(not(out-given), and(path-exists(bundle), inlined-still))
     hold
       save facts, make list
       facts/push(<cached>)
-      report(make(step-item, bind(glyph, <skipped>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(facts, facts), bind(fields, fields)))
+      report(make(step-item, bind(glyph, <skipped>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(clock-now(), started)), bind(facts, facts), bind(fields, fields)))
     miss
-      node-file/mkdir-sync(cached, make(folder-ask, bind(recursive, true)))
-      node-file/mkdir-sync(out, make(folder-ask, bind(recursive, true)))
+      make-folder(cached)
+      make-folder(out)
       # the units' prelude goes in front of the whole bundle, after the `require` the node banner defines
       save banners, make list
       fork test, is-unequal(node-banner-text, <>)
@@ -1370,31 +1478,31 @@ task bundle-plan
       fork test, is-equal(run/env, <browser>)
         hold
           save platform, <browser>
-      save bundled, bundle-docks(dock-root, entry-file, cached, boot-joined(banners), platform)
-      node-file/write-file-sync(bundle, bundled/text)
-      node-file/write-file-sync(listed, boot-inlined-json(bundled/inlined))
-      report(make(built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(fields, fields)))
+      save bundled, bundle-docks(dock-root, entry-file, cached, joined-lines(banners), platform)
+      write-file(bundle, bundled/text)
+      write-file(listed, boot-inlined-json(bundled/inlined))
+      report(make(built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(clock-now(), started)), bind(fields, fields)))
   # the CLI install's node_modules linked next to the bundle, so ESM resolves the external bare specifiers. Not for
   # `--out`: a shipped bundle resolves through the package that carries it
-  save bundle-modules, node-path/join(out, <node_modules>)
-  save install-modules, node-path/join(run/install-root, <node_modules>)
-  fork test, and(not(out-given), and(not(node-file/exists-sync(bundle-modules)), node-file/exists-sync(install-modules)))
+  save bundle-modules, path-join(out, <node_modules>)
+  save install-modules, path-join(run/install-root, <node_modules>)
+  fork test, and(not(out-given), and(not(path-exists(bundle-modules)), path-exists(install-modules)))
     hold
       # a pre-existing link or a race is fine
       fork
         mark unsafe
-        boot-link-folder(install-modules, bundle-modules)
+        make-folder-link(install-modules, bundle-modules)
       halt take
         take problem
         save ignored, problem
-  save run-file, node-path/join(out, <run.mjs>)
+  save run-file, path-join(out, <run.mjs>)
   fork test, cli
     hold
       place-dispatch(run, out)
       # the route tree the program declared, embedded as data
-      node-file/write-file-sync(run-file, cli-run-text(boot-routes-json(plan/cli-routes), boot-json(run/bin-name), boot-json(mark-for(run/base-dir))))
+      write-file(run-file, cli-run-text(boot-routes-json(plan/cli-routes), boot-json(run/bin-name), boot-json(mark-for(run/base-dir))))
       back make(some, make(built-run, bind(run, run-file), bind(cli, true)))
-  node-file/write-file-sync(run-file, server-run-text(run/port))
+  write-file(run-file, server-run-text(run/port))
   back make(some, make(built-run, bind(run, run-file), bind(cli, false)))
 
 task write-plan
@@ -1414,12 +1522,13 @@ task place-dispatch
   take run, like boot-run
   take out, like text
   like void
+  mark async
   mark private
 
-  save here, node-path/join(find-install-root(), <host>)
-  save shipped, node-path/join(here, <dock.mjs>)
-  save target, node-path/join(out, <dock.mjs>)
-  fork test, not(node-file/exists-sync(shipped))
+  save here, path-join(find-install-root(), <host>)
+  save shipped, path-join(here, <dock.mjs>)
+  save target, path-join(out, <dock.mjs>)
+  fork test, not(path-exists(shipped))
     hold
       halt <The dispatcher {shipped} is missing: run make:line in the toolchain, or install a release>
-  node-file/copy-file-sync(shipped, target)
+  copy-file(shipped, target)

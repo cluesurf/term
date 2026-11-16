@@ -6,6 +6,7 @@ load @term/base/hash
 
 dock load
   load <global:http>, name http
+  load <global:http-exchange>, name http-exchange
 
 # `ok`, the status and the body, then each response header as a lower-case name and its value; or `timeout` or
 # `outage` and the host's own message
@@ -29,3 +30,59 @@ task send-request
       read header
       read timeout
       wait true
+
+# An exchange, held by number in the `http-exchange` runtime shim. `exchange-open` sends `body` as bytes (none when it
+# is empty), redirects followed only when `follow` holds, and answers `ok`, the exchange's number, the status, then
+# each response header as a lower-case name and its value; or `timeout` or `outage` and the host's own message. The
+# body stays unread for the next three
+task exchange-open
+  mark async
+  take method, like text
+  take url, like text
+  take body, like bytes
+  take header
+    like hash
+      like text
+      like text
+  take timeout, like number
+  take follow, like boolean
+  like list
+    like text
+  send back
+    call http-exchange/open
+      read method
+      read url
+      read body
+      read header
+      read timeout
+      read follow
+      wait true
+
+# the next bytes of an exchange's body, up to `room`: fewer only when the body ended or broke off (then
+# `exchange-fault` says why). Nothing for an exchange not held
+task exchange-read
+  mark async
+  take ticket, like number
+  take room, like number
+  like bytes
+  send back
+    call http-exchange/read
+      read ticket
+      read room
+      wait true
+
+# asked after each read: two empty texts when it read cleanly, `timeout` or `outage` and the host's message when it
+# broke off, `gone` when nothing is held by that number. An exchange whose body ended is let go here
+task exchange-fault
+  take ticket, like number
+  like list
+    like text
+  send back
+    call http-exchange/fault
+      read ticket
+
+# let an exchange's body go unread, its connection closed. Nothing for an exchange not held
+task exchange-cancel
+  take ticket, like number
+  call http-exchange/cancel
+    read ticket

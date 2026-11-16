@@ -50,6 +50,10 @@ const tcp = {
       const waiting: Socket[] = []
       const takers: ((socket: Socket) => void)[] = []
       server.on('connection', socket => {
+        // an accepted socket's error (a peer that resets the connection) is heard here, so it never ends the program as
+        // an unheard 'error' event: a read waiting on it answers the end of the stream, and one asked later meets the
+        // closed socket's end. A connected socket already has its connect's listener (item term-self-host-001-1544)
+        socket.on('error', () => undefined)
         const taker = takers.shift()
 
         if (taker) {
@@ -80,14 +84,23 @@ const tcp = {
     new Promise(ok => {
       const onData = (chunk: Buffer) => {
         socket.off('end', onEnd)
+        socket.off('close', onEnd)
         ok(chunk.toString('utf8'))
       }
+      // the end of the stream, or a connection reset or closed before it (no 'end' follows an error)
       const onEnd = () => {
         socket.off('data', onData)
+        socket.off('end', onEnd)
+        socket.off('close', onEnd)
         ok('')
+      }
+      if (socket.destroyed) {
+        ok('')
+        return
       }
       socket.once('data', onData)
       socket.once('end', onEnd)
+      socket.once('close', onEnd)
     }),
 
   write: (socket: Socket, data: string): Promise<number> =>

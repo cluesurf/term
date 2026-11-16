@@ -1,0 +1,581 @@
+# An exchange of @term/base/network/http sends and reads a body as bytes, holds its reads to a limit, and answers a
+# redirect as `redirect` says, the same on every backend (term-self-host-001-1544): a body of bytes no text holds goes
+# out as those bytes, the bytes 0 to 255 come back as themselves, a body whose `content-length` passes the limit is
+# refused before a byte is read, a body with no length is refused once a read passes the limit (one byte past it, so
+# no more is held), a 302 is answered as it is under `manual` and raises `refusal` under `refuse`, and a body let go
+# with `cancel-exchange`, or read once, is gone. Held by `pnpm term:base-gate`; a page has no server, so not in the
+# browser.
+#
+# Every request goes to this program's own server on 127.0.0.1: nothing reaches the network. network/server on port 0
+# answers the bytes, the echo and the redirect; the two limit cases ask a raw TCP listener (ports 47941 and 47942,
+# clear of test/tree/tcp.tree's 47923 and 47925), which answers 65,536 bytes with or without `content-length`, as
+# network/server does not let a handler choose. network/server reads a request's body as text and /echo answers that
+# text, so the bytes sent come back as what it read: each byte no utf8 text holds as U+FFFD (`efbfbd`) and each other
+# byte as itself, which tells the bytes sent from any text they might have been sent as.
+
+load @term/base/network/http
+  find open-exchange
+  find read-exchange
+  find cancel-exchange
+  find http-exchange
+
+load @term/base/network/server
+  find start
+  find stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-ok
+  find make-bytes
+  find make-status
+  find with-header
+
+load @term/base/network/tcp
+  find listen
+  find listener
+
+load @term/base/bytes
+  find from-byte-list
+  find to-hex
+
+load @term/base/text/string
+  find repeat
+
+load @term/base/hash
+  find hash
+
+load @term/base/task
+  find spawn
+  find handle
+
+load @term/base/exception
+  find excess
+  find refusal
+  find absence
+  find exclusion
+
+# the bytes 0 to 255, each once, in order
+task every-byte
+  like bytes
+  save numbers
+    make list
+  save k, code 0
+  walk test
+    down
+      call subtract
+        code 256
+        read k
+    hook test
+      call is-below
+        read k
+        code 256
+    hook step
+      call numbers/push
+        read k
+      save k
+        call add
+          read k
+          code 1
+  send back
+    call from-byte-list
+      read numbers
+
+# ff 41 fe 00 80 42: three bytes no utf8 text holds, a nul, and two letters
+task no-text-bytes
+  like bytes
+  save numbers
+    make list
+  call numbers/push
+    code 255
+  call numbers/push
+    code 65
+  call numbers/push
+    code 254
+  call numbers/push
+    code 0
+  call numbers/push
+    code 128
+  call numbers/push
+    code 66
+  send back
+    call from-byte-list
+      read numbers
+
+# what opening `url` with `redirect` raised, `refusal <reason>`, `exclusion <value>` or `other`; or `opened <status>`,
+# its body let go
+task open-said
+  mark async
+  take url, like text
+  take redirect, like text
+  like text
+  fork
+    mark unsafe
+    save opened
+      call open-exchange
+        text <GET>
+        read url
+        call from-byte-list
+          make list
+        bind redirect, read redirect
+        wait true
+    call cancel-exchange
+      read opened
+    send back, text <opened {{opened/status}}>
+  halt take
+    take problem
+    fork case, read problem
+      case refusal
+        send back, text <refusal {{reason}}>
+      case exclusion
+        send back, text <exclusion {{value}}>
+      case outage
+        send back, text <outage>
+      case timeout
+        send back, text <timeout>
+      case failure
+        send back, text <other>
+
+# /bytes answers every byte, /echo the hex of the body it read, /hop a 302 to /bytes, anything else a 404
+task route
+  take asked, like request
+  like response
+  fork test
+    hook test
+      call is-equal
+        read asked/path
+        text </bytes>
+    hook hold
+      send back
+        call make-bytes
+          call every-byte
+  fork test
+    hook test
+      call is-equal
+        read asked/path
+        text </echo>
+    hook hold
+      send back
+        call make-ok
+          read asked/body
+  fork test
+    hook test
+      call is-equal
+        read asked/path
+        text </hop>
+    hook hold
+      send back
+        call with-header
+          call make-status
+            code 302
+          text <location>
+          text </bytes>
+  send back
+    call make-status
+      code 404
+
+# one connection on `server`, answered with 65,536 bytes, its length given as `content-length` when `measured`, then
+# closed. The client drops what it did not read, which resets the connection (node's tcp hears that on an accepted
+# socket since this item). Everything it meets is caught here, so the client's answer is still read
+task serve-raw
+  mark async
+  take server, like listener
+  take measured, like boolean
+  like void
+  fork
+    mark unsafe
+    save peer
+      call server/accept
+        wait true
+    save asked
+      call peer/read
+        wait true
+    save body
+      call repeat
+        text <x>
+        code 65536
+    save length, text <>
+    fork test
+      hook test
+        call is-equal
+          read measured
+          true
+      hook hold
+        save length, text <content-length: 65536\r\n>
+    save written
+      call peer/write
+        text <HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\n{{length}}connection: close\r\n\r\n{{body}}>
+        wait true
+    call peer/close
+      wait true
+  halt take
+    take problem
+
+# the status and what reading a GET to the raw listener on `port` against `most` said (read-said), or `unopened` when
+# the request raised. A job of its own, so it catches everything
+task client-said
+  mark async
+  take port, like number
+  take most, like number
+  like text
+  fork
+    mark unsafe
+    save opened
+      call open-exchange
+        text <GET>
+        text <http://127.0.0.1:{{port}}/>
+        call from-byte-list
+          make list
+        wait true
+    save said
+      call read-said
+        read opened
+        read most
+        wait true
+    send back, text <{{opened/status}} {{said}}>
+  halt take
+    take problem
+    send back, text <unopened>
+
+# what client-said answered against the raw listener on `port`, its server `measured` or not, or `unanswered` when it
+# took past 20 s. The client is the job: it runs to its first wait, the request on its way, and the server here then
+# answers it. The swift and kotlin listeners' accept, read and write block the program's one thread, so a server in a
+# job would hold it before the client ever sent
+task raw-said
+  mark async
+  take port, like number
+  take measured, like boolean
+  take most, like number
+  like text
+  save server
+    call listen
+      read port
+      text <127.0.0.1>
+      wait true
+  save job, tick client-said(read(port), read(most))
+  call serve-raw
+    read server
+    read measured
+    wait true
+  save said, text <unanswered>
+  fork
+    mark unsafe
+    save said
+      call job/wait-within
+        code 20000
+        wait true
+  halt take
+    take problem
+  call server/close
+    wait true
+  send back, read said
+
+# a request on this program's server at `path`, its body unread, with `redirect`
+task open-path
+  mark async
+  take port, like number
+  take path, like text
+  take redirect, like text
+  like http-exchange
+  send back
+    call open-exchange
+      text <GET>
+      text <http://127.0.0.1:{{port}}{{path}}>
+      call from-byte-list
+        make list
+      bind redirect, read redirect
+      wait true
+
+# what reading `opened` against `most` raised, `excess <limit> <actual>`, `absence` or `other`; or `read <hex>`
+task read-said
+  mark async
+  take opened, like http-exchange
+  take most, like number
+  like text
+  fork
+    mark unsafe
+    save got
+      call read-exchange
+        read opened
+        read most
+        wait true
+    save hex
+      call to-hex
+        read got
+    send back, text <read {{hex}}>
+  halt take
+    take problem
+    fork case, read problem
+      case excess
+        send back, text <excess {{limit}} {{actual}}>
+      case absence
+        send back, text <absence>
+      case outage
+        send back, text <outage>
+      case timeout
+        send back, text <timeout>
+      case failure
+        send back, text <other>
+
+test <a body of bytes no text holds goes out as those bytes>
+  save running
+    call start
+      code 0
+      text <127.0.0.1>
+      read route
+      wait true
+  save header
+    make hash
+  call header/set
+    text <content-type>
+    text <text/plain; charset=utf-8>
+  save opened
+    call open-exchange
+      text <PUT>
+      text <http://127.0.0.1:{{running/port}}/echo>
+      call no-text-bytes
+      read header
+      wait true
+  save got
+    call read-exchange
+      read opened
+      code 1000
+      wait true
+  call stop
+    read running
+    wait true
+  save hex
+    call to-hex
+      read got
+  want hold
+    call is-equal
+      read hex
+      text <efbfbd41efbfbd00efbfbd42>
+
+test <the bytes 0 to 255 come back as themselves>
+  save running
+    call start
+      code 0
+      text <127.0.0.1>
+      read route
+      wait true
+  save opened
+    call open-path
+      read running/port
+      text </bytes>
+      text <follow>
+      wait true
+  save said
+    call read-said
+      read opened
+      code 1000
+      wait true
+  call stop
+    read running
+    wait true
+  save expected
+    call to-hex
+      call every-byte
+  want hold
+    call is-equal
+      read opened/status
+      code 200
+  want hold
+    call is-equal
+      read said
+      text <read {{expected}}>
+
+test <a body whose length passes the limit is refused before it is read>
+  save said
+    call raw-said
+      code 47941
+      true
+      code 1000
+      wait true
+  want hold
+    call is-equal
+      read said
+      text <200 excess 1000 65536>
+
+test <a body with no length is refused one byte past the limit>
+  save said
+    call raw-said
+      code 47942
+      false
+      code 1000
+      wait true
+  want hold
+    call is-equal
+      read said
+      text <200 excess 1000 1001>
+
+test <a redirect under manual is answered as it is>
+  save running
+    call start
+      code 0
+      text <127.0.0.1>
+      read route
+      wait true
+  save opened
+    call open-path
+      read running/port
+      text </hop>
+      text <manual>
+      wait true
+  call cancel-exchange
+    read opened
+  call stop
+    read running
+    wait true
+  want hold
+    call is-equal
+      read opened/status
+      code 302
+  want hold
+    call is-equal
+      call opened/headers/get
+        text <location>
+      text </bytes>
+
+test <a redirect under refuse raises refusal>
+  save running
+    call start
+      code 0
+      text <127.0.0.1>
+      read route
+      wait true
+  save said
+    call open-said
+      text <http://127.0.0.1:{{running/port}}/hop>
+      text <refuse>
+      wait true
+  call stop
+    read running
+    wait true
+  want hold
+    call is-equal
+      read said
+      text <refusal redirect 302>
+
+test <a redirect under follow is followed>
+  save running
+    call start
+      code 0
+      text <127.0.0.1>
+      read route
+      wait true
+  save opened
+    call open-path
+      read running/port
+      text </hop>
+      text <follow>
+      wait true
+  save said
+    call read-said
+      read opened
+      code 1000
+      wait true
+  call stop
+    read running
+    wait true
+  save expected
+    call to-hex
+      call every-byte
+  want hold
+    call is-equal
+      read opened/status
+      code 200
+  want hold
+    call is-equal
+      read said
+      text <read {{expected}}>
+
+test <a body let go unread is gone, and the server answers the next request>
+  save running
+    call start
+      code 0
+      text <127.0.0.1>
+      read route
+      wait true
+  save opened
+    call open-path
+      read running/port
+      text </bytes>
+      text <follow>
+      wait true
+  call cancel-exchange
+    read opened
+  save said
+    call read-said
+      read opened
+      code 1000
+      wait true
+  save again
+    call open-path
+      read running/port
+      text </bytes>
+      text <follow>
+      wait true
+  save next
+    call read-said
+      read again
+      code 1000
+      wait true
+  call stop
+    read running
+    wait true
+  save expected
+    call to-hex
+      call every-byte
+  want hold
+    call is-equal
+      read said
+      text <absence>
+  want hold
+    call is-equal
+      read next
+      text <read {{expected}}>
+
+test <a body read once is gone the second time>
+  save running
+    call start
+      code 0
+      text <127.0.0.1>
+      read route
+      wait true
+  save opened
+    call open-path
+      read running/port
+      text </bytes>
+      text <follow>
+      wait true
+  save first
+    call read-said
+      read opened
+      code 1000
+      wait true
+  save second
+    call read-said
+      read opened
+      code 1000
+      wait true
+  call stop
+    read running
+    wait true
+  want hold
+    call is-equal
+      read second
+      text <absence>
+
+test <a redirect mode that is none of the three raises exclusion>
+  save said
+    call open-said
+      text <http://127.0.0.1:1/>
+      text <sideways>
+      wait true
+  want hold
+    call is-equal
+      read said
+      text <exclusion sideways>

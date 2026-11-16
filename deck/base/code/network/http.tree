@@ -8,11 +8,22 @@
 # `timeout` is the milliseconds to wait for the whole answer, 30,000 when left out. Past it the call raises `timeout`
 # (`waited` is the milliseconds); a server that cannot be reached raises `outage` (`thing` is the url). Any status,
 # 404 and 500 included, is an answer, not a raise.
+#
+# `request`, `fetch` and `post` send a text body and answer the whole `http-response`, redirects followed. For a body
+# of any bytes (a blob a registry stores), `open-exchange` sends `body` as bytes and answers an `http-exchange`: the
+# status and the headers, the body not yet read. `read-exchange` then reads the body as bytes against a limit, and
+# `cancel-exchange` lets it go unread. `redirect` says what a 301, 302, 303, 307 or 308 does: `follow` (the default)
+# follows it as `request` does, `manual` answers it as it is, its `location` header for the caller to follow, and
+# `refuse` raises `refusal`.
 
 mark stable
 
 load @term/base/native/{platform}/network/http
   find send-request
+  find exchange-open
+  find exchange-read
+  find exchange-fault
+  find exchange-cancel
 
 load @term/base/network/response
   find http-response
@@ -25,6 +36,9 @@ load @term/base/list
   find length
   find get
   find sort
+
+load @term/base/bytes
+  find length, name bytes-length
 
 load @term/base/ordering
   find from-texts
@@ -41,6 +55,109 @@ load @term/base/maybe
 load @term/base/exception
   find timeout
   find outage
+  find excess
+  find refusal
+  find absence
+  find exclusion
+
+# the response headers the backend answered from place `from` of `got` on (a lower-case name, then its value): a header
+# the server sent twice is one entry, the values joined with ", "; then the names in code point order
+task headers-of
+  take got
+    like list
+      like text
+  take from, like number
+  like hash
+    like text
+    like text
+  mark private
+  save seen
+    make hash
+  save names
+    make list
+  # the length read once for the measure; the writes in the body leave the prover unsure of every list's size, so
+  # the list's own length is tested on each turn too
+  save count
+    call length
+      read got
+  save k, read from
+  walk test
+    down
+      call subtract
+        read count
+        read k
+    hook test
+      call and
+        call is-below
+          call add
+            read k
+            code 1
+          read count
+        call is-below
+          call add
+            read k
+            code 1
+          read got/length
+    hook step
+      save name
+        call get
+          read got
+          read k
+      save value
+        call get
+          read got
+          call add
+            read k
+            code 1
+      fork test
+        hook test
+          call seen/has
+            read name
+        hook hold
+          save before
+            call seen/get
+              read name
+          call seen/set
+            read name
+            text <{{before}}, {{value}}>
+        hook miss
+          call seen/set
+            read name
+            read value
+          call names/push
+            read name
+      save k
+        call add
+          read k
+          code 2
+  save headers
+    make hash
+  walk list
+    call sort
+      read names
+      read from-texts
+    hook next
+      take site, name name
+      call headers/set
+        read name
+        call seen/get
+          read name
+  send back, read headers
+
+# a number the backend reports as digits, read without a raise (0 when it is none), so a caller's `fork case` names
+# only what this module raises
+task digits-of
+  take value, like text
+  like number
+  mark private
+  save number
+    call read-number
+      read value
+  send back
+    call to-number
+      call unwrap-or
+        read number
+        0.0
 
 task request
   mark async
@@ -105,90 +222,17 @@ task request
     call get
       read got
       code 2
-  # a header the server sent twice is one entry, the values joined with ", "; then the names in code point order
-  save seen
-    make hash
-  save names
-    make list
-  # the length read once for the measure; the writes in the body leave the prover unsure of every list's size, so
-  # the list's own length is tested on each turn too
-  save count
-    call length
-      read got
-  save k, code 3
-  walk test
-    down
-      call subtract
-        read count
-        read k
-    hook test
-      call and
-        call is-below
-          call add
-            read k
-            code 1
-          read count
-        call is-below
-          call add
-            read k
-            code 1
-          read got/length
-    hook step
-      save name
-        call get
-          read got
-          read k
-      save value
-        call get
-          read got
-          call add
-            read k
-            code 1
-      fork test
-        hook test
-          call seen/has
-            read name
-        hook hold
-          save before
-            call seen/get
-              read name
-          call seen/set
-            read name
-            text <{{before}}, {{value}}>
-        hook miss
-          call seen/set
-            read name
-            read value
-          call names/push
-            read name
-      save k
-        call add
-          read k
-          code 2
   save headers
-    make hash
-  walk list
-    call sort
-      read names
-      read from-texts
-    hook next
-      take site, name name
-      call headers/set
-        read name
-        call seen/get
-          read name
+    call headers-of
+      read got
+      code 3
   # the host reports the status as digits; read without a raise, so a caller's `fork case` names only timeout and
   # outage
-  save status
-    call read-number
-      read status-text
   send back
     make http-response
       bind status
-        call to-number
-          call unwrap-or
-            read status
-            0.0
+        call digits-of
+          read status-text
       bind body, read body
       bind headers, read headers
 
@@ -240,3 +284,264 @@ task post
 form response
   link status, like number
   link dock
+
+# An answer whose body is not read yet: the status and the headers (each name in lower case, a header the server sent
+# twice joined with ", ", as `http-response` holds them), the url asked and the timeout it was asked with, and
+# `ticket`, the number the backend holds the open body by. Read it once with `read-exchange` or let it go with
+# `cancel-exchange`: until then the backend holds its connection.
+form http-exchange
+  link status, like number
+  link headers
+    like hash
+      like text
+      like text
+  link url, like text
+  link timeout, like number
+  link ticket, like number
+
+# whether a status is one a redirect answers with: 301, 302, 303, 307 or 308, the statuses fetch follows
+task is-redirect-status
+  take status, like number
+  like boolean
+  mark private
+  send back
+    call or
+      call or
+        call is-equal
+          read status
+          code 301
+        call is-equal
+          read status
+          code 302
+      call or
+        call or
+          call is-equal
+            read status
+            code 303
+          call is-equal
+            read status
+            code 307
+        call is-equal
+          read status
+          code 308
+
+# send `body` as bytes (empty sends none) and answer the status and the headers, the body left to `read-exchange` or
+# `cancel-exchange`. `redirect` is `follow`, `manual` or `refuse` (any other raises `exclusion`); a refused redirect is
+# let go unread and raises `refusal`, `reason` naming its status. Raises `timeout` and `outage` as `request` does
+task open-exchange
+  mark async
+  take method, like text
+  take url, like text
+  take body, like bytes
+  take header
+    like hash
+      like text
+      like text
+    need false
+  take timeout, like(number), fall 30000
+  take
+    redirect
+    like text
+    fall text <follow>
+  like http-exchange
+  fork test
+    hook test
+      call and
+        call is-unequal
+          read redirect
+          text <follow>
+        call and
+          call is-unequal
+            read redirect
+            text <manual>
+          call is-unequal
+            read redirect
+            text <refuse>
+    hook hold
+      halt exclusion
+        bind thing, text <redirect>
+        bind value, read redirect
+  save got
+    call exchange-open
+      read method
+      read url
+      read body
+      read header
+      read timeout
+      call is-equal
+        read redirect
+        text <follow>
+      wait true
+  save outcome, text <outage>
+  fork test
+    hook test
+      call is-above
+        call length
+          read got
+        code 0
+    hook hold
+      save outcome
+        call get
+          read got
+          code 0
+  fork test
+    hook test
+      call is-equal
+        read outcome
+        text <timeout>
+    hook hold
+      halt timeout
+        bind thing, read url
+        bind waited, read timeout
+  fork test
+    hook test
+      call or
+        call is-unequal
+          read outcome
+          text <ok>
+        call is-below
+          call length
+            read got
+          code 3
+    hook hold
+      halt outage
+        bind thing, read url
+  # the ticket and the status, read while the three places are known to be there
+  save ticket-text
+    call get
+      read got
+      code 1
+  save status-text
+    call get
+      read got
+      code 2
+  save opened
+    make http-exchange
+      bind status
+        call digits-of
+          read status-text
+      bind headers
+        call headers-of
+          read got
+          code 3
+      bind url, read url
+      bind timeout, read timeout
+      bind ticket
+        call digits-of
+          read ticket-text
+  fork test
+    hook test
+      call and
+        call is-equal
+          read redirect
+          text <refuse>
+        call is-redirect-status
+          read opened/status
+    hook hold
+      call exchange-cancel
+        read opened/ticket
+      halt refusal
+        bind thing, read url
+        bind reason, text <redirect {{status-text}}>
+  send back, read opened
+
+# the body of an exchange as bytes, read once. A body over `limit` bytes raises `excess` with `limit`, and is let go:
+# at once when its `content-length` says so (`actual` is that length), else the moment the read passes the limit
+# (`actual` is the bytes read then, `limit` and one), so a server cannot make it hold more. Raises `absence` for a body
+# already read or let go, and `timeout` and `outage` for a read that broke off
+task read-exchange
+  mark async
+  take exchange, like http-exchange
+  take limit, like number
+  like bytes
+  fork test
+    hook test
+      call exchange/headers/has
+        text <content-length>
+    hook hold
+      save declared
+        call digits-of
+          call exchange/headers/get
+            text <content-length>
+      fork test
+        hook test
+          call is-above
+            read declared
+            read limit
+        hook hold
+          call exchange-cancel
+            read exchange/ticket
+          halt excess
+            bind thing, read exchange/url
+            bind limit, read limit
+            bind actual, read declared
+  save got
+    call exchange-read
+      read exchange/ticket
+      call add
+        read limit
+        code 1
+      wait true
+  save fault
+    call exchange-fault
+      read exchange/ticket
+  save kind, text <gone>
+  fork test
+    hook test
+      call is-above
+        call length
+          read fault
+        code 0
+    hook hold
+      save kind
+        call get
+          read fault
+          code 0
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <gone>
+    hook hold
+      halt absence
+        bind thing, read exchange/url
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <timeout>
+    hook hold
+      halt timeout
+        bind thing, read exchange/url
+        bind waited, read exchange/timeout
+  fork test
+    hook test
+      call is-unequal
+        read kind
+        text <>
+    hook hold
+      halt outage
+        bind thing, read exchange/url
+  save size
+    call bytes-length
+      read got
+  fork test
+    hook test
+      call is-above
+        read size
+        read limit
+    hook hold
+      call exchange-cancel
+        read exchange/ticket
+      halt excess
+        bind thing, read exchange/url
+        bind limit, read limit
+        bind actual, read size
+  send back, read got
+
+# let the body of an exchange go unread; its connection is the backend's again. Nothing happens to one already read
+# or let go
+task cancel-exchange
+  take exchange, like http-exchange
+  call exchange-cancel
+    read exchange/ticket

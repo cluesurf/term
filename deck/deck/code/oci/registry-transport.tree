@@ -20,9 +20,15 @@
 #   - every task takes positional parameters: verify-digest(digest, bytes, what); http-transport(host, credentials,
 #     insecure, fetcher, chunk-size, monolithic, retries, env), each of the last seven none (undefined) where the
 #     original left it out, defaulted as the original's `??` did
-#   - the transport is the original's host record of eight methods, each taking the original's one record, so the
-#     unported callers read it unchanged. Its state (the token per scope, the credentials asked once) sits in a host
-#     record made when the transport is, read and written by binds
+#   - the transport is the form oci-transport, the original's record of a label and seven methods, each taking the
+#     original's one record as a form of its own (blob-query, blob-request, blob-upload, manifest-request,
+#     manifest-upload, tag-request, referrer-request) and answering one (fetched-manifest, manifest-receipt), a field
+#     the original left out a need-false maybe, so on TypeScript the records are the original's and the unported
+#     callers read them unchanged (item term-self-host-001-1546, ruling 1545). A maybe field is sifted before a bind
+#     reads it, and get-manifest and referrers answer like dynamic, since a maybe value is boxed on TypeScript. Its state (the token per scope, the
+#     credentials asked once) sits in a host record made when the transport is, read and written by binds, and the
+#     wire stays on its node binds until @term/base http carries bytes and manual redirects (item 1544). `fetcher`
+#     is the node-only seam a test hands its own fetch through
 #   - every OciError is a halt of oci-failure, `thing` the original's message and `status` where it passed one; the
 #     retries test the caught value's form and status (is-oci-failure, oci-failure-status), never a class
 #   - a failure that is not an oci-failure (a network TypeError, a JSON SyntaxError) passes through unchanged, as in
@@ -53,6 +59,108 @@ form wire-try
   link finished, like boolean
   link problem, like dynamic
   link answer, like dynamic
+
+# --- the transport's records, each the original's input or answer
+
+# has-blob's: is the blob there
+form blob-query
+  link repository, like text
+  link digest, like text
+
+# get-blob's: the blob, its size when a descriptor states one, and the most bytes to read
+form blob-request
+  link repository, like text
+  link digest, like text
+  link size
+    like maybe, like number
+    need false
+  link limit, like number
+
+# put-blob's: the bytes, and the repository to mount them from when the registry holds them there
+form blob-upload
+  link repository, like text
+  link digest, like text
+  link bytes, like bytes
+  link mount-from
+    like maybe, like text
+    need false
+
+# get-manifest's: a tag or a digest
+form manifest-request
+  link repository, like text
+  link reference, like text
+
+# put-manifest's
+form manifest-upload
+  link repository, like text
+  link reference, like text
+  link bytes, like bytes
+  link media-type, like text
+
+# list-tags'
+form tag-request
+  link repository, like text
+
+# referrers': the manifest referred to, and the artifact type to keep when one is asked for
+form referrer-request
+  link repository, like text
+  link digest, like text
+  link artifact-type
+    like maybe, like text
+    need false
+
+# a manifest as get-manifest answers it, its digest the bytes' own
+form fetched-manifest
+  link digest, like text
+  link media-type, like text
+  link bytes, like bytes
+
+# put-manifest's answer: the digest stored, and whether the registry took the manifest's subject (`oci-subject`)
+form manifest-receipt
+  link digest, like text
+  link subject-accepted, like boolean
+
+# An OCI registry as every oci/ port calls it: `present`, `mounted` or `uploaded` from put-blob. get-manifest answers
+# a fetched-manifest, or the host's nothing on 404, and referrers the descriptors, or the host's nothing when the
+# registry has no referrers API: `like dynamic`, not a maybe, because a maybe is a boxed value on TypeScript and the
+# unported callers and the face transport.ts read the original's undefined
+form oci-transport
+  link label, like text
+  link has-blob
+    like task
+      mark async
+      take asked, like blob-query
+      like boolean
+  link get-blob
+    like task
+      mark async
+      take asked, like blob-request
+      like bytes
+  link put-blob
+    like task
+      mark async
+      take asked, like blob-upload
+      like text
+  link get-manifest
+    like task
+      mark async
+      take asked, like manifest-request
+      like dynamic
+  link put-manifest
+    like task
+      mark async
+      take asked, like manifest-upload
+      like manifest-receipt
+  link list-tags
+    like task
+      mark async
+      take asked, like tag-request
+      like list, like text
+  link referrers
+    like task
+      mark async
+      take asked, like referrer-request
+      like dynamic
 
 bind wire-nothing
   like dynamic
@@ -98,12 +206,6 @@ bind wire-fetch-or
   like dynamic
   case node
     text <($given ?? fetch)>
-
-bind wire-is-absent
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value === undefined)>
 
 bind wire-truthy
   take value, like dynamic
@@ -577,34 +679,6 @@ bind wire-of-type
   case node
     text <<($kind ? $found.filter(entry => entry.artifactType === $kind) : $found)>>
 
-bind wire-transport-record
-  take label, like text
-  take holds, like dynamic
-  take pulls, like dynamic
-  take pushes, like dynamic
-  take reads, like dynamic
-  take writes, like dynamic
-  take lists, like dynamic
-  take refers, like dynamic
-  like dynamic
-  case node
-    text <<({ label: $label, hasBlob: $holds, getBlob: $pulls, putBlob: $pushes, getManifest: $reads, putManifest: $writes, listTags: $lists, referrers: $refers })>>
-
-bind wire-put-answer
-  take digest, like text
-  take accepted, like boolean
-  like dynamic
-  case node
-    text <<({ digest: $digest, subjectAccepted: $accepted })>>
-
-bind wire-fetched
-  take digest, like text
-  take kind, like text
-  take bytes, like dynamic
-  like dynamic
-  case node
-    text <<({ digest: $digest, mediaType: $kind, bytes: $bytes })>>
-
 task manifest-media-type
   like text
 
@@ -964,12 +1038,12 @@ task repo-path
 
 task wire-has-blob
   take wire, like dynamic
-  take asked, like dynamic
+  take asked, like blob-query
   like boolean
   mark private
 
-  save repository, wire-field(asked, <repository>)
-  save digest, wire-field(asked, <digest>)
+  save repository, asked/repository
+  save digest, asked/digest
   assert-digest(digest)
   save response, send-idempotent(wire, repo-path(repository, <blobs/{digest}>), wire-init(<HEAD>, wire-pull(repository), wire-nothing(), wire-nothing()))
   wait wire-cancel(response)
@@ -987,16 +1061,25 @@ task wire-has-blob
 
 task upload-once
   take wire, like dynamic
-  take asked, like dynamic
+  take asked, like blob-upload
   like text
   mark private
 
   save host, wire-field(wire, <host>)
   save front, wire-field(wire, <front>)
-  save repository, wire-field(asked, <repository>)
-  save digest, wire-field(asked, <digest>)
-  save bytes, wire-field(asked, <bytes>)
-  save mount-from, wire-field(asked, <mountFrom>)
+  save repository, asked/repository
+  save digest, asked/digest
+  save bytes, asked/bytes
+  # the original's `mountFrom`, tested for truth as it was (an empty text mounts nothing). A maybe is a boxed value
+  # on TypeScript, never handed to a bind: sifted to its text first
+  save mount-given, asked/mount-from
+  save mount-from, <>
+  sift mount-given
+    case some
+      link given-from
+      save mount-from, given-from
+    case none
+      save unmounted, 0
   save mounting, wire-truthy(mount-from)
   save scope, wire-push(repository)
   fork test, mounting
@@ -1070,15 +1153,23 @@ task upload-once
 
 task wire-get-blob
   take wire, like dynamic
-  take asked, like dynamic
-  like dynamic
+  take asked, like blob-request
+  like bytes
   mark private
 
-  save repository, wire-field(asked, <repository>)
-  save digest, wire-field(asked, <digest>)
-  save size, wire-field(asked, <size>)
+  save repository, asked/repository
+  save digest, asked/digest
+  save size, asked/size
   assert-digest(digest)
-  save limit, wire-limit-of(wire-field(asked, <limit>), size)
+  # the asked limit, or the stated size when that is less. A maybe is a boxed value on TypeScript, so it is sifted
+  # before a bind reads it
+  save limit, asked/limit
+  sift size
+    case some
+      link limit-size
+      save limit, wire-limit-of(limit, limit-size)
+    case none
+      save unlimited, 0
   save response, send-idempotent(wire, repo-path(repository, <blobs/{digest}>), wire-init(<GET>, wire-pull(repository), wire-nothing(), wire-nothing()))
 
   fork test, not(wire-ok(response))
@@ -1091,10 +1182,15 @@ task wire-get-blob
         bind status, status
 
   save bytes, read-limited(response, limit)
-  fork test, and(not(wire-is-absent(size)), not(is-equal(wire-length(bytes), size)))
-    hold
-      halt oci-failure
-        bind thing, <blob {digest} is {wire-length(bytes)} bytes, its descriptor says {size}>
+  sift size
+    case some
+      link stated
+      fork test, not(is-equal(wire-length(bytes), stated))
+        hold
+          halt oci-failure
+            bind thing, <blob {digest} is {wire-length(bytes)} bytes, its descriptor says {stated}>
+    case none
+      save unstated, 0
 
   verify-digest(digest, bytes, <blob {digest}>)
   back bytes
@@ -1102,7 +1198,7 @@ task wire-get-blob
 # one try of an upload: the outcome, or the failure
 task try-upload
   take wire, like dynamic
-  take asked, like dynamic
+  take asked, like blob-upload
   like wire-try
   mark private
 
@@ -1116,15 +1212,15 @@ task try-upload
 
 task wire-put-blob
   take wire, like dynamic
-  take asked, like dynamic
+  take asked, like blob-upload
   like text
   mark private
 
-  save digest, wire-field(asked, <digest>)
+  save digest, asked/digest
   assert-digest(digest)
-  verify-digest(digest, wire-field(asked, <bytes>), <upload of {digest}>)
+  verify-digest(digest, asked/bytes, <upload of {digest}>)
 
-  save present, wire-has-blob(wire, asked)
+  save present, wire-has-blob(wire, make(blob-query, bind(repository, asked/repository), bind(digest, digest)))
   fork test, present
     hold
       back <present>
@@ -1155,12 +1251,12 @@ task wire-put-blob
 # a manifest by tag or digest, verified against the digest when one was asked for, or none on 404
 task wire-get-manifest
   take wire, like dynamic
-  take asked, like dynamic
+  take asked, like manifest-request
   like dynamic
   mark private
 
-  save repository, wire-field(asked, <repository>)
-  save reference, wire-field(asked, <reference>)
+  save repository, asked/repository
+  save reference, asked/reference
   save by-digest, is-digest(reference)
   fork test, not(by-digest)
     hold
@@ -1195,17 +1291,19 @@ task wire-get-manifest
       halt oci-failure
         bind thing, <manifest {repository}:{reference} is {digest}, the registry says {stated}>
 
-  back wire-fetched(digest, wire-manifest-media-type(bytes, wire-header(response, <content-type>)), bytes)
+  save media-type, wire-manifest-media-type(bytes, wire-header(response, <content-type>))
+  save fetched, make(fetched-manifest, bind(digest, digest), bind(media-type, media-type), bind(bytes, bytes))
+  back fetched
 
 task wire-put-manifest
   take wire, like dynamic
-  take asked, like dynamic
-  like dynamic
+  take asked, like manifest-upload
+  like manifest-receipt
   mark private
 
-  save repository, wire-field(asked, <repository>)
-  save reference, wire-field(asked, <reference>)
-  save bytes, wire-field(asked, <bytes>)
+  save repository, asked/repository
+  save reference, asked/reference
+  save bytes, asked/bytes
   fork test, not(is-digest(reference))
     hold
       assert-tag(reference)
@@ -1217,7 +1315,7 @@ task wire-put-manifest
         bind thing, <manifest is {size} bytes, over the {manifest-limit()} byte limit registries enforce>
 
   save digest, sha256-digest(bytes)
-  save response, send-request(wire,repo-path(repository, <manifests/{reference}>), wire-init(<PUT>, wire-push(repository), wire-type-headers(wire-field(asked, <mediaType>)), bytes))
+  save response, send-request(wire,repo-path(repository, <manifests/{reference}>), wire-init(<PUT>, wire-push(repository), wire-type-headers(asked/media-type), bytes))
   save status, wire-status(response)
   fork test, and(not(is-equal(status, 201)), and(not(is-equal(status, 200)), not(is-equal(status, 202))))
     hold
@@ -1234,15 +1332,16 @@ task wire-put-manifest
       halt oci-failure
         bind thing, <registry stored manifest as {stated}, expected {digest}>
 
-  back wire-put-answer(digest, wire-has-header(response, <oci-subject>))
+  save accepted, wire-has-header(response, <oci-subject>)
+  back make(manifest-receipt, bind(digest, digest), bind(subject-accepted, accepted))
 
 task wire-list-tags
   take wire, like dynamic
-  take asked, like dynamic
-  like dynamic
+  take asked, like tag-request
+  like list, like text
   mark private
 
-  save repository, wire-field(asked, <repository>)
+  save repository, asked/repository
   save tags, wire-parts()
   save listed, repo-path(repository, <tags/list>)
   save next, <{listed}?n=1000>
@@ -1272,13 +1371,22 @@ task wire-list-tags
 # the referrers of a manifest, or none when the registry has no referrers API
 task wire-referrers
   take wire, like dynamic
-  take asked, like dynamic
+  take asked, like referrer-request
   like dynamic
   mark private
 
-  save repository, wire-field(asked, <repository>)
-  save digest, wire-field(asked, <digest>)
-  save kind, wire-field(asked, <artifactType>)
+  save repository, asked/repository
+  save digest, asked/digest
+  # the original's `artifactType`, tested for truth as it was (the empty text for none keeps every referrer, as
+  # undefined did)
+  save kind-given, asked/artifact-type
+  save kind, <>
+  sift kind-given
+    case some
+      link given-kind
+      save kind, given-kind
+    case none
+      save every-kind, 0
   assert-digest(digest)
   save out, wire-parts()
   save first, wire-url(repo-path(repository, <referrers/{digest}>), wire-field(wire, <front>))
@@ -1326,7 +1434,7 @@ task http-transport
   take monolithic, like dynamic
   take retries, like dynamic
   take env, like dynamic
-  like dynamic
+  like oci-transport
 
   save environment, wire-or(env, host-process/env)
   save host, wire-lower(host-name)
@@ -1338,45 +1446,45 @@ task http-transport
 
   save has-blob
     task
-      take asked, like dynamic
+      take asked, like blob-query
       like boolean
       mark async
       back wire-has-blob(wire, asked)
   save get-blob
     task
-      take asked, like dynamic
-      like dynamic
+      take asked, like blob-request
+      like bytes
       mark async
       back wire-get-blob(wire, asked)
   save put-blob
     task
-      take asked, like dynamic
+      take asked, like blob-upload
       like text
       mark async
       back wire-put-blob(wire, asked)
   save get-manifest
     task
-      take asked, like dynamic
+      take asked, like manifest-request
       like dynamic
       mark async
       back wire-get-manifest(wire, asked)
   save put-manifest
     task
-      take asked, like dynamic
-      like dynamic
+      take asked, like manifest-upload
+      like manifest-receipt
       mark async
       back wire-put-manifest(wire, asked)
   save list-tags
     task
-      take asked, like dynamic
-      like dynamic
+      take asked, like tag-request
+      like list, like text
       mark async
       back wire-list-tags(wire, asked)
   save referrers
     task
-      take asked, like dynamic
+      take asked, like referrer-request
       like dynamic
       mark async
       back wire-referrers(wire, asked)
 
-  back wire-transport-record(host, has-blob, get-blob, put-blob, get-manifest, put-manifest, list-tags, referrers)
+  back make(oci-transport, bind(label, host), bind(has-blob, has-blob), bind(get-blob, get-blob), bind(put-blob, put-blob), bind(get-manifest, get-manifest), bind(put-manifest, put-manifest), bind(list-tags, list-tags), bind(referrers, referrers))
