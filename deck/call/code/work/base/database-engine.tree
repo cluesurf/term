@@ -45,12 +45,6 @@ bind engine-fail
   case node
     text <((text) =\> \{ throw new Error(text) \})($message)>
 
-bind engine-rethrow
-  take error, like dynamic
-  like void
-  case node
-    text <((problem) =\> \{ throw problem \})($error)>
-
 bind engine-awaited
   take promise, like dynamic
   like dynamic
@@ -117,8 +111,6 @@ task transact-on
 
   save client, engine-awaited(pool/connect())
   save out, engine-nothing()
-  save failed, false
-  save problem, engine-nothing()
   fork
     mark unsafe
     engine-awaited(client/query(<BEGIN>, make list))
@@ -140,20 +132,16 @@ task transact-on
     engine-awaited(client/query(<COMMIT>, make list))
   halt take
     take error
-    save failed, true
-    save problem, error
-  fork test, failed
-    hold
-      fork
-        mark unsafe
-        engine-awaited(client/query(<ROLLBACK>, make list))
-      halt take
-        take ignored
-        save failed, true
+    # a ROLLBACK that fails too is let go: the body's failure is the one raised again
+    fork
+      mark unsafe
+      engine-awaited(client/query(<ROLLBACK>, make list))
+    halt take
+      take ignored
+      save unrolled, true
+    client/release()
+    halt kink, error
   client/release()
-  fork test, failed
-    hold
-      engine-rethrow(problem)
   back out
 
 # an engine over a pool

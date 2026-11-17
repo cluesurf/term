@@ -28,7 +28,6 @@ load ../cask/host-value
   find is-truthy
   find value-or
   find now-ms
-  find raise-again
   find entries-of
 
 load ../cask/toolchain
@@ -400,7 +399,7 @@ task kept
   halt take
     take problem
     node-fs/rm-sync(fresh, make(android-remove-folder, bind(recursive, true), bind(force, true)))
-    raise-again(problem)
+    halt kink, problem
 
   # every file the stage made, by its path inside the folder, for `kept-whole` to find again
   save inside, make list

@@ -126,13 +126,6 @@ bind install-message-field
   case node
     text <<((installProblem_) => (installProblem_?.form === "oci-failure" ? String(installProblem_.link?.thing ?? "") : String(installProblem_.message)))($problem)>>
 
-# a caught failure, raised again as it was
-bind raise-again
-  take problem, like dynamic
-  like void
-  case node
-    text <(() =\> \{ throw $problem \})()>
-
 # `crypto.randomUUID()`, through node:crypto as the original called it
 bind random-id
   take crypto, like dynamic
@@ -703,7 +696,7 @@ task unpack
     take problem
     node-file/rm-sync(archive, make(force-ask, bind(force, true)))
     node-file/rm-sync(staging, make(remove-ask, bind(recursive, true), bind(force, true)))
-    raise-again(problem)
+    halt kink, problem
   node-file/rm-sync(archive, make(force-ask, bind(force, true)))
   node-file/rm-sync(staging, make(remove-ask, bind(recursive, true), bind(force, true)))
   back shared
@@ -931,7 +924,7 @@ task extract-shared
       halt take
         take problem
         node-file/rm-sync(names, make(force-ask, bind(force, true)))
-        raise-again(problem)
+        halt kink, problem
       node-file/rm-sync(names, make(force-ask, bind(force, true)))
 
   back make(shared-count, bind(files, run/files), bind(bytes, run/bytes))
@@ -989,7 +982,7 @@ task with-install-lock
   halt take
     take problem
     node-file/rm-sync(lock, make(remove-ask, bind(recursive, true), bind(force, true)))
-    raise-again(problem)
+    halt kink, problem
   node-file/rm-sync(lock, make(remove-ask, bind(recursive, true), bind(force, true)))
   back answer
 

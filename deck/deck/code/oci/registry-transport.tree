@@ -49,7 +49,8 @@
 #   - every OciError is a halt of oci-failure, `thing` the original's message and `status` where it passed one; the
 #     retries test the caught value's form and status (is-oci-failure, oci-failure-status), never a class
 #   - a failure that is not an oci-failure (a network failure, a timeout) passes through unchanged, as in the
-#     original; the bodies of the retries are guarded whole, as the original's try held them
+#     original; the bodies of the retries are guarded whole, as the original's try held them, and a try that ends the
+#     request raises its caught value again with `halt kink` (item 1576)
 #   - a digest is @term/base/cryptography/digest's synchronous SHA-256 of bytes, prefixed sha256: (item 1581), so the
 #     file docks no host module
 #   - parse-challenge and basic-header are registry-credentials.tree's (auth.ts was docked until
@@ -352,12 +353,6 @@ bind wire-nothing
   like dynamic
   case node
     text <undefined>
-
-bind wire-raise-again
-  take problem, like dynamic
-  like void
-  case node
-    text <(() =\> \{ throw $problem \})()>
 
 # the bytes as the host's own buffer: on node a Buffer over the same memory (base bytes are a plain Uint8Array, and
 # the unported readers of a blob or manifest call Buffer methods on it, traps T-1532), the bytes themselves elsewhere
@@ -1444,6 +1439,10 @@ task try-idempotent
     back make(wire-try, bind(failed, false), bind(finished, false))
   halt take
     take problem
+    # an oci-failure is an answer, and the last try's failure is the one the request ends with: each raised again
+    fork test, or(is-oci-failure(problem), is-equal(attempt, retries))
+      hold
+        halt kink, problem
     back make(wire-try, bind(failed, true), bind(finished, false), bind(problem, make(some, problem)))
 
 # GET and HEAD, retried on what is worth retrying: a network failure, a 429 or a 5xx. An oci-failure is an answer
@@ -1455,13 +1454,12 @@ task send-idempotent
   mark private
 
   save retries, wire/retries
-  save last, wire-nothing()
   save attempt, 0
   walk test
     hook test, not(is-above(attempt, retries))
     hook hold
       save tried, try-idempotent(wire, target, init, attempt, retries)
-      # a finished try holds its answer, a failed one what it raised: each a maybe, sifted
+      # a finished try holds its answer, a failed one what it raised (try-idempotent raised the last try's again)
       save answer, tried/answer
       sift answer
         case some
@@ -1469,20 +1467,11 @@ task send-idempotent
           back answered
         case none
           save unanswered, 0
-      save problem, tried/problem
-      sift problem
-        case some
-          link raised
-          fork test, or(is-oci-failure(raised), is-equal(attempt, retries))
-            hold
-              wire-raise-again(raised)
-          save last, raised
+      fork test, tried/failed
+        hold
           sleep(wire-backoff(attempt, <>))
-        case none
-          save unraised, 0
       save attempt, add(attempt, 1)
-  wire-raise-again(last)
-  # never reached: the last try answers or raises again above
+  # reached only with no try made (retries below 0): the last try answers or raises again above
   halt <{init/method} {target}: no try was made>
 
 task repo-path
@@ -1667,6 +1656,8 @@ task wire-get-blob
 task try-upload
   take wire, like wire-state
   take asked, like blob-upload
+  take attempt, like number
+  take retries, like number
   like upload-try
   mark private
 
@@ -1676,6 +1667,12 @@ task try-upload
     back make(upload-try, bind(finished, true), bind(outcome, make(some, outcome)))
   halt take
     take problem
+    # a 4xx other than 429 is an answer, not a hiccup, and the last try's failure is the one the upload ends with: each
+    # raised again
+    save status, oci-failure-status(problem)
+    fork test, or(and(not(is-below(status, 0)), and(is-below(status, 500), not(is-equal(status, 429)))), not(is-below(attempt, retries)))
+      hold
+        halt kink, problem
     back make(upload-try, bind(finished, false), bind(problem, make(some, problem)))
 
 task wire-put-blob
@@ -1694,12 +1691,12 @@ task wire-put-blob
       back <present>
 
   save retries, wire/retries
-  save last, wire-nothing()
   save attempt, 0
   walk test
     hook test, not(is-above(attempt, retries))
     hook hold
-      save tried, try-upload(wire, asked)
+      # a finished try holds its outcome, a failed one is tried again (try-upload raised an answer or the last try's)
+      save tried, try-upload(wire, asked, attempt, retries)
       save outcome, tried/outcome
       sift outcome
         case some
@@ -1707,24 +1704,10 @@ task wire-put-blob
           back answered
         case none
           save unanswered, 0
-      save problem, tried/problem
-      sift problem
-        case some
-          link raised
-          save last, raised
-        case none
-          save unraised, 0
-      # a 4xx other than 429 is an answer, not a hiccup
-      save status, oci-failure-status(last)
-      fork test, and(not(is-below(status, 0)), and(is-below(status, 500), not(is-equal(status, 429))))
-        hold
-          wire-raise-again(last)
-      fork test, is-below(attempt, retries)
-        hold
-          sleep(wire-backoff(attempt, <>))
+      sleep(wire-backoff(attempt, <>))
       save attempt, add(attempt, 1)
-  wire-raise-again(last)
-  back <>
+  # reached only with no try made (retries below 0): the last try answers or raises again above
+  halt <PUT blob {digest}: no try was made>
 
 # a manifest by tag or digest, verified against the digest when one was asked for, or none on 404
 task wire-get-manifest

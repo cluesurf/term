@@ -75,13 +75,6 @@ bind text-or-empty
   case node
     text <(typeof $value === "string" ? $value : "")>
 
-# a caught failure, raised again as it was
-bind raise-again
-  take problem, like dynamic
-  like void
-  case node
-    text <(() =\> \{ throw $problem \})()>
-
 # the epoch milliseconds now, `Date.now()`
 bind now-ms
   like number

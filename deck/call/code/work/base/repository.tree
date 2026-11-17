@@ -348,12 +348,6 @@ bind repo-awaited
   case node
     text <(await $promise)>
 
-bind repo-rethrow
-  take error, like dynamic
-  like void
-  case node
-    text <((problem) =\> \{ throw problem \})($error)>
-
 # ---- the records the output library and the repository take ----
 
 form open-plain
@@ -1350,16 +1344,11 @@ task call-base-project
     hold
       refuse(<--repository must be a uuid version 4>, make(refusal-message-fields, bind(message, one-text(<A projection's bookkeeping is keyed by one.>)), bind(fields, one-dynamic(field(<gave>, repository)))))
   save pool, open-postgres(into)
-  save failed, false
-  save problem, repo-nothing()
   fork
     mark unsafe
     apply-projection(pool, repo, <{repository}>, mapping, forms, at)
   halt take
     take error
-    save failed, true
-    save problem, error
+    repo-awaited(pool/end())
+    halt kink, error
   repo-awaited(pool/end())
-  fork test, failed
-    hold
-      repo-rethrow(problem)

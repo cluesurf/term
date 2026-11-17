@@ -327,12 +327,6 @@ bind setup-message
   case node
     text <$problem.message>
 
-bind loop-raise-again
-  take problem, like dynamic
-  like void
-  case node
-    text <<(() => { throw $problem })()>>
-
 bind round-seconds
   take seconds, like float
   like float
@@ -983,7 +977,7 @@ task call-knit
         fields/push field(<next>, setup-next(problem))
         report(make(setup-say, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, setup-message(problem)), bind(fields, fields)))
         host-process/exit(close-run(make(close-say, bind(verdict, <The loop did not start>), bind(failure, <environment>))))
-    loop-raise-again(problem)
+    halt kink, problem
 
   sift made
     case some

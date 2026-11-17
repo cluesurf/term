@@ -1,0 +1,346 @@
+note <the daemon analyzes a document warm over HTTP, reports and clears a type error, refuses a private load, reads an unsaved file through another document, keeps writing its store after a reclaim, and drops a closed document>
+
+# Ported from daemon.ts by statement (item term-self-host-001-0667, decision 116: the original's body is one async main,
+# T-0599), one test per `ok` in its order. The real daemon (deck/call/code/dev/daemon.ts `startDaemon`, the subject,
+# decision 106) starts on this project's root and is asked over real HTTP, then a second one on a probe project in a
+# temporary folder. The whole session runs on a store of its own: TERM_CACHE_HOME is a temporary folder while it runs,
+# and put back after. The original asked in one order, so the first test runs that one session and keeps what it saw,
+# and each test reads its part. Each daemon listens on a port drawn below every ephemeral range (T-1595), where the
+# original's were fixed.
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find any-field-holding
+  find any-with
+
+load @term/base/environment
+  find directory, name working-directory
+  find variable, name variable-of
+  find has-variable
+  find set-variable
+  find remove-variable
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/create
+  find make-folder
+
+load @term/base/file/directory
+  find exists, name folder-exists
+  find walk, name walk-folder
+
+load @term/base/file/remove
+  find remove-all
+
+load @term/base/json
+  find make-object
+  find set-field
+  find from-text
+  find from-boolean
+  find stringify
+
+load @term/base/random
+  find integer, name draw-integer
+
+dock load
+  load <@term/call/code/dev/daemon>, name dev-daemon
+  load <node:timers/promises>, name daemon-timers
+
+host caller-source, <task caller\n  like number\n  send back\n    call helper\n      code 5\n>
+host helper-ok, <task helper\n  take n, like number\n  like number\n  send back\n    read n\n>
+host helper-bad, <task helper\n  take n, like number\n  like number\n  send back\n    text \<oops\>\n>
+host probe-deck, <deck @probe/daemon\n  mark \<0.0.1\>\n>
+host secret-source, <task scale\n  mark private\n  take n, like number\n  like number\n  back multiply(n, 3)\n>
+host reach-source, <load ./secret\n  find scale\n\ntask tripled\n  like number\n\n  back scale(4)\n>
+host edited-source, <load ./secret\n  find scale\n\ntask tripled\n  like number\n\n  back scale(5)\n>
+host drafted-source, <task drafted\n  like number\n  send back, code 7\n>
+host user-source, <load ./draft\n  find drafted\n\ntask used\n  like number\n  send back\n    call drafted\n>
+host later-source, <load ./later\n  find drafted\n\ntask used-later\n  like number\n  send back\n    call drafted\n>
+
+# what startDaemon takes
+form daemon-options
+  link root, like text
+  link port, like number
+  link env, like text
+
+# one answer of a POST: its status and its JSON
+form daemon-answer
+  link status, like number
+  link json, like dynamic
+
+# what the one session saw, in the original's order
+form daemon-seen
+  mark shared
+  link made, like boolean
+  link clean-status, like number
+  link clean-count, like number
+  link warm-first, like number
+  link broken-expected, like boolean
+  link warm-edited, like number
+  link fixed-count, like number
+  link private-refused, like boolean
+  link unsaved-count, like number
+  link reading-count, like number
+  link closed-refused, like boolean
+  link reopened-count, like number
+  link missing-unresolved, like boolean
+  link found-count, like number
+  link units-before, like number
+  link units-after, like number
+  link bad-status, like number
+  link warm-closed, like number
+
+host daemon-now, make(daemon-seen, bind(made, false), bind(clean-status, -1), bind(clean-count, -1), bind(warm-first, -1), bind(broken-expected, false), bind(warm-edited, -1), bind(fixed-count, -1), bind(private-refused, false), bind(unsaved-count, -1), bind(reading-count, -1), bind(closed-refused, false), bind(reopened-count, -1), bind(missing-unresolved, false), bind(found-count, -1), bind(units-before, -1), bind(units-after, -1), bind(bad-status, -1), bind(warm-closed, -1))
+
+# host native: the response to a POST of a JSON text to `url`
+bind daemon-post
+  take url, like text
+  take body, like text
+  like dynamic
+  mark async
+  case node
+    text <<(await fetch($url, { method: "POST", headers: { "content-type": "application/json" }, body: $body }))>>
+
+# host native: a response's JSON
+bind daemon-json
+  take response, like dynamic
+  like dynamic
+  mark async
+  case node
+    text <(await $response.json())>
+
+# host native: the JSON a GET of `url` answers
+bind daemon-got
+  take url, like text
+  like dynamic
+  mark async
+  case node
+    text <(await (await fetch($url)).json())>
+
+# a POST of `body` to the daemon on `port`
+task post-to
+  take port, like number
+  take endpoint, like text
+  take body, like text
+  like daemon-answer
+  mark async
+
+  host response, daemon-post(<http://localhost:{port}{endpoint}>, body)
+  host json, daemon-json(response)
+  back make(daemon-answer, bind(status, response/status), bind(json, json))
+
+# `{ file, text }`, a question about one document
+task document-body
+  take document, like text
+  take source, like text
+  like text
+
+  host named, set-field(make-object(), <file>, from-text(document))
+  back stringify(set-field(named, <text>, from-text(source)))
+
+# `{ file }`, a document to close
+task close-body
+  take document, like text
+  like text
+
+  back stringify(set-field(make-object(), <file>, from-text(document)))
+
+task diagnostics-of
+  take answer, like daemon-answer
+  like dynamic
+
+  back answer/json/diagnostics
+
+task count-of
+  take answer, like daemon-answer
+  like number
+
+  host found, diagnostics-of(answer)
+  back found/length
+
+# true when a diagnostic is not a warning (one with no severity is not)
+task any-not-warning
+  take items, like dynamic
+  like boolean
+
+  walk items
+    take one, like dynamic
+    fork test, is-unequal(one/severity, <warning>)
+      hold
+        back true
+  back false
+
+# every file under a folder, counted, 0 for a folder that is not there
+task files-under
+  take folder, like text
+  like number
+
+  save count, 0
+  walk walk-folder(folder)
+    take one, like text
+    fork test, not(folder-exists(one))
+      hold
+        save count, add(count, 1)
+  back count
+
+# the one session: run once, read by every test
+task the-session
+  like daemon-seen
+  mark async
+
+  fork test, daemon-now/made
+    hold
+      back daemon-now
+  save daemon-now/made, true
+  host home, temp-folder(<term-daemon-home->)
+  host held, has-variable(<TERM_CACHE_HOME>)
+  host kept, variable-of(<TERM_CACHE_HOME>)
+  set-variable(<TERM_CACHE_HOME>, home)
+  host own-root, working-directory()
+  host port, draw-integer(20000, 32766)
+  host health, <http://localhost:{port}/health>
+  # a path: text is supplied per request, no disk read needed
+  host document, <{own-root}/daemon-doc.tree>
+  host daemon, dev-daemon/start-daemon(make(daemon-options, bind(root, own-root), bind(port, port), bind(env, <node>)))
+  wait daemon-timers/set-timeout(250)
+
+  # a clean document: no diagnostics, and the document is now warm
+  host clean, post-to(port, </analyze>, document-body(document, <{helper-ok}\n{caller-source}>))
+  save daemon-now/clean-status, clean/status
+  save daemon-now/clean-count, count-of(clean)
+  host first, daemon-got(health)
+  save daemon-now/warm-first, first/warm
+
+  # edit it to introduce a real type error: reported, still one warm document
+  host broken, post-to(port, </analyze>, document-body(document, <{helper-bad}\n{caller-source}>))
+  save daemon-now/broken-expected, any-field-holding(diagnostics-of(broken), <message>, <expected>)
+  host second, daemon-got(health)
+  save daemon-now/warm-edited, second/warm
+
+  # fix it again: clean
+  host fixed, post-to(port, </analyze>, document-body(document, <{helper-ok}\n{caller-source}>))
+  save daemon-now/fixed-count, count-of(fixed)
+
+  # the build's checks: a load of a `mark private` task from another file is refused, as `term make` refuses it
+  host project, temp-folder(<term-daemon->)
+  make-folder(<{project}/code>)
+  write-file(<{project}/deck.tree>, probe-deck)
+  write-file(<{project}/code/secret.tree>, secret-source)
+  write-file(<{project}/code/reach.tree>, reach-source)
+  host other, add(port, 1)
+  host private-daemon, dev-daemon/start-daemon(make(daemon-options, bind(root, project), bind(port, other), bind(env, <node>)))
+  wait daemon-timers/set-timeout(250)
+  host answer, post-to(other, </analyze>, document-body(<code/reach.tree>, reach-source))
+  save daemon-now/private-refused, any-field-holding(diagnostics-of(answer), <message>, <mark private>)
+
+  # an unsaved file is the overlay's: read by another document's load until the client closes it
+  write-file(<{project}/code/user.tree>, user-source)
+  host unsaved, post-to(other, </analyze>, document-body(<code/draft.tree>, drafted-source))
+  save daemon-now/unsaved-count, count-of(unsaved)
+  host reading, post-to(other, </analyze>, document-body(<code/user.tree>, user-source))
+  save daemon-now/reading-count, count-of(reading)
+  post-to(other, </close>, close-body(<code/draft.tree>))
+  host closed, post-to(other, </analyze>, document-body(<code/user.tree>, user-source))
+  save daemon-now/closed-refused, any-not-warning(diagnostics-of(closed))
+  # and opened again after a load of it found nothing
+  post-to(other, </analyze>, document-body(<code/draft.tree>, drafted-source))
+  host reopened, post-to(other, </analyze>, document-body(<code/user.tree>, user-source))
+  save daemon-now/reopened-count, count-of(reopened)
+  # a load that found nothing, and then the file it names opened unsaved
+  write-file(<{project}/code/later-user.tree>, later-source)
+  host missing, post-to(other, </analyze>, document-body(<code/later-user.tree>, later-source))
+  save daemon-now/missing-unresolved, any-with(diagnostics-of(missing), <name>, <unresolved-load>)
+  post-to(other, </analyze>, document-body(<code/later.tree>, drafted-source))
+  host found, post-to(other, </analyze>, document-body(<code/later-user.tree>, later-source))
+  save daemon-now/found-count, count-of(found)
+
+  # the store outlives a reclaim: the unit namespace removed while the daemon runs, its next build lands again
+  host units, <{home}/unit>
+  save daemon-now/units-before, files-under(units)
+  remove-all(units)
+  write-file(<{project}/code/reach.tree>, edited-source)
+  post-to(other, </analyze>, document-body(<code/reach.tree>, edited-source))
+  save daemon-now/units-after, files-under(units)
+  private-daemon/close()
+
+  # a malformed request, then closing the document drops its warm state
+  host bad, post-to(port, </analyze>, stringify(set-field(make-object(), <nope>, from-boolean(true))))
+  save daemon-now/bad-status, bad/status
+  post-to(port, </close>, close-body(document))
+  host third, daemon-got(health)
+  save daemon-now/warm-closed, third/warm
+  daemon/close()
+  fork test, held
+    hold
+      set-variable(<TERM_CACHE_HOME>, kept)
+    miss
+      remove-variable(<TERM_CACHE_HOME>)
+  back daemon-now
+
+test <daemon analyzes a clean document (no diagnostics)>
+  host seen, the-session()
+  want hold, is-equal(seen/clean-status, 200)
+  want hold, is-equal(seen/clean-count, 0)
+
+test <the document is kept warm>
+  host seen, the-session()
+  want hold, is-equal(seen/warm-first, 1)
+
+test <daemon reports a real type error after an edit>
+  host seen, the-session()
+  want hold, seen/broken-expected
+
+test <still one warm document after the edit>
+  host seen, the-session()
+  want hold, is-equal(seen/warm-edited, 1)
+
+test <daemon clears the error when fixed>
+  host seen, the-session()
+  want hold, is-equal(seen/fixed-count, 0)
+
+test <daemon refuses a private task loaded from another file, as term make does>
+  host seen, the-session()
+  want hold, seen/private-refused
+
+test <an unsaved file builds>
+  host seen, the-session()
+  want hold, is-equal(seen/unsaved-count, 0)
+
+test <another document's load reads the unsaved file>
+  host seen, the-session()
+  want hold, is-equal(seen/reading-count, 0)
+
+test <once the unsaved file is closed, the load finds nothing (its overlay entry dropped)>
+  host seen, the-session()
+  want hold, seen/closed-refused
+
+test <an unsaved file opened again after it was closed is read>
+  host seen, the-session()
+  want hold, is-equal(seen/reopened-count, 0)
+
+test <a load of a file nobody holds finds nothing>
+  host seen, the-session()
+  want hold, seen/missing-unresolved
+
+test <once that file is opened unsaved, the same text reads it>
+  host seen, the-session()
+  want hold, is-equal(seen/found-count, 0)
+
+test <the daemon writes its units to the machine store>
+  host seen, the-session()
+  want hold, is-above(seen/units-before, 0)
+
+test <after the namespace is removed while the daemon runs, its next build is written again>
+  host seen, the-session()
+  want hold, is-above(seen/units-after, 0)
+
+test <daemon rejects a malformed request>
+  host seen, the-session()
+  want hold, is-equal(seen/bad-status, 400)
+
+test <closing a document drops its warm state>
+  host seen, the-session()
+  want hold, is-equal(seen/warm-closed, 0)

@@ -54,10 +54,6 @@ dock load
   load <node:path>, name node-path
   load <node:crypto>, name node-crypto
 
-form install-try
-  link failed, like boolean
-  link problem, like dynamic
-
 bind install-nothing
   like dynamic
   case node
@@ -100,12 +96,6 @@ bind install-list
   like dynamic
   case node
     text <[]>
-
-bind install-raise-again
-  take problem, like dynamic
-  like void
-  case node
-    text <(() =\> \{ throw $problem \})()>
 
 bind install-list-tags
   take transport, like dynamic
@@ -350,14 +340,14 @@ task read-oci-version
 
   back install-version(fetched, manifest, config, config-bytes, trust)
 
-# the unpacked files written into `staging`, the marker last, then `staging` renamed onto `dest`. What it raised is
-# handed back, so the caller removes the staging folder before raising it again
+# the unpacked files written into `staging`, the marker last, then `staging` renamed onto `dest`. On a failure the
+# staging folder is removed before the failure is raised again
 task try-install
   take entries, like dynamic
   take digest, like text
   take staging, like text
   take dest, like text
-  like install-try
+  like void
   mark private
 
   fork
@@ -367,10 +357,10 @@ task try-install
     wait install-mkdir-parent(fs-promise, node-path, dest)
     wait install-remove(fs-promise, dest)
     wait install-rename(fs-promise, staging, dest)
-    back make(install-try, bind(failed, false), bind(problem, install-nothing()))
   halt take
     take problem
-    back make(install-try, bind(failed, true), bind(problem, problem))
+    wait install-remove-quietly(fs-promise, staging)
+    halt kink, problem
 
 # A verified version (read-oci-version's answer) unpacked at `dest`. Skipped, with nothing fetched, when `dest` holds a
 # marker reading the version's manifest digest exactly. Otherwise the one archive layer is fetched under the archive
@@ -409,11 +399,7 @@ task install-oci-version
   save entries, unpack-archive(archive-bytes, install-field(limits, <unpacked>))
 
   save staging, install-staging(node-crypto, dest)
-  save tried, try-install(entries, digest, staging, dest)
-  fork test, tried/failed
-    hold
-      wait install-remove-quietly(fs-promise, staging)
-      install-raise-again(tried/problem)
+  try-install(entries, digest, staging, dest)
 
   # keep what an offline install reads: the config, the archive and the tagged manifest
   fork test, install-truthy(cache)

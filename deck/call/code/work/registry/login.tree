@@ -239,12 +239,6 @@ bind close-server
   case node
     text <($server.close(), $server.closeAllConnections())>
 
-bind rethrow
-  take error, like dynamic
-  like void
-  case node
-    text <(() =\> \{ throw $error \})()>
-
 bind ignore-answer
   like dynamic
   case node
@@ -692,19 +686,14 @@ task call-bind
   save state, base64url(node-crypto/random-bytes(24))
   save open, listen(state)
   save redirect, <http://127.0.0.1:{open/port}/>
-  save thrown, nothing()
-  save failed, false
   fork
     mark unsafe
     log-in(base, verifier, challenge, state, redirect, open)
   halt take
     take error
-    save failed, true
-    save thrown, error
+    close-listener(open)
+    halt kink, error
   close-listener(open)
-  fork test, failed
-    hold
-      rethrow(thrown)
 
 # the parts of a path under a home, as home.ts took them as arguments (`userHome('code', version)`): each given one,
 # in order. An empty part is left out, as one `join` of them all leaves it out

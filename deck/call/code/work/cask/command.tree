@@ -27,7 +27,6 @@ load ./host-value
   find has-key
   find is-absent
   find text-or-empty
-  find raise-again
   find now-ms
   find refuse
 
@@ -911,7 +910,7 @@ task work-cask
     take problem
     watch/close()
     server/close()
-    raise-again(problem)
+    halt kink, problem
   watch/close()
   server/close()
 
