@@ -1,0 +1,379 @@
+note <a real Android app taking an over-the-air update on the emulator>
+
+# Ported from update-app-android.ts by statement (item 0701). deck/call/code/cask.ts and update.ts are the subjects
+# (decision 106). The update app (deck/cask/test/update) is built as an APK with kotlinc and d8, its runtime version and
+# update key in its assets, installed on the emulator, launched, updated, launched again (native-dom-0023). The same
+# witness as ./update-app: the exit status the cask logs is decided by which page's code ran inside the WebView, 11 for
+# the shipped page and 12 for the update.
+#
+# The emulator cannot read this machine's files, so the published update is served over HTTP by @term/base's server in
+# this process, on the port the OS bound (port 0, item 1326, never a fixed one: T-1595), reached from the emulator
+# through `adb reverse`. Every file the publish wrote is read once into the server's table before the first launch,
+# byte for byte (make-bytes), and anything else is a 404. Every test skips, with the reason, when no device is online
+# or the Android SDK is not there (test/support/device/android-log `android-device`), where the original printed one
+# skip. The app runs once, from the first test that asks, and each test reads the step it names. A raise in a step ends
+# the run where it stood, and the steps after it fail, as the original's catch did.
+
+load ../support/device/android-log
+  find android-device
+  find android-found
+
+load ../support/device/hold
+  find hold-device
+  find release-device
+  find device-held
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/clock
+  find sleep
+
+load @term/base/time
+  find now, name epoch-now
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find substring
+
+load @term/base/hash
+  find hash
+  find get, name hash-get
+  find set, name hash-set
+
+load @term/base/maybe
+  find some
+  find none
+
+load @term/base/pattern
+  find pattern
+  find find-match
+  find match-group
+  find pattern-match
+
+load @term/base/network/server
+  find start
+  find stop
+  find server
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-bytes
+  find make-status
+
+load @term/base/file
+  find read-bytes
+
+load @term/base/file/directory
+  find make, name make-folder
+  find walk, name folder-walk
+  find exists, name folder-exists
+
+dock load
+  load <@term/call/code/cask>, name android-cask
+  load <@term/call/code/update>, name android-publish
+  load <node:path>, name android-path
+
+form android-page-input
+  link root, like text
+  link page, like text
+  link entry, like text
+  link into, like text
+  link title, like text
+  link work, like text
+
+form android-program-input
+  link root, like text
+  link entry, like text
+  link identifier, like text
+  link driver, like text
+  link work, like text
+
+form android-stamp-input
+  link target, like text
+  link native, like text
+  link into, like text
+
+form android-key-input
+  link identifier, like text
+  link into, like text
+  link key-file, like text
+
+form android-apk-input
+  link out, like text
+  link name, like text
+  link identifier, like text
+  link version, like text
+  link dex, like text
+  link assets, like text
+  link work, like text
+
+form android-publish-input
+  link page, like text
+  link out, like text
+  link identifier, like text
+  link platform, like text
+  link runtime-version, like text
+  link channel, like text
+  link key-file, like text
+
+# what each step left: the status each launch read from the cask's log, <> when none came in its minute
+form android-run
+  mark shared
+  link done, like boolean
+  link missing, like text
+  link apk, like text
+  link hex, like text
+  link platform, like text
+  link installed, like number
+  link first, like text
+  link second, like text
+  link third, like text
+  link raised, like text
+
+host now, make(android-run, bind(done, false), bind(missing, <>), bind(apk, <>), bind(hex, <>), bind(platform, <>), bind(installed, -1), bind(first, <>), bind(second, <>), bind(third, <>), bind(raised, <>))
+
+# the files the update server answers, by the path a request names
+form android-served
+  mark shared
+  link files
+    like hash, like text, like bytes
+
+host served, make(android-served, bind(files, make hash))
+
+host identifier, <surf.term.updateandroid>
+host entry, <import \{ boot \} from './app'\nboot()\n>
+
+# host value: the platform the published manifest names
+bind manifest-platform
+  take published, like dynamic
+  like text
+  case node
+    text <String($published?.manifest?.metadata?.platform ?? "")>
+
+# host value: a field of the program the Android build answered
+bind program-field
+  take program, like dynamic
+  take field, like text
+  like text
+  case node
+    text <String($program?.[$field] ?? "")>
+
+# host reflect: the message a raise carries, as text
+bind raised-words
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause instanceof Error ? $cause.message : $cause).slice(0, 1200)>
+
+# a request for a file the publish wrote is its bytes, anything else a 404
+task serve-file
+  take req, like request
+  like response
+
+  sift hash-get(served/files, req/path)
+    case some
+      link value
+      back make-bytes(value)
+    case none
+      back make-status(404)
+
+# every file under `root` into the server's table, by its path below `root`
+task load-served
+  take root, like text
+  like void
+  mark async
+
+  walk folder-walk(root)
+    take file, like text
+    fork test, not(folder-exists(file))
+      hold
+        hash-set(served/files, substring(file, root/length), read-bytes(file))
+
+# adb on the found device: `-s <serial>`, then the words
+task adb
+  take found, like android-found
+  take words, like list, like text
+  like text
+  mark async
+
+  save given, make list(<-s>, found/serial)
+  walk words
+    take word, like text
+    given/push(word)
+  save said, run(found/adb, given)
+  back said/output
+
+# the exit status the cask's log says, <> when it says none
+task exit-said
+  take log, like text
+  like text
+
+  sift find-match(make(pattern, <<cask exit (\d+)>>), log)
+    case some
+      link value
+      back group-text(value)
+    case none
+      back <>
+
+# a match's first group, the empty text when it took no part
+task group-text
+  take found, like pattern-match
+  like text
+
+  sift match-group(found, 1)
+    case some
+      link value
+      back value
+    case none
+      back <>
+
+# launch, and read the status the page left with from the cask's log, for at most a minute
+task launch
+  take found, like android-found
+  like text
+  mark async
+
+  adb(found, make list(<logcat>, <-c>))
+  adb(found, make list(<shell>, <am>, <start>, <-W>, <-n>, <{identifier}/.TermActivity>))
+  save deadline, add(epoch-now(), 60000)
+  save status, <>
+  walk test
+    hook test, and(is-equal(status, <>), is-below(epoch-now(), deadline))
+    hook hold
+      save status, exit-said(adb(found, make list(<logcat>, <-d>, <-s>, <cask:I>)))
+      fork test, is-equal(status, <>)
+        hold
+          sleep(1000)
+  back status
+
+# the device held from the first adb call to the last (D017): the reverse, the install and the three launches
+task on-device
+  take found, like android-found
+  take port, like number
+  like void
+  mark async
+
+  save held, hold-device(<emulator>, <update-app-android>)
+  fork
+    mark unsafe
+    adb(found, make list(<reverse>, <tcp:{port}>, <tcp:{port}>))
+    adb(found, make list(<uninstall>, identifier))
+    save installed, run(found/adb, make list(<-s>, found/serial, <install>, <-r>, now/apk))
+    save now/installed, installed/code
+    save now/first, launch(found)
+    save now/second, launch(found)
+    save now/third, launch(found)
+    adb(found, make list(<reverse>, <--remove>, <tcp:{port}>))
+  halt take
+    take cause
+    save now/raised, raised-words(cause)
+  release-device(held)
+
+# the app built, its update published and served, and the device asked
+task run-steps
+  take found, like android-found
+  take running, like server
+  like void
+  mark async
+
+  save root, term-root()
+  save cask-root, android-path/join(root, <deck/cask>)
+  save app, android-path/join(cask-root, <test/update>)
+  save dir, temp-folder(<term-update-android->)
+  save key-file, android-path/join(dir, <key.pem>)
+  save out, android-path/join(dir, <served>)
+  save work, android-path/join(dir, <work>)
+  save assets, android-path/join(work, <assets>)
+  make-folder(assets)
+  wait android-cask/build-page(make(android-page-input, bind(root, root), bind(page, android-path/join(app, <page.tree>)), bind(entry, entry), bind(into, android-path/join(assets, <webview>)), bind(title, <Term update>), bind(work, android-path/join(work, <page>))))
+  # the app's own files directory as its resources, the update server through adb reverse
+  save driver, android-cask/cask-android-driver(<boot(cask.bundlePath(), "http://localhost:{running/port}")>)
+  save program, android-cask/build-android-program(make(android-program-input, bind(root, cask-root), bind(entry, android-path/join(app, <main.tree>)), bind(identifier, identifier), bind(driver, driver), bind(work, work)))
+  save version, android-cask/stamp-runtime-version(make(android-stamp-input, bind(target, <android>), bind(native, program-field(program, <native>)), bind(into, assets)))
+  android-publish/stamp-update-key(make(android-key-input, bind(identifier, identifier), bind(into, assets), bind(key-file, key-file)))
+  save now/apk, android-cask/assemble-apk(make(android-apk-input, bind(out, work), bind(name, <TermUpdate>), bind(identifier, identifier), bind(version, <0.0.2>), bind(dex, program-field(program, <dex>)), bind(assets, assets), bind(work, work)))
+  save now/hex, version/hex
+  save next, android-path/join(dir, <next>)
+  wait android-cask/build-page(make(android-page-input, bind(root, root), bind(page, android-path/join(app, <page-next.tree>)), bind(entry, entry), bind(into, next), bind(title, <Term update>), bind(work, android-path/join(work, <next>))))
+  save published, android-publish/publish-update(make(android-publish-input, bind(page, next), bind(out, out), bind(identifier, identifier), bind(platform, <android>), bind(runtime-version, version/hex), bind(channel, <main>), bind(key-file, key-file)))
+  save now/platform, manifest-platform(published)
+  load-served(out)
+  on-device(found, running/port)
+
+# the run, made once: the device looked for first, the server up on a free port for the whole run, stopped after
+task the-run
+  like android-run
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save now/done, true
+  save found, android-device()
+  fork test, is-unequal(found/missing, <>)
+    hold
+      save now/missing, found/missing
+      back now
+  save running, start(0, <127.0.0.1>, serve-file)
+  fork
+    mark unsafe
+    run-steps(found, running)
+  halt take
+    take cause
+    save now/raised, raised-words(cause)
+  stop(running)
+  back now
+
+test <the APK builds with its runtime version and update key>
+  save ran, the-run()
+  fork test, is-unequal(ran/missing, <>)
+    hold
+      skip <{ran/missing}>
+  want hold, is-equal(ran/hex/length, 64)
+
+test <the update is published for android>
+  save ran, the-run()
+  fork test, is-unequal(ran/missing, <>)
+    hold
+      skip <{ran/missing}>
+  want hold, is-equal(ran/platform, <android>)
+
+test <the APK installs>
+  save ran, the-run()
+  fork test, is-unequal(ran/missing, <>)
+    hold
+      skip <{ran/missing}>
+  want hold, is-equal(ran/installed, 0)
+
+test <the first launch runs the shipped page>
+  save ran, the-run()
+  fork test, is-unequal(ran/missing, <>)
+    hold
+      skip <{ran/missing}>
+  want hold, is-equal(ran/first, <11>)
+
+test <the second launch runs the update>
+  save ran, the-run()
+  fork test, is-unequal(ran/missing, <>)
+    hold
+      skip <{ran/missing}>
+  want hold, is-equal(ran/second, <12>)
+
+test <and keeps running it>
+  save ran, the-run()
+  fork test, is-unequal(ran/missing, <>)
+    hold
+      skip <{ran/missing}>
+  want hold, is-equal(ran/third, <12>)

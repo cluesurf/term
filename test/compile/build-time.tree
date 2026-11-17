@@ -1,0 +1,138 @@
+note <the build cache still works: a warm `term make` of a copy of the stdlib is at least 1.2 times as fast as a cold one>
+
+# Ported from build-time.ts by statement (item 0688). A ratio, never a clock: seconds are the machine's, and what a
+# regression breaks is the CACHE (a key that stops matching, an entry that stops being written), which shows as warm
+# coming near cold on any machine. 1.48 was measured when the original was written, and a cache that stopped working
+# entirely sits at 1.0.
+#
+# It builds a COPY of the stdlib in a temporary folder, with TERM_CACHE_HOME a fresh folder inside it, so both cache
+# levels start empty and nothing the user owns is touched. The copy IS the stdlib for its build (TERM_STDLIB), by its
+# real path: the temporary folder may be reached through a link, and the build walks the real one.
+#
+# The compiler must hold still between the two builds: the cache's version is a fingerprint of the compiler's source
+# files on disk (path, size and change time), so an edit between them makes the warm build cold by design. The same
+# inputs are read before the cold build and after the warm one, an attempt they differ across is tried again on a
+# fresh copy, and when the compiler moved in each of three attempts the test skips.
+
+load ../support/temp
+  find temp-folder
+
+load ../support/cli
+  find term-root
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find walk, name folder-walk
+
+load @term/base/file/blocking
+  find stat, name path-stat-of
+  find resolve-real
+
+load @term/base/text
+  find ends-with
+
+load @term/base/time
+  find now, name epoch-now
+
+load @term/base/list
+  find push
+
+# the two builds, measured in milliseconds, or why no warm build could be measured
+form build-measure
+  link measured, like boolean
+  link cold, like number
+  link warm, like number
+  link said, like text
+
+# the inputs the cache's version reads: every .ts file of the compiler, by path, size and change time
+task compiler-fingerprint
+  like text
+
+  save root, term-root()
+  save folders, make list(<deck/make/code>, <deck/call/code>)
+  save parts, make list
+  walk folders
+    take folder, like text
+    walk folder-walk(<{root}/{folder}>)
+      take file, like text
+      fork test, ends-with(file, <.ts>)
+        hold
+          save at, path-stat-of(file)
+          parts/push(<{file}:{at/size}:{at/changed}>)
+  back parts/join(<\n>)
+
+# a throwaway copy of the stdlib, removed when the run ends
+task fresh-project
+  like text
+  mark async
+
+  save project, temp-folder(<term-buildtime->)
+  save copied, run(<cp>, make(list, <-R>, <{term-root()}/deck/base/code>, <{project}/code>))
+  fork test, is-unequal(copied/code, 0)
+    hold
+      halt <the stdlib could not be copied into {project}: {copied/error}>
+  write-file(<{project}/deck.tree>, <deck @term/base\n  code \<0.0.0\>\n>)
+  back project
+
+# one `term make` of the copy, its milliseconds. A build that fails ends the test
+task build
+  take project, like text
+  take cache-home, like text
+  like number
+  mark async
+
+  save environment
+    make hash
+      save <TERM_CACHE_HOME>, cache-home
+      save <TERM_STDLIB>, resolve-real(project)
+  save started, epoch-now()
+  save ran, run-self(make(list, <make>), bind(directory, project), bind(environment, environment))
+  fork test, is-unequal(ran/code, 0)
+    hold
+      halt <term make in {project} exited {ran/code}: {ran/error}>
+  back subtract(epoch-now(), started)
+
+# a cold build and a warm one, over at most three fresh copies, until the compiler held still across both
+task measured-builds
+  like build-measure
+  mark async
+
+  save out, make(build-measure, bind(measured, false), bind(cold, 0), bind(warm, 0), bind(said, <>))
+  save attempt, 1
+  walk test
+    hook test, and(is-maximum(attempt, 3), not(out/measured))
+    hook hold
+      save project, fresh-project()
+      save cache-home, <{project}/store>
+      save before, compiler-fingerprint()
+      save cold, build(project, cache-home)
+      save warm, build(project, cache-home)
+      fork test, is-equal(compiler-fingerprint(), before)
+        hold
+          save out/measured, true
+          save out/cold, cold
+          save out/warm, warm
+        miss
+          save out/said, <{out/said}attempt {attempt}: the compiler's source changed between the builds (cold {cold} ms, warm {warm} ms), so the warm build was cold by design\n>
+      save attempt, add(attempt, 1)
+  back out
+
+# cold over warm at least 1.2, in whole numbers: ten colds at least twelve warms, a warm of at least one millisecond
+test <a warm build of the stdlib is at least 1.2 times as fast as a cold one>
+  save out, measured-builds()
+  fork test, not(out/measured)
+    hold
+      skip <the compiler's source changed during each of 3 attempts, so no warm build could be measured>
+  save warm, out/warm
+  fork test, is-below(warm, 1)
+    hold
+      save warm, 1
+  want hold, is-minimum(multiply(out/cold, 10), multiply(warm, 12))

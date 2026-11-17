@@ -1,0 +1,262 @@
+note <the Rust device hosts: the clipboard, the battery, the network and open, read back from the platform>
+
+# Ported from device-rust.ts by statement (item 0688). One program compiled for the `rust` env through
+# test/support/running, built with rustc and run, each answer read back from the platform where it keeps one: the
+# clipboard by `pbpaste` (macOS), the battery against `pmset` or /sys/class/power_supply, an address nothing handles
+# answering `unavailable`. On a Mac it is the macOS branch of each runtime; the Linux branch runs on the work droplet
+# through the Rust cask (task/term/app-smoke.ts --app device --target linux).
+#
+# The program runs once, from the first test that asks, and each test reads what it left. The person's clipboard is
+# kept before the run and put back after it, a raise included. Without rustc every test skips, where the original
+# printed one skip, and when the program did not run every test after the first skips, where the original asserted
+# nothing more.
+
+load ../support/running
+  find run-text
+
+load ../support/compiling
+  find compile-choice
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-with-input
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-match
+  find match-group
+  find pattern-match
+
+load @term/base/maybe
+  find some
+  find none
+
+load @term/base/text
+  find split, name text-split
+  find trim
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/float
+  find absolute
+
+load @term/base/file
+  find read, name read-file
+
+load @term/base/file/directory
+  find list, name folder-list
+  find exists, name folder-exists
+
+dock load
+  load <global:process>, name device-process
+
+# a value, never a zero-argument boolean task, which term test would run as a test (T-0978)
+host on-mac, is-equal(device-process/platform, <darwin>)
+
+# what the run left: the program's six answers, the pasteboard after it, and the battery the platform reports
+form device-run
+  mark shared
+  link done, like boolean
+  link state, like text
+  link reason, like text
+  link token, like text
+  link wrote, like text
+  link held, like text
+  link battery, like text
+  link network, like text
+  link opened, like text
+  link heard, like text
+  link pasted, like text
+  link has-level, like boolean
+  link level, like float
+
+host now, make(device-run, bind(done, false), bind(state, <>), bind(reason, <>), bind(token, <term-rust-clipboard-{device-process/pid}>), bind(wrote, <>), bind(held, <>), bind(battery, <>), bind(network, <>), bind(opened, <>), bind(heard, <>), bind(pasted, <>), bind(has-level, false), bind(level, 0.0))
+
+# the device program, writing `token` to the clipboard and reading every host once
+task program-of
+  take token, like text
+  like text
+
+  back <load @term/site/view/clipboard\n  find read-clipboard\n  find write-clipboard\n\nload @term/site/view/battery\n  find battery-status\n  find watch-battery\n\nload @term/site/view/network\n  find network-status\n\nload @term/base/list\n  find push\n\nload @term/base/text/util\n  find join\n\nload @term/site/view/open\n  find open-address\n\ntask run\n  like text\n  save wrote\n    call write-clipboard\n      text \<{token}\>\n  save held\n    call read-clipboard\n  save battery\n    call battery-status\n  save network\n    call network-status\n  save opened\n    call open-address\n      text \<term-no-handler://nothing\>\n  save heard\n    make list\n  save drop\n    call watch-battery\n      task heard-battery\n        take value, like text\n        call push\n          bind list, read heard\n          bind item, read value\n  call drop\n  send back\n    text \<\{wrote\}|\{held\}|\{battery\}|\{network\}|\{opened\}|\{join(heard, \<,\>)\}\>\n>
+
+# the part of `parts` at `at`, the empty text past the end
+task part-at
+  take parts, like list, like text
+  take at, like number
+  like text
+
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+# the pasteboard's text on a Mac, the empty text elsewhere
+task pasteboard
+  like text
+  mark async
+
+  fork test, not(on-mac)
+    hold
+      back <>
+  back run(<pbpaste>, make(list))/output
+
+# the battery level `pmset` reports on a Mac, as a fraction
+task mac-level
+  like void
+  mark async
+
+  save said, run(<pmset>, make list(<-g>, <batt>))
+  save digits, percent-of(said/output)
+  fork test, is-unequal(digits, <>)
+    hold
+      save now/has-level, true
+      save now/level, divide(parse-float(digits), 100.0)
+
+# the digits before the first `%` of pmset's answer, the empty text when there are none
+task percent-of
+  take said, like text
+  like text
+
+  sift find-match(make(pattern, <<(\d+)%>>), said)
+    case some
+      link value
+      back group-text(value)
+    case none
+      back <>
+
+# a match's first group, the empty text when it took no part
+task group-text
+  take found, like pattern-match
+  like text
+
+  sift match-group(found, 1)
+    case some
+      link value
+      back value
+    case none
+      back <>
+
+# the battery level /sys/class/power_supply reports on Linux, as a fraction, none without a battery
+task linux-level
+  like void
+  mark async
+
+  save root, </sys/class/power_supply>
+  fork test, not(folder-exists(root))
+    hold
+      back
+  walk folder-list(root)
+    take one, like text
+    fork test, and(not(now/has-level), is-equal(trim(read-file(<{root}/{one}/type>)), <Battery>))
+      hold
+        save now/has-level, true
+        save now/level, divide(parse-float(trim(read-file(<{root}/{one}/capacity>))), 100.0)
+
+# the program built and run once, the clipboard kept before and put back after, whatever the run did
+task the-run
+  like device-run
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save now/done, true
+  save kept, pasteboard()
+  fork
+    mark unsafe
+    save folder, temp-folder(<device-rust->)
+    save ran, run-text(program-of(now/token), <rust>, folder, <device>, make(compile-choice, bind(project, <.>), bind(project-link, <.>)))
+    save now/state, ran/state
+    save now/reason, <{ran/stage}: {ran/reason}>
+    fork test, is-equal(ran/state, <ran>)
+      hold
+        save parts, text-split(ran/output, <|>)
+        save now/wrote, part-at(parts, 0)
+        save now/held, part-at(parts, 1)
+        save now/battery, part-at(parts, 2)
+        save now/network, part-at(parts, 3)
+        save now/opened, part-at(parts, 4)
+        save now/heard, part-at(parts, 5)
+        save now/pasted, pasteboard()
+  halt take
+    take cause
+    save now/state, <failed>
+    save now/reason, <the run raised>
+  fork test, on-mac
+    hold
+      run-with-input(<pbcopy>, make(list), kept)
+      mac-level()
+    miss
+      linux-level()
+  back now
+
+# whether the battery the program read agrees with the platform's: `unavailable` with no battery, else the level within
+# a hundredth and the shape `<level> <state>`
+task battery-agrees
+  take battery, like text
+  like boolean
+
+  fork test, not(now/has-level)
+    hold
+      back is-equal(battery, <unavailable>)
+  fork test, not(matches(make(pattern, <<^\d\.\d\d (charging|full|unplugged|unknown)$>>), battery))
+    hold
+      back false
+  back is-maximum(absolute(subtract(parse-float(text-split(battery, < >)/0), now/level)), 0.01)
+
+test <the device program builds and runs on Rust>
+  save ran, the-run()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <{ran/reason}>
+  want hold, is-equal(ran/state, <ran>)
+
+test <the clipboard takes the line and gives it back>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, and(is-equal(ran/wrote, <written>), is-equal(ran/held, ran/token))
+
+test <and the Mac's pasteboard holds it (pbpaste)>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  fork test, not(on-mac)
+    hold
+      skip <pbpaste is the Mac's>
+  want hold, is-equal(ran/pasted, ran/token)
+
+test <the battery agrees with the platform>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, battery-agrees(ran/battery)
+
+test <the network has a route out>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, is-equal(ran/network, <online other>)
+
+test <an address nothing handles is unavailable>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, is-equal(ran/opened, <unavailable>)
+
+test <the battery watcher hears the reading once>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, is-equal(ran/heard, ran/battery)
