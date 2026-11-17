@@ -296,7 +296,7 @@ task prepared
   save unpacked, run(<tar>, make(list,<-xzf>, with-stage0, <-C>, listed, <term/host/compile.mjs>))
   save boot-now/stage0-id, sha-of(<{listed}/term/host/compile.mjs>)
   save boot-now/server, start-oci-server()
-  save transport, http-transport(boot-now/server/host, tester-credentials, boot-nothing(), boot-nothing(), boot-nothing(), boot-nothing(), 0, boot-nothing())
+  save transport, http-transport(boot-now/server/host, tester-credentials, make(none), make(none), make(none), make(some, 0))
   save route, release-route(package-name, registry-env(<oci://{boot-now/server/host}/cluesurf/term>))
   save keypair, generate-keypair()
   save stranger, generate-keypair()

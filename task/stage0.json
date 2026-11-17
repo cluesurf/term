@@ -1,8 +1,8 @@
 {
-  "id": "813a355dc7865c65b4e58a9cc999dde214e3f78ab54793c22bcb85ec8dfa218e",
-  "pinned": "2026-11-16T03:53:39.601Z",
-  "head": "903edb484449a6a0b3b044b930a096d6072a337f",
-  "make_digest": "a0d75d0818211d02d0002e4ddaf0d1f4a10f5b065f9e3d96c4b93f9fcc494c78",
-  "sources_digest": "59eb3435b3d4ca2a9033c65fecdc001a159a088a4d9e77fa1f9a2775e3f8fb05",
-  "sources": 485
+  "id": "16cb3a3d5221bccedc9154f9c1f23c23558a431e2e5b2dfcf93f5a9ed17238e8",
+  "pinned": "2026-11-16T22:13:57.673Z",
+  "head": "df120c3df25568c2b83dda7dd520d94a62d6aa88",
+  "make_digest": "00220c01736c06877510ff547a10d7f3c28d4965b8001d6a4548bc0fb33d2e58",
+  "sources_digest": "643599d2d2cfefb6ae93cc70c60ee9d11e7f6da8b39f8dadd643fad4253f3073",
+  "sources": 498
 }

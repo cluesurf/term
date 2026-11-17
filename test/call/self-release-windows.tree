@@ -234,7 +234,7 @@ task the-windows
   save digest, sha256-digest(payload)
   save windows-now/digest, digest
   save server, start-oci-server()
-  save transport, http-transport(server/host, tester-credentials, windows-nothing(), windows-nothing(), windows-nothing(), windows-nothing(), 0, windows-nothing())
+  save transport, http-transport(server/host, tester-credentials, make(none), make(none), make(none), make(some, 0))
   save keypair, generate-keypair()
   ensure-publisher(transport, <cluesurf/term/name>, <@term>, keypair)
   walk make(list, version, next)

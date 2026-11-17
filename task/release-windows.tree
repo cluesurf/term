@@ -78,12 +78,29 @@ bind raise-error
   case node
     text <(() =\> \{ throw new Error($message) \})()>
 
-# one line of JSON on stdout, written through to the pipe before anything else runs
+# one line of JSON on stdout, written through to the pipe before anything else runs. A closed pipe (EPIPE) means the
+# release that started this step has ended: that is raised as one plain failure, so the work stops and the session
+# destroys the machine, never left as a crash
 bind say-line
   take said, like dynamic
   like void
   case node
-    text <<require("node:fs").writeSync(1, JSON.stringify($said) + "\n")>>
+    text <<(() => { try { require("node:fs").writeSync(1, JSON.stringify($said) + "\n") } catch (e_) { if (e_?.code === "EPIPE") { throw new Error("the release that started this step has ended (its pipe is closed)") } throw e_ } })()>>
+
+# the failure line, the last thing said: when the release has ended there is nobody to tell, so a closed pipe is let go
+bind say-last-line
+  take said, like dynamic
+  like void
+  case node
+    text <<(() => { try { require("node:fs").writeSync(1, JSON.stringify($said) + "\n") } catch (e_) { if (e_?.code !== "EPIPE") { throw e_ } } })()>>
+
+# the machine library's progress goes to stdout as notes. Once the release has ended, a note's write fails later, as
+# an 'error' event on stdout, which would end this process before the session destroys the machine: it is let go, and
+# the next say-line raises the failure instead
+bind let-closed-stdout-go
+  like void
+  case node
+    text <<(() => { process.stdout.on("error", (e_) => { if (e_?.code !== "EPIPE") { throw e_ } }) })()>>
 
 bind tools-said
   take text, like text
@@ -653,6 +670,7 @@ task release-on-windows
   like void
   save machines, text <>
   save loaded, false
+  call let-closed-stdout-go
   fork
     mark unsafe
     # with --early the stage is staged later (wait-staged), so only the two paths are asked for here
@@ -794,7 +812,7 @@ task release-on-windows
           call machine-redact
             read machines
             read message
-    call say-line
+    call say-last-line
       call failed-said
         read message
     call fail-exit

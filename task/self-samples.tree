@@ -570,12 +570,11 @@ task write-samples
     call http-transport
       read host
       call samples-credentials
-      call samples-nothing
-      call samples-nothing
-      call samples-nothing
-      call samples-nothing
-      code 0
-      call samples-nothing
+      make none
+      make none
+      make none
+      make some
+        bind value, code 0
   save keypair
     call generate-keypair
   call ensure-publisher
