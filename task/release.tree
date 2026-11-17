@@ -602,15 +602,21 @@ bind port-summary
   case node
     text <<((text_, ok_) => { const summary_ = /(\d+) built, (\d+) unchanged.*?(\d+) failed/.exec(text_); return { built: Number(summary_?.[1] ?? 0), unchanged: Number(summary_?.[2] ?? 0), failed: Number(summary_?.[3] ?? (ok_ ? 0 : 1)), lines: text_.split("\n").filter((line_) => line_.trim() !== "") } })($text, $ok)>>
 
-# the port build as a child the release watches while it runs (about 2.5 minutes, 2026-10-22): `--progress` makes it
-# write `progress <done> <total>` on stderr per module, handed to `told` as it comes. Every other line it writes is
-# kept, in order, for the quote under a failed item. Answers whether it exited 0, and its stdout then those lines
+# the port build as a child the release watches while it runs. It is make:port's own build, `--units` (decision 166 of
+# change 001-finish-self-host): a build without it writes every port whole under a schema 2 manifest, a layout no gate
+# tests (item 1609). It runs without the variables only the release has, as make:port does: NODE_ENV, which `term
+# boot` writes into this process, and the release's own TERM_MACHINE_MODULE, TERM_OCI_TOKEN and TERM_RELEASE_REGISTRY.
+# No compile reads one, and port-build's print hashes every TERM_ and NODE_ variable, so with them the release missed
+# make:line's units, built all 693 entries cold (1332 s) and dropped make:line's namespace (1609's probe). `--progress`
+# asks for `progress <done> <total>` on stderr per module, handed to `told` as it comes (the units build writes none
+# yet, so the step shows no count while it runs). Every other line it writes is kept, in order, for the quote under a
+# failed item. Answers whether it exited 0, and its stdout then those lines
 bind port-build-child
   take term, like text
   take told, like dynamic
   like dynamic
   case node
-    text <<new Promise((settle_) => { const child_ = require("node:child_process").spawn("pnpm", ["-s", "exec", "tsx", "task/port-build.ts", "--progress"], { cwd: $term, stdio: ["ignore", "pipe", "pipe"] }); const out_ = []; const errors_ = []; child_.stdout.on("data", (chunk_) => out_.push(chunk_.toString("utf8"))); const reading_ = (async () => { for await (const line_ of require("node:readline").createInterface({ input: child_.stderr })) { const said_ = /^progress (\d+) (\d+)$/.exec(line_); if (said_) { $told(Number(said_[1]), Number(said_[2])) } else { errors_.push(`${line_}\n`) } } })(); new Promise((resolve_) => { child_.on("error", () => resolve_(null)); child_.on("close", (code_) => resolve_(code_)) }).then(async (status_) => { await reading_; settle_({ ok: status_ === 0, text: `${out_.join("")}${errors_.join("")}` }) }) })>>
+    text <<new Promise((settle_) => { const child_ = require("node:child_process").spawn("pnpm", ["-s", "exec", "tsx", "task/port-build.ts", "--units", "--progress"], { cwd: $term, env: Object.fromEntries(Object.entries(process.env).filter(([name_]) => !["NODE_ENV", "TERM_MACHINE_MODULE", "TERM_OCI_TOKEN", "TERM_RELEASE_REGISTRY"].includes(name_))), stdio: ["ignore", "pipe", "pipe"] }); const out_ = []; const errors_ = []; child_.stdout.on("data", (chunk_) => out_.push(chunk_.toString("utf8"))); const reading_ = (async () => { for await (const line_ of require("node:readline").createInterface({ input: child_.stderr })) { const said_ = /^progress (\d+) (\d+)$/.exec(line_); if (said_) { $told(Number(said_[1]), Number(said_[2])) } else { errors_.push(`${line_}\n`) } } })(); new Promise((resolve_) => { child_.on("error", () => resolve_(null)); child_.on("close", (code_) => resolve_(code_)) }).then(async (status_) => { await reading_; settle_({ ok: status_ === 0, text: `${out_.join("")}${errors_.join("")}` }) }) })>>
 
 bind answer-ok
   take answer, like dynamic

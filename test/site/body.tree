@@ -1,0 +1,227 @@
+note <request bodies, form or JSON, fill the app's own form, answer through one writer, and a body that does not fit is a 400>
+
+# Ported from test/site/body.ts by statement (item term-self-host-001-0679), one test per ok in its order. Request
+# bodies, live (term-site-framework-0007): @term/site/http/body reads an `application/x-www-form-urlencoded` or JSON body
+# into Term data, the app fills its own form from it (`call fill / ... / like <form>`), answers JSON through one escaping
+# writer, and redirects after a post. A body that does not fit is a mismatch, which the funnel (`expose`,
+# http/tell.tree) answers 400. A small app is compiled against the real stdlib, @term/host and @term/site.
+#
+# The original imported the emitted app and called its tasks with requests it built. Here the app runs in a child
+# (run-text), with a driver that reads the requests from a file, each hex-encoded, asks the app's task, answers by the
+# funnel for whatever the task raised, and prints each answer hex-encoded. The project is this repository, where the
+# original linked the same three decks into a scratch project.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find split, name text-split
+  find starts-with
+
+load @term/base/text/hex
+  find encode-hex
+  find decode-hex
+
+load @term/base/json
+  find parse, name parse-json
+  find stringify, name stringify-json
+  find make-object
+  find set-field
+  find from-text
+  find field-text
+
+# the fixture the original compiled, as it wrote it
+host app, <load @term/site/code/http/http\n  find request\n  find response\n\nload @term/site/code/http/body\n  find read-body\n  find redirect\n  find answer-json\n\nload @term/site/code/http/tell\n  find expose\n\nload @term/host/code/base\n  find data\n\nform note-input\n  link title, like text\n  link body, like text\n\n# POST /notes as an API: the note back as JSON, 201\ntask post-note\n  take request, like request\n  like response\n  save note\n    call fill\n      call read-body(read request)\n      like note-input\n  send back\n    call answer-json\n      call melt\n        read note\n        like note-input\n      code 201\n\n# POST /notes from a page: fill, then 303 to the list\ntask submit-note\n  take request, like request\n  like response\n  save note\n    call fill\n      call read-body(read request)\n      like note-input\n  send back\n    call redirect\n      text \</notes\>\n>
+
+# the driver's loads, before the app
+host driver-loads, <load @term/base/file\n  find read, name read-ask-file\n\nload @term/base/text\n  find split\n\nload @term/base/text/hex\n  find encode-hex\n  find decode-hex\n\nload @term/base/list\n  find list\n  find get\n  find push\n  find join\n\nload @term/base/hash\n  find hash\n\n>
+
+# the driver's tasks, after the app, for the request file at `asks`: the funnel's answer for whatever the handler
+# raised, or the handler's own
+task driver-tasks
+  take asks, like text
+  like text
+
+  back <\n# the handler `which` names asked, or the funnel's answer for what it raised\ntask answer-of\n  take which, like text\n  take asked, like request\n  like response\n  fork\n    mark unsafe\n    fork test, is-equal(which, \<submit\>)\n      hold\n        back submit-note(asked)\n    back post-note(asked)\n  halt take\n    take problem\n    back expose(problem)\n\n# one record `which|type|body` (type and body hex) to its answer `status|content-type|location|body` (the last three hex)\ntask ask\n  take record, like text\n  like text\n  save fields, split(record, \<|\>)\n  save headers, make hash\n  headers/set(\<content-type\>, decode-hex(get(fields, 1)))\n  save asked, make(request, bind(method, \<POST\>), bind(path, \</notes\>), bind(body, decode-hex(get(fields, 2))), bind(headers, headers), bind(query, make hash))\n  save answer, answer-of(get(fields, 0), asked)\n  save type, answer/headers/get-or-default(\<content-type\>, \<\>)\n  save place, answer/headers/get-or-default(\<location\>, \<\>)\n  save shown, encode-hex(answer/body)\n  save parts, make list(\<\{answer/status\}\>, encode-hex(type), encode-hex(place), shown)\n  back join(parts, \<|\>)\n\n# the roll's own wake, which the original called on the module before any request: the funnel finds each exception\n# in the hive it wakes\nbind wake-roll\n  like void\n  case node\n    text \<wakeHive()\>\n\ntask run\n  mark async\n  like text\n  wake-roll()\n  save data, read-ask-file(\<{asks}\>)\n  save records, split(data, \<;\>)\n  save out, make list\n  walk list, read records\n    hook next\n      take site, name record\n      push(out, ask(record))\n  back join(out, \<;\>)\n>
+
+host form-type, <application/x-www-form-urlencoded>
+host json-type, <application/json; charset=utf-8>
+host title, <a "quoted" & \<b\>bold\</b\> été>
+host body, <line one\nline two\r\n'single' 100% + more>
+
+# a value as a browser writes it in a urlencoded body: `+` for a space, everything else percent-encoded
+# host native: encodeURIComponent is how the original built its fixture, and the reading of it is the subject
+bind form-encoded
+  take value, like text
+  like text
+  case node
+    text <encodeURIComponent($value).replace(/%20/g, '+')>
+
+# the note the bodies carry, as JSON text
+task want-json
+  like text
+
+  save note, make-object()
+  set-field(note, <title>, from-text(title))
+  set-field(note, <body>, from-text(body))
+  back stringify-json(note)
+
+task encoded
+  like text
+
+  back <title={form-encoded(title)}&body={form-encoded(body)}>
+
+# one answer of the app, read back
+form note-answer
+  link status, like text
+  link type, like text
+  link place, like text
+  link body, like text
+
+form body-state
+  mark shared
+  link ran, like ran-program
+  link answers, like list, like note-answer
+
+host state, make(body-state, bind(ran, make(ran-program, bind(state, <>))), bind(answers, make list))
+
+# how the original compiled the app: the project's decks, rolled, not shaken
+host choice, make(compile-choice, bind(file, <code/app.tree>), bind(project, <.>), bind(project-deck, true), bind(roll, true), bind(tree-shake, <false>))
+
+# one request record: the handler, the body's type and the body
+task ask-record
+  take which, like text
+  take type, like text
+  take text, like text
+  like text
+
+  back <{which}|{encode-hex(type)}|{encode-hex(text)}>
+
+# the nine requests, in the original's order, asked once
+task answers
+  mark async
+  like list, like note-answer
+
+  fork test, is-unequal(state/ran/state, <>)
+    hold
+      back state/answers
+  save asks, make list
+  asks/push(ask-record(<post>, form-type, encoded()))
+  asks/push(ask-record(<post>, json-type, want-json()))
+  asks/push(ask-record(<post>, form-type, <title=50%25+off+%zz&&body=>))
+  asks/push(ask-record(<submit>, form-type, encoded()))
+  asks/push(ask-record(<post>, form-type, <title=only>))
+  asks/push(ask-record(<post>, form-type, <{encoded()}&admin=true>))
+  asks/push(ask-record(<post>, json-type, <\{"title": "x", >))
+  asks/push(ask-record(<post>, json-type, <\{"title": 1, "body": "x"\}>))
+  asks/push(ask-record(<post>, <text/plain>, <title=x&body=y>))
+  save folder, temp-folder(<term-body->)
+  write-file(<{folder}/asks.txt>, asks/join(<;>))
+  save program, <{driver-loads}{app}{driver-tasks(<{folder}/asks.txt>)}>
+  save state/ran, run-text(program, <typescript>, folder, <body>, choice)
+  fork test, is-equal(state/ran/state, <ran>)
+    hold
+      walk text-split(state/ran/output, <;>)
+        take record, like text
+        save fields, text-split(record, <|>)
+        state/answers/push(make(note-answer, bind(status, fields/get(0)), bind(type, decode-hex(fields/get(1))), bind(place, decode-hex(fields/get(2))), bind(body, decode-hex(fields/get(3)))))
+  back state/answers
+
+# answer `n` of the nine, in the original's order
+task answer
+  mark async
+  take n, like number
+  like note-answer
+
+  save all, answers()
+  fork test, is-below(n, all/length)
+    hold
+      back all/get(n)
+  back make(note-answer, bind(status, <>), bind(type, <>), bind(place, <>), bind(body, <>))
+
+# the `case` the funnel wrote into an answer's JSON body, <> when the body is not JSON
+task case-of
+  take one, like note-answer
+  like text
+
+  fork
+    mark unsafe
+    back field-text(parse-json(one/body), <case>)
+  halt take
+    take cause
+    back <>
+
+# the body read back and written again, as the original compared it, <> when it is not JSON
+task round-trip
+  take one, like note-answer
+  like text
+
+  fork
+    mark unsafe
+    back stringify-json(parse-json(one/body))
+  halt take
+    take cause
+    back <>
+
+# a field of an answer's JSON body, <> when the body is not JSON
+task field-of
+  take one, like note-answer
+  take name, like text
+  like text
+
+  fork
+    mark unsafe
+    back field-text(parse-json(one/body), name)
+  halt take
+    take cause
+    back <>
+
+test <the app compiles>
+  want hold, compile-text(app, choice)/ok
+
+test <a urlencoded post answers 201>
+  host first, answer(0)
+  want hold, is-equal(state/ran/reason, <>)
+  want hold, is-equal(first/status, <201>)
+
+test <the answer is JSON by its header>
+  want hold, starts-with(answer(0)/type, <application/json>)
+
+test <quotes, newlines, ampersands and markup round trip through a form body>
+  want hold, is-equal(round-trip(answer(0)), want-json())
+
+test <the same values round trip through a JSON body>
+  want hold, and(is-equal(answer(1)/status, <201>), is-equal(answer(1)/body, answer(0)/body))
+
+test <an empty pair is skipped and a bare `%` stays>
+  host loose, answer(2)
+  want hold, and(is-equal(loose/status, <201>), and(is-equal(field-of(loose, <title>), <50% off %zz>), is-equal(field-of(loose, <body>), <>)))
+
+test <redirect after post: 303 to the list>
+  want hold, and(is-equal(answer(3)/status, <303>), is-equal(answer(3)/place, </notes>))
+
+test <a body missing a field is a mismatch, answered 400>
+  want hold, and(is-equal(answer(4)/status, <400>), is-equal(case-of(answer(4)), <mismatch>))
+
+test <a body with a field the form lacks is a mismatch, answered 400>
+  want hold, is-equal(answer(5)/status, <400>)
+
+test <a malformed JSON body is a mismatch, answered 400>
+  want hold, and(is-equal(answer(6)/status, <400>), is-equal(case-of(answer(6)), <mismatch>))
+
+test <a JSON field of the wrong kind is a mismatch, answered 400>
+  want hold, is-equal(answer(7)/status, <400>)
+
+test <a body of another type is an exclusion, answered 415>
+  want hold, and(is-equal(answer(8)/status, <415>), is-equal(case-of(answer(8)), <exclusion>))

@@ -1,0 +1,216 @@
+note <numbers and money by language equal node's Intl on every backend, but for the cases known.json names>
+
+# Ported from test/stdlib/text-format.ts by statement (item term-self-host-001-0681): its three oks per backend are three
+# walked tests, each backend a case. Numbers and money by language (decision D7, term/decisions-2026-10/locale): the ONE
+# formatter written in Term (deck/base/code/text/format.tree over the generated CLDR 48.0 module), held on every backend
+# to node's `Intl.NumberFormat` (roundingMode halfEven, CLDR 48.0), frozen case by case into
+# test/stdlib/text-format/reference.tsv. ONE Term program per backend READS test/stdlib/text-format/cases.tsv (the cases
+# are never inline) and prints a line per case, and the lines must equal the reference's, except the cases
+# test/stdlib/text-format/known.json names.
+#
+# known.json is a ratchet: a case that fails and is not listed fails the suite, and a listed case that now passes fails it
+# until it is removed, so the list only shrinks. Each class carries its cause. Each backend is built and run once, by the
+# first test that asks, and graded once. FORMAT_ONLY=typescript, rust, swift or kotlin runs one backend. The original's
+# `--known` writer stays in the .ts: writing the ratchet is a tool, not a test.
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find file-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find split, name text-split
+  find starts-with
+
+load @term/base/json
+  find parse, name parse-json
+  find get-field
+  find object-keys
+  find as-text
+
+# one line of reference.tsv: its case key (the fields before the answer) and node's answer
+form format-ref
+  link key, like text
+  link expected, like text
+
+# what one backend did with every case: `state` is the run's, and the lists hold the keys the ratchet judges
+form format-grade
+  link backend, like text
+  link ran, like ran-program
+  link unknown, like list, like text
+  link gone, like list, like text
+  link classless, like list, like text
+  link passed, like number
+  link own, like number
+
+form format-state
+  mark shared
+  link ready, like boolean
+  link folder, like text
+  link refs, like list, like format-ref
+  link known, like dynamic
+  link grades, like list, like format-grade
+
+host state, make(format-state, bind(ready, false), bind(folder, <>), bind(refs, make list), bind(known, parse-json(<\{\}>)), bind(grades, make list))
+
+# the program every backend builds: it reads the cases at `cases` and prints one formatted line per case
+task format-program
+  take cases, like text
+  like text
+
+  back <load @term/base/text/format\n  find format-number\n  find format-currency\n\nload @term/base/text\n  find split\n  find char-count\n\nload @term/base/text/number\n  find parse-integer\n  find host-parse-float\n\nload @term/base/file\n  find read\n\nload @term/base/list\n  find list\n  find join\n\ntask run\n  like text\n  save out, make list\n  save rows\n    call split\n      call read\n        text \<{cases}\>\n      text \<\\n\>\n  walk list, read rows\n    hook next\n      take site, name row\n      fork test\n        hook test\n          call is-above\n            call char-count\n              read row\n            code 0\n        hook hold\n          save parts\n            call split\n              read row\n              text \<\\t\>\n          fork test\n            hook test\n              call is-equal\n                call get\n                  read parts\n                  code 0\n                text \<n\>\n            hook hold\n              save fewest\n                call parse-integer\n                  call get\n                    read parts\n                    code 3\n              save most\n                call parse-integer\n                  call get\n                    read parts\n                    code 4\n              push\n                read out\n                call format-number\n                  call host-parse-float\n                    call get\n                      read parts\n                      code 2\n                  call get\n                    read parts\n                    code 1\n                  read fewest\n                  read most\n            hook miss\n              push\n                read out\n                call format-currency\n                  call host-parse-float\n                    call get\n                      read parts\n                      code 2\n                  call get\n                    read parts\n                    code 3\n                  call get\n                    read parts\n                    code 1\n  send back\n    call join\n      read out\n      text \<\\n\>\n>
+
+# reference.tsv's cases, the ratchet, and a copy of cases.tsv in a scratch folder (the program reads a file, and the
+# scratch folder is where the build runs). Once
+task prepare
+  mark async
+  like void
+
+  fork test, state/ready
+    hold
+      back
+  save state/ready, true
+  save state/folder, temp-folder(<term-format->)
+  write-file(<{state/folder}/cases.tsv>, file-text(<test/stdlib/text-format/cases.tsv>))
+  save state/known, parse-json(file-text(<test/stdlib/text-format/known.json>))
+  walk text-split(file-text(<test/stdlib/text-format/reference.tsv>), <\n>)
+    take line, like text
+    fork test, or(is-equal(line, <>), starts-with(line, <#>))
+      hold
+        turn next
+    save parts, text-split(line, <\t>)
+    save width, 4
+    fork test, is-equal(parts/get(0), <n>)
+      hold
+        save width, 5
+    save expected, <>
+    fork test, is-below(width, parts/length)
+      hold
+        save expected, parts/get(width)
+    save head, parts/slice(0, width)
+    save key, head/join(<\t>)
+    state/refs/push(make(format-ref, bind(key, key), bind(expected, expected)))
+
+# the cases known.json lists for `backend`, each key to its class
+task own-cases
+  mark async
+  take backend, like text
+  like hash, like text, like text
+
+  save own, make hash
+  save mine, get-field(get-field(state/known, <case>), backend)
+  walk object-keys(mine)
+    take key, like text
+    own/set(key, as-text(get-field(mine, key)))
+  back own
+
+# build, run and grade `backend`, once
+task grade-of
+  mark async
+  take backend, like text
+  like format-grade
+
+  walk state/grades
+    take one, like format-grade
+    fork test, is-equal(one/backend, backend)
+      hold
+        back one
+  prepare()
+  save ran, run-text(format-program(<{state/folder}/cases.tsv>), backend, state/folder, <format>)
+  save own, own-cases(backend)
+  save unknown, make list
+  save gone, make list
+  save classless, make list
+  save passed, 0
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save got, text-split(ran/output, <\n>)
+      save at, 0
+      walk state/refs
+        take one, like format-ref
+        save line, <>
+        fork test, is-below(at, got/length)
+          hold
+            save line, got/get(at)
+        fork test, is-equal(line, one/expected)
+          hold
+            save passed, add(passed, 1)
+            fork test, own/has(one/key)
+              hold
+                gone/push(one/key)
+          miss
+            fork test, not(own/has(one/key))
+              hold
+                unknown/push(<{one/key} got {line} node {one/expected}>)
+        save at, add(at, 1)
+      save class-names, object-keys(get-field(state/known, <class>))
+      save mine, get-field(get-field(state/known, <case>), backend)
+      walk object-keys(mine)
+        take key, like text
+        save named, as-text(get-field(mine, key))
+        save known-class, class-names/contains(named)
+        fork test, not(known-class)
+          hold
+            classless/push(<{key}: {named}>)
+  save own-size, own/size
+  save grade, make(format-grade, bind(backend, backend), bind(ran, ran), bind(unknown, unknown), bind(gone, gone), bind(classless, classless), bind(passed, passed), bind(own, own-size))
+  state/grades/push(grade)
+  back grade
+
+# why `backend` is not run here, <> when it is
+task skip-reason
+  mark async
+  take backend, like text
+  like text
+
+  save only, variable(<FORMAT_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <FORMAT_ONLY names {only}>
+  save grade, grade-of(backend)
+  fork test, is-equal(grade/ran/state, <skipped>)
+    hold
+      back <{backend}: {grade/ran/reason}>
+  back <>
+
+test <text-format: every case equals node's Intl except those in known.json>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  host grade, grade-of(backend)
+  want hold, is-equal(grade/ran/state, <ran>)
+  want hold, is-equal(grade/unknown/length, 0)
+
+test <text-format: every known case still differs>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  host grade, grade-of(backend)
+  want hold, is-equal(grade/ran/state, <ran>)
+  want hold, is-equal(grade/gone/length, 0)
+
+test <text-format: every known case has a named class>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  host grade, grade-of(backend)
+  want hold, is-equal(grade/ran/state, <ran>)
+  want hold, is-equal(grade/classless/length, 0)

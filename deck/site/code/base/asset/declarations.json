@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "asset_declarations": [
+    {
+      "form": "font-face",
+      "asset": "/CrowMark.otf",
+      "font_family": "CrowMark",
+      "format": "opentype",
+      "font_display": "optional"
+    }
+  ],
+  "no_hash_paths": [
+    "/.well-known/web-identity",
+    "/robots.txt",
+    "/security.txt"
+  ]
+}

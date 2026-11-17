@@ -3,7 +3,7 @@
 // The logic is Term; this file only converts shapes for TypeScript callers.
 // The original is kept byte for byte at deck/term/deck/term/tmp/retired/make/deck-oci-keys.
 import * as port from '@term/deck/code/oci/key-trust'
-import { ociErrorOf, type OciTransport } from './transport'
+import { ociErrorOf, portTransport, type OciTransport } from './transport'
 import type { Keypair } from '../object/sign'
 
 const p = port as unknown as Record<
@@ -53,7 +53,7 @@ export const trustedKeys = (input: {
   // the port answers a Term maybe (decision 176 rule 2): unboxed here to the record or undefined
   liftAsync(async () => {
     const found = (await p.trustedKeys!(
-      input.transport,
+      portTransport(input.transport),
       input.repository,
       input.scope,
       input.host,
@@ -72,7 +72,7 @@ export const ensurePublisher = (input: {
   liftAsync(
     () =>
       p.ensurePublisher!(
-        input.transport,
+        portTransport(input.transport),
         input.repository,
         input.scope,
         input.keypair,
@@ -90,7 +90,7 @@ export const rotateKeys = (input: {
   liftAsync(
     () =>
       p.rotateKeys!(
-        input.transport,
+        portTransport(input.transport),
         input.repository,
         input.scope,
         input.keypair,

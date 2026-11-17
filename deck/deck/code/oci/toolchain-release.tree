@@ -156,11 +156,13 @@ bind payload-differs
   case node
     text <($left !== $right)>
 
+# the transport's get-manifest, which answers a maybe (registry-transport.tree's oci-transport, item
+# term-self-host-001-1582): the face hands every port the port's own transport (portTransport), so it is the box
 bind payload-get-manifest
   take transport, like dynamic
   take repository, like dynamic
   take reference, like dynamic
-  like dynamic
+  like maybe, like dynamic
   case node
     text <<$transport.getManifest({ repository: $repository, reference: $reference })>>
 
@@ -431,10 +433,13 @@ task publish-release
   like dynamic
 
   save existing, wait payload-get-manifest(transport, repository, version)
-  fork test, payload-truthy(existing)
-    hold
+  sift existing
+    case some
+      link released
       halt oci-failure
         bind thing, <{package-name}@{version} is already released. Releases are write-once: raise the version>
+    case none
+      save unreleased, true
 
   save table, release-platforms()
   save entries, payload-list(0)
@@ -480,9 +485,13 @@ task read-release-index
   take version, like dynamic
   like dynamic
 
-  save indexed, wait payload-get-manifest(transport, repository, version)
-  fork test, not(payload-truthy(indexed))
-    hold
+  save found, wait payload-get-manifest(transport, repository, version)
+  save indexed, payload-nothing()
+  sift found
+    case some
+      link held
+      save indexed, held
+    case none
       back payload-nothing()
 
   save index, payload-parse(payload-field(indexed, <bytes>))
@@ -499,9 +508,13 @@ task read-release
   take platform, like text
   like dynamic
 
-  save indexed, wait payload-get-manifest(transport, repository, version)
-  fork test, not(payload-truthy(indexed))
-    hold
+  save found, wait payload-get-manifest(transport, repository, version)
+  save indexed, payload-nothing()
+  sift found
+    case some
+      link held
+      save indexed, held
+    case none
       halt oci-failure
         bind thing, <{package-name}@{version} is not released>
 
@@ -515,7 +528,14 @@ task read-release
       halt oci-failure
         bind thing, <{package-name}@{version} has no release for {platform}. It has {listed}>
 
-  save fetched, wait payload-get-manifest(transport, repository, payload-field(entry, <digest>))
+  save platform-found, wait payload-get-manifest(transport, repository, payload-field(entry, <digest>))
+  save fetched, payload-nothing()
+  sift platform-found
+    case some
+      link platform-held
+      save fetched, platform-held
+    case none
+      save missing, true
   fork test, payload-is-moved(fetched, entry)
     hold
       halt oci-failure

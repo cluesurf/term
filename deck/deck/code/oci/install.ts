@@ -5,7 +5,7 @@
 // Artifact format v2 (decision 129 section 2 of the self-host change, decisions 154 and 158, item
 // term-self-host-001-1043): one archive layer, unpacked under the `.term-digest` marker, no object store.
 import * as port from '@term/deck/code/oci/version-installing'
-import { ociErrorOf, type OciTransport } from './transport'
+import { ociErrorOf, portTransport, type OciTransport } from './transport'
 import type { DeckConfig, ParsedManifest } from './artifact'
 import type { TrustedKeys } from './keys'
 
@@ -37,7 +37,10 @@ export const listOciVersions = (input: {
 }): Promise<string[]> =>
   liftAsync(
     () =>
-      p.listOciVersions!(input.transport, input.repository) as Promise<
+      p.listOciVersions!(
+        portTransport(input.transport),
+        input.repository,
+      ) as Promise<
         string[]
       >,
   )
@@ -58,7 +61,7 @@ export const readOciVersion = (input: {
   liftAsync(
     () =>
       p.readOciVersion!(
-        input.transport,
+        portTransport(input.transport),
         input.repository,
         input.package,
         input.reference,
@@ -88,11 +91,11 @@ export const installOciVersion = (input: {
   liftAsync(
     () =>
       p.installOciVersion!(
-        input.transport,
+        portTransport(input.transport),
         input.repository,
         input.version,
         input.dest,
-        input.cache,
+        portTransport(input.cache),
       ) as Promise<{
         fetched: boolean
         bytes: number

@@ -1,0 +1,188 @@
+note <the compiled browser file module reads, writes, appends, copies, moves and removes over the Origin Private File System, nested folders too>
+
+# Ported from test/stdlib/opfs.ts by statement (item term-self-host-001-0641), one test per expect in its order. Browser
+# OPFS file IO, run for real: the compiled browser `file` module (which forwards to the OPFS io shim) driven through the
+# shim's whole surface (path splitting, write/read/append/copy/move/remove/exists), not just that it compiles.
+#
+# The original ran the module in node against an in-memory stand-in for navigator.storage.getDirectory() of its own.
+# Here the module runs in headless Chromium through test/support/browsing (bundled with its native prelude, served on
+# 127.0.0.1, a fresh profile each run), against the browser's own Origin Private File System, which the stand-in
+# imitated. The page's one line of JavaScript hands the program's tasks to the page, and each step is one call asked of
+# the page, in the original's order. Where Playwright or its Chromium is absent each test says `skip` with the reason.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/browsing
+  find browser-absent
+  find browser-script
+  find open-browser
+  find page-ask
+  find close-browser
+
+load @term/base/hash
+  find hash
+
+# the program the original compiled, as it wrote it (escaped by tmp/self-host/suites-d/escape.mjs)
+host source, <load @term/base/code/file\n  find file\n\ntask put\n  mark async\n  take path, like text\n  take data, like text\n  call write\n    read path\n    read data\n    wait true\n\ntask get\n  mark async\n  take path, like text\n  like text\n  send back\n    call read\n      read path\n      wait true\n\ntask add\n  mark async\n  take path, like text\n  take data, like text\n  call append\n    read path\n    read data\n    wait true\n\ntask here\n  mark async\n  take path, like text\n  like boolean\n  send back\n    call test\n      read path\n      wait true\n\ntask drop\n  mark async\n  take path, like text\n  call remove\n    read path\n    wait true\n\ntask duplicate\n  mark async\n  take from, like text\n  take to, like text\n  call copy\n    read from\n    read to\n    wait true\n\ntask relocate\n  mark async\n  take from, like text\n  take to, like text\n  call move\n    read from\n    read to\n    wait true\n>
+
+host out, compile-text(source, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <browser>)))
+
+# the program's tasks, handed to the page
+host harness, <\nwindow.__file = \{ put, get, add, here, drop, duplicate, relocate \}\n>
+
+form opfs-run
+  mark shared
+  link done, like boolean
+  link state, like text
+  link reason, like text
+  link said, like hash, like text, like text
+
+host held, make(opfs-run, bind(done, false), bind(state, <>), bind(reason, <>), bind(said, make hash))
+
+# one task of the program called in the page with `arguments` (JavaScript text literals), its answer as text, kept under
+# `key` when there is one
+task call-page
+  take open, like dynamic
+  take key, like text
+  take name, like text
+  take arguments, like text
+  mark async
+
+  save said, page-ask(open, <window.__file.{name}({arguments}).then(v =\> String(v))>)
+  fork test, is-unequal(key, <>)
+    hold
+      save held/said/{key}, said
+
+# the page, run once, each answer kept by its name: `state` <open> when it ran, <skipped> with the reason, <failed>
+# when the page raised
+task the-run
+  like opfs-run
+  mark async
+
+  fork test, held/done
+    hold
+      back held
+  save held/done, true
+  save absent, browser-absent()
+  fork test, is-unequal(absent, <>)
+    hold
+      save held/state, <skipped>
+      save held/reason, absent
+      back held
+  fork test, not(out/ok)
+    hold
+      save held/state, <failed>
+      back held
+  host open, open-browser(browser-script(out, harness))
+  save held/state, open/state
+  save held/reason, open/reason
+  fork test, is-equal(open/state, <open>)
+    hold
+      fork
+        mark unsafe
+        call-page(open, <>, <put>, <'note.txt', 'hello opfs'>)
+        call-page(open, <read>, <get>, <'note.txt'>)
+        call-page(open, <written>, <here>, <'note.txt'>)
+        call-page(open, <missing>, <here>, <'ghost.txt'>)
+        call-page(open, <>, <add>, <'note.txt', ' and more'>)
+        call-page(open, <appended>, <get>, <'note.txt'>)
+        call-page(open, <>, <duplicate>, <'note.txt', 'copy.txt'>)
+        call-page(open, <copied>, <get>, <'copy.txt'>)
+        call-page(open, <original>, <here>, <'note.txt'>)
+        call-page(open, <>, <relocate>, <'copy.txt', 'moved.txt'>)
+        call-page(open, <moved>, <get>, <'moved.txt'>)
+        call-page(open, <source>, <here>, <'copy.txt'>)
+        call-page(open, <>, <drop>, <'note.txt'>)
+        call-page(open, <removed>, <here>, <'note.txt'>)
+        call-page(open, <>, <put>, <'deep/nested/file.txt', 'buried'>)
+        call-page(open, <nested>, <get>, <'deep/nested/file.txt'>)
+      halt take
+        take problem
+        save held/state, <failed>
+        save held/reason, <the page raised>
+      close-browser(open)
+  back held
+
+# what the page answered for `key`, <nothing said> when it answered nothing
+task said
+  take key, like text
+  like text
+  mark async
+
+  save answers, the-run()/said
+  fork test, answers/has(key)
+    hold
+      back answers/{key}
+  back <nothing said>
+
+test <opfs: write then read round-trips>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<read>), <hello opfs>)
+
+test <opfs: exists is true for a written file>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<written>), <true>)
+
+test <opfs: exists is false for a missing file>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<missing>), <false>)
+
+test <opfs: append concatenates>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<appended>), <hello opfs and more>)
+
+test <opfs: copy duplicates the contents>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<copied>), <hello opfs and more>)
+
+test <opfs: copy leaves the original>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<original>), <true>)
+
+test <opfs: move writes the destination>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<moved>), <hello opfs and more>)
+
+test <opfs: move removes the source>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<source>), <false>)
+
+test <opfs: remove deletes the file>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<removed>), <false>)
+
+test <opfs: write + read through nested directories>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, is-equal(said(<nested>), <buried>)

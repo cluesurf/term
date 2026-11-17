@@ -1,0 +1,565 @@
+note <moving files in and out of an app on AppKit and on UIKit: a download, a share and a pick, judged against the platform>
+
+# Ported from device-transfer.ts by statement (item 0702), on the device harness (test/support/device, item 0548).
+# Moving files in and out of an app (beat-term-0002, 0003, 0004) on AppKit (macOS) and UIKit (the iPhone simulator). A
+# download, a share and a pick, each answer printed as `step <name> <answer>` and judged against the platform.
+#
+#   download   a payload of every byte value, served by this test (@term/base/network/server, a bytes body on port 0);
+#              the file the app wrote must hold exactly those bytes, read back off the disk (the simulator's files are
+#              the Mac's). A 404 answers
+#              `failed 404` and a port nothing listens on `failed 0`, and a failed download leaves the file that was
+#              there as it was
+#   pick       on the simulator the picker comes up and a UI test (test/support/device/springboard-taps, here driving
+#              the app itself) taps its dismiss button (Close on iOS 26, Cancel before), so the answer must be
+#              `cancelled`. Not on the Mac, whose open panel would be modal on the person's screen
+#   share      then, on the simulator, the sheet comes up for a file the app wrote (`shown`, only once it is up); a path
+#              that is no file is `unavailable` on both. The Mac is never shown a sheet
+#
+# TRANSFER_ONLY=macos or ios runs one. The legs run once, in the first test, and each test reads one fact of them. A leg
+# that did not run (no booted simulator, or not asked for) skips its tests with the reason. Nothing here boots a
+# simulator.
+
+load ../support/device/toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find toolkit-check
+  find run-leg
+
+load ../support/device/springboard-taps
+  find taps
+  find taps-finished
+  find build-taps
+  find start-taps
+  find finish-taps
+
+load ../support/device/simulator
+  find booted-simulator
+
+load @term/base/network/server
+  find start, name serve-start
+  find stop, name serve-stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-bytes
+  find make-status
+
+load ../support/temp
+  find temp-folder
+
+load ../support/cli
+  find term-root
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/process/current
+  find read, name process-now
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+  find index-of
+  find substring
+  find char-count
+  find trim
+  find replace-all
+
+load @term/base/list
+  find push
+
+load @term/base/file
+  find read-bytes
+  find exists, name file-exists
+
+load @term/base/bytes
+  find to-hex
+  find from-hex
+
+host ios-id, <surf.term.device-transfer-test>
+
+# what one leg's app said, each step's answer, and what the file at the target held once all three downloads were done
+form leg-facts
+  link ran, like toolkit-leg
+  link download, like text
+  link missing, like text
+  link closed, like text
+  link target, like text
+  link share-none, like text
+  link share, like text
+  link pick, like text
+  link written, like text
+
+form transfer-state
+  mark shared
+  link ran, like boolean
+  link pid, like text
+  link file-name, like text
+  link origin, like text
+  link closed, like text
+  link facts, like list, like leg-facts
+  link asked, like list, like text
+  link taps-tried, like boolean
+  link taps, like taps
+  link finished, like taps-finished
+  link used-udid, like text
+
+host state, make(transfer-state, bind(ran, false), bind(pid, <>), bind(file-name, <>), bind(origin, <>), bind(closed, <>), bind(facts, make list), bind(asked, make list), bind(taps-tried, false), bind(taps, make(taps, bind(built, false), bind(errors, <>), bind(project, <>), bind(derived, <>), bind(log, <>))), bind(finished, make(taps-finished, bind(started, false))), bind(used-udid, <>))
+
+# the 1030 bytes the server sends, as hex
+task payload-hex
+  like text
+
+  save digits, make list(<0>, <1>, <2>, <3>, <4>, <5>, <6>, <7>, <8>, <9>, <a>, <b>, <c>, <d>, <e>, <f>)
+  save every, <>
+  walk digits
+    take high, like text
+    walk digits
+      take low, like text
+      save every, <{every}{high}{low}>
+  back <{every}{every}{every}{every}{substring(every, 0, 12)}>
+
+# the server's answer: the payload at /payload, every byte value four times over and a few more, a payload no text
+# decoding could pass through unchanged, and 404 for any other path. It runs in this process: the legs wait on the app
+# through process/run, which waits without holding the loop, so the server answers the app while it downloads (the
+# original ran it in a child, since its spawnSync held the loop)
+task transfer-route
+  take req, like request
+  like response
+
+  fork test, is-equal(req/path, </payload>)
+    hold
+      back make-bytes(from-hex(payload-hex()))
+  back make-status(404)
+
+# the program each leg runs: three downloads to one path, then a share of a path that is no file, and on iOS a pick and
+# a share of the file, each answer said as `step <name> <answer>`
+task say-lines
+  take lines, like list, like text
+  take step, like text
+  like void
+
+  lines/push(<      call say>)
+  lines/push(<        text \<step {step} \{said-{step}\}\>>)
+
+task transfer-program
+  take leg, like text
+  take shot, like text
+  like text
+
+  save lines, make list
+  lines/push(<load @term/site/code/dom/native/toolkit/dom>)
+  lines/push(<  find open-root>)
+  lines/push(<  find launch>)
+  lines/push(<  find run-app>)
+  lines/push(<  find exit-app>)
+  lines/push(<  find say>)
+  lines/push(<>)
+  lines/push(<load @term/site/code/view/download>)
+  lines/push(<  find download-file>)
+  lines/push(<>)
+  lines/push(<load @term/site/code/view/open>)
+  lines/push(<  find share-file>)
+  lines/push(<>)
+  lines/push(<load @term/site/code/view/files>)
+  lines/push(<  find pick-file>)
+  lines/push(<>)
+  lines/push(<load @term/base/environment/path>)
+  lines/push(<  find known-directory>)
+  lines/push(<>)
+  fork test, is-equal(leg, <ios>)
+    hold
+      lines/push(<load @term/base/clock>)
+      lines/push(<  find sleep>)
+      lines/push(<>)
+  lines/push(<>)
+  lines/push(<task main>)
+  lines/push(<  save root>)
+  lines/push(<    call open-root>)
+  lines/push(<      text \<Term transfer\>>)
+  lines/push(<      code 320>)
+  lines/push(<      code 200>)
+  lines/push(<  call launch>)
+  lines/push(<    task check>)
+  lines/push(<      mark async>)
+  lines/push(<      save folder>)
+  lines/push(<        call known-directory>)
+  lines/push(<          text \<temporary\>>)
+  lines/push(<      save target, text \<\{folder\}/{state/file-name}\>>)
+  lines/push(<      save said-download>)
+  lines/push(<        call download-file>)
+  lines/push(<          text \<{state/origin}/payload\>>)
+  lines/push(<          read target>)
+  say-lines(lines, <download>)
+  lines/push(<      save said-missing>)
+  lines/push(<        call download-file>)
+  lines/push(<          text \<{state/origin}/no-such-file\>>)
+  lines/push(<          read target>)
+  say-lines(lines, <missing>)
+  lines/push(<      save said-closed>)
+  lines/push(<        call download-file>)
+  lines/push(<          text \<http://127.0.0.1:{state/closed}/payload\>>)
+  lines/push(<          read target>)
+  say-lines(lines, <closed>)
+  lines/push(<      save said-target, read target>)
+  say-lines(lines, <target>)
+  lines/push(<      save said-share-none>)
+  lines/push(<        call share-file>)
+  lines/push(<          text \<\{folder\}/no-such-{state/pid}.bin\>>)
+  say-lines(lines, <share-none>)
+  fork test, is-equal(leg, <ios>)
+    hold
+      lines/push(<      save said-pick>)
+      lines/push(<        call pick-file>)
+      lines/push(<          text \<audio\>>)
+      say-lines(lines, <pick>)
+      lines/push(<      save said-share>)
+      lines/push(<        call share-file>)
+      lines/push(<          read target>)
+      say-lines(lines, <share>)
+      # the sheet stays up for 25 seconds while the UI test looks for the file's name on it
+      lines/push(<      call sleep>)
+      lines/push(<        code 25000>)
+  lines/push(<      call exit-app>)
+  lines/push(<        code 0>)
+  lines/push(<  call run-app>)
+  lines/push(<>)
+  back lines/join(<\n>)
+
+# the answer a step said: what follows `step <name> ` on the first line holding it, <> when none does
+task step-of
+  take output, like text
+  take name, like text
+  like text
+
+  save key, <step {name} >
+  walk text-split(output, <\n>)
+    take line, like text
+    save at, index-of(line, key)
+    fork test, not(is-below(at, 0))
+      hold
+        back trim(substring(line, add(at, char-count(key))))
+  back <>
+
+# the UI test for the pick and the share: the picker's dismiss button, `Close` (an X in the navigation bar
+# FullDocumentManagerViewControllerNavigationBar) on iOS 26 and `Cancel` before. The app's `cancelled` alone would not
+# do: a picker that never came up answers `unavailable`, and only this tap shows the picker was there to cancel. Then
+# the share sheet: an element whose label holds the shared file's name, the sheet's header. APP_ID, FOLDER and FILE_NAME
+# are put in once the run knows them
+task taps-body
+  take folder, like text
+  like text
+
+  save lines, make list
+  lines/push(<<        let app = XCUIApplication(bundleIdentifier: "APP_ID")>>)
+  lines/push(<<        let close = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"].buttons["Close"]>>)
+  lines/push(<<        let cancel = app.buttons["Cancel"]>>)
+  lines/push(<<        // what is on the screen while the app waits on its pick, for when no button is found: the tree and a PNG>>)
+  lines/push(<<        var looked = 0>>)
+  lines/push(<<        while !(close.waitForExistence(timeout: 10) || cancel.exists), looked < 9 {>>)
+  lines/push(<<            looked += 1>>)
+  lines/push(<<            if looked == 3 {>>)
+  lines/push(<<                print("taps: tree \(app.debugDescription)")>>)
+  lines/push(<<                try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: "FOLDER/picker.png"))>>)
+  lines/push(<<            }>>)
+  lines/push(<<        }>>)
+  lines/push(<<        XCTAssertTrue(close.exists || cancel.exists, "no document picker came up")>>)
+  lines/push(<<        if close.exists {>>)
+  lines/push(<<            close.tap()>>)
+  lines/push(<<            print("taps: picker cancelled")>>)
+  lines/push(<<        } else if cancel.exists {>>)
+  lines/push(<<            cancel.tap()>>)
+  lines/push(<<            print("taps: picker cancelled")>>)
+  lines/push(<<        } else {>>)
+  lines/push(<<            print("taps: no picker button")>>)
+  lines/push(<<        }>>)
+  lines/push(<<        // the share sheet, up for 25 seconds (the Term program waits before it exits): its header shows THIS run's file name>>)
+  lines/push(<<        let named = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "FILE_NAME")).firstMatch>>)
+  lines/push(<<        var seen = 0>>)
+  lines/push(<<        while !named.waitForExistence(timeout: 10), seen < 2 {>>)
+  lines/push(<<            seen += 1>>)
+  lines/push(<<            if seen == 2 {>>)
+  lines/push(<<                print("taps: share tree \(app.debugDescription)")>>)
+  lines/push(<<                try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: "FOLDER/share.png"))>>)
+  lines/push(<<            }>>)
+  lines/push(<<        }>>)
+  lines/push(<<        XCTAssertTrue(named.exists, "the share sheet did not show the file's name")>>)
+  lines/push(<<        if named.exists {>>)
+  lines/push(<<            print("taps: share sheet shows the file")>>)
+  lines/push(<<        }>>)
+  lines/push(<<        // dismiss the sheet when it has a button for it: not finding one is not a failure>>)
+  lines/push(<<        let dismiss = app.buttons["Close"].exists ? app.buttons["Close"] : app.buttons["Cancel"]>>)
+  lines/push(<<        if dismiss.exists {>>)
+  lines/push(<<            dismiss.tap()>>)
+  lines/push(<<        }>>)
+  save body, replace-all(lines/join(<\n>), <APP_ID>, ios-id)
+  save body, replace-all(body, <FOLDER>, folder)
+  back replace-all(body, <FILE_NAME>, state/file-name)
+
+# once the iOS app is installed and before it starts: keep the simulator, so the app can be ended after, and start the
+# UI test beside the launch
+task prepare-transfer
+  take leg, like text
+  take udid, like text
+  take serial, like text
+  take identifier, like text
+  like void
+
+  fork test, is-equal(leg, <ios>)
+    hold
+      save state/used-udid, udid
+      fork test, and(is-unequal(udid, <>), state/taps/built)
+        hold
+          fork
+            mark unsafe
+            start-taps(state/taps, udid)
+          halt take
+            take cause
+            # a UI test that could not start is read by the two tests on its log, which then skip
+            save state/taps/started, false
+
+# what a leg's app said, read the moment the leg is over, and the file it left
+task judge-leg
+  take ran, like toolkit-leg
+  like leg-facts
+
+  save output, ran/output
+  save target, step-of(output, <target>)
+  save written, <>
+  fork test, and(is-unequal(target, <>), file-exists(target))
+    hold
+      save written, to-hex(read-bytes(target))
+  back make(leg-facts, bind(ran, ran), bind(download, step-of(output, <download>)), bind(missing, step-of(output, <missing>)), bind(closed, step-of(output, <closed>)), bind(target, target), bind(share-none, step-of(output, <share-none>)), bind(share, step-of(output, <share>)), bind(pick, step-of(output, <pick>)), bind(written, written))
+
+# whether the legs asked for hold `leg`
+task asks
+  take leg, like text
+  like boolean
+
+  walk state/asked
+    take one, like text
+    fork test, is-equal(one, leg)
+      hold
+        back true
+  back false
+
+# the server up, the UI test built when the iOS leg can run, every leg asked for run and judged, the UI test finished,
+# the app ended on the simulator and the server stopped. Once, for every test
+task run-transfer
+  mark async
+  like void
+
+  fork test, state/ran
+    hold
+      back
+  save state/ran, true
+  save state/pid, <{process-now()/id}>
+  save state/file-name, <term-transfer-{state/pid}.bin>
+  save server, serve-start(0, <127.0.0.1>, transfer-route)
+  save state/origin, <http://127.0.0.1:{server/port}>
+  # a port nothing listens on: one this test held a moment ago and let go
+  save probe, serve-start(0, <127.0.0.1>, transfer-route)
+  save state/closed, <{probe/port}>
+  serve-stop(probe)
+  save only, variable(<TRANSFER_ONLY>)
+  save state/asked, make list(<macos>, <ios>)
+  fork test, is-unequal(only, <>)
+    hold
+      save state/asked, make list(only)
+  save dir, temp-folder(<term-transfer->)
+  fork test, asks(<ios>)
+    hold
+      save found, booted-simulator()
+      fork test, and(is-equal(found/missing, <>), is-unequal(find-tool(<xcodebuild>), <>))
+        hold
+          fork test, is-equal(run(<xcodebuild>, make list(<-version>))/code, 0)
+            hold
+              save state/taps, build-taps(dir, taps-body(dir))
+              save state/taps-tried, true
+  walk state/asked
+    take leg, like text
+    save app, make(toolkit-app, bind(root, term-root()), bind(folder, temp-folder(<term-transfer->)), bind(name, <Transfer>), bind(who, <device-transfer>), bind(ios-identifier, ios-id), bind(android-identifier, <surf.term.devicetransfer>))
+    save ran, run-leg(app, leg, transfer-program, prepare-transfer)
+    state/facts/push(judge-leg(ran))
+  fork test, state/taps-tried
+    hold
+      save state/finished, finish-taps(state/taps)
+  # a picker left up must not stay on the shared simulator's screen: the app is ended, its failure ignored
+  fork test, is-unequal(state/used-udid, <>)
+    hold
+      run(<xcrun>, make list(<simctl>, <terminate>, state/used-udid, ios-id))
+  serve-stop(server)
+
+# the facts of `leg`, or why it has none: <> when it ran, else the reason its tests skip
+task facts-of
+  take leg, like text
+  like leg-facts
+
+  walk state/facts
+    take one, like leg-facts
+    fork test, is-equal(one/ran/leg, leg)
+      hold
+        back one
+  save none, make(toolkit-leg, bind(leg, leg), bind(toolkit, <>), bind(state, <skipped>), bind(reason, <not asked for>))
+  back make(leg-facts, bind(ran, none), bind(download, <>), bind(missing, <>), bind(closed, <>), bind(target, <>), bind(share-none, <>), bind(share, <>), bind(pick, <>), bind(written, <>))
+
+# why a leg's tests skip, <> when the leg ran
+task skip-reason
+  take leg, like text
+  like text
+
+  save ran, facts-of(leg)/ran
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back <{leg}: {ran/reason}>
+  back <>
+
+# the names of the checks a leg made on its way (it compiles, it builds, it exits 0), in order. A leg that did not run
+# has one, `skipped`, whose case skips
+task check-names
+  mark async
+  take leg, like text
+  like list, like text
+
+  # the walk is read before the test's body, so the legs run here first
+  run-transfer()
+  save names, make list
+  walk facts-of(leg)/ran/checks
+    take one, like toolkit-check
+    names/push(one/name)
+  fork test, is-equal(names/length, 0)
+    hold
+      names/push(<skipped>)
+  back names
+
+task check-passed
+  take leg, like text
+  take name, like text
+  like boolean
+
+  walk facts-of(leg)/ran/checks
+    take one, like toolkit-check
+    fork test, is-equal(one/name, name)
+      hold
+        back one/passed
+  back false
+
+test <the UI test that cancels the picker builds>
+  run-transfer()
+  fork test, not(state/taps-tried)
+    hold
+      skip <no booted simulator, or no xcodebuild, or no iOS leg>
+  want hold, state/taps/built
+
+test <macos (AppKit): the leg's own checks>
+  take name, like text
+    walk check-names(<macos>)
+  run-transfer()
+  fork test, is-unequal(skip-reason(<macos>), <>)
+    hold
+      skip skip-reason(<macos>)
+  want hold, check-passed(<macos>, name)
+
+test <macos (AppKit): the download answers its length>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<macos>), <>)
+    hold
+      skip skip-reason(<macos>)
+  want hold, is-equal(facts-of(<macos>)/download, <downloaded 1030>)
+
+test <macos (AppKit): a 404 is failed 404, and a closed port failed 0>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<macos>), <>)
+    hold
+      skip skip-reason(<macos>)
+  host facts, facts-of(<macos>)
+  want hold, and(is-equal(facts/missing, <failed 404>), is-equal(facts/closed, <failed 0>))
+
+test <macos (AppKit): the file holds every byte the server sent, after a 404 and a closed port to the same path>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<macos>), <>)
+    hold
+      skip skip-reason(<macos>)
+  want hold, is-equal(facts-of(<macos>)/written, payload-hex())
+
+test <macos (AppKit): a path that is no file has nothing to share>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<macos>), <>)
+    hold
+      skip skip-reason(<macos>)
+  want hold, is-equal(facts-of(<macos>)/share-none, <unavailable>)
+
+test <ios (UIKit): the leg's own checks>
+  take name, like text
+    walk check-names(<ios>)
+  run-transfer()
+  fork test, is-unequal(skip-reason(<ios>), <>)
+    hold
+      skip skip-reason(<ios>)
+  want hold, check-passed(<ios>, name)
+
+test <ios (UIKit): the download answers its length>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<ios>), <>)
+    hold
+      skip skip-reason(<ios>)
+  want hold, is-equal(facts-of(<ios>)/download, <downloaded 1030>)
+
+test <ios (UIKit): a 404 is failed 404, and a closed port failed 0>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<ios>), <>)
+    hold
+      skip skip-reason(<ios>)
+  host facts, facts-of(<ios>)
+  want hold, and(is-equal(facts/missing, <failed 404>), is-equal(facts/closed, <failed 0>))
+
+test <ios (UIKit): the file holds every byte the server sent, after a 404 and a closed port to the same path>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<ios>), <>)
+    hold
+      skip skip-reason(<ios>)
+  want hold, is-equal(facts-of(<ios>)/written, payload-hex())
+
+test <ios (UIKit): a path that is no file has nothing to share>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<ios>), <>)
+    hold
+      skip skip-reason(<ios>)
+  want hold, is-equal(facts-of(<ios>)/share-none, <unavailable>)
+
+test <ios (UIKit): the share sheet comes up for the file>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<ios>), <>)
+    hold
+      skip skip-reason(<ios>)
+  want hold, is-equal(facts-of(<ios>)/share, <shown>)
+
+test <ios (UIKit): the picker came up and was cancelled>
+  run-transfer()
+  fork test, is-unequal(skip-reason(<ios>), <>)
+    hold
+      skip skip-reason(<ios>)
+  want hold, is-equal(facts-of(<ios>)/pick, <cancelled>)
+
+test <ios: the UI test found the picker and tapped Close>
+  run-transfer()
+  fork test, not(state/finished/started)
+    hold
+      skip <the UI test never started>
+  want hold, and(is-equal(state/finished/status, 0), text-contains(state/finished/log, <taps: picker cancelled>))
+
+test <ios (UIKit): the share sheet showed the file's name>
+  run-transfer()
+  fork test, not(state/finished/started)
+    hold
+      skip <the UI test never started>
+  want hold, text-contains(state/finished/log, <taps: share sheet shows the file>)

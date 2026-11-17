@@ -256,14 +256,17 @@ task pin-released
       back pin-refused(<{name} has no release in the requested range{newest}>)
     case some
       link version
-      save index, call(transport/get-manifest, make(manifest-request, bind(repository, repository), bind(reference, version)))
-      fork test, not(is-truthy(index))
-        hold
+      # get-manifest answers a maybe (item term-self-host-001-1582), none when the index is not there. The some arm
+      # is first: the none came from another port, whose frozen none this one's identity test never matches
+      save found, call(transport/get-manifest, make(manifest-request, bind(repository, repository), bind(reference, version)))
+      sift found
+        case some
+          link index
+          save released, parse-code(version)
+          save made, make(lock-need, bind(name, name), bind(code, released), bind(hash, index/digest))
+          back make(pin-answer, bind(pin, make(some, made)), bind(kept, false))
+        case none
           back pin-refused(<{name}@{version} is listed and could not be read>)
-
-      save released, parse-code(version)
-      save made, make(lock-need, bind(name, name), bind(code, released), bind(hash, index/digest))
-      back make(pin-answer, bind(pin, make(some, made)), bind(kept, false))
 
 # a pin as one line a person reads: `@term/code 2.6.4 (sha256:...)`
 task show-pin

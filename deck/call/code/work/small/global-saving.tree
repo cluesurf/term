@@ -40,7 +40,7 @@ load @term/call/work/small/home-folder
 
 load @term/deck/package/installing
   find install-into
-  find write-link
+  find save-link-into
   find drop-link
 
 load @term/deck/package/manifest-reading
@@ -379,9 +379,10 @@ task save-global
   like void
   mark private
 
+  # the link is installed from memory and ~/.base/deck.tree written only after, as a project's save (item 1641): a
+  # save that cannot install raises with the user manifest as it was
   save base, global-root()
-  write-link(base, deck, constraint, make-grammars())
-  install-global(false)
+  save-link-into(base, <>, base, deck, constraint, false, make-grammars())
   save facts, make list
   facts/push(<global>)
   fork test, is-unequal(constraint, <>)

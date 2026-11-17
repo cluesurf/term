@@ -312,7 +312,7 @@ task open-install
   write-executable(install-path/join(source, <bin>, <run>), <#!/bin/sh\n>)
   host transport, transport-face/http-transport(make(transport-ask, bind(host, server/host), bind(credentials, tester-credentials), bind(retries, 0)))
   host repository, make(oci-repository, bind(host, server/host), bind(namespace, <alice>), bind(name, <alice/demo>))
-  host published, publish-to-oci(source, <@alice/demo>, <1.0.2>, no-links(), transport, repository, <@alice>, <alice/name>, generate-keypair(), nothing-given(), nothing-given(), nothing-given(), nothing-given())
+  host published, publish-to-oci(source, <@alice/demo>, <1.0.2>, no-links(), transport-face/port-transport(transport), repository, <@alice>, <alice/name>, generate-keypair(), nothing-given(), nothing-given(), nothing-given(), nothing-given())
   back make(install-fixture, bind(server, server), bind(work, work), bind(kept, kept), bind(source, source), bind(transport, transport), bind(published, published))
 
 # the variables as they were, the registry closed and the folder removed
@@ -410,7 +410,7 @@ task read-demo
   like dynamic
   mark async
 
-  back read-oci-version(open/transport, <alice/demo>, <@alice/demo>, reference, <@alice>, <alice/name>, open/server/host, install-path/join(open/work, <trust>), expect, empty-env(), nothing-given())
+  back read-oci-version(transport-face/port-transport(open/transport), <alice/demo>, <@alice/demo>, reference, <@alice>, <alice/name>, open/server/host, install-path/join(open/work, <trust>), expect, empty-env(), nothing-given())
 
 # what reading @alice/demo at `reference` raised, the empty text when it read
 task read-refusal
@@ -440,7 +440,7 @@ task install-refusal
   save message, <>
   fork
     mark unsafe
-    save done, install-oci-version(transport, <alice/demo>, version, dest, nothing-given())
+    save done, install-oci-version(transport-face/port-transport(transport), <alice/demo>, version, dest, nothing-given())
   halt take
     take cause
     save message, oci-failure-message(cause)
@@ -507,13 +507,13 @@ test <install-oci-version: the package folder byte for byte plus the marker, and
   host open, open-install()
   host version, read-demo(open, <1.0.2>, nothing-given())
   host dest, install-path/join(open/work, <installed>, <1.0.2>)
-  host first, install-oci-version(open/transport, <alice/demo>, version, dest, nothing-given())
+  host first, install-oci-version(transport-face/port-transport(open/transport), <alice/demo>, version, dest, nothing-given())
   host same, is-equal(folder-summary(dest), folder-summary(open/source))
   host files, folder-summary(dest)
   host marker, marker-text(dest)
   host digest, version/digest
   host before, open/server/requests/length
-  host second, install-oci-version(open/transport, <alice/demo>, version, dest, nothing-given())
+  host second, install-oci-version(transport-face/port-transport(open/transport), <alice/demo>, version, dest, nothing-given())
   host after, open/server/requests/length
   host left, leftovers(dest)
   close-install(open)

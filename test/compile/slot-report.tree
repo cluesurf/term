@@ -1,0 +1,543 @@
+note <a raise in a callback @term/site keeps for a host loop is reported, and the loop goes on>
+
+# Ported from slot-report.ts by statement (item term-self-host-001-0693), one test per `ok` in its order (decision 096
+# rules 2 to 4, item 0507). The library guards each call it makes through such a slot and hands the raise to
+# `report-raise` (site code/report.tree), which writes `<place>: <form>: <note>` with `@term/base/log` `error`. The
+# program, over the memory host: a key listener that raises and one that notes the key, an effect that raises on every
+# run and one that notes the level, a cleanup that raises and one that notes, and a trait watcher that raises. Every
+# noting callback must still run, the program must reach its end, and the log must carry one report line per raise. Then
+# decision 100 (item 0518): the value slots answer empty after a raise and report it once at `<task>/<slot>`, a memo
+# reads its fallback, and the node host answers a raising route 500 (TypeScript only, a served program).
+#
+# TypeScript and Kotlin run it. Rust and Swift do not yet take a raising task into a closed slot (Rust E0271, Swift a
+# `try!` that ends the program at the slot): emitting a `halt exception` slot there is item term-self-host-001-0464
+# (decision 086 rule 4), so the original names those legs skipped and asserts nothing on them. REPORT_ONLY=kotlin runs
+# one backend.
+#
+# The original's loops over its two backends are walked tests, a backend a case, and its loops over the literal report
+# lists are a test per line. Each program is built once per backend (test/support/running build-text) and run once, by
+# the first test that asks, its output and its log (the error stream) kept apart. The route is served from a child
+# (@term/base/process/child) on a port this suite held a moment ago and let go, as the original drew it.
+
+load ../support/running
+  find build-text
+  find built-program
+
+load ../support/compiling
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/temp
+  find temp-folder
+  find remove-at-exit
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/child
+  find start, name child-start
+  find stop, name child-stop
+  find wait, name child-wait
+
+load @term/base/process/current
+  find read, name process-now
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/network/http
+  find fetch
+
+load @term/base/network/server
+  find start, name serve-start
+  find stop, name serve-stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-status
+
+load @term/base/clock
+  find sleep
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+  find starts-with
+  find trim
+
+host reports, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n  find make-effect\n  find on-cleanup\n  find open-scope\n  find close-scope\n  find dispose-scope\n\nload @term/site/code/dom/native/memory/dom\n  find listen-key\n  find fire-key\n\nload @term/site/code/view/native/memory/device\n  find watch-traits\n  find change-trait\n\nform tally\n  mark shared\n  link seen, like text\n\nhost heard\n  make tally\n    bind seen, text \<\>\n\ntask note\n  take word, like text\n  save heard/seen, text \<\{heard/seen\}\{word\} \>\n\ntask refuse-key\n  take key, like text\n  halt \<no key \{key\}\>\n\ntask note-key\n  take key, like text\n  call note\n    text \<key-\{key\}\>\n\ntask refuse-trait\n  take name, like text\n  take value, like text\n  halt \<no trait \{name\}\>\n\ntask refuse\n  halt \<no more\>\n\ntask note-cleanup\n  call note\n    text \<cleanup\>\n\ntask run\n  like text\n  save first\n    call listen-key\n      read refuse-key\n  save second\n    call listen-key\n      read note-key\n  call fire-key\n    text \<a\>\n  save level\n    call make-signal\n      bind value, text \<0\>\n  call make-effect\n    task fails\n      save now\n        call read-signal\n          bind self, read level\n      call refuse\n  call make-effect\n    task follows\n      save now\n        call read-signal\n          bind self, read level\n      call note\n        text \<effect-\{now\}\>\n  call write-signal\n    bind self, read level\n    bind value, text \<1\>\n  save scope, call open-scope\n  call on-cleanup\n    read refuse\n  call on-cleanup\n    read note-cleanup\n  call close-scope\n  call dispose-scope\n    read scope\n  save watching\n    call watch-traits\n      read refuse-trait\n  call change-trait\n    text \<color-scheme\>\n    text \<dark\>\n  call note\n    text \<end\>\n  send back, read heard/seen\n>
+
+host reports-wanted, <key-a effect-0 effect-1 cleanup end >
+
+host values, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n  find make-memo\n  find on-cleanup\n  find owners\n\nload @term/site/code/view/render\n  find make-element\n  find make-text\n  find bind-attribute\n  find make-dynamic-text\n  find show\n  find render-each\n  find render-each-keyed\n  find render-gate\n\nload @term/site/code/dom/native/memory/dom\n  find append\n  find serialize\n\nload @term/base/text\n  find split\n\nform tally\n  mark shared\n  link seen, like text\n\nhost heard\n  make tally\n    bind seen, text \<\>\n\nhost mode\n  call make-signal\n    bind value, text \<good\>\n\ntask note\n  take word, like text\n  save heard/seen, text \<\{heard/seen\}\{word\} \>\n\ntask is-bad\n  like boolean\n  send back\n    call is-equal\n      call read-signal\n        bind self, read mode\n      text \<bad\>\n\ntask refuse-when-bad\n  take what, like text\n  fork test\n    hook test\n      call is-bad\n    hook hold\n      halt \<no \{what\}\>\n\ntask attribute-source\n  like text\n  call refuse-when-bad\n    text \<attribute\>\n  send back, text \<on\>\n\ntask text-source\n  like text\n  call refuse-when-bad\n    text \<text\>\n  send back, text \<hi\>\n\ntask when-source\n  like boolean\n  call refuse-when-bad\n    text \<when\>\n  send back, true\n\ntask always\n  like boolean\n  send back, true\n\ntask build-yes\n  like view\n  send back\n    call make-text\n      text \<yes\>\n\ntask build-no\n  like view\n  send back\n    call make-text\n      text \<no\>\n\ntask build-refused\n  like view\n  call on-cleanup\n    task drop-then\n      call note\n        text \<show-then\>\n  fork test\n    hook test\n      call always\n    hook hold\n      halt \<no then\>\n  send back\n    call make-text\n      text \<never\>\n\ntask items-source\n  like list\n    like text\n  call refuse-when-bad\n    text \<items\>\n  send back\n    call split\n      text \<a b c\>\n      text \< \>\n\ntask build-item\n  take item, like text\n  like view\n  call on-cleanup\n    task drop-item\n      call note\n        text \<each-\{item\}\>\n  fork test\n    hook test\n      call is-equal\n        read item\n        text \<b\>\n    hook hold\n      halt \<no build \{item\}\>\n  send back\n    call make-text\n      read item\n\ntask key-of\n  take item, like text\n  like text\n  fork test\n    hook test\n      call is-equal\n        read item\n        text \<c\>\n    hook hold\n      halt \<no key \{item\}\>\n  send back, read item\n\ntask build-keyed\n  take item, like text\n  like view\n  call on-cleanup\n    task drop-keyed\n      call note\n        text \<keyed-\{item\}\>\n  fork test\n    hook test\n      call is-equal\n        read item\n        text \<b\>\n    hook hold\n      halt \<no build \{item\}\>\n  send back\n    call make-text\n      read item\n\ntask status-source\n  like text\n  call refuse-when-bad\n    text \<status\>\n  send back, text \<ready\>\n\ntask build-pending\n  like view\n  send back\n    call make-text\n      text \<pending\>\n\ntask build-failed\n  like view\n  send back\n    call make-text\n      text \<failed\>\n\ntask build-ready\n  like view\n  send back\n    call make-text\n      text \<ready\>\n\ntask memo-source\n  like text\n  call refuse-when-bad\n    text \<memo\>\n  send back, text \<fine\>\n\ntask add-part\n  take root, like view\n  like view\n  save part\n    call make-element\n      text \<span\>\n  call append\n    bind parent, read root\n    bind child, read part\n  send back, read part\n\ntask run\n  like text\n  save root\n    call make-element\n      text \<main\>\n  save tagged\n    call make-element\n      text \<div\>\n  call append\n    bind parent, read root\n    bind child, read tagged\n  call bind-attribute\n    bind node, read tagged\n    bind name, text \<data-x\>\n    bind source, read attribute-source\n  save text-host\n    call add-part\n      read root\n  call append\n    bind parent, read text-host\n    bind child\n      call make-dynamic-text\n        read text-source\n  save show-host\n    call add-part\n      read root\n  call show\n    bind host, read show-host\n    bind when, read when-source\n    bind then, read build-yes\n    bind other, read build-no\n  save refused-host\n    call add-part\n      read root\n  call show\n    bind host, read refused-host\n    bind when, read always\n    bind then, read build-refused\n    bind other, read build-no\n  save each-host\n    call add-part\n      read root\n  call render-each\n    bind host, read each-host\n    bind items, read items-source\n    bind build, read build-item\n  save keyed-host\n    call add-part\n      read root\n  call render-each-keyed\n    bind host, read keyed-host\n    bind items, read items-source\n    bind key, read key-of\n    bind build, read build-keyed\n  save gate-host\n    call add-part\n      read root\n  call render-gate\n    bind host, read gate-host\n    bind status, read status-source\n    bind pending, read build-pending\n    bind failed, read build-failed\n    bind ready, read build-ready\n  save memo\n    call make-memo\n      bind compute, read memo-source\n      bind fallback, text \<unknown\>\n  save one\n    call serialize\n      read root\n  save one-memo\n    call read-signal\n      bind self, read memo\n  call write-signal\n    bind self, read mode\n    bind value, text \<bad\>\n  save late\n    call make-memo\n      bind compute, read memo-source\n      bind fallback, text \<late\>\n  save two\n    call serialize\n      read root\n  save two-memo\n    call read-signal\n      bind self, read memo\n  save two-late\n    call read-signal\n      bind self, read late\n  call write-signal\n    bind self, read mode\n    bind value, text \<good\>\n  save three\n    call serialize\n      read root\n  save three-memo\n    call read-signal\n      bind self, read memo\n  save three-late\n    call read-signal\n      bind self, read late\n  save depth, read owners/length\n  send back, text \<\{one\} \{one-memo\}|\{two\} \{two-memo\} \{two-late\}|\{three\} \{three-memo\} \{three-late\}|\{heard/seen\}|owners \{depth\}\>\n>
+
+host good-drawn, <\<main\>\<div data-x="on"\>\</div\>\<span\>hi\</span\>\<span\>yes\</span\>\<span\>\</span\>\<span\>ac\</span\>\<span\>a\</span\>\<span\>ready\</span\>\</main\>>
+host bad-drawn, <\<main\>\<div data-x=""\>\</div\>\<span\>\</span\>\<span\>\</span\>\<span\>\</span\>\<span\>\</span\>\<span\>\</span\>\<span\>failed\</span\>\</main\>>
+host values-wanted, <{good-drawn} fine|{bad-drawn} unknown late|{good-drawn} fine fine|show-then each-b keyed-b each-a each-c keyed-a each-b keyed-b |owners 0>
+
+# a load of the site's native dom, device or view read from its memory host, as the original's `pinned` resolver did
+host pinned, make(compile-choice, bind(project, <.>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <native/\{platform\}/(dom|device|view)$>), bind(into, <native/memory/$1>)))))
+
+# one program built and run on one backend: `built` is build-text's answer, `code` the run's exit code, `output` what it
+# printed and `log` its error stream, each <> or -1 when it was not run
+form slot-run
+  link built, like built-program
+  link code, like number
+  link output, like text
+  link log, like text
+
+form slot-kept
+  mark shared
+  link runs, like hash, like text, like slot-run
+  link folder, like text
+
+host kept, make(slot-kept, bind(runs, make hash), bind(folder, <>))
+
+task folder-of
+  like text
+
+  fork test, is-unequal(kept/folder, <>)
+    hold
+      back kept/folder
+  save kept/folder, temp-folder(<term-slot-report->)
+  back kept/folder
+
+# `program` (named `name`) built on `backend` and run once, kept for every test that asks
+task ran-once
+  take program, like text
+  take name, like text
+  take backend, like text
+  like slot-run
+
+  save key, <{name}/{backend}>
+  fork test, kept/runs/has(key)
+    hold
+      back kept/runs/{key}
+  save built, build-text(program, backend, folder-of(), name, pinned)
+  save one, make(slot-run, bind(built, built), bind(code, -1), bind(output, <>), bind(log, <>))
+  fork test, is-equal(built/state, <built>)
+    hold
+      save rest, make list
+      save at, 0
+      walk built/command
+        take part, like text
+        fork test, is-above(at, 0)
+          hold
+            rest/push(part)
+        save at, add(at, 1)
+      save result, run(built/command/0, rest)
+      save one/code, result/code
+      save one/output, result/output
+      save one/log, result/error
+  save kept/runs/{key}, one
+  back one
+
+# how many times `line` stands in `text`
+task count-of
+  take text, like text
+  take line, like text
+  like number
+
+  back subtract(text-split(text, line)/length, 1)
+
+# why `backend` is not run here, <> when it is: REPORT_ONLY names another, or the build was skipped
+task skip-reason
+  take program, like text
+  take name, like text
+  take backend, like text
+  like text
+
+  save only, variable(<REPORT_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <REPORT_ONLY names {only}>
+  save built, ran-once(program, name, backend)/built
+  fork test, is-equal(built/state, <skipped>)
+    hold
+      back <{backend}: {built/reason}>
+  back <>
+
+# the report program on `backend`, <> when it ran, else why not
+task reports-reason
+  take backend, like text
+  like text
+
+  back skip-reason(reports, <report>, backend)
+
+task reports-run
+  take backend, like text
+  like slot-run
+
+  back ran-once(reports, <report>, backend)
+
+# the original's skip lines for the two backends that cannot take the slot yet
+test <a raising task into a closed slot>
+  take backend, like text
+    walk make list(<rust>, <swift>)
+  save only, variable(<REPORT_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      skip <REPORT_ONLY names {only}>
+  skip <{backend}: a raising task into a closed slot is item term-self-host-001-0464>
+
+test <a program whose kept callbacks raise compiles and builds>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(reports-reason(backend), <>)
+    hold
+      skip reports-reason(backend)
+  want hold, is-equal(reports-run(backend)/built/state, <built>)
+
+test <the program runs to its end>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(reports-reason(backend), <>)
+    hold
+      skip reports-reason(backend)
+  want hold, is-equal(reports-run(backend)/code, 0)
+
+test <every callback after a raising one still ran>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(reports-reason(backend), <>)
+    hold
+      skip reports-reason(backend)
+  want hold, is-equal(reports-run(backend)/output, reports-wanted)
+
+# each raise, once per run of its callback: the effect raises when it is made and again when the level moves
+test <the log reports "listen-key: failure: no key a">
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(reports-reason(backend), <>)
+    hold
+      skip reports-reason(backend)
+  want hold, text-contains(reports-run(backend)/log, <listen-key: failure: no key a>)
+
+test <the log reports "effect: failure: no more">
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(reports-reason(backend), <>)
+    hold
+      skip reports-reason(backend)
+  want hold, text-contains(reports-run(backend)/log, <effect: failure: no more>)
+
+test <the log reports "cleanup: failure: no more">
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(reports-reason(backend), <>)
+    hold
+      skip reports-reason(backend)
+  want hold, text-contains(reports-run(backend)/log, <cleanup: failure: no more>)
+
+test <the log reports "watch-traits: failure: no trait color-scheme">
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(reports-reason(backend), <>)
+    hold
+      skip reports-reason(backend)
+  want hold, text-contains(reports-run(backend)/log, <watch-traits: failure: no trait color-scheme>)
+
+test <the raising effect is reported on each of its two runs>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(reports-reason(backend), <>)
+    hold
+      skip reports-reason(backend)
+  want hold, is-equal(count-of(reports-run(backend)/log, <effect: failure: no more>), 2)
+
+# ---- decision 100: a value slot answers empty after a raise (item term-self-host-001-0518) ----
+#
+# Every render slot whose getter or build raises is drawn empty, a memo reads its fallback, each raise is reported once
+# at `<task>/<slot>` and never again by `run-effect` (no `effect:` line), the scope a raising build opened is closed and
+# disposed, a raising `items` followed by a good one runs each old item's cleanup exactly once, and the next good run
+# draws the right values again. One signal, `mode`, moves every getter from good to bad and back.
+
+task values-reason
+  take backend, like text
+  like text
+
+  back skip-reason(values, <values>, backend)
+
+task values-run
+  take backend, like text
+  like slot-run
+
+  back ran-once(values, <values>, backend)
+
+# how many times the value program's log holds `line`
+task value-reports
+  take backend, like text
+  take line, like text
+  like number
+
+  back count-of(values-run(backend)/log, line)
+
+test <a program whose value slots raise compiles and builds>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(values-run(backend)/built/state, <built>)
+
+test <the value program runs to its end>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(values-run(backend)/code, 0)
+
+test <each slot draws empty after a raise, the rest draws, and the next good run draws again>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(trim(values-run(backend)/output), values-wanted)
+
+# each raise, by its place, and how many times the program raises there
+test <"bind-attribute/source: failure: no attribute" is reported 1 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <bind-attribute/source: failure: no attribute>), 1)
+
+test <"make-dynamic-text/source: failure: no text" is reported 1 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <make-dynamic-text/source: failure: no text>), 1)
+
+test <"show/when: failure: no when" is reported 1 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <show/when: failure: no when>), 1)
+
+test <"build-owned/build: failure: no then" is reported 1 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <build-owned/build: failure: no then>), 1)
+
+test <"render-each/build: failure: no build b" is reported 2 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <render-each/build: failure: no build b>), 2)
+
+test <"render-each/items: failure: no items" is reported 1 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <render-each/items: failure: no items>), 1)
+
+test <"render-each-keyed/items: failure: no items" is reported 1 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <render-each-keyed/items: failure: no items>), 1)
+
+test <"render-each-keyed/key: failure: no key c" is reported 2 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <render-each-keyed/key: failure: no key c>), 2)
+
+test <"render-each-keyed/build: failure: no build b" is reported 2 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <render-each-keyed/build: failure: no build b>), 2)
+
+test <"render-gate/status: failure: no status" is reported 1 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <render-gate/status: failure: no status>), 1)
+
+# the memo's own raise on the bad run, and the late memo's first call and its effect's first run
+test <"make-memo/compute: failure: no memo" is reported 3 time(s)>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <make-memo/compute: failure: no memo>), 3)
+
+test <no value slot's raise reaches run-effect's guard>
+  take backend, like text
+    walk make list(<typescript>, <kotlin>)
+  fork test, is-unequal(values-reason(backend), <>)
+    hold
+      skip values-reason(backend)
+  want hold, is-equal(value-reports(backend, <effect: failure>), 0)
+
+# ---- decision 100 rule 7: the node host answers a raising route 500, reported once at `route` ----
+#
+# The program serves a route that raises on /broken through the node host. The request handler's guard answers it with
+# `answer-failure`, so /broken answers 500 `internal error` with one `route:` line in the log, and / still answers 200.
+# Built under the package's own tmp/, so the node transport's hono resolves from the emitted module.
+
+task routed
+  take port, like number
+  like text
+
+  back <load @term/site/code/view/native/\{platform\}/host\n  find host\n\nload @term/site/code/dom/dom\n  find view\n\nload @term/site/code/http/http\n  find request\n  find response\n\nload @term/base/maybe\n  find maybe\n\ntask broken-route\n  take host, like view\n  take request, like request\n  like maybe, like response\n  fork test\n    hook test\n      call is-equal\n        read request/path\n        text \</broken\>\n    hook hold\n      halt \<no page\>\n  send back, make none\n\ntask run\n  call host\n    read broken-route\n    code {port}\n>
+
+task no-route
+  take asked, like request
+  like response
+
+  back make-status(404)
+
+# a port nothing listens on now: one this suite held a moment ago and let go
+task free-port
+  mark async
+  like number
+
+  save probe, serve-start(0, <127.0.0.1>, no-route)
+  save port, probe/port
+  serve-stop(probe)
+  back port
+
+# what the served program answered: the build, then `<status> <body>` for /broken and for /, then its log
+form route-run
+  link built, like built-program
+  link broken, like text
+  link home, like text
+  link log, like text
+
+form route-kept
+  mark shared
+  link done, like boolean
+  link run, like route-run
+
+host route-state, make(route-kept, bind(done, false), bind(run, make(route-run, bind(built, make(built-program, bind(state, <skipped>))), bind(broken, <>), bind(home, <>), bind(log, <>))))
+
+# one ask of the served program, <> when nothing answers yet
+task asked-once
+  mark async
+  take url, like text
+  like text
+
+  fork
+    mark unsafe
+    save got, fetch(url)
+    back <{got/status} {got/body}>
+  halt take
+    take cause
+    back <>
+
+# ask until something answers, at most 100 times 100 ms apart, as the original did
+task asked
+  mark async
+  take port, like number
+  take path, like text
+  take left, like number, fall 100
+  like text
+
+  save said, asked-once(<http://127.0.0.1:{port}{path}>)
+  fork test, is-unequal(said, <>)
+    hold
+      back said
+  fork test, is-below(left, 2)
+    hold
+      back <no answer>
+  sleep(100)
+  back asked(port, path, subtract(left, 1))
+
+task served
+  mark async
+  like route-run
+
+  fork test, route-state/done
+    hold
+      back route-state/run
+  save route-state/done, true
+  save port, free-port()
+  save folder, <tmp/slot-report-route-{process-now()/id}>
+  make-folder(folder)
+  remove-at-exit(folder)
+  save built, build-text(routed(port), <typescript>, folder, <routed>, make(compile-choice, bind(project, <.>)))
+  save route-state/run/built, built
+  fork test, is-unequal(built/state, <built>)
+    hold
+      back route-state/run
+  save rest, make list
+  save at, 0
+  walk built/command
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        rest/push(part)
+    save at, add(at, 1)
+  save server, child-start(built/command/0, rest)
+  save route-state/run/broken, asked(port, </broken>)
+  save route-state/run/home, asked(port, </>)
+  sleep(200)
+  child-stop(server)
+  save ended, child-wait(server)
+  save route-state/run/log, ended/error
+  back route-state/run
+
+# the route runs where the original ran it: with REPORT_ONLY unset or typescript
+task route-reason
+  like text
+
+  save only, variable(<REPORT_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, <typescript>))
+    hold
+      back <REPORT_ONLY names {only}>
+  back <>
+
+test <node: a host serving a raising route compiles>
+  fork test, is-unequal(route-reason(), <>)
+    hold
+      skip route-reason()
+  want hold, is-equal(served()/built/state, <built>)
+
+test <node: a raising route answers 500>
+  fork test, is-unequal(route-reason(), <>)
+    hold
+      skip route-reason()
+  want hold, is-equal(served()/broken, <500 internal error>)
+
+test <node: a route that draws still answers 200>
+  fork test, is-unequal(route-reason(), <>)
+    hold
+      skip route-reason()
+  want hold, starts-with(served()/home, <200 >)
+
+test <node: the raise is reported once, at route>
+  fork test, is-unequal(route-reason(), <>)
+    hold
+      skip route-reason()
+  want hold, is-equal(count-of(served()/log, <route: failure: no page>), 1)

@@ -1,0 +1,262 @@
+note <term save and term toss in a project: a save that cannot install leaves deck.tree byte for byte as it was, and a toss takes the deck's link out of link/ with its line>
+
+# term-self-host-001-1622 (audit 0145). A registry holds @alice/demo 1.0.2 (oci-server.tree, published as OCI format
+# v2 by oci/oci-publishing.tree). A project's manifest routes the alice scope to it by a base line. `add-dependency`
+# with no mark asks for 0.x.x, which 1.0.2 does not meet, so it raises, and deck.tree must then hold the very bytes it
+# held, with nothing linked. With the mark 1.0.x it writes the link line and links the deck. `remove-dependency` then
+# takes the line out and the deck's `link/@alice/demo` too. TERM_STORE and TERM_TRUST_DIR point into the test's own
+# folder, so no real home, store or key is read. Item 1641: deck.tree is replaced by a write and a rename, so a save
+# into a deck.tree that links to a file elsewhere gives that file a new inode, keeps the link, and leaves no temporary.
+
+load ./oci-server
+  find start-oci-server
+  find close-oci-server
+  find oci-server
+
+load ../code/package/installing
+  find add-dependency
+  find remove-dependency
+
+load ../code/package/grammar-reading
+  find make-grammars
+
+load ../code/oci/oci-publishing
+  find publish-to-oci
+
+load ../code/object/id-signing
+  find generate-keypair
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+  find set-variable
+  find remove-variable
+
+dock load
+  load <node:fs>, name edit-file
+  load <node:os>, name edit-os
+  load <node:path>, name edit-path
+  load <@term/deck/code/oci/transport>, name edit-transport
+
+bind edit-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind edit-no-links
+  like dynamic
+  case node
+    text <[]>
+
+bind edit-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true, force: true })>>
+
+# whether anything is at a path, a link included, read without following it
+bind edit-is-there
+  take place, like text
+  like boolean
+  case node
+    text <<((editFs, editPlace) => { try { editFs.lstatSync(editPlace); return true } catch { return false } })(process.getBuiltinModule("node:fs"), $place)>>
+
+# whether a path is a symbolic link, false when nothing is there
+bind edit-is-link
+  take place, like text
+  like boolean
+  case node
+    text <<((editFs, editPlace) => { try { return editFs.lstatSync(editPlace).isSymbolicLink() } catch { return false } })(process.getBuiltinModule("node:fs"), $place)>>
+
+# the inode of the file at a path, a link followed: a file replaced by a rename has a new one, a file written in place
+# keeps its own
+bind edit-inode
+  take place, like text
+  like number
+  case node
+    text <<process.getBuiltinModule("node:fs").statSync($place).ino>>
+
+# how many temporary manifests (`deck.tree.tmp-...`) a folder holds
+bind edit-temporaries
+  take folder, like text
+  like number
+  case node
+    text <<process.getBuiltinModule("node:fs").readdirSync($folder).filter((editName) => editName.startsWith("deck.tree.tmp-")).length>>
+
+# the message of what a call raised
+bind edit-cause-message
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+host edit-demo-text, <export const demo = 1\n>
+host edit-variables, make list(<TERM_STORE>, <TERM_TRUST_DIR>)
+
+form edit-credential
+  link kind, like text
+  link username, like text
+  link password, like text
+
+form edit-transport-ask
+  link host, like text
+  link credentials, like dynamic
+  link retries, like number
+
+form edit-repository
+  link host, like text
+  link namespace, like text
+  link name, like text
+
+form edit-kept
+  link name, like text
+  link held, like boolean
+  link value, like text
+
+form edit-fixture
+  link server, like oci-server
+  link work, like text
+  link app, like text
+  link kept, like list, like edit-kept
+
+task edit-credentials
+  like edit-credential
+  mark async
+
+  back make(edit-credential, bind(kind, <basic>), bind(username, <tester>), bind(password, <secret>))
+
+# a registry holding @alice/demo 1.0.2, and a project whose manifest routes the alice scope to it and links nothing
+task open-edit
+  like edit-fixture
+  mark async
+
+  host server, start-oci-server()
+  host work, edit-file/mkdtemp-sync(edit-path/join(edit-os/tmpdir(), <term-dependency-edit->))
+  host kept, make list
+  walk edit-variables
+    take name, like text
+    kept/push(make(edit-kept, bind(name, name), bind(held, has-variable(name)), bind(value, variable-of(name))))
+  set-variable(<TERM_STORE>, edit-path/join(work, <store>))
+  set-variable(<TERM_TRUST_DIR>, edit-path/join(work, <trust>))
+  host source, edit-path/join(work, <demo>)
+  edit-file/mkdir-sync(edit-path/join(source, <code>), edit-folder-options(0))
+  edit-file/write-file-sync(edit-path/join(source, <code>, <demo.ts>), edit-demo-text)
+  host transport, edit-transport/http-transport(make(edit-transport-ask, bind(host, server/host), bind(credentials, edit-credentials), bind(retries, 0)))
+  host repository, make(edit-repository, bind(host, server/host), bind(namespace, <alice>), bind(name, <alice/demo>))
+  host published, publish-to-oci(source, <@alice/demo>, <1.0.2>, edit-no-links(), edit-transport/port-transport(transport), repository, <@alice>, <alice/name>, generate-keypair(), edit-nothing(), edit-nothing(), edit-nothing(), edit-nothing())
+  host app, edit-path/join(work, <app>)
+  edit-file/mkdir-sync(app, edit-folder-options(0))
+  edit-file/write-file-sync(edit-path/join(app, <deck.tree>), <deck @probe/app\n  mark \<1.0.0\>\n  base alice, \<{server/host}/alice\>\n>)
+  back make(edit-fixture, bind(server, server), bind(work, work), bind(app, app), bind(kept, kept))
+
+# the variables as they were, the registry closed and the folder removed
+task close-edit
+  take open, like edit-fixture
+  like void
+  mark async
+
+  walk open/kept
+    take one, like edit-kept
+    fork test, one/held
+      hold
+        set-variable(one/name, one/value)
+      miss
+        remove-variable(one/name)
+  close-oci-server(open/server)
+  edit-file/rm-sync(open/work, edit-folder-options(0))
+
+# the project's manifest text
+task app-manifest
+  take open, like edit-fixture
+  like text
+
+  back edit-file/read-file-sync(edit-path/join(open/app, <deck.tree>), <utf8>)
+
+# whether the project's `link/@alice/demo` is there, a link or anything else
+task demo-linked
+  take open, like edit-fixture
+  like boolean
+
+  back edit-is-there(edit-path/join(open/app, <link>, <@alice>, <demo>))
+
+# what adding @alice/demo under `constraint` raised, the empty text when it was added
+task save-refusal
+  take open, like edit-fixture
+  take constraint, like text
+  like text
+  mark async
+
+  save message, <>
+  fork
+    mark unsafe
+    add-dependency(open/app, <@alice/demo>, constraint, make-grammars())
+  halt take
+    take cause
+    save message, edit-cause-message(cause)
+  back message
+
+test <add-dependency that nothing published can meet raises and leaves deck.tree byte for byte, with no lock.tree and nothing linked>
+  host open, open-edit()
+  host before, app-manifest(open)
+  host raised, save-refusal(open, <>)
+  host after, app-manifest(open)
+  host linked, demo-linked(open)
+  host locked, edit-is-there(edit-path/join(open/app, <lock.tree>))
+  close-edit(open)
+  want hold, not(is-equal(raised, <>))
+  want hold, is-equal(after, before)
+  want hold, not(linked)
+  want hold, not(locked)
+
+test <add-dependency with a mark it can meet writes the link line, installs and links the deck>
+  host open, open-edit()
+  host raised, save-refusal(open, <1.0.x>)
+  host after, app-manifest(open)
+  host linked, demo-linked(open)
+  host locked, edit-file/read-file-sync(edit-path/join(open/app, <lock.tree>), <utf8>)
+  close-edit(open)
+  want hold, is-equal(raised, <>)
+  want hold, after/includes(<link @alice/demo>)
+  want hold, linked
+  want hold, locked/includes(<@alice/demo>)
+
+test <add-dependency with the range ^1.0.0 writes the range it means, once 1.0.2 is installed>
+  host open, open-edit()
+  host raised, save-refusal(open, <^1.0.0>)
+  host after, app-manifest(open)
+  close-edit(open)
+  want hold, is-equal(raised, <>)
+  want hold, after/includes(<link @alice/demo, mark \<1.0.0..2.0.0\>>)
+
+test <remove-dependency takes the link line out and the deck's link/@alice/demo with it, and the base line stays>
+  host open, open-edit()
+  host raised, save-refusal(open, <1.0.x>)
+  host linked, demo-linked(open)
+  remove-dependency(open/app, <@alice/demo>, make-grammars())
+  host after, app-manifest(open)
+  host left, demo-linked(open)
+  close-edit(open)
+  want hold, is-equal(raised, <>)
+  want hold, linked
+  want hold, not(left)
+  want hold, not(after/includes(<@alice/demo>))
+  want hold, after/includes(<base alice>)
+
+test <add-dependency replaces deck.tree by a rename onto the file it links to: a new inode there, the link kept, no temporary left>
+  host open, open-edit()
+  host place, edit-path/join(open/app, <deck.tree>)
+  host real, edit-path/join(open/work, <kept-deck.tree>)
+  edit-file/rename-sync(place, real)
+  edit-file/symlink-sync(real, place)
+  host before, edit-inode(real)
+  host raised, save-refusal(open, <1.0.x>)
+  host after, edit-inode(real)
+  host still-link, edit-is-link(place)
+  host written, edit-file/read-file-sync(real, <utf8>)
+  host left, add(edit-temporaries(open/work), edit-temporaries(open/app))
+  close-edit(open)
+  want hold, is-equal(raised, <>)
+  want hold, not(is-equal(after, before))
+  want hold, still-link
+  want hold, written/includes(<link @alice/demo>)
+  want hold, is-equal(left, 0)

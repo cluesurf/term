@@ -1,0 +1,162 @@
+note <a chosen twin really runs in place of its task on every backend, and answers what the task answers>
+
+# Ported from twin-select.ts by statement (item term-self-host-001-0661), one test per `ok` in its order. The selection
+# pass (ir/twin.ts, optimize-0008): `count-each` in @term/base/code/count has two twins. Each choice is built and run on
+# TypeScript, Rust, Swift and Kotlin and must print the reference's answers: the reference, `tally`, `dense` (behind its
+# `hook test`), and a size check between the two. `dense` on values OUTSIDE its range is the guard's own test: chosen
+# without its check, it writes past its 65,536 slots, so a correct answer there is the check sending the call to the
+# reference. TS_ONLY=rust (or swift, kotlin, typescript) runs one backend.
+#
+# The original's loop over backends and choices is one walked test per choice, a backend a case. Its `compute` is the
+# program's `run` here, which run-text prints on each backend, where the original wrote a `main` in each backend's text.
+# The driver reads its twins as a plain object keyed by task name, so each choice is a JSON text parsed, never a hash.
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/reading
+  find any-holding
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/json
+  find parse, name parse-json
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# two calls: one from `run`, one from a task of its own, so the redirect is seen in more than one place
+host program, <load @term/base/code/count\n  find count-each\n\nload @term/base/code/list\n  find list\n\ntask listed\n  take a, like number\n  take b, like number\n  take c, like number\n  take d, like number\n  like list, like number\n  save out\n    make list\n  call push\n    bind list, read out\n    bind item, read a\n  call push\n    bind list, read out\n    bind item, read b\n  call push\n    bind list, read out\n    bind item, read c\n  call push\n    bind list, read out\n    bind item, read d\n  send back, read out\n\ntask summed\n  take counts, like list, like number\n  like number\n  save total, code 0\n  save weight, code 1\n  walk list, read counts\n    hook next\n      take site, name n\n      save total\n        call add\n          read total\n          call multiply\n            read n\n            read weight\n      save weight\n        call multiply\n          read weight\n          code 10\n  send back, read total\n\ntask twice\n  like number\n  send back\n    call summed\n      call count-each\n        call listed\n          code 70000\n          code 2\n          code 70000\n          code -1\n        call listed\n          code 70000\n          code -1\n          code 5\n          code 2\n\ntask run\n  like text\n  host small\n    call summed\n      call count-each\n        call listed\n          code 5\n          code 3\n          code 5\n          code 9\n        call listed\n          code 5\n          code 7\n          code 3\n          code 9\n  host wide\n    call twice\n  send back, text \<small=\{\{small\}\} wide=\{\{wide\}\}\>\n>
+
+# in range: 5 twice, 7 never, 3 once, 9 once -> 2,0,1,1 -> 2 + 0 + 100 + 1000. Out of range: 70000 twice, -1 once,
+# 5 never, 2 once -> 2,1,0,1 -> 2 + 10 + 0 + 1000
+host expected, <small=1102 wide=1012>
+
+host reference-choice, <\{"count-each": "reference"\}>
+host tally-choice, <\{"count-each": \{"use": "tally"\}\}>
+host dense-choice, <\{"count-each": \{"use": "dense"\}\}>
+host size-choice, <\{"count-each": \{"check": "size", "of": "values", "below": 3, "then": \{"use": "tally"\}, "else": \{"use": "dense"\}\}\}>
+
+host dispatch, make pattern, <<countEachChosen\(|count_each_chosen\(>>
+
+# the program with `twins`, a JSON text, chosen, on the stdlib's env for `backend`, as the original's build(env, choices)
+task chose
+  take twins, like text
+  like compile-choice
+
+  back make(compile-choice, bind(stdlib, <node>), bind(twins, parse-json(twins)))
+
+# <> when TS_ONLY lets `backend` run, else why not
+task only-reason
+  take backend, like text
+  like text
+
+  save only, variable(<TS_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <TS_ONLY names {only}>
+  back <>
+
+task ran-with
+  take backend, like text
+  take twins, like text
+  take name, like text
+  like ran-program
+
+  save folder, temp-folder(<twin-select->)
+  back run-text(program, backend, folder, name, chose(twins))
+
+test <the reference>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-with(backend, reference-choice, <reference>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+# the call was redirected to the dispatch, and the dispatch calls the twin (the original's check on the TypeScript of
+# its second choice)
+test <the call to count-each goes through the dispatch>
+  fork test, is-unequal(only-reason(<typescript>), <>)
+    hold
+      skip only-reason(<typescript>)
+  host out, compile-text(program, chose(tally-choice))
+  want hold, out/ok
+  want hold, matches(dispatch, out/emitted)
+
+test <tally>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-with(backend, tally-choice, <tally>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+test <dense, behind its check>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-with(backend, dense-choice, <dense>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+test <a size check: tally below 3 values, dense from there>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-with(backend, size-choice, <size>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+# what the pass refuses, rather than guesses at: each compiled for TypeScript on the stdlib, as the original's
+# build('typescript', choices). The stdlib is named for node: with none named the program's loads find nothing here,
+# and every choice is refused as naming no task, the right word for the wrong cause (T-0554)
+task refused
+  take twins, like text
+  like list, like text
+
+  save out, compile-text(program, chose(twins))
+  fork test, out/ok
+    hold
+      back make list
+  back out/messages
+
+test <a choice of a twin the task does not have is refused>
+  want hold, any-holding(refused(<\{"count-each": \{"use": "nothing"\}\}>), <has none of that name>)
+
+test <a choice for a task that does not exist is refused>
+  want hold, any-holding(refused(<\{"count-none": "reference"\}>), <no such task>)
+
+test <a size check on a name that is not a parameter is refused>
+  want hold, any-holding(refused(<\{"count-each": \{"check": "size", "of": "items", "below": 3, "then": "reference", "else": \{"use": "tally"\}\}\}>), <not one of its parameters>)

@@ -127,7 +127,6 @@ import { availableParallelism, totalmem } from 'node:os'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ParseMemo, WalkMemo } from '@term/make/code/compile/load'
-import { projectHome } from '@term/call/code/home'
 import { buildValue, isLaunchOnly } from '@term/call/code/launch-only'
 import type { DockRoute, Program } from '@term/make/code/compile/node'
 import { readPin, stage0Path, STAGE0_SOURCES } from './stage0'
@@ -181,6 +180,17 @@ const { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSy
 
 // run from the Term package root, the way every script under task/ is
 const TERM = process.cwd()
+
+// `<root>/.base/@term/code/<...parts>`, spelled here, not imported from call/code/home.ts (item
+// term-self-host-001-1571), as task/term/line-lock.ts spells its own. NOTHING THIS SCRIPT LOADS MAY BE A PORT: it is
+// what writes the ports and host/unit/, so it must run in a tree whose ports are absent, stale or shims whose units are
+// gone. home.ts imports the port call/code/home-ignore, a shim re-exporting host/unit/ since the units switch, so a tree
+// without host/unit/ (a clone of deck/ alone, `rm -r host`) could not start this script, and nothing else rebuilds the
+// units. And a port in this script's own bundle is in the compiler fingerprint, so a run that rewrote it moved the print
+// of the run after it (see fingerprint). The old homes home.ts renames are the CLI's to settle
+function projectHome(root: string, ...parts: string[]): string {
+  return join(root, '.base', '@term', 'code', ...parts)
+}
 
 // the stdlib every port loads is the working tree's. The compiler finds it by walking up from its own file, and
 // stage0's file sits under the user home, so it is named here (the same folder the walk finds from deck/make)
@@ -688,26 +698,20 @@ async function fingerprint(stage0Id: string): Promise<string | undefined> {
 
     const files = [...Object.keys(result.metafile.inputs).map(input => join(TERM, input)), join(TERM, 'tsconfig.json')]
 
-    if (!units) {
-      if (lock) {
-        files.push(lock)
-      }
-
-      for (const file of files.sort()) {
-        hash.update(`file ${file} ${sha(readFileSync(file))}\n`)
-      }
-
-      return hash.digest('hex')
-    }
-
-    // THE UNITS (trap T-1342): this script reaches call/code/home.ts, which imports the PORT home-ignore, and a run
-    // that turns a whole port into a shim and its units moved its own fingerprint, so the run after it was cold. Every
-    // input under a deck's host/port/ or under host/unit/ is OUTPUT of port-build: a port counts by its `.tree` source
-    // (what it is made from), a unit file not at all. And every path is said relative to this tree, the lockfile by
-    // its content alone, so a clone of the same content has the same print (THE FAST PATH after a carry, item 1327)
-    hash.update(`lock ${lock ? sha(readFileSync(lock)) : 'none'}\n`)
-
+    // EVERY INPUT UNDER A DECK'S host/port/ OR UNDER host/unit/ IS OUTPUT OF PORT-BUILD, in both modes (trap T-1342,
+    // item term-self-host-001-1571): a port counts by its `.tree` source (what it is made from), a unit file not at all.
+    // A run that rewrote one (a whole port turned into a shim, or a shim back into a whole port) otherwise moved the
+    // print of the run after it, which then compiled every module again: port-build-skip's steady run read '0 built,
+    // 693 unchanged' with no module skipped. Nothing this script loads is a port since 1571, so this holds should one
+    // come back
     const said = new Set<string>()
+    // THE UNITS say every path relative to this tree, so a clone of the same content has the same print (THE FAST PATH
+    // after a carry, item 1327). A whole-port run says it as it always has, absolute
+    const shown = (file: string): string => (units ? relative(TERM, file).split(sep).join('/') : file)
+
+    if (!units && lock) {
+      files.push(lock)
+    }
 
     for (const file of files) {
       const at = relative(TERM, file).split(sep).join('/')
@@ -720,11 +724,22 @@ async function fingerprint(stage0Id: string): Promise<string | undefined> {
       if (port) {
         const source = join(TERM, 'deck', port[1]!, `${port[2]!.replace(/-run$/, '')}.tree`)
 
-        said.add(`source ${relative(TERM, source).split(sep).join('/')} ${existsSync(source) ? sha(readFileSync(source)) : 'none'}`)
+        said.add(`source ${shown(source)} ${existsSync(source) ? sha(readFileSync(source)) : 'none'}`)
       } else {
-        said.add(`file ${at} ${sha(readFileSync(file))}`)
+        said.add(`file ${shown(file)} ${sha(readFileSync(file))}`)
       }
     }
+
+    if (!units) {
+      for (const line of [...said].sort()) {
+        hash.update(`${line}\n`)
+      }
+
+      return hash.digest('hex')
+    }
+
+    // THE UNITS: the lockfile by its content alone
+    hash.update(`lock ${lock ? sha(readFileSync(lock)) : 'none'}\n`)
 
     for (const line of [...said].sort()) {
       hash.update(`${line}\n`)
@@ -2404,7 +2419,7 @@ async function main(): Promise<void> {
   const counts = { built: 0, unchanged: 0, stale: 0, failed: 0, moved: 0 }
   const jobs = jobCount()
 
-  // port-build's own bookkeeping is no part of any module's trace. `settle` in home.ts reaches `fs` itself
+  // port-build's own bookkeeping is no part of any module's trace
   setRecording(false)
 
   // `--verify` writes nothing, so it waits for no one

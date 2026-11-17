@@ -3,7 +3,12 @@
 // The logic is Term; this file only converts shapes for TypeScript callers.
 // The original is kept byte for byte at deck/term/deck/term/tmp/retired/make/deck-oci-release.
 import * as port from '@term/deck/code/oci/toolchain-release'
-import { lift, liftAsync, type OciTransport } from './transport'
+import {
+  lift,
+  liftAsync,
+  portTransport,
+  type OciTransport,
+} from './transport'
 import type { Keypair } from '../object/sign'
 import type { OciRoute } from './client'
 
@@ -97,7 +102,7 @@ export const publishRelease = (input: {
   liftAsync(
     () =>
       p.publishRelease!(
-        input.transport,
+        portTransport(input.transport),
         input.repository,
         input.package,
         input.version,
@@ -116,7 +121,7 @@ export const readReleaseIndex = (input: {
   liftAsync(
     () =>
       p.readReleaseIndex!(
-        input.transport,
+        portTransport(input.transport),
         input.repository,
         input.version,
       ) as Promise<Listed>,
@@ -132,7 +137,7 @@ export const readRelease = (input: {
   liftAsync(
     () =>
       p.readRelease!(
-        input.transport,
+        portTransport(input.transport),
         input.repository,
         input.package,
         input.version,

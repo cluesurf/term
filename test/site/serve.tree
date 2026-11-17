@@ -1,0 +1,167 @@
+note <a backend built on the trie router serves over hono: a static route, a `:param` route and a 404, over real HTTP>
+
+# Ported from test/site/serve.ts by statement (item term-self-host-001-0639), one test per ok in its order. Live
+# hono-transport test: compile a `.tree` backend that builds a trie-routed API and `serve`s it, start it on a port, and
+# fetch it over real HTTP. Proves hono owns the socket while the uniform `handle-request` does the matching (static +
+# `:param`).
+#
+# The original bundled the app with esbuild, hono left out, imported it, started it on port 38561 and fetched it from
+# the suite. Here a driver program loads the app and runs in a child (run-text), in a folder under this repository so
+# node finds hono in its node_modules. It starts the app on a port this suite held a moment ago and let go (no fixed
+# port, T-1595), fetches each path itself, writes each answer and ends the process: the server would hold node's loop.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find file-text
+
+load ../support/temp
+  find remove-at-exit
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/process/current
+  find read, name process-now
+
+load @term/base/network/server
+  find start, name serve-start
+  find stop, name serve-stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-status
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/text/hex
+  find decode-hex
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host entry, <deck/site/test/site/serve.tree>
+
+# the driver for the app on `port`: start, then each path's status and body (hex) as `<status>|<body>`, a line each
+task driver
+  take port, like number
+  like text
+
+  back <load @term/site/test/site/serve\n  find start\n\nload @term/base/network/http\n  find fetch\n\nload @term/base/list\n  find list\n  find join\n\nload @term/base/text/hex\n  find encode-hex\n\nload @term/base/clock\n  find sleep\n\nload @term/base/console\n  find write, name write-out\n\nload @term/base/process/current\n  find exit\n\ntask asked\n  take path, like text\n  like text\n  mark async\n  save got, fetch(\<http://localhost:{port}\{path\}\>)\n  save parts, make list(\<\{got/status\}\>, encode-hex(got/body))\n  back join(parts, \<|\>)\n\ntask run\n  mark async\n  like text\n  start({port})\n  sleep(250)\n  save health, asked(\</health\>)\n  save u42, asked(\</users/42\>)\n  save u7, asked(\</users/7\>)\n  save miss, asked(\</nope\>)\n  write-out(\<\{health\}\\n\{u42\}\\n\{u7\}\\n\{miss\}\>)\n  exit(0)\n  back \<\>\n>
+
+# one fetched answer as the driver wrote it
+form fetched
+  link status, like text
+  link body, like text
+
+form serve-state
+  mark shared
+  link done, like boolean
+  link compiled, like boolean
+  link emitted, like text
+  link ran, like ran-program
+  link answers, like list, like fetched
+
+host nothing, make(fetched, bind(status, <>), bind(body, <>))
+
+host state, make(serve-state, bind(done, false), bind(compiled, false),bind(emitted, <>), bind(ran, make(ran-program, bind(state, <>))), bind(answers, make list))
+
+task fetched-of
+  take text, like text
+  like fetched
+
+  save fields, text-split(text, <|>)
+  fork test, is-below(fields/length, 2)
+    hold
+      back nothing
+  back make(fetched, bind(status, fields/get(0)), bind(body, decode-hex(fields/get(1))))
+
+task no-route
+  take asked, like request
+  like response
+
+  back make-status(404)
+
+# a port nothing listens on now: one this suite held a moment ago and let go
+task free-port
+  mark async
+  like number
+
+  save probe, serve-start(0, <127.0.0.1>, no-route)
+  save port, probe/port
+  serve-stop(probe)
+  back port
+
+# the app compiled, then the driver run once, its answers read back
+task prepare
+  mark async
+  like serve-state
+
+  fork test, state/done
+    hold
+      back state
+  save state/done, true
+  save out, compile-text(file-text(entry), make(compile-choice, bind(file, entry), bind(project, <.>)))
+  save state/compiled, out/ok
+  save state/emitted, out/emitted
+  fork test, not(out/ok)
+    hold
+      back state
+  save folder, <test/tmp/term-serve-{process-now()/id}>
+  make-folder(folder)
+  remove-at-exit(folder)
+  save state/ran, run-text(driver(free-port()), <typescript>, folder, <serve>)
+  fork test, is-equal(state/ran/state, <ran>)
+    hold
+      walk text-split(state/ran/output, <\n>)
+        take line, like text
+        state/answers/push(fetched-of(line))
+  back state
+
+# the answer to the path at `n` of the driver's four, or nothing
+task answer-at
+  mark async
+  take n, like number
+  like fetched
+
+  save answers, prepare()/answers
+  fork test, is-below(n, answers/length)
+    hold
+      back answers/get(n)
+  back nothing
+
+test <serve app compiles>
+  want hold, prepare()/compiled
+
+test <compiled output has no hono import>
+  want hold, prepare()/compiled
+  want hold, not(matches(make(pattern, <<from ['"]hono['"]>>), prepare()/emitted))
+
+test <hono server starts>
+  host ran, prepare()/ran
+  want hold, is-equal(ran/reason, <>)
+  want hold, is-equal(ran/state, <ran>)
+
+test <static /health dispatches (200 ok)>
+  host got, answer-at(0)
+  want hold, and(is-equal(got/status, <200>), is-equal(got/body, <ok>))
+
+test <:param /users/42 binds id=42>
+  host got, answer-at(1)
+  want hold, and(is-equal(got/status, <200>), is-equal(got/body, <42>))
+
+test <:param /users/7 binds id=7>
+  host got, answer-at(2)
+  want hold, and(is-equal(got/status, <200>), is-equal(got/body, <7>))
+
+test <unmatched path returns 404>
+  want hold, is-equal(answer-at(3)/status, <404>)

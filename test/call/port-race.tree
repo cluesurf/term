@@ -1,0 +1,535 @@
+note <task/port-build.ts never writes a port compiled from a source that has changed since>
+
+# Ported from test/call/port-race.ts by statement (item term-self-host-001-0687, term-cli-in-term-0151), one test per ok
+# in its order.
+#
+# The race it reproduces, the one that fed three builders' checks stale code on 2026-10-23 (cli-in-term traps.md, items
+# 0075, 0101, 0077): a build A compiles a module from its text, a builder edits that text, a build B writes the new
+# text's port and says `built`, and A then writes the OLD text's port over it, with no error anywhere. On a CLONE of the
+# toolchain tree (APFS clones, so seconds), where no line lock is taken, so the two builds overlap the way they did when
+# they slipped past it:
+#
+#   A runs with TERM_PORT_BUILD_HOLD, which stops it after its compile and before its write-time check
+#   the probe's source is edited, and B builds it to completion: B's port holds the edit
+#   A goes on: it must see the source changed, compile it again, and leave B's port (the edit) in place
+#   `--verify` then passes, and fails once the source is edited again with no build
+#
+# About a minute: three one-module builds on the clone. PORT_RACE_SCRIPT=<abs path to a port-build.ts> runs the same
+# race against another copy of the script (the proof ran the one before this fix, with the hold added by hand, and it
+# failed `A leaves B's port`). The whole race runs once, in the original's order, by the first test that asks: each step
+# keeps what it answered, and each test asserts on one step as the original's `ok` did. A step that raises ends the race,
+# as the original's throw did, and every step past it keeps an answer no assertion holds. The clone goes either way.
+
+load ../support/temp
+  find temp-folder
+
+load ../support/cli
+  find term-root
+
+load @term/base/process/run
+  find run
+
+load @term/base/process
+  find child
+
+load @term/base/process/child
+  find start, name start-child
+  find wait, name wait-child
+
+load @term/base/clock
+  find sleep
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name path-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/file/link
+  find make, name make-link
+
+load @term/base/file/remove
+  find remove-all
+
+load @term/base/json
+  find parse, name json-parse
+  find field-text
+
+load @term/base/environment
+  find variable
+
+load @term/base/pattern
+  find pattern
+  find find-match
+
+load @term/base/list
+  find contains, name list-contains
+
+load @term/base/text
+  find contains, name text-contains
+  find ends-with
+  find substring
+  find index-of
+  find char-count
+  find split, name text-split
+
+dock load
+  load <node:fs>, name race-fs
+  load <node:path>, name race-path
+
+# host value: the node running this suite, which runs port-build through tsx as the original's process.execPath does
+bind race-node
+  take seed, like number
+  like text
+  case node
+    text <process.execPath>
+
+# host value: cpSync's options for an APFS clone (fs.constants.COPYFILE_FICLONE is 2), links kept as written, and the
+# suite's own filter
+bind clone-options
+  take keep, like dynamic
+  like dynamic
+  case node
+    text <(\{ recursive: true, mode: 2, verbatimSymlinks: true, filter: $keep \})>
+
+# host value: cpSync's options for an APFS clone of a folder
+bind folder-clone
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true, mode: 2 \})>
+
+# host value: what a raise said, its note and thing for a Term exception, its message for a host one
+bind race-cause
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.note ?? $cause?.message ?? $cause) + ($cause?.thing ? ": " + $cause.thing : "")>
+
+# a toolchain module with a text literal to change, and its port
+host probe, <deck/test/code/bench-report.tree>
+host probe-port, <deck/test/host/port/code/bench-report.ts>
+host only, <deck/test/code/bench-report>
+# a second module whose compile reads a file the probe's compile reads too (term-cli-in-term-0158)
+host other, <deck/test/code/seeded-random>
+host shared, <deck/base/code/list.tree>
+
+# the build trees the clone leaves out: outputs other than the ports, and caches
+host leave-names, make list(<node_modules>, <target>, <.build>, <.base>, <tmp>, <.git>)
+
+host literal-pattern, make(pattern, <<<([A-Za-z][^<>{}\\\n]*)>>>)
+
+# one port-build run: its exit code and what it printed
+form build-run
+  link code, like number
+  link out, like text
+
+host no-run, make(build-run, bind(code, -1), bind(out, <>))
+
+# what the race saw at each step, in the original's order, and why it stopped, <> when it ran to the end. A step the race
+# never reached keeps its fall, which no test's assertion holds
+form race-state
+  mark shared
+  link ran, like boolean
+  link raised, like text
+  link probe-there, like boolean
+  link port-there, like boolean
+  link held, like boolean
+  link held-what, like text
+  link new-changed, like boolean
+  link b, like build-run
+  link port-after-b, like text
+  link a, like build-run
+  link port-after-a, like text
+  link current, like build-run
+  link later-changed, like boolean
+  link later, like build-run
+  link nothing, like build-run
+  link rebuilt, like build-run
+  link second, like build-run
+  link kept, like build-run
+  link same, like build-run
+  link port-before-same, like text
+  link port-after-same, like text
+  link broken, like build-run
+  link failed, like build-run
+  link mended, like build-run
+  link again, like build-run
+  link c-held, like boolean
+  link during, like build-run
+  link c, like build-run
+  link after, like build-run
+
+host race, make(race-state, bind(ran, false), bind(raised, <>), bind(probe-there, false), bind(port-there, false), bind(held, false), bind(held-what, <>), bind(new-changed, false), bind(b, no-run), bind(port-after-b, <>), bind(a, no-run), bind(port-after-a, <>), bind(current, no-run), bind(later-changed, false), bind(later, no-run), bind(nothing, no-run), bind(rebuilt, no-run), bind(second, no-run), bind(kept, no-run), bind(same, no-run), bind(port-before-same, <>), bind(port-after-same, <x>), bind(broken, no-run), bind(failed, no-run), bind(mended, no-run), bind(again, no-run), bind(c-held, false), bind(during, no-run), bind(c, no-run), bind(after, no-run))
+
+# whether a source goes into the clone: no build tree or cache by its name, and of any `host/` only `host/port/` (the
+# original's filter, its `host` searched from the first part of the path)
+task keep-source
+  take root, like text
+  take source, like text
+  like boolean
+
+  save parts, text-split(source, </>)
+  save last-part, parts/get(subtract(parts/length, 1))
+  fork test, or(list-contains(leave-names, last-part), ends-with(last-part, <-cache>))
+    hold
+      back false
+  save at, text-split(race-path/relative(root, source), </>)
+  save at-host, -1
+  save k, 0
+  walk test
+    hook test, and(is-below(at-host, 0), is-below(k, at/length))
+    hook hold
+      fork test, is-equal(at/get(k), <host>)
+        hold
+          save at-host, k
+      save k, add(k, 1)
+  fork test, is-below(at-host, 0)
+    hold
+      back true
+  fork test, is-equal(at/length, add(at-host, 1))
+    hold
+      back true
+  back is-equal(at/get(add(at-host, 1)), <port>)
+
+# every `"` before one or more `../` made absolute for the clone, however many levels it climbs
+task absolute-ups
+  take source-text, like text
+  take root, like text
+  like text
+
+  save out, <>
+  save rest, source-text
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save at, index-of(rest, <"../>)
+      fork test, is-below(at, 0)
+        hold
+          save out, <{out}{rest}>
+          save going, false
+        miss
+          save past, add(at, 1)
+          walk test
+            hook test, is-equal(substring(rest, past, add(past, 3)), <../>)
+            hook hold
+              save past, add(past, 3)
+          save up, substring(rest, add(at, 1), past)
+          save out, <{out}{substring(rest, 0, at)}"{race-path/resolve(root, up)}/>
+          save rest, substring(rest, past, char-count(rest))
+  back out
+
+# the clone port-build-skip.ts makes: the package's deck/ without caches and outputs other than the ports, the root's
+# host/unit/ (decision 162: every port shim re-exports from it, item 1569), port-build.ts and every module it imports
+# from task/ with the stage0 pin (decision 036), the line lock and the package.json that keeps its folder CommonJS
+# (port-build refuses to run without it, item 0475, so the clone's builds lock the clone), tsconfig.json with its
+# climbing paths made absolute, and node_modules linked
+task clone-tree
+  mark async
+  take root, like text
+  take copy, like text
+  take script, like text
+  like void
+
+  save keep
+    task
+      take source, like text
+      like boolean
+      back keep-source(root, source)
+  race-fs/cp-sync(race-path/join(root, <deck>), race-path/join(copy, <deck>), clone-options(keep))
+  race-fs/cp-sync(race-path/join(root, <host>, <unit>), race-path/join(copy, <host>, <unit>), folder-clone(0))
+  make-folder(race-path/join(copy, <task>, <term>))
+  race-fs/cp-sync(script, race-path/join(copy, <task>, <port-build.ts>))
+  walk make(list, <task/port-trace.ts>, <task/port-shelved.ts>, <task/stage0.ts>, <task/stage0.json>, <package.json>, <task/term/line-lock.ts>, <task/term/package.json>)
+    take one, like text
+    race-fs/cp-sync(race-path/join(root, one), race-path/join(copy, one))
+  write-file(race-path/join(copy, <tsconfig.json>), absolute-ups(read-file(race-path/join(root, <tsconfig.json>)), root))
+  make-link(race-path/join(root, <node_modules>), race-path/join(copy, <node_modules>))
+
+# port-build in the clone with `arguments`, and `environment` over this process's
+task build-with
+  mark async
+  take root, like text
+  take copy, like text
+  take environment, like hash, like text, like text
+  take arguments, like list, like text
+  like build-run
+
+  save words, make list(race-path/join(root, <node_modules>, <tsx>, <dist>, <cli.mjs>), <task/port-build.ts>)
+  walk arguments
+    take one, like text
+    words/push(one)
+  save ran, run(race-node(0), words, copy, environment)
+  back make(build-run, bind(code, ran/code), bind(out, ran/output))
+
+# the clone's line lock as its holder wrote it (line-lock.ts lockPath and holder.json)
+task held-token
+  mark async
+  take copy, like text
+  like text
+
+  back field-text(json-parse(read-file(race-path/join(copy, <.base>, <@term>, <code>, <line-lock>, <holder.json>))), <token>)
+
+# wait until `file` exists, looking every tenth of a second, at most `seconds`
+task until-exists
+  mark async
+  take file, like text
+  take seconds, like number
+  like boolean
+
+  save left, multiply(seconds, 10)
+  walk test
+    hook test, is-above(left, 0)
+    hook hold
+      fork test, path-exists(file)
+        hold
+          back true
+      sleep(100)
+      save left, subtract(left, 1)
+  back path-exists(file)
+
+# a text literal of the probe changed to hold `mark`: the module's emitted TypeScript must hold it too. Whether the text
+# changed
+task edit
+  mark async
+  take copy, like text
+  take mark, like text
+  like boolean
+
+  save file, race-path/join(copy, probe)
+  save text, read-file(file)
+  save changed, text
+  sift find-match(literal-pattern, text)
+    case some
+      link value
+      save inner, substring(value/text, 1, subtract(char-count(value/text), 1))
+      save changed, <{substring(text, 0, value/start)}\<{inner} {mark}\>{substring(text, value/end, char-count(text))}>
+    case none
+      save changed, text
+  write-file(file, changed)
+  back is-unequal(changed, text)
+
+task port-text
+  mark async
+  take copy, like text
+  like text
+
+  back read-file(race-path/join(copy, probe-port))
+
+# a build of the probe started with the hold folder `hold`, left running
+task start-held
+  mark async
+  take root, like text
+  take copy, like text
+  take hold, like text
+  like child
+
+  save environment, make hash
+  environment/set(<TERM_PORT_BUILD_HOLD>, hold)
+  save words, make list(race-path/join(root, <node_modules>, <tsx>, <dist>, <cli.mjs>), <task/port-build.ts>, <--only>, only)
+  back start-child(race-node(0), words, copy, environment)
+
+# the race, in the original's order, each step's answer kept for its test
+task race-steps
+  mark async
+  take root, like text
+  take copy, like text
+  like void
+
+  save none, make hash
+  save script, variable(<PORT_RACE_SCRIPT>)
+  fork test, is-equal(script, <>)
+    hold
+      save script, race-path/join(root, <task>, <port-build.ts>)
+  clone-tree(root, copy, script)
+  save race/probe-there, path-exists(race-path/join(copy, probe))
+  save race/port-there, path-exists(race-path/join(copy, probe-port))
+  save hold, race-path/join(copy, <hold>)
+  make-folder(hold)
+
+  # ---- A: compiles the probe's text as it is, then stops before its write-time check ----
+  save a, start-held(root, copy, hold)
+  save race/held, until-exists(race-path/join(hold, <held>), 600)
+  fork test, not(race/held)
+    hold
+      halt <A exited before it held>
+  save race/held-what, read-file(race-path/join(hold, <held>))
+
+  # ---- the edit, and B: a whole build of the new text while A holds ----
+  save race/new-changed, edit(copy, <race-new>)
+  # B slips past the lock A holds, as the builds of 2026-10-23 slipped past theirs: it runs under A's token, which
+  # line-lock.ts reads as the lock being its own already (the make:line hand-down), so the two overlap
+  save lock, make hash
+  lock/set(<TERM_LINE_LOCK>, held-token(copy))
+  save race/b, build-with(root, copy, lock, make list(<--only>, only))
+  save race/port-after-b, port-text(copy)
+
+  # ---- A goes on ----
+  write-file(race-path/join(hold, <go>), <>)
+  save a-end, wait-child(a)
+  save race/a, make(build-run, bind(code, a-end/code), bind(out, a-end/output))
+  save race/port-after-a, port-text(copy)
+
+  # ---- --verify ----
+  save race/current, build-with(root, copy, none, make list(<--verify>, only))
+  save race/later-changed, edit(copy, <race-later>)
+  save race/later, build-with(root, copy, none, make list(<--verify>, only))
+  save race/nothing, build-with(root, copy, none, make list(<--verify>, <no/such/module>))
+
+  # ---- a later build keeps the probe's row (term-cli-in-term-0158) ----
+  #
+  # Each manifest entry is keyed by every observation its build made, and a build that wrote the manifest DROPPED an
+  # old entry when any one of those disagreed with what it saw itself (a file edited since, by anyone). The probe's port
+  # was still its source's last build, so `--verify` said 'no build has recorded it' until the probe was built again,
+  # which said `unchanged`. Seen 2026-10-23: three preprocess ports, then the live manifest held 6 modules of 321
+  save race/rebuilt, build-with(root, copy, none, make list(<--only>, only))
+  save race/port-before-same, port-text(copy)
+  # a file the compiles of the probe and of a second module both read, changed in a byte no port holds
+  save shared-file, race-path/join(copy, shared)
+  write-file(shared-file, <{read-file(shared-file)}\n>)
+  save race/second, build-with(root, copy, none, make list(<--only>, other))
+  save race/kept, build-with(root, copy, none, make list(<--verify>, only))
+  save race/same, build-with(root, copy, none, make list(<--only>, only, <--explain>))
+  save race/port-after-same, port-text(copy)
+
+  # ---- a build that fails keeps the port's row, and says so (never falsely current) ----
+  save shared-text, read-file(shared-file)
+  write-file(shared-file, <{shared-text}\nhost broken-0158, \<unclosed\n>)
+  save race/broken, build-with(root, copy, none, make list(<--only>, only))
+  save race/failed, build-with(root, copy, none, make list(<--verify>, only))
+  write-file(shared-file, shared-text)
+  save race/mended, build-with(root, copy, none, make list(<--only>, only))
+  save race/again, build-with(root, copy, none, make list(<--verify>, only))
+
+  # ---- --verify while a build of the probe is held mid-run, and after it ----
+  write-file(shared-file, <{read-file(shared-file)}\n>)
+  save hold-two, race-path/join(copy, <hold2>)
+  make-folder(hold-two)
+  save c, start-held(root, copy, hold-two)
+  save race/c-held, until-exists(race-path/join(hold-two, <held>), 600)
+  fork test, not(race/c-held)
+    hold
+      halt <the held build exited before it held>
+  save race/during, build-with(root, copy, none, make list(<--verify>, only))
+  write-file(race-path/join(hold-two, <go>), <>)
+  save c-end, wait-child(c)
+  save race/c, make(build-run, bind(code, c-end/code), bind(out, c-end/output))
+  save race/after, build-with(root, copy, none, make list(<--verify>, only))
+
+# the race once, its clone removed either way
+task run-race
+  mark async
+  like race-state
+
+  fork test, race/ran
+    hold
+      back race
+  save race/ran, true
+  save root, term-root()
+  save clone-root, race-fs/realpath-sync(temp-folder(<term-port-race->))
+  save copy, race-path/join(clone-root, <deck>, <term>, <deck>, <term>)
+  race-guarded(root, copy)
+  # the clone goes either way: a failure's output names what went wrong, and a kept clone fills the disk
+  remove-all(clone-root)
+  back race
+
+task race-guarded
+  mark async
+  take root, like text
+  take copy, like text
+  like void
+
+  fork
+    mark unsafe
+    race-steps(root, copy)
+  halt take
+    take cause
+    save race/raised, race-cause(cause)
+
+# a --verify that found the probe current
+task is-current
+  take run, like build-run
+  like boolean
+
+  back and(is-equal(run/code, 0), text-contains(run/out, <1 current, 0 stale>))
+
+test <probe deck/test/code/bench-report.tree and its port exist>
+  host r, run-race()
+  want hold, and(r/probe-there, r/port-there)
+
+test <A compiled the probe and holds before its write>
+  host r, run-race()
+  want hold, and(r/held, is-equal(r/held-what, probe))
+
+test <the probe holds a text literal to change (race-new)>
+  want hold, run-race()/new-changed
+
+test <B builds the edited probe>
+  host r, run-race()
+  want hold, and(is-equal(r/b/code, 0), and(text-contains(r/b/out, <built {probe-port}>), text-contains(r/port-after-b, <race-new>)))
+
+test <A leaves B's port: the port still holds the edit>
+  want hold, text-contains(run-race()/port-after-a, <race-new>)
+
+test <A saw the source change and compiled it again>
+  want hold, text-contains(run-race()/a/out, <again {probe}>)
+
+test <A ends clean>
+  want hold, is-equal(run-race()/a/code, 0)
+
+test <--verify: the probe is current>
+  want hold, is-current(run-race()/current)
+
+test <the probe holds a text literal to change (race-later)>
+  want hold, run-race()/later-changed
+
+test <--verify: an edit with no build after it is stale>
+  host r, run-race()
+  want hold, and(is-equal(r/later/code, 1), text-contains(r/later/out, <STALE {probe}  (its source changed after its port was built)>))
+
+test <--verify: a path text that names no module fails>
+  want hold, is-equal(run-race()/nothing/code, 1)
+
+test <the probe is built from its edited source>
+  host r, run-race()
+  want hold, and(is-equal(r/rebuilt/code, 0), text-contains(r/rebuilt/out, <built {probe-port}>))
+
+test <a second module builds after the shared file changed>
+  want hold, is-equal(run-race()/second/code, 0)
+
+test <--verify: the probe is current after another module's build disagreed with its reads>
+  want hold, is-current(run-race()/kept)
+
+test <and it was: the probe compiles again (its reads moved, so it is not skipped) and writes nothing>
+  host r, run-race()
+  want hold, and(is-equal(r/same/code, 0), and(text-contains(r/same/out, <0 built, 1 unchanged>), and(not(text-contains(r/same/out, <skip  {probe}>)), is-equal(r/port-after-same, r/port-before-same))))
+
+test <the probe fails to build over a broken dependency>
+  host r, run-race()
+  want hold, and(is-equal(r/broken/code, 1), text-contains(r/broken/out, <FAIL  {probe}>))
+
+test <--verify: a port whose last build failed is not current>
+  host r, run-race()
+  want hold, and(is-equal(r/failed/code, 1), text-contains(r/failed/out, <STALE {probe}  (its last build failed>))
+
+test <the probe builds again once the dependency is mended>
+  host r, run-race()
+  want hold, and(is-equal(r/mended/code, 0), text-contains(r/mended/out, <1 unchanged>))
+
+test <--verify: current again>
+  want hold, text-contains(run-race()/again/out, <1 current, 0 stale>)
+
+test <a build of the probe holds mid-run>
+  want hold, run-race()/c-held
+
+test <--verify during that build: current>
+  want hold, is-current(run-race()/during)
+
+test <the held build ends clean>
+  want hold, is-equal(run-race()/c/code, 0)
+
+test <--verify after it: current>
+  want hold, is-current(run-race()/after)

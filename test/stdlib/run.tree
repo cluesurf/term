@@ -1,0 +1,407 @@
+note <the stdlib's pure modules compile with this compiler and run, answering what their logic says>
+
+# Ported from run.ts (item term-self-host-001-0642): its hosts by task/term/suite-port.ts --commit, its 75 `expect`s by
+# statement, one test each in its order, written by tmp/self-host/suites-e-0642/make-run.mjs. Each program is a real
+# base.tree module's caller, compiled from the stdlib for node with its native prelude, as the original's loadProgram.
+# The original imported the emitted module and called each task in this process. Here each program is run once, by the
+# first test that asks, in a child through test/support/running run-text, with a `run` task added that answers every
+# task a test reads as `<task>=<answer>`, a `;` between: a number or a boolean as its text, a text as itself. Each test
+# reads its task's answer and compares the text.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-choice
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+  find index-of, name text-index-of
+  find substring
+
+# the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+# a program that loads the real base.tree maybe and exercises it
+host maybe-program, <load @term/base/code/maybe\n  find maybe\n\ntask unwrap-present\n  like number\n  send back\n    call unwrap-or\n      make some\n        bind value, code 42\n      code 0\n\ntask unwrap-absent\n  like number\n  send back\n    call unwrap-or\n      make none\n      code 7\n\ntask present\n  like boolean\n  send back\n    call is-some\n      make some\n        bind value, code 1\n\ntask absent\n  like boolean\n  send back\n    call is-some\n      make none\n\ntask map-add-one\n  like number\n  send back\n    call unwrap-or\n      call map\n        make some\n          bind value, code 41\n        increment\n      code 0\n\ntask increment\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n>
+
+host result-program, <load @term/base/code/result\n  find result\n\ntask ok-value\n  like number\n  send back\n    call unwrap-or\n      make okay\n        bind value, code 5\n      code 0\n\ntask err-default\n  like number\n  send back\n    call unwrap-or\n      make error\n        bind value, code 99\n      code 0\n\ntask okay-check\n  like boolean\n  send back\n    call is-okay\n      make okay\n        bind value, code 1\n>
+
+host pair-program, <load @term/base/code/pair\n  find pair\n\ntask first-of\n  like number\n  send back\n    call get-first\n      make pair\n        bind first, code 3\n        bind second, code 4\n\ntask second-after-swap\n  like number\n  send back\n    call get-second\n      call swap\n        make pair\n          bind first, code 3\n          bind second, code 4\n>
+
+host boolean-program, <load @term/base/code/boolean\n  find boolean\n\ntask negate-true\n  like boolean\n  send back\n    call not\n      true\n\ntask negate-false\n  like boolean\n  send back\n    call not\n      false\n>
+
+# dock: a native module binding (FFI). `node:path` is pure + deterministic, so we can run it.
+host dock-program, <dock load\n  load \<node:path\>, name pathmod\n\ntask base-name\n  like text\n  send back\n    call pathmod/basename\n      text \</a/b/file.txt\>\n>
+
+# both maybe and result loaded together: they each define `unwrap-or`/`map`, so this only works if the bare call
+# dispatches on the receiver's form (selective find / receiver dispatch).
+host combined-program, <load @term/base/code/maybe\n  find maybe\n\nload @term/base/code/result\n  find result\n\ntask from-maybe\n  like number\n  send back\n    call unwrap-or\n      make some\n        bind value, code 11\n      code 0\n\ntask from-result\n  like number\n  send back\n    call unwrap-or\n      make error\n        bind value, code 1\n      code 22\n>
+
+# the list type: native-array-backed methods, dispatched on the array receiver
+host list-program, <load @term/base/code/list\n  find list\n\ntask first-of\n  like number\n  send back\n    call unwrap-or\n      call first\n        make list\n          code 10\n          code 20\n      code 0\n\ntask last-of\n  like number\n  send back\n    call unwrap-or\n      call last\n        make list\n          code 10\n          code 20\n          code 30\n      code 0\n\ntask first-empty\n  like number\n  send back\n    call unwrap-or\n      call first\n        make list\n      code 99\n\ntask size-of\n  like number\n  send back\n    call size\n      make list\n        code 1\n        code 2\n        code 3\n\ntask has-it\n  like boolean\n  send back\n    call contains\n      make list\n        code 5\n        code 6\n      code 6\n\ntask get-second\n  like number\n  send back\n    call get\n      make list\n        code 7\n        code 8\n        code 9\n      code 1\n\ntask join-them\n  like text\n  send back\n    call join\n      make list\n        code 1\n        code 2\n        code 3\n      text \<-\>\n\ntask size-after-reverse\n  like number\n  send back\n    call size\n      call reverse\n        make list\n          code 1\n          code 2\n\ntask double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n\ntask size-after-map\n  like number\n  send back\n    call size\n      call map\n        make list\n          code 1\n          code 2\n          code 3\n          code 4\n        read double\n\ntask add-two\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call add\n      read a\n      read b\n\ntask sum-of\n  like number\n  send back\n    call reduce\n      make list\n        code 1\n        code 2\n        code 3\n      read add-two\n      code 0\n>
+
+# the combinators added to maybe / result / pair (and-then, or-else, filter, get-or-else, unwrap, map-error, ...)
+host combinators-program, <load @term/base/code/maybe\n  find maybe\n\nload @term/base/code/result\n  find result\n\nload @term/base/code/pair\n  find pair\n\ntask double-maybe\n  take n, like number\n  like maybe\n  send back\n    make some\n      bind value\n        call multiply\n          read n\n          code 2\n\ntask is-even\n  take n, like number\n  like boolean\n  send back\n    call is-equal\n      call modulo\n        read n\n        code 2\n      code 0\n\ntask nine\n  like number\n  send back, code 9\n\ntask to-nine\n  take n, like number\n  like number\n  send back, code 9\n\ntask and-then-some\n  like number\n  send back\n    call unwrap-or\n      call and-then\n        make some\n          bind value, code 5\n        read double-maybe\n      code 0\n\ntask or-else-none\n  like number\n  send back\n    call unwrap-or\n      call or-else\n        make none\n        make some\n          bind value, code 7\n      code 0\n\ntask filter-keep\n  like number\n  send back\n    call unwrap-or\n      call filter\n        make some\n          bind value, code 4\n        read is-even\n      code 0\n\ntask filter-drop\n  like number\n  send back\n    call unwrap-or\n      call filter\n        make some\n          bind value, code 3\n        read is-even\n      code 99\n\ntask get-or-else-none\n  like number\n  send back\n    call get-or-else\n      make none\n      read nine\n\ntask unwrap-some\n  like number\n  send back\n    call unwrap\n      make some\n        bind value, code 8\n\ntask double-okay\n  take n, like number\n  like result\n  send back\n    make okay\n      bind value\n        call multiply\n          read n\n          code 2\n\ntask and-then-okay\n  like number\n  send back\n    call unwrap-or\n      call and-then\n        make okay\n          bind value, code 6\n        read double-okay\n      code 0\n\ntask map-second-pair\n  like number\n  send back\n    call get-second\n      call map-second\n        make pair\n          bind first, code 1\n          bind second, code 10\n        read to-nine\n>
+
+# the hash (map) type, backed by the native map
+host hash-program, <load @term/base/code/hash\n  find hash\n\ntask set-and-get\n  like number\n  save m\n    make hash\n  save m\n    call set\n      read m\n      text \<a\>\n      code 10\n  send back\n    call unwrap-or\n      call get\n        read m\n        text \<a\>\n      code 0\n\ntask get-missing\n  like number\n  save m\n    make hash\n  send back\n    call unwrap-or\n      call get\n        read m\n        text \<nope\>\n      code 99\n\ntask has-key\n  like boolean\n  save m\n    make hash\n  save m\n    call set\n      read m\n      text \<x\>\n      code 1\n  send back\n    call has\n      read m\n      text \<x\>\n\ntask entry-count\n  like number\n  save m\n    make hash\n  save m\n    call set\n      read m\n      text \<a\>\n      code 1\n  save m\n    call set\n      read m\n      text \<b\>\n      code 2\n  send back\n    call size\n      read m\n\n# the canonical count verb (alias of size)\ntask entry-count-verb\n  like number\n  save m\n    make hash\n  save m\n    call set\n      read m\n      text \<a\>\n      code 1\n  save m\n    call set\n      read m\n      text \<b\>\n      code 2\n  send back\n    call count\n      read m\n>
+
+# the range type
+host range-program, <load @term/base/code/range\n  find range\n\ntask measure-range\n  like number\n  send back\n    call length\n      make range\n        bind start, code 0\n        bind end, code 10\n        bind step, code 2\n\ntask range-list-size\n  like number\n  save items\n    call to-list\n      make range\n        bind start, code 0\n        bind end, code 10\n        bind step, code 2\n  send back\n    read items/length\n\ntask range-list-first\n  like number\n  save items\n    call to-list\n      make range\n        bind start, code 3\n        bind end, code 9\n        bind step, code 2\n  send back\n    call items/at\n      code 0\n\ntask range-has\n  like boolean\n  send back\n    call contains\n      make range\n        bind start, code 0\n        bind end, code 10\n        bind step, code 1\n      code 5\n\ntask range-excludes-end\n  like boolean\n  send back\n    call contains\n      make range\n        bind start, code 0\n        bind end, code 10\n        bind step, code 1\n      code 10\n>
+
+host set-program, <load @term/base/code/set\n  find set\n\ntask add-has\n  like boolean\n  save s\n    make set\n      bind items\n        make hash\n  save s\n    call insert\n      read s\n      code 5\n  send back\n    call has\n      read s\n      code 5\n\ntask missing\n  like boolean\n  save s\n    make set\n      bind items\n        make hash\n  send back\n    call has\n      read s\n      code 99\n\ntask unique-size\n  like number\n  save s\n    make set\n      bind items\n        make hash\n  save s\n    call insert\n      read s\n      code 1\n  save s\n    call insert\n      read s\n      code 2\n  save s\n    call insert\n      read s\n      code 1\n  send back\n    call size\n      read s\n\n# the canonical count verb (alias of size)\ntask unique-count\n  like number\n  save s\n    make set\n      bind items\n        make hash\n  save s\n    call insert\n      read s\n      code 1\n  save s\n    call insert\n      read s\n      code 2\n  send back\n    call count\n      read s\n>
+
+host stack-program, <load @term/base/code/list/stack\n  find stack\n\ntask push-pop\n  like number\n  save s\n    make stack\n      bind items\n        make list\n  save s\n    call push\n      read s\n      code 10\n  save s\n    call push\n      read s\n      code 20\n  send back\n    call unwrap-or\n      call pop\n        read s\n      code 0\n>
+
+host queue-program, <load @term/base/code/list/queue\n  find queue\n\ntask fifo\n  like number\n  save q\n    make queue\n      bind items\n        make list\n  save q\n    call enqueue\n      read q\n      code 10\n  save q\n    call enqueue\n      read q\n      code 20\n  send back\n    call unwrap-or\n      call dequeue\n        read q\n      code 0\n>
+
+# linked-list: a recursive immutable ADT (empty | node)
+host linked-list-program, <load @term/base/code/list/linked-list\n  find linked-list\n\ntask ll-length\n  like number\n  save l\n    make empty\n  save l\n    call prepend\n      read l\n      code 1\n  save l\n    call prepend\n      read l\n      code 2\n  send back\n    call length\n      read l\n\ntask ll-head\n  like number\n  save l\n    make empty\n  save l\n    call prepend\n      read l\n      code 5\n  send back\n    call unwrap-or\n      call head\n        read l\n      code 0\n\ntask ll-empty\n  like boolean\n  send back\n    call is-empty\n      make empty\n>
+
+# bag (multiset, keeps duplicates), array-backed. The dedup, insertion-ordered set is `set` (the SET programs above)
+host bag-program, <load @term/base/code/list/bag\n  find bag\n\ntask bag-size\n  like number\n  save b\n    make bag\n  call insert\n    read b\n    code 5\n  call insert\n    read b\n    code 5\n  send back\n    call length\n      read b\n>
+
+# list breadth: sum (loop), index-of, take-first / drop-first, flatten — all native-backed or pure-loop
+host list-extras-program, <load @term/base/code/list\n  find list\n\ntask sum-of\n  like number\n  send back\n    call sum\n      make list\n        code 1\n        code 2\n        code 3\n        code 4\n\ntask index-of-twenty\n  like number\n  send back\n    call index-of\n      make list\n        code 10\n        code 20\n        code 30\n      code 20\n\ntask take-two-size\n  like number\n  send back\n    call size\n      call take-first\n        make list\n          code 1\n          code 2\n          code 3\n          code 4\n        code 2\n\ntask drop-two-size\n  like number\n  send back\n    call size\n      call drop-first\n        make list\n          code 1\n          code 2\n          code 3\n          code 4\n        code 2\n\ntask flatten-size\n  like number\n  send back\n    call size\n      call flatten\n        make list\n          make list\n            code 1\n            code 2\n          make list\n            code 3\n\ntask product-of\n  like number\n  send back\n    call product\n      make list\n        code 2\n        code 3\n        code 4\n\ntask unique-size\n  like number\n  send back\n    call size\n      call unique\n        make list\n          code 1\n          code 1\n          code 2\n          code 3\n          code 3\n\ntask count-of-four\n  like number\n  send back\n    call count\n      make list\n        code 1\n        code 2\n        code 3\n        code 4\n\ntask take-last-two-first\n  like number\n  send back\n    call get\n      call take\n        make list\n          code 1\n          code 2\n          code 3\n          code 4\n        code 2\n        make end\n      code 0\n\ntask drop-last-two-size\n  like number\n  send back\n    call size\n      call drop\n        make list\n          code 1\n          code 2\n          code 3\n          code 4\n        code 2\n        make end\n\ntask last-index-of-one\n  like number\n  send back\n    call last-index-of\n      make list\n        code 1\n        code 2\n        code 1\n      code 1\n>
+
+# pair map-both: apply a different function to each side
+host pair-both-program, <load @term/base/code/pair\n  find pair\n\ntask double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n\ntask add-ten\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 10\n\ntask both-first\n  like number\n  save p\n    call map-both\n      make pair\n        bind first, code 3\n        bind second, code 4\n      read double\n      read add-ten\n  send back\n    read p/first\n\ntask both-second\n  like number\n  save p\n    call map-both\n      make pair\n        bind first, code 3\n        bind second, code 4\n      read double\n      read add-ten\n  send back\n    read p/second\n>
+
+# color: pure-logic RGB operations (grayscale, luminance, invert, is-dark, blend), all integer math
+host color-program, <load @term/base/code/color/rgb\n  find rgb-color\n\ntask gray\n  like number\n  send back\n    call grayscale\n      make rgb-color\n        bind red, code 30\n        bind green, code 60\n        bind blue, code 90\n\ntask lum-white\n  like number\n  send back\n    call luminance\n      make rgb-color\n        bind red, code 255\n        bind green, code 255\n        bind blue, code 255\n\ntask inverted-red\n  like number\n  save c\n    call invert\n      make rgb-color\n        bind red, code 0\n        bind green, code 0\n        bind blue, code 0\n  send back\n    read c/red\n\ntask dark-check\n  like boolean\n  send back\n    call is-dark\n      make rgb-color\n        bind red, code 10\n        bind green, code 10\n        bind blue, code 10\n\ntask blended-red\n  like number\n  save c\n    call blend\n      make rgb-color\n        bind red, code 100\n        bind green, code 0\n        bind blue, code 0\n      make rgb-color\n        bind red, code 200\n        bind green, code 0\n        bind blue, code 0\n  send back\n    read c/red\n>
+
+host ordering-program, <load @term/base/code/ordering\n  find ordering\n  find from-numbers\n\ntask less-is-less\n  like boolean\n  send back\n    call is-less\n      call from-numbers\n        code 1\n        code 2\n\ntask equal-is-equal\n  like boolean\n  send back\n    call is-equal\n      call from-numbers\n        code 5\n        code 5\n\ntask greater-is-greater\n  like boolean\n  send back\n    call is-greater\n      call from-numbers\n        code 9\n        code 2\n\ntask reverse-less-is-greater\n  like boolean\n  send back\n    call is-greater\n      call reverse\n        call from-numbers\n          code 1\n          code 2\n>
+
+# each program by its name, and the tasks of it a test reads, in the order the tests read them
+host programs
+  make hash
+    save <ordering>, ordering-program
+    save <color>, color-program
+    save <pair-both>, pair-both-program
+    save <list-extras>, list-extras-program
+    save <bag>, bag-program
+    save <linked-list>, linked-list-program
+    save <set>, set-program
+    save <stack>, stack-program
+    save <queue>, queue-program
+    save <hash>, hash-program
+    save <range>, range-program
+    save <combinators>, combinators-program
+    save <list>, list-program
+    save <combined>, combined-program
+    save <dock>, dock-program
+    save <boolean>, boolean-program
+    save <maybe>, maybe-program
+    save <result>, result-program
+    save <pair>, pair-program
+
+host calls
+  make hash
+    save <ordering>, <less-is-less,equal-is-equal,greater-is-greater,reverse-less-is-greater>
+    save <color>, <gray,lum-white,inverted-red,dark-check,blended-red>
+    save <pair-both>, <both-first,both-second>
+    save <list-extras>, <sum-of,index-of-twenty,take-two-size,count-of-four,take-last-two-first,drop-last-two-size,last-index-of-one,drop-two-size,flatten-size,product-of,unique-size>
+    save <bag>, <bag-size>
+    save <linked-list>, <ll-length,ll-head,ll-empty>
+    save <set>, <add-has,missing,unique-size,unique-count>
+    save <stack>, <push-pop>
+    save <queue>, <fifo>
+    save <hash>, <set-and-get,get-missing,has-key,entry-count,entry-count-verb>
+    save <range>, <measure-range,range-list-size,range-list-first,range-has,range-excludes-end>
+    save <combinators>, <and-then-some,or-else-none,filter-keep,filter-drop,get-or-else-none,unwrap-some,and-then-okay,map-second-pair>
+    save <list>, <first-of,last-of,first-empty,size-of,has-it,get-second,join-them,size-after-reverse,size-after-map,sum-of>
+    save <combined>, <from-maybe,from-result>
+    save <dock>, <base-name>
+    save <boolean>, <negate-true,negate-false>
+    save <maybe>, <unwrap-present,unwrap-absent,present,absent,map-add-one>
+    save <result>, <ok-value,err-default,okay-check>
+    save <pair>, <first-of,second-after-swap>
+
+# each program's answers, task by task, made once in this process
+form run-kept
+  mark shared
+  link answers, like hash, like text, like text
+
+host kept, make(run-kept, bind(answers, make hash))
+
+# the program with a `run` task that answers each of `names`
+task with-run
+  take program, like text
+  take names, like list, like text
+  like text
+
+  save parts, make list
+  walk names
+    take name, like text
+    parts/push(<{name}=\{{name}()\}>)
+  save joined, parts/join(<;>)
+  back <{program}\n\ntask run\n  like text\n\n  back \<{joined}\>\n>
+
+# run `program` once and keep each answer under `<program>/<task>`, or why it did not run under `<program>/`
+task run-once
+  take program, like text
+  like boolean
+
+  save names, text-split(calls/{program}, <,>)
+  save folder, temp-folder(<seed-stdlib->)
+  save ran, run-text(with-run(programs/{program}, names), <typescript>, folder, program, make(compile-choice, bind(stdlib, <node>)))
+  save whole, <{program}/>
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      save kept/answers/{whole}, <{ran/state} at {ran/stage}: {ran/reason}>
+      back false
+  walk text-split(ran/output, <;>)
+    take piece, like text
+    save at, text-index-of(piece, <=>)
+    save key, <{program}/{substring(piece, 0, at)}>
+    save kept/answers/{key}, substring(piece, add(at, 1))
+  save kept/answers/{whole}, <>
+  back true
+
+# what the task `name` of `program` answered, or why its program did not run
+task answer
+  take program, like text
+  take name, like text
+  like text
+
+  save whole, <{program}/>
+  fork test, not(kept/answers/has(whole))
+    hold
+      run-once(program)
+  save failed, kept/answers/{whole}
+  fork test, is-unequal(failed, <>)
+    hold
+      back failed
+  save key, <{program}/{name}>
+  fork test, kept/answers/has(key)
+    hold
+      back kept/answers/{key}
+  back <no answer from {name}>
+
+test <ordering/from-numbers less>
+  want hold, is-equal(answer(<ordering>, <less-is-less>), <true>)
+
+test <ordering/from-numbers equal>
+  want hold, is-equal(answer(<ordering>, <equal-is-equal>), <true>)
+
+test <ordering/from-numbers greater>
+  want hold, is-equal(answer(<ordering>, <greater-is-greater>), <true>)
+
+test <ordering/reverse flips less to greater>
+  want hold, is-equal(answer(<ordering>, <reverse-less-is-greater>), <true>)
+
+test <color/grayscale averages the channels>
+  want hold, is-equal(answer(<color>, <gray>), <60>)
+
+test <color/luminance of white is 255>
+  want hold, is-equal(answer(<color>, <lum-white>), <255>)
+
+test <color/invert of black gives 255 red>
+  want hold, is-equal(answer(<color>, <inverted-red>), <255>)
+
+test <color/is-dark on a near-black color is true>
+  want hold, is-equal(answer(<color>, <dark-check>), <true>)
+
+test <color/blend averages each channel>
+  want hold, is-equal(answer(<color>, <blended-red>), <150>)
+
+test <pair/map-both applies the first function to first>
+  want hold, is-equal(answer(<pair-both>, <both-first>), <6>)
+
+test <pair/map-both applies the second function to second>
+  want hold, is-equal(answer(<pair-both>, <both-second>), <14>)
+
+test <list/sum totals the elements>
+  want hold, is-equal(answer(<list-extras>, <sum-of>), <10>)
+
+test <list/index-of finds the position>
+  want hold, is-equal(answer(<list-extras>, <index-of-twenty>), <1>)
+
+test <list/take-first keeps the leading n>
+  want hold, is-equal(answer(<list-extras>, <take-two-size>), <2>)
+
+test <list/count returns the length>
+  want hold, is-equal(answer(<list-extras>, <count-of-four>), <4>)
+
+test <list/take with side end keeps the trailing n (first of [3,4] is 3)>
+  want hold, is-equal(answer(<list-extras>, <take-last-two-first>), <3>)
+
+test <list/drop with side end drops the trailing n>
+  want hold, is-equal(answer(<list-extras>, <drop-last-two-size>), <2>)
+
+test <list/last-index-of finds the last occurrence>
+  want hold, is-equal(answer(<list-extras>, <last-index-of-one>), <2>)
+
+test <list/drop-first removes the leading n>
+  want hold, is-equal(answer(<list-extras>, <drop-two-size>), <2>)
+
+test <list/flatten merges one level>
+  want hold, is-equal(answer(<list-extras>, <flatten-size>), <3>)
+
+test <list/product multiplies the elements>
+  want hold, is-equal(answer(<list-extras>, <product-of>), <24>)
+
+test <list/unique removes duplicates>
+  want hold, is-equal(answer(<list-extras>, <unique-size>), <3>)
+
+test <bag/insert keeps duplicates (multiset size)>
+  want hold, is-equal(answer(<bag>, <bag-size>), <2>)
+
+test <linked-list/length counts the nodes (recursive)>
+  want hold, is-equal(answer(<linked-list>, <ll-length>), <2>)
+
+test <linked-list/head returns some of the first value>
+  want hold, is-equal(answer(<linked-list>, <ll-head>), <5>)
+
+test <linked-list/is-empty on empty is true>
+  want hold, is-equal(answer(<linked-list>, <ll-empty>), <true>)
+
+test <set/add then has finds the value>
+  want hold, is-equal(answer(<set>, <add-has>), <true>)
+
+test <set/has on a missing value is false>
+  want hold, is-equal(answer(<set>, <missing>), <false>)
+
+test <set/size counts unique values>
+  want hold, is-equal(answer(<set>, <unique-size>), <2>)
+
+test <set/count is the canonical alias of size>
+  want hold, is-equal(answer(<set>, <unique-count>), <2>)
+
+test <stack/push then pop is LIFO>
+  want hold, is-equal(answer(<stack>, <push-pop>), <20>)
+
+test <queue/enqueue then dequeue is FIFO>
+  want hold, is-equal(answer(<queue>, <fifo>), <10>)
+
+test <hash/set then get returns some of the value>
+  want hold, is-equal(answer(<hash>, <set-and-get>), <10>)
+
+test <hash/get on a missing key returns none>
+  want hold, is-equal(answer(<hash>, <get-missing>), <99>)
+
+test <hash/has finds a set key>
+  want hold, is-equal(answer(<hash>, <has-key>), <true>)
+
+test <hash/size counts entries>
+  want hold, is-equal(answer(<hash>, <entry-count>), <2>)
+
+test <hash/count is the canonical alias of size>
+  want hold, is-equal(answer(<hash>, <entry-count-verb>), <2>)
+
+test <range/length is (end-start)/step>
+  want hold, is-equal(answer(<range>, <measure-range>), <5>)
+
+test <range/to-list produces the right count>
+  want hold, is-equal(answer(<range>, <range-list-size>), <5>)
+
+test <range/to-list starts at start>
+  want hold, is-equal(answer(<range>, <range-list-first>), <3>)
+
+test <range/contains a value in bounds>
+  want hold, is-equal(answer(<range>, <range-has>), <true>)
+
+test <range/contains excludes the end>
+  want hold, is-equal(answer(<range>, <range-excludes-end>), <false>)
+
+test <maybe/and-then chains a maybe-returning call>
+  want hold, is-equal(answer(<combinators>, <and-then-some>), <10>)
+
+test <maybe/or-else falls back to the alternative maybe>
+  want hold, is-equal(answer(<combinators>, <or-else-none>), <7>)
+
+test <maybe/filter keeps a passing value>
+  want hold, is-equal(answer(<combinators>, <filter-keep>), <4>)
+
+test <maybe/filter drops a failing value>
+  want hold, is-equal(answer(<combinators>, <filter-drop>), <99>)
+
+test <maybe/get-or-else calls the thunk on none>
+  want hold, is-equal(answer(<combinators>, <get-or-else-none>), <9>)
+
+test <maybe/unwrap returns the some value>
+  want hold, is-equal(answer(<combinators>, <unwrap-some>), <8>)
+
+test <result/and-then chains a result-returning call>
+  want hold, is-equal(answer(<combinators>, <and-then-okay>), <12>)
+
+test <pair/map-second maps the second element>
+  want hold, is-equal(answer(<combinators>, <map-second-pair>), <9>)
+
+test <list/first returns some of the head>
+  want hold, is-equal(answer(<list>, <first-of>), <10>)
+
+test <list/last returns some of the tail>
+  want hold, is-equal(answer(<list>, <last-of>), <30>)
+
+test <list/first on empty returns none>
+  want hold, is-equal(answer(<list>, <first-empty>), <99>)
+
+test <list/size counts elements>
+  want hold, is-equal(answer(<list>, <size-of>), <3>)
+
+test <list/contains finds a member>
+  want hold, is-equal(answer(<list>, <has-it>), <true>)
+
+test <list/get reads by index>
+  want hold, is-equal(answer(<list>, <get-second>), <8>)
+
+test <list/join joins with a separator>
+  want hold, is-equal(answer(<list>, <join-them>), <1-2-3>)
+
+test <list/reverse then size is unchanged>
+  want hold, is-equal(answer(<list>, <size-after-reverse>), <2>)
+
+test <list/map then size is unchanged>
+  want hold, is-equal(answer(<list>, <size-after-map>), <4>)
+
+test <list/reduce sums the elements>
+  want hold, is-equal(answer(<list>, <sum-of>), <6>)
+
+test <combined: maybe.unwrap-or dispatches to the maybe method>
+  want hold, is-equal(answer(<combined>, <from-maybe>), <11>)
+
+test <combined: result.unwrap-or dispatches to the result method>
+  want hold, is-equal(answer(<combined>, <from-result>), <22>)
+
+test <dock: a native module call runs (path.basename)>
+  want hold, is-equal(answer(<dock>, <base-name>), <file.txt>)
+
+test <boolean/not on true is false>
+  want hold, is-equal(answer(<boolean>, <negate-true>), <false>)
+
+test <boolean/not on false is true>
+  want hold, is-equal(answer(<boolean>, <negate-false>), <true>)
+
+test <maybe/unwrap-or on some returns the value>
+  want hold, is-equal(answer(<maybe>, <unwrap-present>), <42>)
+
+test <maybe/unwrap-or on none returns the fallback>
+  want hold, is-equal(answer(<maybe>, <unwrap-absent>), <7>)
+
+test <maybe/is-some on some is true>
+  want hold, is-equal(answer(<maybe>, <present>), <true>)
+
+test <maybe/is-some on none is false>
+  want hold, is-equal(answer(<maybe>, <absent>), <false>)
+
+test <maybe/map applies the function under some>
+  want hold, is-equal(answer(<maybe>, <map-add-one>), <42>)
+
+test <result/unwrap-or on okay returns the value>
+  want hold, is-equal(answer(<result>, <ok-value>), <5>)
+
+test <result/unwrap-or on error returns the fallback>
+  want hold, is-equal(answer(<result>, <err-default>), <0>)
+
+test <result/is-okay on okay is true>
+  want hold, is-equal(answer(<result>, <okay-check>), <true>)
+
+test <pair/get-first reads the first>
+  want hold, is-equal(answer(<pair>, <first-of>), <3>)
+
+test <pair/swap then get-second reads the original first>
+  want hold, is-equal(answer(<pair>, <second-after-swap>), <3>)

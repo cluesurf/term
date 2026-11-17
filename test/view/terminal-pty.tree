@@ -1,0 +1,641 @@
+note <a program that owns a real terminal, typed into a key at a time, leaves the screen worked out by hand>
+
+# Ported from terminal-pty.ts by statement (item term-self-host-001-0704). A program that owns a real terminal
+# (terminal-target-0006, deck/site/code/dom/native/terminal/app.tree): the note form built for node and as a Rust binary,
+# run inside a pseudo-terminal sized to 30 by 6, typed into the way a person would, one key at a time once the first
+# screen is up. What comes back is the program's escape sequences, replayed here on a minimal screen (cursor placement,
+# clear to the end of a row, clear the screen), and the screen it leaves must be the one worked out by hand. This is the
+# only test that reaches raw mode, the terminal's size and real key bytes: every other terminal test paints to text.
+#
+# The pseudo-terminal is test/support/children's `start-pty` (item 1351), from the system's `script`, where the original
+# had Python's `pty`: a resize sets the slave's size and sends WINCH, a SIGTERM goes to the program alone, and with
+# `jobs` the program runs under job control, so a stop it sends itself really stops it and `[stopped]` is said. Every
+# app runs once on each backend, by the first test that asks, in the original's order, and each of the original's `ok`s
+# is one walked test, a case for each `<backend> <app>`. A case skips where the original skipped (no `script`, a
+# backend whose toolchain is not here) or where the original never reached it (the app did not build).
+# TERMINAL_ONLY=rust (or typescript) runs one backend.
+
+load ../support/running
+  find build-text
+  find built-program
+
+load ../support/compiling
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/children
+  find held-pty
+  find start-pty
+  find pty-output
+  find wait-for-text
+  find press-key
+  find resize-pty
+  find signal-program
+  find wait-child
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/child
+  find stop, name stop-process
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/environment
+  find variable
+
+load @term/base/clock
+  find sleep
+  find read-nanoseconds
+
+load @term/base/file
+  find read, name read-file
+
+load @term/base/rune
+  find rune-to-text
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find replace, name text-replace
+  find replace-all
+  find substring
+  find index-of
+  find char-code-at
+  find trim-end
+  find starts-with
+
+host esc, rune-to-text(27)
+
+# ctrl-c, and the bytes the relay never types: 0x1c sends SIGTERM to the program instead, as `kill` would, and 0x1d
+# resizes the terminal to the app's resize size. 0x1a is ctrl-z
+host ctrl-c, rune-to-text(3)
+host term-key, rune-to-text(28)
+host resize-key, rune-to-text(29)
+host suspend-key, rune-to-text(26)
+
+host notes-program, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n  find attach-event\n  find render-each\n\nload @term/site/code/dom/dom\n  find view\n  find append\n\nload @term/site/code/dom/native/terminal/dom\n  find create-element\n  find get-value\n  find set-value\n\nload @term/site/code/dom/native/terminal/app\n  find run-terminal\n\nload @term/base/code/list\n  find list\n  find push\n\ntask make-notes\n  like list\n    like text\n  send back\n    make list\n\ntask add-note\n  take items\n    like list\n      like text\n  take note, like text\n  like list\n    like text\n  save out, call make-notes\n  walk list, read items\n    hook next\n      take site, name item\n      call push\n        bind list, read out\n        bind item, read item\n  call push\n    bind list, read out\n    bind item, read note\n  send back, read out\n\ntask current-notes\n  take items, like signal\n  like list\n    like text\n  send back\n    call read-signal\n      bind self, read items\n\nview notes\n  take host, like view\n  save draft\n    call make-signal\n      bind value, text \<\>\n  save items\n    call make-signal\n      bind value, call make-notes\n  view div\n    bind style, text \<display: flex; flex-direction: row; gap: 8px\>\n    view input\n      name field\n      bind placeholder, text \<note\>\n      seed input\n        call write-signal\n          bind self, read draft\n          bind value\n            call get-value\n              read field\n    view button\n      seed click\n        call write-signal\n          bind self, read items\n          bind value\n            call add-note\n              call read-signal\n                bind self, read items\n              call read-signal\n                bind self, read draft\n        call set-value\n          read field\n          text \<\>\n        call write-signal\n          bind self, read draft\n          bind value, text \<\>\n      text \<add\>\n  walk list, call current-notes(read items)\n    hook next\n      take site, name item\n      view p\n        read item\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call notes\n    read root\n  call run-terminal\n    read root\n  send back, text \<\>\n>
+
+# the blog (deck/site/test/site/face/blog.tree) unchanged: face's stacks and texts, two fields, a button, and a store
+# that is asynchronous, so a post appears only once work started by the click has finished
+host blog-program, <load @term/site/test/site/face/blog\n  find blog\n\nload @term/site/test/site/back/model\n  find post\n\nload @term/site/code/dom/native/terminal/dom\n  find create-element\n\nload @term/site/code/dom/native/terminal/app\n  find run-terminal\n\nload @term/base/code/list\n  find list\n\ntask make-posts\n  like list\n    like post\n  send back\n    make list\n\n# the store: keeps nothing, and answers later, as a database over a bridge would\ntask keep-nothing\n  take item, like post\n  mark async\n  save kept, read item/title\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call blog\n    read root\n    call make-posts\n    read keep-nothing\n  call run-terminal\n    read root\n  send back, text \<\>\n>
+
+# the note app again, in line mode: the same view, owned by `run-terminal-lines`
+task lines-program
+  like text
+
+  save swapped, text-replace(notes-program, <  find run-terminal\n>, <  find run-terminal-lines\n>)
+  back text-replace(swapped, <  call run-terminal\n    read root\n>, <  call run-terminal-lines\n    read root\n>)
+
+# an app run in a terminal: its program, the terminal's size, the keys typed once its screen is up (the stop follows),
+# the screen it must leave, and the backends it runs on. `lined` is a line-mode app (native-accessibility-0005), judged
+# by `transcript`, the lines its output must hold in this order, in place of a replayed screen. `resize-columns` and
+# `resize-rows` are the size a 0x1d among the keys resizes the terminal to (0 for none). The stop is `stop-key`, ctrl-c
+# or 0x1c for SIGTERM, and the status the app must end with. `settled` judges the screen as it stood before the stop was
+# sent, since the paint that follows a stop would hide a paint that should have come earlier. `jobs` runs the program
+# under job control, and an empty key types nothing and only waits its turn. `heard` is text the output must hold, in
+# this order
+form pty-app
+  link name, like text
+  link program, like text
+  link columns, like number
+  link rows, like number
+  link keys, like list, like text
+  link screen, like list, like text
+  link backends, like list, like text
+  link lined, like boolean
+  link transcript, like list, like text
+  link resize-columns, like number
+  link resize-rows, like number
+  link stop-key, like text
+  link stop-status, like number
+  link stop-name, like text
+  link settled, like boolean
+  link jobs, like boolean
+  link heard, like list, like text
+
+# an app on both backends, 30 columns wide, stopped by ctrl-c with status 0, the rest left out
+task app-of
+  take name, like text
+  take program, like text
+  take rows, like number
+  take keys, like list, like text
+  take screen, like list, like text
+  like pty-app
+
+  back make(pty-app, bind(name, name), bind(program, program), bind(columns, 30), bind(rows, rows), bind(keys, keys), bind(screen, screen), bind(backends, make(list,<typescript>, <rust>)), bind(lined, false), bind(transcript, make list), bind(resize-columns, 0), bind(resize-rows, 0), bind(stop-key, ctrl-c), bind(stop-status, 0), bind(stop-name, <ctrl-c>), bind(settled, false), bind(jobs, false), bind(heard, make list))
+
+# the blog's golden grid (terminal-target-0005), held with the suite that reads it, one row per line
+task blog-golden
+  like list, like text
+
+  save rows, text-split(read-file(<test/fixture/blog.golden>), <\n>)
+  back rows/slice(0, 10)
+
+task apps
+  like list, like pty-app
+
+  save out, make list
+  # the window narrowed to 10 columns while the app runs, then tab: the app clears and paints again at the new size.
+  # The focused field takes 3 cells and the gap 1, so the button's `[ add ]` has 6 left and wraps there
+  save resize, app-of(<resize>, notes-program, 6, make(list,resize-key, <\t>), make(list,<\>█\< [ add>, <    ]>, <>, <>, <>, <>))
+  save resize/resize-columns, 10
+  save resize/resize-rows, 6
+  out/push(resize)
+  # the window narrowed and NO key after it: the resize itself wakes the waiting read and the app repaints before
+  # ctrl-c is sent. The field takes 7 cells and the gap 1, so `[ add ]` has 2 left: `[`, then `add` broken at the edge as
+  # `ad` and `d`, then `]`
+  save now, app-of(<resize-now>, notes-program, 6, make(list,resize-key), make(list,<[note ] [>, <        ad>, <        d>, <        ]>, <>, <>))
+  save now/resize-columns, 10
+  save now/resize-rows, 6
+  save now/settled, true
+  out/push(now)
+  # tab, `h`, then SIGTERM rather than ctrl-c: the app stops as ctrl-c stops it, raw mode off and the cursor shown, and
+  # ends with 143, which is 128 plus SIGTERM's 15, as a process the signal had killed would
+  save sigterm, app-of(<sigterm>, notes-program, 6, make(list,<\t>, <h>), make(list,<\>h█\< [ add ]>, <>, <>, <>, <>, <>))
+  save sigterm/stop-key, term-key
+  save sigterm/stop-status, 143
+  save sigterm/stop-name, <SIGTERM>
+  out/push(sigterm)
+  # tab, `h`, ctrl-z: the app gives the terminal back (the cursor shown) and stops itself; the shell says [stopped],
+  # then resumes it; the app takes raw mode again and redraws, and `i`, typed after, arrives as a key rather than
+  # waiting in a line for enter. The field holds `hi`, and ctrl-c still ends it with status 0, so raw mode was really
+  # taken back (without it ctrl-c is SIGINT, not a byte)
+  save suspend, app-of(<suspend>, notes-program, 6, make(list,<\t>, <h>, suspend-key, <>, <>, <>, <i>), make(list,<\>hi█\< [ add ]>, <>, <>, <>, <>, <>))
+  save suspend/jobs, true
+  save suspend/heard, make(list,<{esc}[?25h>, <[stopped]>, <{esc}[?25l{esc}[2J>)
+  out/push(suspend)
+  # the same keys as the note app below. Each round writes the rows that changed as plain lines and, when focus moves
+  # or what it holds changes, what has it in the contract's words. Enter leaves focus on the button, unsaid. After tab
+  # the field, unfocused, still holds `hi`, and the button has focus; after enter the note is added and the field
+  # cleared, focus where it was and so unsaid
+  save lines, app-of(<lines>, lines-program(), 6, make(list,<\t>, <h>, <i>, <\t>, <\r>), make list)
+  save lines/lined, true
+  save lines/transcript, make(list,<[note ] [ add ]>, <\>█\< [ add ]>, <focus: field note: >, <\>h█\< [ add ]>, <focus: field note: h>, <\>hi█\< [ add ]>, <focus: field note: hi>, <[hi ] \> add \<>, <focus: button add>, <[note ] \> add \<>, <hi>)
+  out/push(lines)
+  # tab to the field, type `hi`, tab to the button, enter: the note is added, the field cleared, the button focused
+  out/push(app-of(<notes>, notes-program, 6, make(list,<\t>, <h>, <i>, <\t>, <\r>), make(list,<[note ] \> add \<>, <hi>, <>, <>, <>, <>)))
+  # a title, a body, tab to the button, enter. Face's stack is a column with an 8 point gap (one blank row), the fields
+  # have no placeholder (`[ ]`), and the post is a stack of an h2 and a span. The fields are cleared and focus stays on
+  # the button. The click `tick`s an asynchronous task: node's loop yields for it, and Rust's queues it and drains the
+  # queue. The screen is the project's golden grid
+  out/push(app-of(<blog>, blog-program, 10, make(list,<\t>, <H>, <i>, <\t>, <y>, <o>, <\t>, <\r>), blog-golden()))
+  back out
+
+# one app run on one backend: `state` <ran>, <skipped> (with `reason`) or <failed> (it did not compile or build, with
+# `reason`), and once it ran, the status it ended with, all it wrote, and what had come when the stop was sent
+form pty-ran
+  link label, like text
+  link app, like pty-app
+  link state, like text
+  link reason, like text
+  link status, like number
+  link output, like text
+  link before, like text
+
+form pty-state
+  mark shared
+  link made, like boolean
+  link runs, like list, like pty-ran
+
+host pty-now, make(pty-state, bind(made, false), bind(runs, make list))
+
+# a key typed into the terminal: 0x1d resizes it (when the app has a resize size) and 0x1c sends SIGTERM to the program,
+# neither typed, an empty key types nothing, and any other is typed as it is
+task send-key
+  mark async
+  take pty, like held-pty
+  take app, like pty-app
+  take key, like text
+  like void
+
+  fork test, is-equal(key, <>)
+    hold
+      back
+  fork test, and(is-equal(key, resize-key), is-above(app/resize-columns, 0))
+    hold
+      resize-pty(pty, app/resize-columns, app/resize-rows)
+      back
+  fork test, is-equal(key, term-key)
+    hold
+      signal-program(pty, <TERM>)
+      back
+  press-key(pty, key)
+
+# the keys a key every 200 ms, 300 ms after the first screen is up, then the stop. It answers what had come when the
+# stop was sent
+task type-keys
+  mark async
+  take pty, like held-pty
+  take app, like pty-app
+  like text
+
+  sleep(300)
+  walk app/keys
+    take key, like text
+    send-key(pty, app, key)
+    sleep(200)
+  save before, pty-output(pty)
+  send-key(pty, app, app/stop-key)
+  back before
+
+# the original's 60 s kill: a program still running at `until` (in nanoseconds) is ended hard
+task watch-pty
+  mark async
+  take pty, like held-pty
+  take until, like number
+  like void
+
+  walk test
+    hook test, not(pty/child/stopped)
+    hook hold
+      fork test, is-above(read-nanoseconds(), until)
+        hold
+          stop-process(pty/child/process, <hard>)
+          back
+      sleep(100)
+
+# build `app` for `backend` and run it in a terminal of its size: once its first screen is up (it cleared the screen, or
+# for a line-mode app wrote its first line), type its keys and stop it
+task run-app
+  mark async
+  take app, like pty-app
+  take backend, like text
+  take folder, like text
+  take has-pty, like boolean
+  like pty-ran
+
+  save ran, make(pty-ran, bind(label, <{backend} {app/name}>), bind(app, app), bind(state, <skipped>), bind(reason, <>), bind(status, -1), bind(output, <>), bind(before, <>))
+  fork test, not(has-pty)
+    hold
+      save ran/reason, <no `script` to make a pseudo-terminal>
+      back ran
+  # the platform's own dom and view pinned to the terminal's, as the original's resolver does
+  save choice, make(compile-choice, bind(rewrites, make(list,make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|view)$>>), bind(into, <native/terminal/$1>)))))
+  save built, build-text(app/program, backend, folder, app/name, choice)
+  fork test, is-equal(built/state, <skipped>)
+    hold
+      save ran/reason, built/reason
+      back ran
+  fork test, is-unequal(built/state, <built>)
+    hold
+      save ran/state, <failed>
+      save ran/reason, <{built/stage}: {built/reason}>
+      back ran
+  save ran/state, <ran>
+  save cue, <{esc}[2J>
+  fork test, app/lined
+    hold
+      save cue, <\n>
+  save pty, start-pty(built/command, app/columns, app/rows, app/jobs)
+  tick watch-pty(pty, add(read-nanoseconds(), multiply(60000, 1000000)))
+  save seen, wait-for-text(pty, cue, 60000)
+  fork test, is-unequal(seen, <>)
+    hold
+      save ran/before, type-keys(pty, app)
+  save ended, wait-child(pty/child)
+  save ran/status, ended/code
+  save ran/output, pty-output(pty)
+  back ran
+
+# every app on every backend TERMINAL_ONLY allows, in the original's order, once
+task the-runs
+  mark async
+  like list, like pty-ran
+
+  fork test, pty-now/made
+    hold
+      back pty-now/runs
+  save pty-now/made, true
+  save folder, temp-folder(<term-terminal-pty->)
+  save only, variable(<TERMINAL_ONLY>)
+  save has-pty, is-unequal(find-tool(<script>), <>)
+  walk apps()
+    take app, like pty-app
+    walk app/backends
+      take backend, like text
+      fork test, or(is-equal(only, <>), is-equal(backend, only))
+        hold
+          pty-now/runs/push(run-app(app, backend, folder, has-pty))
+  back pty-now/runs
+
+# the labels of the runs an `ok` is made for: <all>, <lined> (the line-mode apps), <heard> (the apps with text to hear)
+# or <screen> (every app judged by its screen)
+task labels
+  mark async
+  take kind, like text
+  like list, like text
+
+  save out, make list
+  walk the-runs()
+    take one, like pty-ran
+    save lined, one/app/lined
+    fork test, or(is-equal(kind, <all>), or(and(is-equal(kind, <lined>), lined), or(and(is-equal(kind, <heard>), and(not(lined), is-above(one/app/heard/length, 0))), and(is-equal(kind, <screen>), not(lined)))))
+      hold
+        out/push(one/label)
+  back out
+
+task run-of
+  take label, like text
+  like pty-ran
+
+  walk pty-now/runs
+    take one, like pty-ran
+    fork test, is-equal(one/label, label)
+      hold
+        back one
+  halt <no run of this label>
+
+# why a run's judged case skips, <> when it ran: the original judged nothing past a skip or a failed build
+task skip-of
+  take one, like pty-ran
+  like text
+
+  fork test, is-equal(one/state, <skipped>)
+    hold
+      back one/reason
+  fork test, is-equal(one/state, <failed>)
+    hold
+      back <it did not build>
+  back <>
+
+# whether `wants` are lines of `lines`, each after the one before
+task lines-in-order
+  take lines, like list, like text
+  take wants, like list, like text
+  like boolean
+
+  save at, 0
+  walk wants
+    take wanted, like text
+    save found, -1
+    save k, at
+    walk test
+      hook test, and(is-below(k, lines/length), is-below(found, 0))
+      hook hold
+        fork test, is-equal(lines/get(k), wanted)
+          hold
+            save found, k
+        save k, add(k, 1)
+    fork test, is-below(found, 0)
+      hold
+        back false
+    save at, add(found, 1)
+  back true
+
+# whether `wants` are in `output`, each after the one before
+task text-in-order
+  take output, like text
+  take wants, like list, like text
+  like boolean
+
+  save at, 0
+  walk wants
+    take wanted, like text
+    save found, index-of(substring(output, at), wanted)
+    fork test, is-below(found, 0)
+      hold
+        back false
+    save at, add(at, add(found, wanted/length))
+  back true
+
+# a parameter of a control sequence as a number, 0 when it is empty or not a number
+task number-of
+  take part, like text
+  like number
+
+  save value, 0
+  walk text-split(part, <>)
+    take one, like text
+    save point,char-code-at(one, 0)
+    fork test, or(is-below(point,48), is-above(point,57))
+      hold
+        back 0
+    save value, add(multiply(value, 10), subtract(point,48))
+  back value
+
+# the numbers of a control sequence's parameters, the first `?` left out
+task numbers-of
+  take parameters, like text
+  like list, like number
+
+  save out, make list
+  walk text-split(text-replace(parameters, <?>, <>), <;>)
+    take part, like text
+    out/push(number-of(part))
+  back out
+
+# the `at`th number, 1 when it is absent or 0
+task number-or-one
+  take numbers, like list, like number
+  take at, like number
+  like number
+
+  fork test, not(is-below(at, numbers/length))
+    hold
+      back 1
+  save got, numbers/get(at)
+  fork test, is-equal(got, 0)
+    hold
+      back 1
+  back got
+
+# `value` held to 0 through `high`
+task clamp
+  take value, like number
+  take high, like number
+  like number
+
+  fork test, is-below(value, 0)
+    hold
+      back 0
+  fork test, is-above(value, high)
+    hold
+      back high
+  back value
+
+# whether a rune ends a control sequence: @ through ~
+task is-final
+  take rune, like text
+  like boolean
+
+  save point,char-code-at(rune, 0)
+  back and(not(is-below(point,64)), not(is-above(point,126)))
+
+# every cell of the screen blank
+task blank-all
+  take cells, like list, like text
+  like void
+
+  save at, 0
+  walk test
+    hook test, is-below(at, cells/length)
+    hook hold
+      cells/set(at, < >)
+      save at, add(at, 1)
+
+# the screen a stream of output leaves: printable code points at the cursor, CR, LF, and the three controls the app
+# writes (`ESC [ row ; column H`, `ESC [ K`, `ESC [ 2 J`). Anything else is skipped. Each row with its trailing space cut
+task replay
+  take output, like text
+  take rows, like number
+  take columns, like number
+  like list, like text
+
+  save cells, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, multiply(rows, columns))
+    hook hold
+      cells/push(< >)
+      save at, add(at, 1)
+  save runes, text-split(output, <>)
+  save count, runes/length
+  save row, 0
+  save column, 0
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save rune, runes/get(at)
+      save point,char-code-at(rune, 0)
+      fork test, and(is-equal(point,27), and(is-below(add(at, 1), count), is-equal(runes/get(add(at, 1)), <[>)))
+        hold
+          save ahead, add(at, 2)
+          save parameters, <>
+          walk test
+            hook test, and(is-below(ahead, count), not(is-final(runes/get(ahead))))
+            hook hold
+              save parameters, <{parameters}{runes/get(ahead)}>
+              save ahead, add(ahead, 1)
+          save final, <>
+          fork test, is-below(ahead, count)
+            hold
+              save final, runes/get(ahead)
+          save numbers, numbers-of(parameters)
+          fork test, and(is-equal(final, <H>), not(starts-with(parameters, <?>)))
+            hold
+              save row, clamp(subtract(number-or-one(numbers, 0), 1), subtract(rows, 1))
+              save column, clamp(subtract(number-or-one(numbers, 1), 1), subtract(columns, 1))
+          fork test, is-equal(final, <K>)
+            hold
+              save c, column
+              walk test
+                hook test, is-below(c, columns)
+                hook hold
+                  cells/set(add(multiply(row, columns), c), < >)
+                  save c, add(c, 1)
+          fork test, and(is-equal(final, <J>), is-equal(numbers/get(0), 2))
+            hold
+              blank-all(cells)
+          save at, ahead
+        miss
+          fork test, is-equal(point,13)
+            hold
+              save column, 0
+          fork test, is-equal(point,10)
+            hold
+              save row, add(row, 1)
+              fork test, is-above(row, subtract(rows, 1))
+                hold
+                  save row, subtract(rows, 1)
+          fork test, not(is-below(point,32))
+            hold
+              fork test, is-below(column, columns)
+                hold
+                  cells/set(add(multiply(row, columns), column), rune)
+              save column, add(column, 1)
+      save at, add(at, 1)
+  save lines, make list
+  save r, 0
+  walk test
+    hook test, is-below(r, rows)
+    hook hold
+      save line, <>
+      save c, 0
+      walk test
+        hook test, is-below(c, columns)
+        hook hold
+          save line, <{line}{cells/get(add(multiply(r, columns), c))}>
+          save c, add(c, 1)
+      lines/push(trim-end(line))
+      save r, add(r, 1)
+  back lines
+
+test <compiles and builds against the terminal>
+  take label, like text
+    walk labels(<all>)
+  save one, run-of(label)
+  fork test, is-equal(one/state, <skipped>)
+    hold
+      skip one/reason
+  want hold, is-equal(one/state, <ran>)
+
+test <it ends on its stop (ctrl-c, or SIGTERM) with the status it must (0, or 143)>
+  take label, like text
+    walk labels(<all>)
+  save one, run-of(label)
+  save why, skip-of(one)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, is-equal(one/status, one/app/stop-status)
+
+# line mode: plain lines only, no control sequence a reader would have to skip, and the expected lines in order
+test <no control sequences, only lines>
+  take label, like text
+    walk labels(<lined>)
+  save one, run-of(label)
+  save why, skip-of(one)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, not(text-contains(one/output, esc))
+
+test <every change and every focus move is a line, in order>
+  take label, like text
+    walk labels(<lined>)
+  save one, run-of(label)
+  save why, skip-of(one)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save lines, text-split(replace-all(one/output, <\r>, <>), <\n>)
+  want hold, lines-in-order(lines, one/app/transcript)
+
+test <the output holds what it must, in order>
+  take label, like text
+    walk labels(<heard>)
+  save one, run-of(label)
+  save why, skip-of(one)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  want hold, text-in-order(one/output, one/app/heard)
+
+# shown again AFTER the stop: the cursor is the visible half of giving the terminal back
+test <it hides the cursor while it runs and shows it again when it leaves>
+  take label, like text
+    walk labels(<screen>)
+  save one, run-of(label)
+  save why, skip-of(one)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save after, substring(one/output, one/before/length)
+  want hold, and(text-contains(one/output, <{esc}[?25l>), text-contains(after, <{esc}[?25h>))
+
+test <the keys typed into the terminal leave the screen worked out by hand>
+  take label, like text
+    walk labels(<screen>)
+  save one, run-of(label)
+  save why, skip-of(one)
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save judged, one/output
+  fork test, one/app/settled
+    hold
+      save judged, one/before
+  want hold, is-equal(replay(judged, one/app/rows, one/app/columns), one/app/screen)

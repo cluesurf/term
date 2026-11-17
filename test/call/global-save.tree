@@ -7,6 +7,8 @@
 # read. The user manifest routes the alice scope to the registry with a base line, written before the first save. The
 # version is published as OCI format v2 by oci/oci-publishing.tree (item term-self-host-001-1290), through
 # oci/registry-transport.tree's http-transport, loaded, never its face (decision 157 rule 2, item term-self-host-001-1297).
+# Item 1641: a save -g that cannot install leaves the user manifest as it was, and one that installs replaces it by a
+# write and a rename.
 
 load @term/call/work/small/global-saving
   find call-save-global
@@ -68,6 +70,14 @@ task saving-is-link
   halt take
     take cause
     back false
+
+# the inode of the file at a path, a link followed: a file replaced by a rename has a new one, a file written in place
+# keeps its own
+bind saving-inode
+  take place, like text
+  like number
+  case node
+    text <<process.getBuiltinModule("node:fs").statSync($place).ino>>
 
 host saving-variables, make list(<HOME>, <TERM_STORE>, <TERM_TRUST_DIR>)
 host saving-own-text, <zone base, machine 7\n>
@@ -172,6 +182,36 @@ test <term save --global: the release at ~/.base/@alice/demo/code/1.0.2 in a fol
   want hold, launcher/includes(<term save --global @alice/demo>)
   want hold, launcher/includes(<boot>)
   want hold, launcher/includes(<@alice/demo/code/1.0.2/code/line/base.tree>)
+
+test <a term save --global that nothing published can meet leaves ~/.base/deck.tree byte for byte, with no lock.tree, no release and no launcher>
+  host open, open-saving()
+  host before, read-or-empty(saving-path/join(open/base, <deck.tree>))
+  call-save-global(<@alice/demo>, <>)
+  host after, read-or-empty(saving-path/join(open/base, <deck.tree>))
+  host locked, saving-file/exists-sync(saving-path/join(open/base, <lock.tree>))
+  host released, saving-file/exists-sync(saving-path/join(open/base, <@alice>, <demo>, <code>))
+  host launched, saving-file/exists-sync(saving-path/join(open/base, <@term>, <code>, <call>, <demo>))
+  close-saving(open)
+  want hold, is-equal(after, before)
+  want hold, not(locked)
+  want hold, not(released)
+  want hold, not(launched)
+
+test <term save --global replaces ~/.base/deck.tree by a rename onto the file it links to: a new inode there, the link kept>
+  host open, open-saving()
+  host place, saving-path/join(open/base, <deck.tree>)
+  host real, saving-path/join(open/work, <kept-deck.tree>)
+  saving-file/rename-sync(place, real)
+  saving-file/symlink-sync(real, place)
+  host before, saving-inode(real)
+  call-save-global(<@alice/demo>, <1.0.x>)
+  host after, saving-inode(real)
+  host still-link, saving-is-link(place)
+  host written, read-or-empty(real)
+  close-saving(open)
+  want hold, not(is-equal(after, before))
+  want hold, still-link
+  want hold, written/includes(<link @alice/demo>)
 
 test <term toss --global: the launcher, the releases and the manifest row removed, the folder and the user's zone.tree kept, the base line kept>
   host open, open-saving()

@@ -1,0 +1,649 @@
+note <what term:distro made installs as a stranger installs it, over HTTP shaped like term.surf, in fresh containers>
+
+# Ported from test/call/distro.ts by statement (item term-self-host-001-0687), one test per ok in its order, with the
+# redirect of test/distro-redirect.ts ported beside it (ruling 1141 (b): a helper goes with the first suite that uses it).
+# What `pnpm term:distro` made, installed the way a stranger installs it, in containers that have never seen this
+# machine, over HTTP shaped exactly like term.surf: a server here serves tmp/release/<version>/distro/public/ (the
+# signed indexes --commit puts on the site) as static files, and answers every other path with the redirect the indexes
+# are written for, pointed at a stand-in for GitHub's release downloads that serves distro/packages/. So the package a
+# container installs went through the redirect, and the test fails if it did not.
+#
+#   the redirect: the two shapes the indexes write, and nothing else
+#   apt, Debian with a tarball Node (node:22-bookworm-slim), arm64 and amd64: `apt install term`, `term --version` as an
+#     ordinary user, `term self update` refused naming apt
+#   apt, stock Ubuntu 24.04 with no Node: it installs, and `term` names the Node it needs
+#   apt, an InRelease whose signature does not match: refused
+#   dnf, Fedora 42: `dnf install term` with Node as the weak dependency, `term --version`, update refused naming dnf
+#   dnf, a repomd.xml whose signature does not match: refused
+#   winget: each manifest's InstallerSha256 is its zip's, and each zip holds term\bin\term.exe for its architecture
+#
+# Run `pnpm term:release --dry` and `pnpm term:distro` first. TERM_DISTRO_VERSION names a version packed earlier than
+# package.json's. A machine with no Docker skips the container tests, as a suite skips a toolchain that is not
+# installed: the gate collects every suite, and the original, which the gate never ran, failed there. Where Docker is,
+# a distro not packed fails, as the original refused it.
+
+load ../support/cli
+  find term-root
+
+load ../support/compiling
+  find file-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find read-bytes
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find exists, name folder-exists
+
+load @term/base/network/server
+  find server
+  find start, name serve-start
+  find stop, name serve-stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-bytes
+  find make-status
+  find with-header
+
+load @term/base/cryptography/digest
+  find digest-sha256-bytes-text
+
+load @term/base/bytes
+  find to-hex
+
+load @term/base/json
+  find parse, name parse-json
+  find field-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-match
+  find match-group
+  find escape-pattern
+
+load @term/base/text
+  find replace-all
+  find to-upper-case
+  find starts-with
+  find contains, name text-contains
+  find index-of
+  find substring
+  find char-count
+
+dock load
+  load <node:path>, name distro-path
+
+# ---- the redirect (test/distro-redirect.ts) ----
+
+# where a package is sent: the release downloads of `cluesurf/term`
+host release-downloads, <https://github.com/cluesurf/term/releases/download>
+
+host deb-shape, make(pattern, <<^/apt/pool/(\d+\.\d+\.\d+)/(term_(\d+\.\d+\.\d+)_(?:amd64|arm64)\.deb)$>>)
+host rpm-shape, make(pattern, <<^/rpm/(\d+\.\d+\.\d+)/(term-(\d+\.\d+\.\d+)-1\.(?:x86_64|aarch64)\.rpm)$>>)
+
+# group `index` of a match, <> when it took none
+task group-text
+  take found, like pattern-match
+  take index, like number
+  like text
+
+  sift match-group(found, index)
+    case some
+      link value
+      back value
+    case none
+      back <>
+
+# the release asset a package path names, as a full URL under `downloads`, <> for any other path: a package path names
+# a version folder and a file of that same version, so no path can point at an arbitrary release asset
+task release-redirect
+  take pathname, like text
+  take downloads, like text
+  like text
+
+  sift find-match(deb-shape, pathname)
+    case some
+      link value
+      back release-of(value, downloads)
+    case none
+      sift find-match(rpm-shape, pathname)
+        case some
+          link value
+          back release-of(value, downloads)
+        case none
+          back <>
+
+# the asset a package path's match names, <> when its folder and its file name two versions
+task release-of
+  take found, like pattern-match
+  take downloads, like text
+  like text
+
+  save folder, group-text(found, 1)
+  fork test, is-unequal(folder, group-text(found, 3))
+    hold
+      back <>
+  back <{downloads}/v{folder}/{group-text(found, 2)}>
+
+# one shape the indexes write, or a path that must be answered with nothing, and its answer
+task shape-holds
+  take pathname, like text
+  take want, like text
+  like boolean
+
+  back is-equal(release-redirect(pathname, release-downloads), want)
+
+test <redirect /apt/pool/2.7.2/term_2.7.2_amd64.deb: the release asset>
+  want hold, shape-holds(</apt/pool/2.7.2/term_2.7.2_amd64.deb>, <{release-downloads}/v2.7.2/term_2.7.2_amd64.deb>)
+
+test <redirect /apt/pool/2.7.2/term_2.7.2_arm64.deb: the release asset>
+  want hold, shape-holds(</apt/pool/2.7.2/term_2.7.2_arm64.deb>, <{release-downloads}/v2.7.2/term_2.7.2_arm64.deb>)
+
+test <redirect /rpm/2.7.2/term-2.7.2-1.x86_64.rpm: the release asset>
+  want hold, shape-holds(</rpm/2.7.2/term-2.7.2-1.x86_64.rpm>, <{release-downloads}/v2.7.2/term-2.7.2-1.x86_64.rpm>)
+
+test <redirect /rpm/2.7.2/term-2.7.2-1.aarch64.rpm: the release asset>
+  want hold, shape-holds(</rpm/2.7.2/term-2.7.2-1.aarch64.rpm>, <{release-downloads}/v2.7.2/term-2.7.2-1.aarch64.rpm>)
+
+test <redirect /apt/pool/2.7.0/term_2.7.2_amd64.deb: nothing>
+  want hold, shape-holds(</apt/pool/2.7.0/term_2.7.2_amd64.deb>, <>)
+
+test <redirect /apt/pool/2.7.2/term_2.7.2_i386.deb: nothing>
+  want hold, shape-holds(</apt/pool/2.7.2/term_2.7.2_i386.deb>, <>)
+
+test <redirect /apt/pool/2.7.2/term-2.7.2-windows-x64.zip: nothing>
+  want hold, shape-holds(</apt/pool/2.7.2/term-2.7.2-windows-x64.zip>, <>)
+
+test <redirect /apt/pool/2.7.2/../2.7.2/term_2.7.2_amd64.deb: nothing>
+  want hold, shape-holds(</apt/pool/2.7.2/../2.7.2/term_2.7.2_amd64.deb>, <>)
+
+test <redirect /rpm/2.7.2/other-2.7.2-1.x86_64.rpm: nothing>
+  want hold, shape-holds(</rpm/2.7.2/other-2.7.2-1.x86_64.rpm>, <>)
+
+test <redirect /apt/dists/stable/InRelease: nothing>
+  want hold, shape-holds(</apt/dists/stable/InRelease>, <>)
+
+# ---- the pack ----
+
+task distro-version
+  like text
+
+  save named, variable(<TERM_DISTRO_VERSION>)
+  fork test, is-unequal(named, <>)
+    hold
+      back named
+  back field-text(parse-json(file-text(distro-path/join(term-root(), <package.json>))), <version>)
+
+host version, distro-version()
+host distro, distro-path/join(term-root(), <tmp>, <release>, version, <distro>)
+host packages, distro-path/join(distro, <packages>)
+host version-pattern, escape-pattern(version)
+
+# ---- term.surf, here ----
+
+# what one served site answers from, and every path it was asked
+form site-state
+  mark shared
+  link public, like text
+  link base, like text
+  link asked, like list, like text
+
+host site, make(site-state, bind(public, <>), bind(base, <>), bind(asked, make list))
+
+host asset-shape, make(pattern, <<^/releases/v[\d.]+/([\w.-]+)$>>)
+
+# host native: whether a path is a file, a link followed, read without waiting: the server's handler is called
+# without waiting, and the stdlib's stat waits
+bind is-plain-file
+  take path, like text
+  like boolean
+  case node
+    text <process.getBuiltinModule("node:fs").statSync($path, \{ throwIfNoEntry: false \})?.isFile() === true>
+
+# host native: a file's bytes read without waiting, for the server's handler, which is called without waiting; the
+# stdlib's read-bytes waits
+bind plain-file-bytes
+  take path, like text
+  like bytes
+  case node
+    text <new Uint8Array(process.getBuiltinModule("node:fs").readFileSync($path))>
+
+# the site's answer, or a 500 for a raise: a handler raises nothing (the original's node server would have failed the
+# request the same way)
+task site-route
+  take asked, like request
+  like response
+
+  fork
+    mark unsafe
+    back site-answer(asked)
+  halt take
+    take cause
+    back make-status(500)
+
+# `public` as static files, the redirect for everything else, and GitHub's downloads under /releases
+task site-answer
+  take asked, like request
+  like response
+
+  save pathname, asked/path
+  site/asked/push(pathname)
+  save file, distro-path/normalize(distro-path/join(site/public, pathname))
+  fork test, and(starts-with(file, site/public), is-plain-file(file))
+    hold
+      back make-bytes(plain-file-bytes(file))
+  save release, release-redirect(pathname, <{site/base}/releases>)
+  fork test, is-unequal(release, <>)
+    hold
+      back with-header(make-status(302), <location>, release)
+  # the stand-in for github.com/<repo>/releases/download/v<version>/<file>
+  save asset, <>
+  sift find-match(asset-shape, pathname)
+    case some
+      link value
+      save asset, distro-path/join(packages, group-text(value, 1))
+    case none
+      save asset, <>
+  fork test, and(is-unequal(asset, <>), is-plain-file(asset))
+    hold
+      back make-bytes(plain-file-bytes(asset))
+  back make-status(404)
+
+# serve `public` on a free port of every address, the containers reaching it as host.docker.internal
+task serve-site
+  mark async
+  take public, like text
+  like server
+
+  save site/public, public
+  save site/asked, make list
+  save server, serve-start(0, <0.0.0.0>, site-route)
+  save site/base, <http://host.docker.internal:{server/port}>
+  back server
+
+# one shell script in a fresh container that reaches this machine as host.docker.internal: its exit and everything it
+# printed, stdout then stderr
+form inside-run
+  link status, like number
+  link text, like text
+
+task inside
+  mark async
+  take image, like text
+  take platform, like text
+  take script, like text
+  like inside-run
+
+  save words, make list(<run>, <--rm>, <--add-host>, <host.docker.internal:host-gateway>)
+  fork test, is-unequal(platform, <>)
+    hold
+      words/push(<--platform>)
+      words/push(platform)
+  words/push(image)
+  words/push(<sh>)
+  words/push(<-c>)
+  words/push(script)
+  save ran, run(<docker>, words)
+  back make(inside-run, bind(status, ran/code), bind(text, <{ran/output}{ran/error}>))
+
+# a shell script from its lines, each a raw literal (they hold `>` and `|`), with BASE the address of this server
+task script-of
+  take lines, like list, like text
+  take base, like text
+  like text
+
+  back replace-all(lines/join(<\n>), <BASE>, base)
+
+# the install steps the guide gives, with term.surf's address swapped for this server's
+task apt-setup
+  take base, like text
+  like text
+
+  save lines, make list(<<set -e>>, <<export DEBIAN_FRONTEND=noninteractive>>, <<apt-get update -qq >/dev/null 2>&1 || true>>, <<command -v curl >/dev/null || apt-get install -y -qq curl >/dev/null 2>&1>>, <<mkdir -p /etc/apt/keyrings>>, <<curl -fsSLo /etc/apt/keyrings/term.asc BASE/term.asc>>, <<curl -fsSL BASE/apt/term.list | sed 's#https://term.surf#BASE#' > /etc/apt/sources.list.d/term.list>>, <<apt-get update -qq>>)
+  back script-of(lines, base)
+
+task dnf-setup
+  take base, like text
+  like text
+
+  # `-y` accepts the key the repository file names, as a person answering the prompt does. Not -q, which hides the
+  # signature verdict
+  save lines, make list(<<set -e>>, <<curl -fsSL BASE/rpm/term.repo | sed 's#https://term.surf#BASE#' > /etc/yum.repos.d/term.repo>>, <<dnf -y makecache --repo term>>)
+  back script-of(lines, base)
+
+# `command` as the container's ordinary user
+host as-user-version, <<su -s /bin/sh dev -c 'term --version'>>
+host as-user-update, <<su -s /bin/sh dev -c 'term self update --plain' || echo "exit $?">>
+
+# ---- the container runs, once, in the original's order ----
+
+form distro-state
+  mark shared
+  link ran, like boolean
+  link debian, like list, like inside-run
+  link debian-asked, like list, like list, like text
+  link ubuntu, like inside-run
+  link fedora, like inside-run
+  link fedora-asked, like list, like text
+  link tampered-apt, like inside-run
+  link tampered-dnf, like inside-run
+
+host no-run, make(inside-run, bind(status, -1), bind(text, <>))
+
+host runs, make(distro-state, bind(ran, false), bind(debian, make list), bind(debian-asked, make list), bind(ubuntu, no-run), bind(fedora, no-run), bind(fedora-asked, make list), bind(tampered-apt, no-run), bind(tampered-dnf, no-run))
+
+host platforms, make list(<linux/arm64>, <linux/amd64>)
+
+task debian-script
+  take base, like text
+  like text
+
+  save rest, make list(<<apt-get install -y -qq term >/dev/null>>, <<useradd -m dev>>, <<echo "== version">>, as-user-version, <<echo "== update">>, as-user-update)
+  back <{apt-setup(base)}\n{script-of(rest, base)}>
+
+task ubuntu-script
+  take base, like text
+  like text
+
+  save rest, make list(<<apt-get install -y -qq term >/dev/null>>, <<command -v node || echo "no node">>, <<term --version || echo "exit $?">>)
+  back <{apt-setup(base)}\n{script-of(rest, base)}>
+
+task fedora-script
+  take base, like text
+  like text
+
+  # the fedora image has no su; util-linux is only for this test's ordinary user
+  save rest, make list(<<dnf install -y -q term >/dev/null>>, <<dnf install -y -q util-linux >/dev/null>>, <<useradd -m dev>>, <<echo "== node">>, <<rpm -q --qf "%{NAME} %{VERSION}\n" nodejs>>, <<echo "== version">>, as-user-version, <<echo "== update">>, as-user-update)
+  back <{dnf-setup(base)}\n{script-of(rest, base)}>
+
+task run-containers
+  mark async
+  like void
+
+  fork test, runs/ran
+    hold
+      back
+  save runs/ran, true
+  save served, serve-site(distro-path/join(distro, <public>))
+  walk platforms
+    take platform, like text
+    save site/asked, make list
+    runs/debian/push(inside(<node:22-bookworm-slim>, platform, debian-script(site/base)))
+    runs/debian-asked/push(site/asked)
+  save runs/ubuntu, inside(<ubuntu:24.04>, <>, ubuntu-script(site/base))
+  save site/asked, make list
+  save runs/fedora, inside(<fedora:42>, <>, fedora-script(site/base))
+  save runs/fedora-asked, site/asked
+  serve-stop(served)
+  # a copy of what term.surf serves, with indexes that say something their signatures do not
+  save forged-dir, temp-folder(<term-forged->)
+  save public, distro-path/join(distro, <public>)
+  save copying, make list(<-R>, <{public}/.>, forged-dir)
+  run(<cp>, copying)
+  save in-release, distro-path/join(forged-dir, <apt>, <dists>, <stable>, <InRelease>)
+  write-file(in-release, replace-first(file-text(in-release), <Label: term>, <Label: tampered>))
+  save repomd, distro-path/join(forged-dir, <rpm>, <repodata>, <repomd.xml>)
+  write-file(repomd, <{file-text(repomd)}\<!-- tampered --\>\n>)
+  save forged, serve-site(forged-dir)
+  save runs/tampered-apt, inside(<node:22-bookworm-slim>, <>, <{apt-setup(site/base)}\necho reached>)
+  save runs/tampered-dnf, inside(<fedora:42>, <>, <{dnf-setup(site/base)}\ndnf install -y term\necho reached>)
+  serve-stop(forged)
+
+# the original's String.replace: the first `old` alone
+task replace-first
+  take source, like text
+  take old, like text
+  take new, like text
+  like text
+
+  save at, index-of(source, old)
+  fork test, is-below(at, 0)
+    hold
+      back source
+  back <{substring(source, 0, at)}{new}{substring(source, add(at, char-count(old)), char-count(source))}>
+
+# why the container tests skip, <> when they run
+task container-skip
+  mark async
+  like text
+
+  fork test, is-equal(find-tool(<docker>), <>)
+    hold
+      back <docker is not installed>
+  fork test, not(folder-exists(distro-path/join(distro, <public>)))
+    hold
+      back <the distro is not packed>
+  back <>
+
+# whether `text` holds `== version` and, on the next line, this version
+task runs-version
+  take text, like text
+  like boolean
+
+  back matches(make(pattern, <== version\n[^\n]*{version-pattern}>), text)
+
+test <the distro is packed: run `pnpm term:distro` (after `pnpm term:release --dry`), or set TERM_DISTRO_VERSION to a version packed earlier>
+  fork test, is-equal(find-tool(<docker>), <>)
+    hold
+      skip <docker is not installed>
+  want hold, folder-exists(distro-path/join(distro, <public>))
+
+test <apt: installs from the signed repository, and runs the version as an ordinary user>
+  take at, like number
+    walk make list(0, 1)
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  host debian, runs/debian/get(at)
+  want hold, and(is-equal(debian/status, 0), runs-version(debian/text))
+
+test <apt: the package came through term.surf's redirect to the release>
+  take at, like number
+    walk make list(0, 1)
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  host arch, arch-of(at)
+  host asked, runs/debian-asked/get(at)
+  want hold, and(asked/contains(</apt/pool/{version}/term_{version}_{arch}.deb>), asked/contains(</releases/v{version}/term_{version}_{arch}.deb>))
+
+test <apt: term self update is refused, naming apt>
+  take at, like number
+    walk make list(0, 1)
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  want hold, text-contains(runs/debian/get(at)/text, <apt installed this copy, so apt updates it>)
+
+test <apt, stock Ubuntu 24.04: term installs without a Node new enough, and names the one it needs>
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  host text, runs/ubuntu/text
+  want hold, and(text-contains(text, <no node>), and(text-contains(text, <term needs Node.js 22.3.0 or newer>), text-contains(text, <exit 69>)))
+
+test <dnf: installs from the signed repository, with Node as its weak dependency>
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  want hold, and(is-equal(runs/fedora/status, 0), matches(make(pattern, <<== node\nnodejs (2[2-9]|[3-9]\d)\.>>), runs/fedora/text))
+
+test <dnf: the package came through term.surf's redirect to the release>
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  host asked, runs/fedora-asked
+  want hold, and(asked/contains(</rpm/{version}/term-{version}-1.aarch64.rpm>), asked/contains(</releases/v{version}/term-{version}-1.aarch64.rpm>))
+
+test <dnf: runs the version as an ordinary user>
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  want hold, runs-version(runs/fedora/text)
+
+test <dnf: term self update is refused, naming dnf>
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  want hold, text-contains(runs/fedora/text, <dnf installed this copy, so dnf updates it>)
+
+test <apt: an InRelease that does not match its signature is refused>
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  host tampered, runs/tampered-apt
+  want hold, and(is-unequal(tampered/status, 0), and(not(text-contains(tampered/text, <reached>)), matches(make(pattern, <<(BADSIG|[Bb][Aa][Dd][Ss][Ii][Gg]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Nn][Oo][Tt] [Ss][Ii][Gg][Nn][Ee][Dd]|[Ii][Nn][Vv][Aa][Ll][Ii][Dd])>>), tampered/text)))
+
+# dnf skips a repository it cannot verify rather than failing the whole command, so the refusal is the message and a
+# `term` that is no longer there to install
+test <dnf: a repomd.xml that does not match its signature is refused>
+  fork test, is-unequal(container-skip(), <>)
+    hold
+      skip container-skip()
+  run-containers()
+  host text, runs/tampered-dnf/text
+  want hold, and(text-contains(text, <Bad PGP signature>), and(text-contains(text, <No match for argument: term>), not(text-contains(text, <reached>))))
+
+# ---- winget: what the manifests promise is what the zips are ----
+
+task arch-of
+  take at, like number
+  like text
+
+  fork test, is-equal(at, 0)
+    hold
+      back <arm64>
+  back <amd64>
+
+host winget-arches, make list(<x64>, <arm64>)
+
+task winget-skip
+  mark async
+  like text
+
+  fork test, not(folder-exists(distro-path/join(distro, <public>)))
+    hold
+      back <the distro is not packed>
+  back <>
+
+task installer-text
+  mark async
+  like text
+
+  back file-text(distro-path/join(distro, <winget>, <manifests>, <c>, <ClueSurf>, <Term>, version, <ClueSurf.Term.installer.yaml>))
+
+task zip-name
+  take arch, like text
+  like text
+
+  back <term-{version}-windows-{arch}.zip>
+
+# the machine type a PE header names for each architecture
+task machine-of
+  take arch, like text
+  like number
+
+  fork test, is-equal(arch, <x64>)
+    hold
+      back 34404
+  back 43620
+
+# the value of two lowercase hex digits
+task parse-hex-byte
+  take pair, like text
+  like number
+
+  save digits, <0123456789abcdef>
+  back add(multiply(index-of(digits, substring(pair, 0, 1)), 16), index-of(digits, substring(pair, 1, 2)))
+
+# the bytes of term\bin\term.exe in the zip for `arch`, as lowercase hex, <> when unzip found none
+task exe-hex
+  mark async
+  take arch, like text
+  like text
+
+  save folder, temp-folder(<term-winget->)
+  run(<unzip>, make list(<-o>, <-q>, distro-path/join(packages, zip-name(arch)), <term/bin/term.exe>, <-d>, folder))
+  save exe, distro-path/join(folder, <term>, <bin>, <term.exe>)
+  fork test, not(file-exists(exe))
+    hold
+      back <>
+  back to-hex(read-bytes(exe))
+
+# the little-endian number of `width` bytes at `at` of hex text `hex`, -1 past its end
+task little-endian
+  take hex, like text
+  take at, like number
+  take width, like number
+  like number
+
+  fork test, is-above(multiply(add(at, width), 2), char-count(hex))
+    hold
+      back -1
+  save value, 0
+  save k, subtract(width, 1)
+  walk test
+    hook test, not(is-below(k, 0))
+    hook hold
+      save pair, substring(hex, multiply(add(at, k), 2), multiply(add(add(at, k), 1), 2))
+      save value, add(multiply(value, 256), parse-hex-byte(pair))
+      save k, subtract(k, 1)
+  back value
+
+test <winget: the manifest names the zip by its release URL and its sha256>
+  take arch, like text
+    walk winget-arches
+  fork test, is-unequal(winget-skip(), <>)
+    hold
+      skip winget-skip()
+  host name, zip-name(arch)
+  host sha, to-upper-case(digest-sha256-bytes-text(read-bytes(distro-path/join(packages, name))))
+  host entry, make(pattern, <Architecture: {arch}\n\\s+InstallerUrl: https://github\\.com/cluesurf/term/releases/download/v{version-pattern}/{escape-pattern(name)}\n\\s+InstallerSha256: {sha}>)
+  want hold, matches(entry, installer-text())
+
+# a PE file: MZ, then at 0x3c the offset of `PE\0\0` and the machine type after it
+test <winget: the zip holds term\\bin\\term.exe for the architecture>
+  take arch, like text
+    walk winget-arches
+  fork test, is-unequal(winget-skip(), <>)
+    hold
+      skip winget-skip()
+  host exe, exe-hex(arch)
+  host pe, little-endian(exe, 60, 4)
+  host machine, little-endian(exe, add(pe, 4), 2)
+  host wanted, machine-of(arch)
+  want hold, and(starts-with(exe, <4d5a>), is-equal(machine, wanted))
+
+test <winget: the nested installer is term\\bin\\term.exe, aliased term, with Node from winget>
+  fork test, is-unequal(winget-skip(), <>)
+    hold
+      skip winget-skip()
+  host installer, installer-text()
+  want hold, and(matches(make(pattern, <<RelativeFilePath: term\\bin\\term\.exe\n\s+PortableCommandAlias: term>>), installer), text-contains(installer, <PackageIdentifier: OpenJS.NodeJS.LTS>))

@@ -21,9 +21,10 @@
 #     empty text and false where left out (decision 176 rule 1), and layout-object-store(dir)
 #   - the transport is registry-transport.tree's form oci-transport, each method taking its own record (blob-query,
 #     blob-request, blob-upload, manifest-request, manifest-upload, tag-request, referrer-request); get-manifest and
-#     referrers answer like dynamic as that form says, a fetched-manifest or the descriptors, and the wire's own nothing
-#     (wire-nothing) where the original answered undefined (item term-self-host-001-1533). The store is the form
-#     layout-store, its put taking the form layout-object
+#     referrers answer a maybe as that form says (decision 176 rule 2, item term-self-host-001-1582), a fetched-manifest
+#     or the descriptors, none where the original answered undefined. A referrer's descriptor is the form
+#     layout-referrer, its artifact type a need-false maybe: the original's undefined on TypeScript where the manifest
+#     has none. The store is the form layout-store, its put taking the form layout-object
 #   - every none inside is a maybe (decision 176 rules 2 and 3): a blob read (read-blob-file, read-quietly), a stat, a
 #     ref name, a tag's digest; each is sifted where it is read
 #   - the index is a @term/base/json value, read back with only its sound descriptors kept and written as the
@@ -63,7 +64,6 @@ load ./registry-transport
   find referrer-request
   find fetched-manifest
   find manifest-receipt
-  find wire-nothing
 
 load @term/base/maybe
   find maybe
@@ -152,6 +152,16 @@ load @term/base/json
   find from-number, name json-of-number
   find as-boolean, name json-as-boolean
   find make-null, name json-null
+
+# a referrer's descriptor as the original made it: the index entry's media type, digest and size, and the manifest's
+# artifact type where it names one
+form layout-referrer
+  link media-type, like dynamic
+  link digest, like dynamic
+  link size, like dynamic
+  link artifact-type
+    like maybe, like dynamic
+    need false
 
 # what the object store's put takes: an object id and its bytes
 form layout-object
@@ -880,7 +890,7 @@ task layout-get-manifest
   take prefix, like text
   take bare, like boolean
   take asked, like manifest-request
-  like dynamic
+  like maybe, like fetched-manifest
   mark private
 
   save repository, asked/repository
@@ -893,7 +903,7 @@ task layout-get-manifest
       save found, found-digest(read-index(dir), ref-name(bare, prefix, repository, reference))
       sift found
         case none
-          back wire-nothing()
+          back make none
         case some
           link named
           save digest, named
@@ -901,10 +911,11 @@ task layout-get-manifest
   save read, read-blob-file(dir, digest, 4194304)
   sift read
     case none
-      back wire-nothing()
+      back make none
     case some
       link bytes
-      back fetched-of(digest, bytes)
+      save fetched, fetched-of(digest, bytes)
+      back make(some, fetched)
 
 task layout-put-manifest
   take dir, like text
@@ -990,29 +1001,27 @@ task referrer-of
   like dynamic
   mark private
 
-  save made, json-object()
-  json-set(made, <mediaType>, json-field(entry, <mediaType>))
-  json-set(made, <digest>, json-field(entry, <digest>))
-  json-set(made, <size>, json-field(entry, <size>))
-  # the original wrote the manifest's artifactType as it read it, the host's nothing where the manifest has none
-  save artifact, wire-nothing()
+  # the original wrote the manifest's artifactType as it read it, the host's nothing where the manifest has none: a
+  # need-false maybe field, which is that on TypeScript
+  save artifact, make none
   save keys, json-keys(manifest)
   fork test, keys/contains(<artifactType>)
     hold
-      save artifact, json-field(manifest, <artifactType>)
-  json-set(made, <artifactType>, artifact)
-  back made
+      save named, json-field(manifest, <artifactType>)
+      save artifact, make(some, named)
+  back make(layout-referrer, bind(media-type, json-field(entry, <mediaType>)), bind(digest, json-field(entry, <digest>)), bind(size, json-field(entry, <size>)), bind(artifact-type, artifact))
 
 task layout-referrers
   take dir, like text
   take asked, like referrer-request
-  like dynamic
+  like maybe
+    like list, like dynamic
   mark private
 
   save digest, asked/digest
   save kind, asked/artifact-type
   assert-digest(digest)
-  save out, json-array()
+  save out, make(list)
   save index, read-index(dir)
   save manifests, json-field(index, <manifests>)
   save count, json-size(manifests)
@@ -1028,11 +1037,11 @@ task layout-referrers
           save manifest, parse-bytes(bytes)
           fork test, refers-to(manifest, digest, kind)
             hold
-              json-push(out, referrer-of(entry, manifest))
+              out/push(referrer-of(entry, manifest))
         case none
           save skipped, at
       save at, add(at, 1)
-  back out
+  back make(some, out)
 
 # an OCI image layout as a registry. Repositories share one blob store, and tags are told apart by ref name
 task layout-transport
@@ -1075,7 +1084,7 @@ task layout-transport
   save get-manifest
     task
       take asked, like manifest-request
-      like dynamic
+      like maybe, like fetched-manifest
       mark async
       back layout-get-manifest(dir, lead-prefix, bare, asked)
   save put-manifest
@@ -1099,7 +1108,8 @@ task layout-transport
   save referrers
     task
       take asked, like referrer-request
-      like dynamic
+      like maybe
+        like list, like dynamic
       mark async
       back layout-referrers(dir, asked)
 

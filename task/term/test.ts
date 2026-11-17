@@ -37,6 +37,7 @@ import { join, resolve } from 'node:path'
 import { holdDevice } from '../../test/compile/shared/device-hold'
 import { makeCache } from './gate/cache'
 import { compileLegs } from './gate/compile-packages'
+import { termTestResult } from './gate/term-test-counts'
 import { SYSTEM_TEMP, leftIn, madeEntries, madeSince, makeScratch, removeOwnRuns, removeTree, scratchEnv, sweepStaleRuns } from './temp-run'
 import { PARENT_ROOT, TERM_ROOT } from './root'
 
@@ -93,21 +94,17 @@ function have(tool: string): boolean {
   }
 }
 
-// the suite's own summary line: `<name>: N pass, M fail` (or `N pass, M fail, K skipped`)
+// the suite's own summary line: `<name>: N pass, M fail` (or `N pass, M fail, K skipped`), or the facts line of a
+// `term test` run a script passes on, `· N passed · M failed` (gate/term-test-counts.ts reads a package's own run).
+// `N tests passed` was the wording before `term test` closed on a verdict, which no run prints now (item 1635)
 function summary(output: string): { pass: number; fail: number } | undefined {
   const lines = output.split('\n').reverse()
 
   for (const line of lines) {
-    const found = /(\d+) pass(?:ed)?(?:, (\d+) fail(?:ed)?)?/.exec(line)
+    const found = /(\d+) pass(?:ed)?(?:(?:, | · )(\d+) fail(?:ed)?)?/.exec(line)
 
     if (found) {
       return { pass: Number(found[1]), fail: Number(found[2] ?? 0) }
-    }
-
-    const passed = /(\d+) tests? passed/.exec(line)
-
-    if (passed) {
-      return { pass: Number(passed[1]), fail: 0 }
     }
   }
 
@@ -436,16 +433,9 @@ async function emitTypes(env: Record<string, string> = {}): Promise<Result> {
 function packageTests(pack: string, dir = join(TERM, 'deck', pack)): (env: Record<string, string>) => Promise<Result> {
   return async (env = {}) => {
     const run = await child('node', [LINE, 'test'], dir, 900, env)
-    const output = `${run.stdout}\n${run.stderr}`
-    const passed = /(\d+) tests? passed/.exec(output)
-    const failed = /(\d+) failed/.exec(output)
 
-    return {
-      ok: run.status === 0 && !failed,
-      pass: Number(passed?.[1] ?? 0),
-      fail: Number(failed?.[1] ?? (run.status === 0 ? 0 : 1)),
-      note: failed ? output.split('\n').filter(l => /✗/.test(l)).slice(0, 3).join(' | ') : '',
-    }
+    // the run's closing line (gate/term-test-counts.ts): none, or no test run, fails
+    return termTestResult(run.status, `${run.stdout}\n${run.stderr}`)
   }
 }
 
@@ -476,7 +466,32 @@ async function selfContained(env: Record<string, string> = {}): Promise<Result> 
   }
 }
 
+// deck/site/code/base/asset/declarations.json is generated from declarations.tree (task/term/asset-declarations.ts). The
+// tool reads the compiled unit, so the suite builds the site first, then fails when the committed JSON is stale.
+// TERM_ASSET_DECLARATIONS_SITE points the tool at another site folder (the proof that a changed copy fails)
+async function assetDeclarations(env: Record<string, string> = {}): Promise<Result> {
+  const site = join(TERM, 'deck', 'site')
+  const made = await child('node', [LINE, 'make'], site, 1800, env)
+
+  if (made.status !== 0) {
+    const tail = `${made.stdout}\n${made.stderr}`.split('\n').filter(l => l.trim() !== '').slice(-2).join(' | ')
+    return { ok: false, pass: 0, fail: 1, note: `term make in deck/site failed: ${tail}`.slice(0, 200) }
+  }
+
+  const run = await child('node', ['--experimental-strip-types', '--no-warnings', 'task/term/asset-declarations.ts'], TERM, 300, env)
+  const output = `${run.stdout}\n${run.stderr}`.split('\n').filter(l => l.trim() !== '')
+
+  return {
+    ok: run.status === 0,
+    pass: run.status === 0 ? 1 : 0,
+    fail: run.status === 0 ? 0 : 1,
+    note: run.status === 0 ? '' : output.slice(-2).join(' | ').slice(0, 200),
+  }
+}
+
 const SUITES: Suite[] = [
+  // the generated asset declarations JSON matches the compiled declarations.tree
+  { name: 'asset-declarations', run: assetDeclarations, cache: false, slow: 60, timeout: 1800 },
   { name: 'self-contained', run: selfContained, cache: false, slow: 10, timeout: 600 },
   // the release payload installed into a temporary HOME and run as a person runs it, from a project outside this
   // checkout: make, test, boot from another folder, a local link, and no machine path in what it writes (zone-0144).

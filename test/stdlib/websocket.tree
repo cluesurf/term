@@ -1,0 +1,86 @@
+note <a WebSocket client connects, sends, receives and closes through network/websocket on node, against an echo peer>
+
+# Ported from test/stdlib/websocket.ts by statement (item term-self-host-001-1637, rulings term-self-host-001-1632 (b)
+# and 1640 (c)), one test for its one `eq`. The original compiled a client (connect, send, receive, close) over the
+# stdlib for node and ran it in its own process against a raw echo server it started there on the fixed port 8761. Here
+# the suite holds the same `echo` task, and the peer is test/oracle/websocket-echo.mjs (the upgrade with its SHA-1 accept
+# key, each frame unmasked and sent back), started as a child on a port this suite held a moment ago and let go
+# (T-1595). The test asks only once the peer says it listens, and stops it after. The peer becomes Term when @term/base
+# has SHA-1 and an upgrade hook (1048 area).
+
+load @term/base/network/websocket
+  find connect
+
+load @term/base/network/server
+  find start, name serve-start
+  find stop, name serve-stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-status
+
+load @term/base/process/child
+  find start, name child-start
+  find stop, name child-stop
+  find wait, name child-wait
+  find read-line, name child-read-line
+
+load @term/base/process/current
+  find read, name process-now
+
+host peer-script, <test/oracle/websocket-echo.mjs>
+
+# the original's `echo`: connect, send the message, receive the reply, close
+task echo
+  mark async
+  take url, like text
+  take message, like text
+  like text
+
+  save ws, connect(url)
+  ws/send(message)
+  save reply, ws/receive()
+  ws/close()
+  back reply/data
+
+task no-route
+  take asked, like request
+  like response
+
+  back make-status(404)
+
+# a port nothing listens on now: one this suite held a moment ago and let go
+task free-port
+  mark async
+  like number
+
+  save probe, serve-start(0, <127.0.0.1>, no-route)
+  save port, probe/port
+  serve-stop(probe)
+  back port
+
+# the peer started on a free port, `message` echoed through it once it listens, and the peer stopped: the reply, or
+# what the peer said when it did not listen
+task echoed
+  mark async
+  take message, like text
+  like text
+
+  save port, free-port()
+  save peer, child-start(process-now()/executable, make list(peer-script, <{port}>))
+  save said, child-read-line(peer)
+  fork test, is-unequal(said/line, <listening {port}>)
+    hold
+      child-stop(peer)
+      save ended, child-wait(peer)
+      back <the peer did not listen: {said/line}{ended/error}>
+  save reply, echo(<ws://127.0.0.1:{port}>, message)
+  child-stop(peer)
+  save done, child-wait(peer)
+  back reply
+
+test <websocket connect/send/receive round-trip>
+  want hold, is-equal(echoed(<hello-ws>), <hello-ws>)

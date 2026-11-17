@@ -15,7 +15,7 @@ import { install, hostScopeRegistries } from '../code/package/install'
 import { loadLockfile } from '../code/package/lock'
 import { parseManifest, writeManifest } from '../code/package/manifest'
 import { ociRouteOf } from '../code/oci/client'
-import { httpTransport } from '../code/oci/transport'
+import { httpTransport, portTransport } from '../code/oci/transport'
 import { startOciServer, type OciServer } from './oci-server'
 
 const publishToOci = (publishing as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)['publishToOci']!
@@ -41,11 +41,14 @@ describe('term load over OCI', () => {
       '@alice/demo',
       '1.0.2',
       [],
-      httpTransport({
-        host: server.host,
-        credentials: async () => ({ kind: 'basic', username: 'tester', password: 'secret' }),
-        retries: 0,
-      }),
+      // the port takes its own transport, so the face's is handed back through portTransport (ruling 1613)
+      portTransport(
+        httpTransport({
+          host: server.host,
+          credentials: async () => ({ kind: 'basic', username: 'tester', password: 'secret' }),
+          retries: 0,
+        }),
+      ),
       { host: server.host, namespace: 'alice', name: 'alice/demo' },
       '@alice',
       'alice/name',

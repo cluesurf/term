@@ -291,7 +291,6 @@
     "deck/make/code/view/terminal.ts",
     "deck/mill/eslint.config.ts",
     "deck/mill/vitest.config.ts",
-    "deck/site/code/base/asset/declarations.ts",
     "deck/test/code/bench.ts",
     "deck/test/code/checker-gap.ts",
     "deck/test/code/compiler-fuzz.ts",

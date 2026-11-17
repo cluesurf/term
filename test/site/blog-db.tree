@@ -1,0 +1,184 @@
+note <the posts repository compiles against the abstract db, and its posts persist in a live Postgres>
+
+# Ported from test/site/blog-db.ts by statement (item term-self-host-001-0679), one test per ok in its order. Live
+# Postgres persistence: compile the posts repository (which uses only the abstract @term/site/code/base/postgres), with
+# the Postgres runtime shim the native-env prelude prepends, and run it against the Postgres DATABASE_URL names. The
+# schema is created, posts persist, list returns them in order, and get-by-id reads one back. Without DATABASE_URL every
+# test skips: the database is the one DATABASE_URL names, never a default, since without it there is nothing to write to.
+#
+# The original bundled the program with esbuild, the driver `pg` left out, and imported it. Here a driver program loads
+# the repository and runs in a child (run-text), in a folder under this repository so node finds `pg` in its
+# node_modules, as the original's bundle did. The driver writes what it read and ends the process itself: the open
+# connection would hold node's loop.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find file-text
+
+load ../support/temp
+  find remove-at-exit
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/process/current
+  find read, name process-now
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/text/hex
+  find decode-hex
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host entry, <deck/site/test/site/back/post.tree>
+
+# the driver: the repository's own tasks, then what they read back, each field hex, as `<posts>\n<one>`
+host driver, <load @term/site/test/site/back/post\n  find setup\n  find create-post\n  find list-posts\n  find get-post\n  find post\n\nload @term/site/base/postgres\n  find run, name run-sql\n\nload @term/base/list\n  find list\n  find push\n  find join\n\nload @term/base/text/hex\n  find encode-hex\n\nload @term/base/environment\n  find variable\n\nload @term/base/console\n  find write, name write-out\n\nload @term/base/process/current\n  find exit\n\ntask shown\n  take one, like post\n  like text\n  save parts, make list(encode-hex(one/id), encode-hex(one/title), encode-hex(one/body))\n  back join(parts, \<|\>)\n\ntask run\n  mark async\n  like text\n  setup(variable(\<DATABASE_URL\>))\n  run-sql(\<DELETE FROM post\>, make list)\n  create-post(\<p1\>, \<First Post\>, \<Hello world\>)\n  create-post(\<p2\>, \<Second Post\>, \<More text\>)\n  save posts, list-posts()\n  save out, make list\n  walk list, read posts\n    hook next\n      take site, name one\n      push(out, shown(one))\n  save listed, join(out, \<;\>)\n  save single, shown(get-post(\<p2\>))\n  write-out(\<\{listed\}\\n\{single\}\>)\n  exit(0)\n  back \<\>\n>
+
+# one post as the driver wrote it
+form read-post
+  link id, like text
+  link title, like text
+  link body, like text
+
+form db-state
+  mark shared
+  link done, like boolean
+  link compiled, like boolean
+  link emitted, like text
+  link ran, like ran-program
+  link posts, like list, like read-post
+  link one, like read-post
+
+host none, make(read-post, bind(id, <>), bind(title, <>), bind(body, <>))
+
+host state, make(db-state, bind(done, false), bind(compiled, false), bind(emitted, <>), bind(ran, make(ran-program, bind(state, <>))), bind(posts, make list), bind(one, none))
+
+task post-of
+  take text, like text
+  like read-post
+
+  save fields, text-split(text, <|>)
+  fork test, is-below(fields/length, 3)
+    hold
+      back none
+  back make(read-post, bind(id, decode-hex(fields/get(0))), bind(title, decode-hex(fields/get(1))), bind(body, decode-hex(fields/get(2))))
+
+# the repository compiled, then the driver run once, its answer read back
+task prepare
+  mark async
+  like db-state
+
+  fork test, state/done
+    hold
+      back state
+  save state/done, true
+  save out, compile-text(file-text(entry), make(compile-choice, bind(file, entry), bind(project, <.>)))
+  save state/compiled, out/ok
+  save state/emitted, out/emitted
+  fork test, not(out/ok)
+    hold
+      back state
+  save folder, <test/tmp/term-blogdb-{process-now()/id}>
+  make-folder(folder)
+  remove-at-exit(folder)
+  save state/ran, run-text(driver, <typescript>, folder, <blogdb>)
+  fork test, is-equal(state/ran/state, <ran>)
+    hold
+      save lines, text-split(state/ran/output, <\n>)
+      walk text-split(lines/get(0), <;>)
+        take one, like text
+        state/posts/push(post-of(one))
+      fork test, is-above(lines/length, 1)
+        hold
+          save state/one, post-of(lines/get(1))
+  back state
+
+# the post at `n` of the list, or none
+task listed
+  mark async
+  take n, like number
+  like read-post
+
+  fork test, is-below(n, prepare()/posts/length)
+    hold
+      back state/posts/get(n)
+  back none
+
+task skip-reason
+  like text
+
+  fork test, is-equal(variable(<DATABASE_URL>), <>)
+    hold
+      back <blog-db: set DATABASE_URL to a Postgres the suite may write>
+  back <>
+
+test <repository compiles against the abstract db>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  want hold, prepare()/compiled
+
+test <compiled userland has no pg import>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  want hold, prepare()/compiled
+  want hold, not(matches(make(pattern, <<from ['"]pg['"]>>), prepare()/emitted))
+
+test <bundles to a single node module>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  host ran, prepare()/ran
+  want hold, is-unequal(ran/state, <>)
+  want hold, is-unequal(ran/stage, <compile>)
+  want hold, is-unequal(ran/stage, <build>)
+
+# the reason is <> exactly when the driver ran, and names what failed when it did not
+test <connects to Postgres + ensures schema>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  host ran, prepare()/ran
+  want hold, is-equal(ran/reason, <>)
+  want hold, is-equal(ran/state, <ran>)
+
+test <two posts persisted>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  want hold, is-equal(prepare()/posts/length, 2)
+
+test <first post read back>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  host first, listed(0)
+  want hold, and(is-equal(first/id, <p1>), and(is-equal(first/title, <First Post>), is-equal(first/body, <Hello world>)))
+
+test <second post read back>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  host second, listed(1)
+  want hold, and(is-equal(second/id, <p2>), is-equal(second/title, <Second Post>))
+
+test <get-by-id reads a single post>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  host one, prepare()/one
+  want hold, and(is-equal(one/id, <p2>), and(is-equal(one/title, <Second Post>), is-equal(one/body, <More text>)))

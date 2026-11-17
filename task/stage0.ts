@@ -21,9 +21,9 @@
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { userHome } from '@term/call/code/home'
 
 // run from the Term package root, the way every script under task/ is
 const TERM = process.cwd()
@@ -57,8 +57,12 @@ export const STAGE0_SOURCES: Record<string, string[]> = {
 
 export type Pin = { id: string; pinned: string; head: string; make_digest: string; sources_digest: string; sources: number }
 
+// `~/.base/@term/code/stage0/<id>/<...parts>`, spelled here, not imported from call/code/home.ts (item
+// term-self-host-001-1571): task/port-build.ts loads this file, and nothing port-build loads may be a port. home.ts
+// imports the port call/code/home-ignore, whose shim re-exports host/unit/, so a tree without host/unit/ could not start
+// the script that writes it. The old homes home.ts renames are the CLI's to settle
 export function stage0Path(id: string, ...parts: string[]): string {
-  return userHome('stage0', id, ...parts)
+  return join(homedir(), '.base', '@term', 'code', 'stage0', id, ...parts)
 }
 
 // the pin, or undefined when none was ever made

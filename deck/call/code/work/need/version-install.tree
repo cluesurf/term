@@ -14,7 +14,8 @@
 #
 # The registry is @term/deck's ports, loaded (term-cli-in-term-0235, where @cluesurf/deck.tree's faces were docked):
 # toolchain-release, toolchain-pin, oci-routing and key-trust. Their answers are host values read by their fields, but
-# key-trust's trusted-keys, a maybe of its form trusted-key-set, which is sifted (decision 176 rule 2). A
+# key-trust's trusted-keys, a maybe of its form trusted-key-set, and the transport's get-manifest, a maybe of the
+# fetched manifest (item term-self-host-001-1582), each sifted (decision 176 rule 2). A
 # registry refusal is oci-failure (decision 007), whose message is its pinned note, so a caught failure is said by its
 # `thing` (`install-message-of`). What this module answers keeps the original's shapes: a field the original left out
 # is a need-false maybe.
@@ -110,6 +111,15 @@ bind nothing
   like dynamic
   case node
     text <undefined>
+
+# get-manifest's answer, which oci-transport types a maybe (registry-transport.tree, item term-self-host-001-1582):
+# transport-for answers the transport like dynamic, so the call's answer is typed here before it is sifted
+task release-index
+  take found, like maybe, like dynamic
+  like maybe, like dynamic
+  mark private
+
+  back found
 
 # a failure's message as the original printed one: an Error's message, else the value as text. An oci-failure is said
 # by its `thing`, the original OciError's message (decision 007): its own message is the pinned note
@@ -627,9 +637,15 @@ task install
 
   fork test, host-truth(input/expect)
     hold
-      save index, wait input/transport/get-manifest(make(manifest-ask, bind(repository, repository), bind(reference, version)))
-      fork test, not(host-truth(index))
-        hold
+      # get-manifest answers a maybe (item term-self-host-001-1582), none when the version is not released
+      save answered, wait input/transport/get-manifest(make(manifest-ask, bind(repository, repository), bind(reference, version)))
+      save index-found, release-index(answered)
+      save index, nothing()
+      sift index-found
+        case some
+          link index-held
+          save index, index-held
+        case none
           back not-loaded(<{package}@{version} is not released>)
       fork test, is-unequal(index/digest, input/expect)
         hold

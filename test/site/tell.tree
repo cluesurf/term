@@ -1,0 +1,337 @@
+note <expose answers a raised exception as its build-time tell decided, the status table maps the seventeen, and /errors comes from the roll>
+
+# Ported from test/site/tell.ts by statement (item term-self-host-001-0639), one test per ok in its order. The funnel of
+# note/project/term/hive/06-tell.md, live: `expose` turns a raised exception into the response the app's `tell` table
+# decided at build time, the status table maps the seventeen, and the `/errors` pages come from the roll. Compiles a
+# small app against the real stdlib and @term/site in a package of its own (`@probe/tell`, linking both), wakes its
+# hive, raises, and reads the wire.
+#
+# The original imported the emitted app and called its tasks in this process. Here the app and a driver run as one
+# program in a child (run-text), in a folder under this repository so node finds hono (the page route brings the node
+# host): the driver wakes the hive as the original did, asks each task the original asked, and answers each as
+# `<name>|<hex>`, a `;` between. The bait exceptions are made in the driver by one bind, from the roll's exceptions this
+# suite hands it, as the original made them with the module's TermException.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/temp
+  find temp-folder
+  find remove-at-exit
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/file/blocking
+  find make-folder-link
+
+load @term/base/environment
+  find directory, name working-directory
+
+load @term/base/process/current
+  find read, name process-now
+
+load @term/base/list
+  find contains, name list-contains
+  find join, name list-join
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+  find index-of, name text-index-of
+  find substring
+
+load @term/base/text/hex
+  find encode-hex
+  find decode-hex
+
+load @term/base/json
+  find parse, name parse-json
+  find stringify, name stringify-json
+  find make-object
+  find object-keys
+  find field-text
+  find field-number
+  find get-field
+  find is-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# an app: two exceptions under `excess`, one told with a prop and a public name, one private, and a route (the
+# original's, escaped by tmp/self-host/suites-d/escape.mjs)
+host app, <load @term/base/code/exception\n  find excess\n\nload @term/site/code/http/tell\n  find routes-of\n  find expose\n  find status-of\n  find case-of\n  find case-path\n  find note-key\n  find errors-page\n  find error-page\n\nform upload-excess\n  like excess\n    bind note, \<File too large\>\n    link secret, like(text), need false\n    link api-key, like(text), need false\n\nform quota-excess\n  like excess\n    bind note, \<Quota exceeded\>\n    link secret, like(text), need false\n    link api-key, like(text), need false\n\ntask upload\n  take size, like number\n  like number\n  halt upload-excess\n    bind thing, text \<upload\>\n    bind limit, code 5\n    bind actual, read size\n\ntask reserve\n  like number\n  halt quota-excess\n    bind thing, text \<quota\>\n\n# a one-line stdlib task nothing else calls is inlined away by the simplifier, so the app calls it from a task of its own\ntask key-of\n  take host, like text\n  take form, like text\n  like text\n  send back\n    call note-key\n      read host\n      read form\n\ntask routes-for\n  take form, like text\n  like list, like text\n  send back\n    call routes-of\n      read form\n\ntell @probe/tell/upload-excess\n  note \<That file is too large\>\n  hint \<Files may be up to 5 MB\>\n  link limit\n  link actual\n  name too-large\n\nload @term/site/code/http/body\n  find redirect\n\nview upload-page\n  take host, like view\n  view span\n    text \<upload\>\n\n# a page route whose POST raises through its lifted handler (answer-post-upload): the roll's dock entry for it holds\n# what the handler raises, and the compiler's wake tells it, so routes-of answers it with nothing woken by hand\nhook /upload\n  view upload-page\n  task post\n    take request\n    take params\n    save kept\n      call upload\n        code 9\n    send back\n      call redirect\n        text \</upload?kept=\{kept\}\>\n>
+
+host bait, <kvmtnhbs-bait-value>
+
+host hostile-case, <\<script\>alert("x")\</script\>&'>
+
+# the driver, after the app: each answer the original read off the module. `baits` is the roll's exceptions, a
+# `<host> <name>` line each, hex. Each answer is `<name>|<hex>`, and a response is `<status>|<hex body>` inside it
+task driver
+  take baits, like text
+  like text
+
+  back <\nload @term/base/text\n  find split, name driver-split\n  find index-of, name driver-index-of\n  find substring, name driver-substring\n\nload @term/base/text/hex\n  find encode-hex\n  find decode-hex\n\nload @term/base/list\n  find list\n  find join\n  find push\n\n# the hive's wake, called as the original called it on the module\nbind wake-app\n  like void\n  case node\n    text \<wakeHive()\>\n\n# an exception of the roll with the bait props, made as the original made it with the module's TermException\nbind bait-exception\n  take host, like text\n  take name, like text\n  like dynamic\n  case node\n    text \<new TermException(\\\{ host: $host, form: $name, note: 'bait', code: 'kvmtnhbs-rzdxfwlc-mnbdtkhs-fvzxcwlr', time: 0, link: \\\{ secret: '{bait}', apiKey: '{bait}', thing: '{bait}', limit: 1, actual: 2 \\\} \\\})\>\n\ntask shown\n  take status, like number\n  take body, like text\n  like text\n  back encode-hex(\<\{status\}|\{encode-hex(body)\}\>)\n\ntask told-of\n  like text\n  fork\n    mark unsafe\n    upload(9)\n    back \<\>\n  halt take\n    take problem\n    save out, expose(problem)\n    back shown(out/status, out/body)\n\ntask hidden-of\n  like text\n  fork\n    mark unsafe\n    reserve()\n    back \<\>\n  halt take\n    take problem\n    save out, expose(problem)\n    back shown(out/status, out/body)\n\ntask page-of\n  take name, like text\n  like text\n  save out, error-page(name)\n  back shown(out/status, out/body)\n\ntask routes-text\n  take name, like text\n  like text\n  save routes, routes-for(name)\n  back encode-hex(\<\{routes/length\}|\{encode-hex(join(routes, \<\\n\>))\}\>)\n\ntask baited\n  like text\n  save out, make list\n  walk list, driver-split(decode-hex(\<{baits}\>), \<\\n\>)\n    hook next\n      take site, name line\n      save at, driver-index-of(line, \< \>)\n      fork test, is-above(at, 0)\n        hold\n          save raised, bait-exception(driver-substring(line, 0, at), driver-substring(line, add(at, 1)))\n          save answer, expose(raised)\n          push(out, encode-hex(answer/body))\n  back encode-hex(join(out, \<\\n\>))\n\ntask run\n  like text\n  wake-app()\n  save parts, make list\n  push(parts, \<status|\{encode-hex(\<\{status-of(\<absence\>)\} \{status-of(\<excess\>)\} \{status-of(\<timeout\>)\} \{status-of(\<bundle\>)\}\>)\}\>)\n  push(parts, \<case|\{encode-hex(case-of(\<upload-excess\>))\}\>)\n  push(parts, \<key|\{encode-hex(key-of(\<@probe/tell\>, \<upload-excess\>))\}\>)\n  push(parts, \<told|\{told-of()\}\>)\n  push(parts, \<hidden|\{hidden-of()\}\>)\n  save index, errors-page()\n  push(parts, \<index|\{shown(index/status, index/body)\}\>)\n  push(parts, \<page|\{page-of(\<too-large\>)\}\>)\n  push(parts, \<unknown|\{page-of(\<nothing\>)\}\>)\n  push(parts, \<routes-upload|\{routes-text(\<upload-excess\>)\}\>)\n  push(parts, \<routes-quota|\{routes-text(\<quota-excess\>)\}\>)\n  push(parts, \<hostile|\{page-of(decode-hex(\<{encode-hex(hostile-case)}\>))\}\>)\n  push(parts, \<bait|\{baited()\}\>)\n  back join(parts, \<;\>)\n>
+
+# a response the driver answered
+form told
+  link status, like text
+  link body, like text
+
+form tell-state
+  mark shared
+  link done, like boolean
+  link compiled, like boolean
+  link roll, like dynamic, fall void
+  link ran, like ran-program
+  link answers, like hash, like text, like text
+  link baited, like number
+
+host state, make(tell-state, bind(done, false), bind(compiled, false), bind(ran, make(ran-program, bind(state, <>))), bind(answers, make hash), bind(baited, 0))
+
+# the roll's exceptions as the driver reads them, a `<host> <name>` line each
+task bait-lines
+  take roll, like dynamic
+  like text
+
+  save lines, make list
+  walk roll/exception
+    take entry, like dynamic
+    lines/push(<{entry/host} {entry/name}>)
+  save state/baited, lines/length
+  back list-join(lines, <\n>)
+
+# the package of its own the original wrote: a deck linking the stdlib and the site framework, the app its entry
+task make-root
+  like text
+
+  save root, temp-folder(<term-tell->)
+  save here, working-directory()
+  make-folder(<{root}/link/@term>)
+  make-folder(<{root}/code>)
+  make-folder-link(<{here}/deck/base>, <{root}/link/@term/base>)
+  make-folder-link(<{here}/deck/site>, <{root}/link/@term/site>)
+  write-file(<{root}/deck.tree>, <deck @probe/tell\n  code \<0.0.0\>\n>)
+  write-file(<{root}/code/app.tree>, app)
+  back root
+
+# the app compiled as the original compiled it, then the app and the driver run once, each answer kept by its name
+task prepare
+  like tell-state
+
+  fork test, state/done
+    hold
+      back state
+  save state/done, true
+  save root, make-root()
+  save choice, make(compile-choice, bind(file, <{root}/code/app.tree>), bind(project, root), bind(project-env, <node>), bind(project-deck, true), bind(roll, true), bind(tree-shake, <false>))
+  save out, compile-text(app, choice)
+  save state/compiled, out/ok
+  save state/roll, out/roll
+  fork test, not(out/ok)
+    hold
+      back state
+  save folder, <test/tmp/term-tell-{process-now()/id}>
+  make-folder(folder)
+  remove-at-exit(folder)
+  save program, <{app}{driver(encode-hex(bait-lines(out/roll)))}>
+  save state/ran, run-text(program, <typescript>, folder, <tell>, choice, <{root}/code/driven.tree>)
+  fork test, is-equal(state/ran/state, <ran>)
+    hold
+      walk text-split(state/ran/output, <;>)
+        take piece, like text
+        save at, text-index-of(piece, <|>)
+        save key, substring(piece, 0, at)
+        save state/answers/{key}, decode-hex(substring(piece, add(at, 1)))
+  back state
+
+# what the driver answered for `name`, <> when it did not
+task answer
+  take name, like text
+  like text
+
+  save answers, prepare()/answers
+  fork test, answers/has(name)
+    hold
+      back answers/{name}
+  back <>
+
+# a response the driver answered for `name`
+task told-as
+  take name, like text
+  like told
+
+  save fields, text-split(answer(name), <|>)
+  fork test, is-below(fields/length, 2)
+    hold
+      back make(told, bind(status, <>), bind(body, <>))
+  back make(told, bind(status, fields/get(0)), bind(body, decode-hex(fields/get(1))))
+
+# a body's JSON object, an empty one when it is not JSON
+task body-of
+  take name, like text
+  like dynamic
+
+  fork
+    mark unsafe
+    back parse-json(told-as(name)/body)
+  halt take
+    take cause
+    back make-object()
+
+task has-key
+  take value, like dynamic
+  take key, like text
+  like boolean
+
+  back list-contains(object-keys(value), key)
+
+# the text field `key`, <> when it is missing or not text
+task text-field
+  take value, like dynamic
+  take key, like text
+  like text
+
+  fork test, not(has-key(value, key))
+    hold
+      back <>
+  fork test, not(is-text(get-field(value, key)))
+    hold
+      back <>
+  back field-text(value, key)
+
+# the number field `key`, -1 when it is missing
+task number-field
+  take value, like dynamic
+  take key, like text
+  like float
+
+  fork test, not(has-key(value, key))
+    hold
+      back subtract(0.0, 1.0)
+  fork
+    mark unsafe
+    back field-number(value, key)
+  halt take
+    take cause
+    back subtract(0.0, 1.0)
+
+# the roll's dock entries named `post /upload`, each `<name>|<halt as JSON>`
+task posted-docks
+  like list, like text
+
+  save found, make list
+  walk prepare()/roll/dock
+    take entry, like dynamic
+    fork test, is-equal(entry/name, <post /upload>)
+      hold
+        found/push(stringify-json(entry/halt))
+  back found
+
+test <the app compiles with its tell>
+  want hold, prepare()/compiled
+
+test <the status table maps the seventeen>
+  want hold, is-equal(answer(<status>), <404 413 504 500>)
+
+test <a case is snake on the wire>
+  want hold, is-equal(answer(<case>), <upload_excess>)
+
+test <the site text key is exception/\<host\>/\<form\>/note>
+  want hold, is-equal(answer(<key>), <exception/@probe/tell/upload-excess/note>)
+
+test <a told exception answers with the status of its root>
+  want hold, is-equal(told-as(<told>)/status, <413>)
+
+test <a told exception carries its public name as the case, snake on the wire>
+  want hold, is-equal(text-field(body-of(<told>), <case>), <too_large>)
+
+test <a told exception carries the note the tell wrote>
+  want hold, is-equal(text-field(body-of(<told>), <note>), <That file is too large>)
+
+test <a told exception carries the props the tell named>
+  host body, body-of(<told>)
+  want hold, and(is-equal(number-field(body, <limit>), 5.0), is-equal(number-field(body, <actual>), 9.0))
+
+test <a told exception leaves the unnamed prop out>
+  want hold, not(has-key(body-of(<told>), <thing>))
+
+test <the occurrence code rides along>
+  want hold, matches(make(pattern, <<^[a-z]{8}(-[a-z]{8}){3}$>>), text-field(body-of(<told>), <code>))
+
+test <hint is not on the wire>
+  want hold, not(has-key(body-of(<told>), <hint>))
+
+test <a private exception answers with the status of its root>
+  want hold, is-equal(told-as(<hidden>)/status, <413>)
+
+test <a private exception says which of the seventeen it is>
+  want hold, is-equal(text-field(body-of(<hidden>), <case>), <excess>)
+
+test <a private exception carries no note and no props>
+  host body, body-of(<hidden>)
+  want hold, and(not(has-key(body, <note>)), and(not(has-key(body, <thing>)), and(has-key(body, <code>), is-text(get-field(body, <code>)))))
+
+test </errors lists every told exception>
+  host index, told-as(<index>)
+  want hold, and(is-equal(index/status, <200>), and(text-contains(index/body, </errors/too-large>), and(text-contains(index/body, <That file is too large>), not(text-contains(index/body, <quota>)))))
+
+test </errors/\<case\> shows note, hint, props and status>
+  host page, told-as(<page>)
+  want hold, and(is-equal(page/status, <200>), and(text-contains(page/body, <Files may be up to 5 MB>), and(text-contains(page/body, <\<code\>limit\</code\>>), text-contains(page/body, <status 413>))))
+
+test </errors/\<unknown\> is an absence>
+  want hold, is-equal(told-as(<unknown>)/status, <404>)
+
+test <the roll holds the page route post /upload, its halt what the lifted handler raises>
+  host posted, posted-docks()
+  want hold, and(is-equal(posted/length, 1), is-equal(list-join(posted, <,>), <["upload-excess"]>))
+
+test <routes-of answers the route that can raise the exception>
+  host fields, text-split(answer(<routes-upload>), <|>)
+  want hold, and(is-equal(fields/get(0), <1>), text-contains(decode-hex(fields/get(1)), </upload>))
+
+test <routes-of answers nothing for an exception no route raises>
+  host fields, text-split(answer(<routes-quota>), <|>)
+  want hold, is-equal(fields/get(0), <0>)
+
+test </errors/\<script\> comes back escaped>
+  host hostile, told-as(<hostile>)
+  want hold, and(is-equal(hostile/status, <404>), and(not(text-contains(hostile/body, <\<script\>>)), text-contains(hostile/body, <&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;&amp;&#39;>)))
+
+# the bait test of mesh/task/error/check.ts, against the roll: EVERY exception of the build is raised with bait props
+# named `secret` and `api-key`, and nothing that comes out of `expose` carries the bait, told or private. Exhaustive
+# over the roll, not sampled, because the whole point is the one form nobody thought about
+task leaked
+  like list, like text
+
+  save found, make list
+  save answered, answer(<bait>)
+  fork test, is-equal(answered, <>)
+    hold
+      back found
+  walk text-split(answered, <\n>)
+    take shown, like text
+    save body, decode-hex(shown)
+    fork test, or(text-contains(body, bait), or(text-contains(body, <secret>), or(text-contains(body, <apiKey>), text-contains(body, <api_key>))))
+      hold
+        found/push(body)
+  back found
+
+test <no exception on the roll leaks a bait prop through expose>
+  host found, leaked()
+  want hold, is-equal(prepare()/ran/reason, <>)
+  want hold, is-equal(prepare()/ran/state, <ran>)
+  host bodies, text-split(answer(<bait>), <\n>)
+  want hold, is-equal(bodies/length, prepare()/baited)
+  want hold, and(not(is-below(prepare()/baited, 2)), is-equal(found/length, 0))

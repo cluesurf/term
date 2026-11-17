@@ -107,11 +107,13 @@ bind pushing-artifact-line
   case node
     text <<`artifact ${$artifact.digest}: 1 layer, ${$artifact.entries} entries archived in ${$artifact.archive.size} bytes`>>
 
+# the transport's get-manifest, which answers a maybe (registry-transport.tree's oci-transport, item
+# term-self-host-001-1582): the face hands every port the port's own transport (portTransport), so it is the box
 bind pushing-get-manifest
   take transport, like dynamic
   take repository, like dynamic
   take reference, like dynamic
-  like dynamic
+  like maybe, like dynamic
   case node
     text <<$transport.getManifest({ repository: $repository, reference: $reference })>>
 
@@ -284,14 +286,17 @@ task publish-to-oci
   save digest, pushing-field(artifact, <digest>)
   save reference, pinned-reference(repository, digest)
 
-  fork test, pushing-truthy(existing)
-    hold
-      save held, pushing-field(existing, <digest>)
+  sift existing
+    case some
+      link standing
+      save held, pushing-field(standing, <digest>)
       fork test, pushing-same(held, digest)
         hold
           back pushing-unchanged(digest, reference, tag, artifact, created)
       halt oci-failure
         bind thing, <{package-name}@{version} is already published as {held}. Versions are write-once: publish a new version>
+    case none
+      save unpublished, true
 
   # 5. blobs, the registry's HEAD deciding which are already there
   save blobs, pushing-field(artifact, <blobs>)
@@ -324,10 +329,18 @@ task publish-to-oci
   # 6. the manifest, then the tag read back. A different digest here is a publish that raced this one
   save manifest, pushing-field(artifact, <manifest>)
   wait pushing-put-manifest(transport, repo, tag, manifest, manifest-media-type())
-  save landed, wait pushing-get-manifest(transport, repo, tag)
-  fork test, not(pushing-same(pushing-landed-digest(landed), digest))
-    hold
+  save landing, wait pushing-get-manifest(transport, repo, tag)
+  save raced, true
+  save named, <nothing>
+  sift landing
+    case some
+      link landed
+      save raced, not(pushing-same(pushing-landed-digest(landed), digest))
       save named, pushing-landed-text(landed)
+    case none
+      save raced, true
+  fork test, raced
+    hold
       halt oci-failure
         bind thing, <tag {tag} names {named} after the publish of {digest}: another publish raced this one>
 

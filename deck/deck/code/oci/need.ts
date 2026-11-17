@@ -8,7 +8,7 @@
 // in version.tree's shapes (term-self-host-001-1402): a caller's code or hold may leave a part out, so each is read
 // into the port's shape here, and a kept pin comes back as the caller's own.
 import * as port from '@term/deck/code/oci/toolchain-pin'
-import { ociErrorOf } from './transport'
+import { ociErrorOf, portTransport } from './transport'
 
 type AnyCode = {
   major: number
@@ -68,7 +68,7 @@ export const releasedVersions = (input: {
   repository: string
 }): Promise<string[]> =>
   liftAsync(() =>
-    port.releasedVersions(input.transport, input.repository),
+    port.releasedVersions(portTransport(input.transport), input.repository),
   )
 export const newestMatching = (input: {
   versions: string[]

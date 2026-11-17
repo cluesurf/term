@@ -117,7 +117,7 @@ task open-global
   global-file/write-file-sync(global-path/join(source, <code>, <demo.ts>), global-demo-text)
   host transport, global-transport/http-transport(make(global-transport-ask, bind(host, server/host), bind(credentials, global-credentials), bind(retries, 0)))
   host repository, make(global-repository, bind(host, server/host), bind(namespace, <alice>), bind(name, <alice/demo>))
-  host published, publish-to-oci(source, <@alice/demo>, <1.0.2>, global-no-links(), transport, repository, <@alice>, <alice/name>, generate-keypair(), global-nothing(), global-nothing(), global-nothing(), global-nothing())
+  host published, publish-to-oci(source, <@alice/demo>, <1.0.2>, global-no-links(), global-transport/port-transport(transport), repository, <@alice>, <alice/name>, generate-keypair(), global-nothing(), global-nothing(), global-nothing(), global-nothing())
   host user, global-path/join(work, <user>)
   global-file/mkdir-sync(user, global-folder-options(0))
   global-file/write-file-sync(global-path/join(user, <deck.tree>), <deck global\n  mark \<0.0.0\>\n  base alice, \<{server/host}/alice\>\n>)

@@ -506,6 +506,51 @@ test <OCI transport: reads anonymously when its credential is refused, and never
   want hold, is-equal(waited-10, true)
   want hold, matches(token-refused, put-refusal(stale, blob-ask(<t/a>, bytes-of(<stale>))))
 
+# what a blob check raised, the empty text when it answered
+task has-refusal
+  take transport, like dynamic
+  take ask, like dynamic
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    wait transport/hasBlob(ask)
+    back <>
+  halt take
+    take cause
+    back <raised: {message-of(cause)}>
+
+# the requests the registry's token realm has had
+task token-asks
+  take server, like dynamic
+  like number
+
+  save count, 0
+  walk server/requests
+    take one, like dynamic
+    fork test, one/path/starts-with(</token>)
+      hold
+        save count, add(count, 1)
+  back count
+
+# TERM_OCI_INSECURE names a host that is not loopback, so it is spoken to over plain http and a credential, or the
+# token it buys, would cross the network in clear (audit 0145, item 1620). 0.0.0.0 reaches this machine's own
+# loopback listener but is not a loopback name, so the registry stands in for one on another machine. A transport with
+# no credential still reads; one with a credential is refused before the token realm is asked
+test <OCI transport: never sends a credential to a plain http registry that is not loopback>
+  save got, transporting()
+  save wide-host, got/server/host/replace(<127.0.0.1:>, <0.0.0.0:>)
+  save wide-env, record(make(list, <TERM_OCI_INSECURE>, wide-host))
+  save ask, record(make(list, <repository>, <t/a>, <digest>, transport-face/sha256Digest(bytes-of(<small blob>))))
+  save anonymous, transport-face/httpTransport(record(make(list, <host>, wide-host, <env>, wide-env, <retries>, 0)))
+  save waited-11, wait anonymous/hasBlob(ask)
+  want hold, is-equal(waited-11, true)
+  save asked-before, token-asks(got/server)
+  save signed, transport-face/httpTransport(record(make(list, <host>, wide-host, <credentials>, tester, <env>, wide-env, <retries>, 0)))
+  want hold, text-contains(has-refusal(signed, ask), <refusing to send credentials>)
+  want hold, is-equal(token-asks(got/server), asked-before)
+
 test <OCI transport: pages the tag list>
   save got, transporting()
   save transport, got/transport

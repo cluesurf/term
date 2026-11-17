@@ -369,6 +369,15 @@ form facts-close
 
 # ---- the pieces ----
 
+# get-manifest's answer, which oci-transport types a maybe (registry-transport.tree, item term-self-host-001-1582):
+# transport-for answers the transport like dynamic, so the call's answer is typed here before it is sifted
+task held-index
+  take found, like maybe, like dynamic
+  like maybe, like dynamic
+  mark private
+
+  back found
+
 form host-ask
   link root, like text
   link dryRun, like boolean
@@ -585,9 +594,14 @@ task ping-held
 
   save keypair, load-publish-keypair(make(mint-ask, bind(mint, false)))
   save transport, transport-for(route/registry/host, false)
-  save held, wait transport/get-manifest(make(held-ask, bind(repository, route/repository/name), bind(reference, version)))
-  fork test, not(is-truthy(held))
-    hold
+  # get-manifest answers a maybe (item term-self-host-001-1582), none when the version is not published
+  save answered, wait transport/get-manifest(make(held-ask, bind(repository, route/repository/name), bind(reference, version)))
+  save held, nothing()
+  sift held-index(answered)
+    case some
+      link held-manifest
+      save held, held-manifest
+    case none
       report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <ping>), bind(subject, <{name}@{version} is not published at {route/registry/host}/{route/repository/name}>)))
       close-run(make(next-failure-close, bind(verdict, <Nothing was announced>), bind(next, <term host>), bind(failure, <usage>)))
       back

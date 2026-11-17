@@ -1,0 +1,88 @@
+note <nested and stepped walks end on the native backends, and a sift's miss arm answers every case it does not list>
+
+# Ported from walk-native.ts by statement (item term-self-host-001-0661), its one `ok` per backend a test of its own, in
+# its order (rust, swift, kotlin). Nested `walk size` loops both named their counter `i`, so on TypeScript the outer loop
+# never ended (guides: language/loops, 2026-10-03): the bridge renames each counter apart, and a `take` beside the `bind`
+# lines names it. test/compile/guide-gaps.ts runs both samples on TypeScript, and this builds and runs them with rustc,
+# swiftc and kotlinc. `corners` lists `square` and answers every other shape through the `hook miss` arm, and
+# `probe-shapes` folds three answers into one number, 4 for a square, 0 for a circle and for a dot. `walk size` with a
+# `step` (by 2 to 12, down by 1 to 321) and `turn next` inside a counted walk (to 6). A backend whose toolchain is missing
+# is skipped, never failed. WN_ONLY=rust, swift or kotlin runs one.
+#
+# The original printed the six answers from a `main` written in each backend's own text. Here the program's own `run`
+# task joins them, which run-text prints, so one text serves the three backends.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-choice
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+# the guide's two loops, and the counter named by a `take`: 4 x 4 turns, and 0 + 1 + 2 + 3 + 4
+host loops, <task grid\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      walk size\n        bind base, code 0\n        bind head, read n\n        hook next\n          save total\n            call add\n              read total\n              code 1\n  send back, read total\n\ntask sum-to\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take j\n    bind base, code 0\n    bind head, read n\n    hook next\n      save total\n        call add\n          read total\n          read j\n  send back, read total\n\nform shape\n  case circle\n    link r, like number\n  case square\n    link side, like number\n  case dot\n\ntask corners\n  take s, like shape\n  like number\n  sift s\n    case square\n      send back, code 4\n    hook miss\n      send back, code 0\n\ntask probe-shapes\n  like number\n  send back\n    call add\n      call multiply\n        call corners\n          make square\n            bind side, code 2\n        code 100\n      call add\n        call multiply\n          call corners\n            make circle\n              bind r, code 1\n          code 10\n        call corners\n          make dot\n>
+
+host steps, <\ntask evens\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take i\n    bind base, code 0\n    bind head, read n\n    bind step, code 2\n    hook next\n      save total\n        call add\n          read total\n          read i\n  send back, read total\n\ntask down\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take i\n    bind base, read n\n    bind head, code 0\n    bind step, code -1\n    hook next\n      save total\n        call add\n          call multiply\n            read total\n            code 10\n          read i\n  send back, read total\n\ntask skip-odd\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take i\n    bind base, code 0\n    bind head, read n\n    hook next\n      fork test\n        hook test\n          call is-equal\n            call modulo\n              read i\n              code 2\n            code 1\n        hook hold\n          turn next\n      save total\n        call add\n          read total\n          read i\n  send back, read total\n>
+
+# the original's main, as the program's `run`: grid(4), sum-to(5), probe-shapes(), evens(7), down(3), skip-odd(6)
+host run-task, <\ntask run\n  like text\n  host a\n    call grid\n      code 4\n  host b\n    call sum-to\n      code 5\n  host c\n    call probe-shapes\n  host d\n    call evens\n      code 7\n  host e\n    call down\n      code 3\n  host f\n    call skip-odd\n      code 6\n  send back, text \<\{\{a\}\} \{\{b\}\} \{\{c\}\} \{\{d\}\} \{\{e\}\} \{\{f\}\}\>\n>
+
+host expected, <16 10 400 12 321 6>
+
+# the six answers on `backend`, the stdlib resolved for its env as the original's withNativeEnv(target, stdlib)
+task walked
+  take backend, like text
+  like ran-program
+
+  save folder, temp-folder(<walk-native->)
+  back run-text(<{loops}{steps}{run-task}>, backend, folder, <walk>, make(compile-choice, bind(stdlib, <node>)))
+
+# <> when WN_ONLY lets `backend` run, else why not
+task only-reason
+  take backend, like text
+  like text
+
+  save only, variable(<WN_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <WN_ONLY names {only}>
+  back <>
+
+test <rust: both loops end (grid(4) = 16, sum-to(5) = 10), a sift's miss arm answers every case it does not list (400), and a stepped, a downward and a turn-next walk (12 321 6)>
+  fork test, is-unequal(only-reason(<rust>), <>)
+    hold
+      skip only-reason(<rust>)
+  host ran, walked(<rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+test <swift: both loops end (grid(4) = 16, sum-to(5) = 10), a sift's miss arm answers every case it does not list (400), and a stepped, a downward and a turn-next walk (12 321 6)>
+  fork test, is-unequal(only-reason(<swift>), <>)
+    hold
+      skip only-reason(<swift>)
+  host ran, walked(<swift>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+test <kotlin: both loops end (grid(4) = 16, sum-to(5) = 10), a sift's miss arm answers every case it does not list (400), and a stepped, a downward and a turn-next walk (12 321 6)>
+  fork test, is-unequal(only-reason(<kotlin>), <>)
+    hold
+      skip only-reason(<kotlin>)
+  host ran, walked(<kotlin>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)

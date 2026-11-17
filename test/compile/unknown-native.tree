@@ -1,0 +1,240 @@
+note <a like unknown slot lowers to the boxed dynamic on the native backends, so a record rides in it and downcasts back>
+
+# Ported from unknown-native.ts by statement (item term-self-host-001-0661), one test per `ok` in its order.
+# native-exceptions-0010: a `like unknown` slot lowers to the boxed dynamic (Rust `std::rc::Rc<dyn std::any::Any>`,
+# Swift and Kotlin `Any`), never to a number, so a form like `hive-entry` can carry a record in its `base`. A program
+# stores a record in an unknown field, passes it through an unknown parameter and result, and downcasts it back natively:
+# each backend builds on its real toolchain and runs. UN_ONLY=rust (or swift, kotlin) runs one backend.
+#
+# The original ran its own front end (parse, mill, extend, resolve, check, simplify to `hold-user` and `carry`) with no
+# resolver. Here the compile driver does it, through test/support/compiling with a closed resolver and those two entries.
+# Each backend's `main`, which downcasts natively, stays the original's text in that backend's language, so the program
+# is built by run-tool, not run-text. The Kotlin text is hoisted by the Kotlin emitter's own hoist-kotlin-imports, the
+# subject docked (decision 106). Each backend is emitted and built once, by the first test that asks.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+load ../support/running
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/kotlin>, name kotlin-emitter
+
+# a record stored in an unknown field, passed through an unknown parameter and an unknown result
+host program, <form user\n  link name, like text\n\nform entry\n  link tag, like text\n  link base, like unknown\n\ntask hold-user\n  take name, like text\n  like entry\n  send back\n    make entry\n      bind tag, text \<user\>\n      bind base\n        make user\n          bind name, read name\n\ntask carry\n  take value, like unknown\n  like unknown\n  send back, read value\n>
+
+host wanted, <user alice>
+
+host swift-any, make pattern, <<var base: Any\b>>
+host kotlin-any, make pattern, <<(var|val) base: Any\b>>
+
+# each backend's emitted text and its build's errors (<> when it built), made once in this process
+form native-kept
+  mark shared
+  link source, like hash, like text, like text
+  link built, like hash, like text, like text
+  link folder, like hash, like text, like text
+
+host kept, make(native-kept, bind(source, make hash), bind(built, make hash), bind(folder, make hash))
+
+# the original's mains, each in its backend's own text
+task rust-main
+  take source, like text
+  like text
+
+  back <#![allow(dead_code, unused_mut)]\n{source}\nfn main() \{ let e = hold_user("alice".to_string()); let kept = carry(e.base.clone()); let user = kept.downcast_ref::\<User\>().expect("not a user"); println!("\{\} \{\}", e.tag, user.name); \}\n>
+
+task swift-main
+  take source, like text
+  like text
+
+  back <{source}\nlet e = holdUser(name: "alice")\nlet kept = carry(value: e.base)\nlet user = kept as! User\nprint("\\(e.tag) \\(user.name)")\n>
+
+task kotlin-main
+  take source, like text
+  like text
+
+  back kotlin-emitter/hoist-kotlin-imports(<{source}\nfun main() \{ val e = holdUser("alice"); val kept = carry(e.base); val user = kept as User; println(e.tag + " " + user.name) \}\n>)
+
+# why `backend` is not run here, <> when it is: UN_ONLY names another, or its toolchain is missing
+task skip-reason
+  take backend, like text
+  like text
+
+  save only, variable(<UN_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <UN_ONLY names {only}>
+  fork test, is-equal(backend, <rust>)
+    hold
+      fork test, is-equal(find-tool(<rustc>), <>)
+        hold
+          back <rustc not installed>
+  fork test, is-equal(backend, <swift>)
+    hold
+      fork test, is-equal(find-tool(<swiftc>), <>)
+        hold
+          back <swiftc not installed>
+  fork test, is-equal(backend, <kotlin>)
+    hold
+      fork test, or(is-equal(find-tool(<kotlinc>), <>), is-equal(find-tool(<java>), <>))
+        hold
+          back <kotlinc/java not installed>
+  back <>
+
+# the program's text on `backend`, compiled once: no resolver, the two tasks its entries
+task emitted
+  take backend, like text
+  like text
+
+  fork test, kept/source/has(backend)
+    hold
+      back kept/source/{backend}
+  save out, compile-text(program, make(compile-choice, bind(file, <main.tree>), bind(closed, true), bind(entries, make list(<hold-user>, <carry>))))
+  save text, <>
+  fork test, out/ok
+    hold
+      save text, emit-text(out, backend)
+    miss
+      save text, <refused: {out/messages/join(< | >)}>
+  save kept/source/{backend}, text
+  back text
+
+# the folder `backend` builds in, made once
+task folder-of
+  take backend, like text
+  like text
+
+  fork test, kept/folder/has(backend)
+    hold
+      back kept/folder/{backend}
+  save folder, temp-folder(<term-unknown-native->)
+  save kept/folder/{backend}, folder
+  back folder
+
+# the build of `backend`'s program with its main, once: <> when it built, else the toolchain's errors
+task built
+  take backend, like text
+  like text
+
+  fork test, kept/built/has(backend)
+    hold
+      back kept/built/{backend}
+  save folder, folder-of(backend)
+  save source, emitted(backend)
+  save errors, <>
+  fork test, is-equal(backend, <rust>)
+    hold
+      write-file(<{folder}/main.rs>, rust-main(source))
+      save errors, run-tool(make list(<rustc>, <-O>, <-o>, <{folder}/rust-main>, <{folder}/main.rs>))
+  fork test, is-equal(backend, <swift>)
+    hold
+      write-file(<{folder}/main.swift>, swift-main(source))
+      save errors, run-tool(make list(<swiftc>, <-o>, <{folder}/swift-main>, <{folder}/main.swift>))
+  fork test, is-equal(backend, <kotlin>)
+    hold
+      write-file(<{folder}/main.kt>, kotlin-main(source))
+      save errors, run-tool(make list(<kotlinc>, <{folder}/main.kt>, <-include-runtime>, <-d>, <{folder}/main.jar>))
+  save kept/built/{backend}, errors
+  back errors
+
+# what the built program printed, trimmed, after its exit code
+task ran
+  take backend, like text
+  like text
+
+  save folder, folder-of(backend)
+  save command, <{folder}/{backend}-main>
+  save rest, make list
+  fork test, is-equal(backend, <kotlin>)
+    hold
+      save command, <java>
+      rest/push(<-jar>)
+      rest/push(<{folder}/main.jar>)
+  save result, run(command, rest)
+  back <exit {result/code}: {trim(result/output)}>
+
+test <rust: unknown lowers to Rc\<dyn Any\>>
+  fork test, is-unequal(skip-reason(<rust>), <>)
+    hold
+      skip skip-reason(<rust>)
+  want hold, text-contains(emitted(<rust>), <std::rc::Rc\<dyn std::any::Any\>>)
+
+test <rust: the unknown program builds>
+  fork test, is-unequal(skip-reason(<rust>), <>)
+    hold
+      skip skip-reason(<rust>)
+  want hold, is-equal(built(<rust>), <>)
+
+test <rust: a record rides in the unknown slot and downcasts back>
+  fork test, is-unequal(skip-reason(<rust>), <>)
+    hold
+      skip skip-reason(<rust>)
+  want hold, is-equal(built(<rust>), <>)
+  want hold, is-equal(ran(<rust>), <exit 0: {wanted}>)
+
+test <swift: unknown lowers to Any>
+  fork test, is-unequal(skip-reason(<swift>), <>)
+    hold
+      skip skip-reason(<swift>)
+  want hold, matches(swift-any, emitted(<swift>))
+
+test <swift: the unknown program builds>
+  fork test, is-unequal(skip-reason(<swift>), <>)
+    hold
+      skip skip-reason(<swift>)
+  want hold, is-equal(built(<swift>), <>)
+
+test <swift: a record rides in the unknown slot and downcasts back>
+  fork test, is-unequal(skip-reason(<swift>), <>)
+    hold
+      skip skip-reason(<swift>)
+  want hold, is-equal(built(<swift>), <>)
+  want hold, is-equal(ran(<swift>), <exit 0: {wanted}>)
+
+# `val` since a field nothing reassigns stopped being a `var` (note/project/term/compiler/codegen/android.md, K4): the
+# type is the point
+test <kotlin: unknown lowers to Any>
+  fork test, is-unequal(skip-reason(<kotlin>), <>)
+    hold
+      skip skip-reason(<kotlin>)
+  want hold, matches(kotlin-any, emitted(<kotlin>))
+
+test <kotlin: the unknown program builds>
+  fork test, is-unequal(skip-reason(<kotlin>), <>)
+    hold
+      skip skip-reason(<kotlin>)
+  want hold, is-equal(built(<kotlin>), <>)
+
+test <kotlin: a record rides in the unknown slot and downcasts back>
+  fork test, is-unequal(skip-reason(<kotlin>), <>)
+    hold
+      skip skip-reason(<kotlin>)
+  want hold, is-equal(built(<kotlin>), <>)
+  want hold, is-equal(ran(<kotlin>), <exit 0: {wanted}>)

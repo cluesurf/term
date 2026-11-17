@@ -1,0 +1,242 @@
+note <a page route draws its view on GET and answers its other methods with its own tasks, 405 for the rest>
+
+# Ported from test/site/post-route.ts by statement (item term-self-host-001-0639), one test per ok in its order. One
+# route for a page and its actions (term-site-framework-0006, decision 001 of note/project/term/site-framework): a `hook`
+# route draws its `view` on GET and answers any other method with its `task <method>`, a handler `(request, params) ->
+# response`, through the dispatcher `route(host, request)` (compile/route-lower.tree). A method the route has no task
+# for answers 405, and a handler of the wrong shape is refused at build (check/routes.tree).
+#
+# The app is compiled against the real stdlib, @term/host and @term/site with the node host. The original bundled it
+# with esbuild, imported it, booted it on port 38563 and spoke to it from the suite. Here the app and a driver run as
+# one program in a child (run-text), in a folder under this repository so node finds hono in its node_modules: the
+# driver wakes the app's hive and boots it as the original did, on a port this suite held a moment ago and let go (no
+# fixed port, T-1595), asks each request itself with redirects answered as they are, writes each answer and ends the
+# process: the server would hold node's loop.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/reading
+  find any-holding
+
+load ../support/temp
+  find remove-at-exit
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/process/current
+  find read, name process-now
+
+load @term/base/network/server
+  find start, name serve-start
+  find stop, name serve-stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-status
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-includes
+
+load @term/base/text/hex
+  find encode-hex
+  find decode-hex
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# the fixtures the original compiled, as it wrote them (escaped by tmp/self-host/suites-d/escape.mjs)
+host head, <load @term/site/code/http/http\n  find request\n  find response\n\nload @term/site/code/http/body\n  find read-body\n  find redirect\n\nload @term/face/code/component/text\n  find text\n\nform note-input\n  link title, like text\n\nview notes-page\n  take host, like view\n  take notes, like list, like text\n  view span\n    text \<the notes page\>\n  view div\n    walk list, read notes\n      hook next\n        take site, name item\n        view text\n          bind content, read item\n>
+host app, <{head}\nload @term/base/list\n  find list\n  find push\n\n# the notes made so far, held in the process\nhost made\n  like list, like text\n  make list\n\n# the page's data: a typed list, which the route's load hands the view\ntask load-notes\n  take path, like text\n  like list, like text\n  send back, read made\n\n# GET draws the list; POST reads the form, keeps the note, and answers 303 to the list\nhook /notes\n  seed load, read load-notes\n  view notes-page\n    bind notes, read data\n  task post\n    take request\n    take params\n    save note\n      call fill\n        call read-body(read request)\n        like note-input\n    call push\n      read made\n      read note/title\n    send back\n      call redirect\n        text \</notes?made=\{note/title\}\>\n\n# DELETE reads its :id from params\nhook /notes/:id\n  take path\n    take id\n      like text\n  seed load, read load-notes\n  view notes-page\n    bind notes, read data\n  task delete\n    take request\n    take params\n    save id\n      call params/get\n        text \<id\>\n    send back\n      call redirect\n        text \</notes?gone=\{id\}\>\n>
+
+# a handler with one parameter, and one answering text: each refused at build, naming what a handler is
+host one-parameter, <{head}\nhook /notes\n  view notes-page\n  task post\n    take request\n    send back\n      call redirect\n        text \</notes\>\n>
+host wrong-answer, <{head}\nhook /notes\n  view notes-page\n  task post\n    take request\n    take params\n    like text\n    send back, text \<done\>\n>
+
+# `task get` would never run: GET draws the view
+host get-task, <{head}\nhook /notes\n  view notes-page\n  task get\n    take request\n    take params\n    send back\n      call redirect\n        text \</notes\>\n>
+
+host title, <a "first" & \<b\>note\</b\>>
+
+# a value as a browser writes it in a urlencoded body: `+` for a space, everything else percent-encoded
+# host native: encodeURIComponent is how the original built its fixture, and the reading of it is the subject
+bind form-encoded
+  take value, like text
+  like text
+  case node
+    text <encodeURIComponent($value).replace(/%20/g, '+')>
+
+# how the original compiled each fixture: its entry under test/tmp, the project this repository on the node host
+task choice-for
+  take name, like text
+  like compile-choice
+
+  back make(compile-choice, bind(file, <test/tmp/post-route-{name}.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>))
+
+# the driver, after the app: wake the hive and boot on `port`, then each request's answer
+# `<status>|<location>|<allow>|<body>`, the last three hex, a line each
+task driver
+  take port, like number
+  take posted, like text
+  like text
+
+  back <\nload @term/base/network/http\n  find open-exchange\n  find read-exchange\n\nload @term/base/bytes\n  find from-text, name bytes-from-text\n  find to-text, name bytes-to-text\n\nload @term/base/hash\n  find hash\n\nload @term/base/text/hex\n  find encode-hex\n  find decode-hex\n\nload @term/base/clock\n  find sleep\n\nload @term/base/console\n  find write, name write-out\n\nload @term/base/process/current\n  find exit\n\n# the hive's wake and the boot the emitted app exports, called as the original called them on the module\nbind wake-app\n  like void\n  case node\n    text \<typeof wakeHive === 'function' ? wakeHive() : undefined\>\n\nbind boot-app\n  take port, like number\n  like void\n  case node\n    text \<boot('', $port)\>\n\ntask ask\n  mark async\n  take method, like text\n  take path, like text\n  take type, like text\n  take body, like text\n  like text\n  save header, make hash\n  fork test, is-unequal(type, \<\>)\n    hold\n      header/set(\<content-type\>, type)\n  save got, open-exchange(method, \<http://localhost:{port}\{path\}\>, bytes-from-text(body), header, 30000, \<manual\>)\n  save shown, bytes-to-text(read-exchange(got, 10000000))\n  save place, got/headers/get-or-default(\<location\>, \<\>)\n  save allow, got/headers/get-or-default(\<allow\>, \<\>)\n  back \<\{got/status\}|\{encode-hex(place)\}|\{encode-hex(allow)\}|\{encode-hex(shown)\}\>\n\ntask run\n  mark async\n  like text\n  wake-app()\n  boot-app({port})\n  sleep(300)\n  save page, ask(\<GET\>, \</notes\>, \<\>, \<\>)\n  save posted, ask(\<POST\>, \</notes\>, \<application/x-www-form-urlencoded\>, decode-hex(\<{posted}\>))\n  save listed, ask(\<GET\>, \</notes\>, \<\>, \<\>)\n  save put, ask(\<PUT\>, \</notes\>, \<\>, \<\>)\n  save gone, ask(\<DELETE\>, \</notes/7\>, \<\>, \<\>)\n  save post-on-id, ask(\<POST\>, \</notes/7\>, \<\>, \<\>)\n  save missing, ask(\<GET\>, \</nowhere\>, \<\>, \<\>)\n  write-out(\<\{page\}\\n\{posted\}\\n\{listed\}\\n\{put\}\\n\{gone\}\\n\{post-on-id\}\\n\{missing\}\>)\n  exit(0)\n  back \<\>\n>
+
+# one answer as the driver wrote it
+form answered
+  link status, like text
+  link place, like text
+  link allow, like text
+  link body, like text
+
+form route-state
+  mark shared
+  link done, like boolean
+  link compiled, like boolean
+  link emitted, like text
+  link ran, like ran-program
+  link answers, like list, like answered
+
+host nothing, make(answered, bind(status, <>), bind(place, <>), bind(allow, <>), bind(body, <>))
+
+host state, make(route-state, bind(done, false), bind(compiled, false), bind(emitted, <>), bind(ran, make(ran-program, bind(state, <>))), bind(answers, make list))
+
+task answered-of
+  take text, like text
+  like answered
+
+  save fields, text-split(text, <|>)
+  fork test, is-below(fields/length, 4)
+    hold
+      back nothing
+  back make(answered, bind(status, fields/get(0)), bind(place, decode-hex(fields/get(1))), bind(allow, decode-hex(fields/get(2))), bind(body, decode-hex(fields/get(3))))
+
+task no-route
+  take asked, like request
+  like response
+
+  back make-status(404)
+
+# a port nothing listens on now: one this suite held a moment ago and let go
+task free-port
+  mark async
+  like number
+
+  save probe, serve-start(0, <127.0.0.1>, no-route)
+  save port, probe/port
+  serve-stop(probe)
+  back port
+
+# a fixture refused, and its messages holding every word of `words`
+task refused-with
+  take text, like text
+  take name, like text
+  take words, like list, like text
+  like boolean
+
+  save out, compile-text(text, choice-for(name))
+  fork test, out/ok
+    hold
+      back false
+  walk words
+    take word, like text
+    fork test, not(any-holding(out/messages, word))
+      hold
+        back false
+  back true
+
+# the app compiled, then the app and the driver run once, its answers read back
+task prepare
+  mark async
+  like route-state
+
+  fork test, state/done
+    hold
+      back state
+  save state/done, true
+  save out, compile-text(app, choice-for(<app>))
+  save state/compiled, out/ok
+  save state/emitted, out/emitted
+  fork test, not(out/ok)
+    hold
+      back state
+  save folder, <test/tmp/term-post-route-{process-now()/id}>
+  make-folder(folder)
+  remove-at-exit(folder)
+  save program, <{app}{driver(free-port(), encode-hex(<title={form-encoded(title)}>))}>
+  save state/ran, run-text(program, <typescript>, folder, <post-route>, choice-for(<app>))
+  fork test, is-equal(state/ran/state, <ran>)
+    hold
+      walk text-split(state/ran/output, <\n>)
+        take line, like text
+        state/answers/push(answered-of(line))
+  back state
+
+# the answer to the request at `n` of the driver's seven, or nothing
+task answer-at
+  mark async
+  take n, like number
+  like answered
+
+  save answers, prepare()/answers
+  fork test, is-below(n, answers/length)
+    hold
+      back answers/get(n)
+  back nothing
+
+test <a handler where it takes 1 parameters is refused at build>
+  want hold, refused-with(one-parameter, <one-parameter>, make list(<is not a handler>, <it takes 1 parameters>))
+
+test <a handler where it answers something other than a `response` is refused at build>
+  want hold, refused-with(wrong-answer, <wrong-answer>, make list(<is not a handler>, <it answers something other than a `response`>))
+
+test <`task get` under a page route is refused: GET draws the view>
+  want hold, refused-with(get-task, <get-task>, make list(<GET and HEAD draw the route>))
+
+test <the app with a page route and its methods compiles>
+  want hold, prepare()/compiled
+
+test <the dispatcher takes the request>
+  want hold, matches(make(pattern, <<function route\(host: View, request: Request\)>>), prepare()/emitted)
+
+test <GET /notes draws the page>
+  host got, answer-at(0)
+  want hold, and(is-equal(got/status, <200>), text-includes(got/body, <the notes page>))
+
+test <POST /notes with a urlencoded form answers 303>
+  want hold, is-equal(answer-at(1)/status, <303>)
+
+test <the 303 goes to the list, carrying the title the form body held>
+  want hold, is-equal(answer-at(1)/place, </notes?made={title}>)
+
+test <GET /notes after the post draws the note the load listed, its markup escaped>
+  host got, answer-at(2)
+  want hold, and(is-equal(got/status, <200>), and(text-includes(got/body, <&lt;b&gt;note&lt;/b&gt;>), not(text-includes(got/body, <\<b\>note\</b\>>))))
+
+test <PUT /notes, which no task serves, answers 405>
+  want hold, is-equal(answer-at(3)/status, <405>)
+
+test <the 405 names the methods the route serves>
+  want hold, is-equal(answer-at(3)/allow, <GET, HEAD, POST>)
+
+test <DELETE /notes/7 calls the route's task with its :id in params>
+  host got, answer-at(4)
+  want hold, and(is-equal(got/status, <303>), is-equal(got/place, </notes?gone=7>))
+
+test <POST /notes/7, which only serves DELETE, answers 405>
+  host got, answer-at(5)
+  want hold, and(is-equal(got/status, <405>), is-equal(got/allow, <GET, HEAD, DELETE>))
+
+test <GET of a path no hook names still answers 404>
+  want hold, is-equal(answer-at(6)/status, <404>)

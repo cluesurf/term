@@ -29,6 +29,21 @@ load @term/base/maybe
 load @term/base/hash
   find hash
 
+load @term/base/uuid
+  find version4
+
+load @term/base/path
+  find join, name manifest-path-join
+
+load @term/base/file/blocking
+  find exists, name manifest-file-there
+  find resolve-real, name manifest-real-path
+  find write-path, name write-manifest-whole
+  find rename-path, name rename-manifest-file
+
+load @term/base/file
+  find remove, name remove-manifest-file
+
 load ../version
   find code
   find code-hold
@@ -51,6 +66,7 @@ load ./grammar-reading
 
 load ./manifest-reading
   find load-manifest
+  find parse-manifest
 
 load ./lockfile-reading
   find load-lockfile
@@ -93,6 +109,7 @@ load ./linking
   find project-links
   find project-store
   find clean-links
+  find dev-unlink
 
 dock load
   load <node:fs/promises>, name fs-promise
@@ -250,6 +267,21 @@ task install-into
 
   # step 1: read the manifest
   save loaded, load-manifest(root, grammars)
+  back install-manifest(root, link-dir, store-dir, loaded, clean, offline, grammars)
+
+# The rest of the ONE install, for a manifest already read: `install-into` reads it from `root`, and `add-dependency`
+# hands in the manifest it will write, so deck.tree is written only once the install went through (item 1622). The
+# workspaces and lock.tree are still read from `root`
+task install-manifest
+  take root, like text
+  take link-dir, like text
+  take store-dir, like text
+  take loaded, like deck-manifest
+  take clean, like boolean
+  take offline, like boolean
+  take grammars, like manifest-grammars
+  like install-answer
+  mark private
 
   # a `base` line or a `host <registry>` group routes its scope to that registry, so a third-party scope on its own
   # OCI namespace installs, and its links resolve beside the plain ones
@@ -360,18 +392,86 @@ task add-dependency
   take grammars, like manifest-grammars
   like void
 
-  write-link(root, name, constraint, grammars)
-  install(root, false, false, grammars)
+  save-link-into(root, project-links(root), project-store(root), name, constraint, false, grammars)
+
+# The link for `name` added to the manifest at `root` and installed, the manifest installed from memory and deck.tree
+# written only once the install went through: a link nothing can meet, or a fetch that is refused, raises with
+# deck.tree as it was (items 1622, 1641). The new manifest is read back from its own text, as the install read the
+# written file before. A project saves into its own `link/` (`add-dependency`), and `term save --global` into the user
+# folder with no link folder, as `install-into` takes them
+task save-link-into
+  take root, like text
+  take link-dir, like text
+  take store-dir, like text
+  take name, like text
+  take constraint, like text
+  take offline, like boolean
+  take grammars, like manifest-grammars
+  like install-answer
+
+  save body, manifest-with-link(root, name, constraint, grammars)
+  init-store()
+  save answer, install-manifest(root, link-dir, store-dir, parse-manifest(body, grammars), false, offline, grammars)
+  replace-manifest-file(root, body)
+  back answer
+
+# deck.tree at `root` replaced by `body` in one step (item 1641): the text is written whole to a fresh file beside the
+# manifest's real file and renamed onto it, with @term/base/file/blocking's write-path and rename-path, so no reader
+# sees half a manifest and a write that fails leaves the old one whole. A deck.tree that is a symbolic link stays one,
+# since the rename lands on the file it points at. A temporary that could not be written or moved is taken away
+task replace-manifest-file
+  take root, like text
+  take body, like text
+  like void
+  mark private
+
+  save place, manifest-path-join(root, <deck.tree>)
+  save target, place
+  fork test, manifest-file-there(place)
+    hold
+      save target, manifest-real-path(place)
+  save temporary, <{target}.tmp-{version4()}>
+  fork test, not(write-manifest-whole(temporary, body))
+    hold
+      drop-manifest-temporary(temporary)
+      halt <could not write {temporary}>
+  fork test, not(rename-manifest-file(temporary, target))
+    hold
+      drop-manifest-temporary(temporary)
+      halt <could not move {temporary} onto {target}>
+
+# a temporary manifest removed, quietly: a file that is not there, or will not go, is left as it is
+task drop-manifest-temporary
+  take place, like text
+  like void
+  mark private
+
+  fork
+    mark unsafe
+    remove-manifest-file(place)
+  halt take
+    take problem
+    save left, place
 
 # the manifest at `root` with a `link` line for `name`, accepting the versions `constraint` names (`0.x.x` for the
 # empty text), the line already there rewritten in place. A constraint that is no version is refused before the file
-# is touched. Nothing is installed: `add-dependency` and `term save --global` install after it, each into its own place
+# is touched. Nothing is installed: `save-link-into` installs first and writes after
 task write-link
   take root, like text
   take name, like text
   take constraint, like text
   take grammars, like manifest-grammars
   like void
+
+  replace-manifest-file(root, manifest-with-link(root, name, constraint, grammars))
+
+# the text of the manifest at `root` with the `link` line for `name` that `write-link` writes. Nothing is written
+task manifest-with-link
+  take root, like text
+  take name, like text
+  take constraint, like text
+  take grammars, like manifest-grammars
+  like text
 
   save manifest, load-manifest(root, grammars)
   save hold, make(wild, bind(major, 0), bind(minor, -1), bind(patch, -1))
@@ -393,8 +493,7 @@ task write-link
     hold
       links/push(make(deck-link, bind(name, name), bind(mark, hold)))
   save manifest/link, links
-
-  fs-promise/write-file(node-path/join(root, <deck.tree>), write-manifest(manifest), <utf-8>)
+  back write-manifest(manifest)
 
 task remove-dependency
   take root, like text
@@ -403,6 +502,9 @@ task remove-dependency
   like void
 
   drop-link(root, name, grammars)
+  # the deck's link in `link/` goes too, before the install, which links it again only when another deck still needs
+  # it (term-self-host-001-1622). Its store folder under `link/.base` stays, as `term load` keeps every version it holds
+  dev-unlink(root, name)
   install(root, false, false, grammars)
 
 # the manifest at `root` without the `link` line for `name`. Nothing is installed, as with `write-link`
@@ -421,7 +523,7 @@ task drop-link
         links/push(one)
   save manifest/link, links
 
-  fs-promise/write-file(node-path/join(root, <deck.tree>), write-manifest(manifest), <utf-8>)
+  replace-manifest-file(root, write-manifest(manifest))
 
 # whether a path is there to reach
 task can-reach

@@ -1,0 +1,451 @@
+note <the WHATWG URL corpus against base/code/url.tree on every backend, held to the ratchet known.json>
+
+# Ported from test/stdlib/url.ts by statement (item term-self-host-001-0681). The WHATWG URL corpus (web-platform-tests
+# commit c48d58747e1f211527fb695fd60548a997fae617, vendored under test/stdlib/url/) held against base/code/url.tree on
+# every backend. spec: note/project/term/decisions-2026-10/url/spec.md section 4.2.
+#
+# The cases go to ONE case file, every field hex-encoded as UTF-8 (the inputs hold tabs, newlines and controls on
+# purpose), and ONE Term program per backend reads that file, parses each case and prints one record per case with each
+# getter hex-encoded. Cases are never inlined into the program (the Kotlin method size limit).
+#
+#   case file   record `;` field `|`:  <href>|<base>          (a base of "" is none)
+#   answer      record `;` field `|`:  <status>|<href>|<origin>|<scheme>|<username>|<password>|<host>|<port>|<path>|<query>|<fragment>
+#               status 0 parsed, 1 raised `mismatch`, 2 raised `failure`. The getters are hex, empty when failed
+#
+# toascii.json and IdnaTestV2.json hold {input, output}: the input is a domain, so the case parses `https://<input>/x` and
+# compares the host, a null output meaning failure (as WPT's toascii.window.js does).
+#
+# The ratchet is test/stdlib/url/known.json: per backend, per corpus file, the case indexes still failing. A new failure
+# fails the suite, and a listed case that now passes fails it too until it is removed. A backend whose build fails is
+# recorded as {"build_failure": "<why>"}. The original's FAIL lines are these tests, each backend a case of each. Each
+# backend is built, run and graded once, by the first test that asks. URL_ONLY=typescript, rust, swift or kotlin runs
+# one backend. The original's URL_WRITE_KNOWN writer and URL_SHOW listing stay in the .ts: they are tools, not tests.
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find file-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find split, name text-split
+  find substring
+  find char-count
+
+load @term/base/text/hex
+  find encode-hex
+  find decode-hex
+
+load @term/base/json
+  find parse, name parse-json
+  find get-field
+  find field-text
+  find field-boolean
+  find is-null
+  find json-kind
+  find array-size
+  find array-item
+  find object-keys
+  find as-number
+
+# one case: where it came from, what to parse, and the getters asked, in the answer record's order (href, origin,
+# scheme, username, password, host, port, path, query, fragment). `asked` says which are stated; a failure asks none
+form url-case
+  link file, like text
+  link at, like number
+  link href, like text
+  link base, like text
+  link failure, like boolean
+  link want, like list, like text
+  link asked, like list, like boolean
+
+# what one backend did: the run, and per corpus file the indexes it got wrong
+form url-grade
+  link backend, like text
+  link ran, like ran-program
+  link wrong, like hash, like text, like list, like text
+
+form url-state
+  mark shared
+  link ready, like boolean
+  link folder, like text
+  link cases, like list, like url-case
+  link known, like dynamic
+  link grades, like list, like url-grade
+
+host state, make(url-state, bind(ready, false), bind(folder, <>), bind(cases, make list), bind(known, parse-json(<\{\}>)), bind(grades, make list))
+
+host corpus-files, make list(<urltestdata>, <toascii>, <idna>)
+
+# the file each corpus name is read from
+task corpus-path
+  take name, like text
+  like text
+
+  fork test, is-equal(name, <urltestdata>)
+    hold
+      back <test/stdlib/url/urltestdata.json>
+  fork test, is-equal(name, <toascii>)
+    hold
+      back <test/stdlib/url/toascii.json>
+  back <test/stdlib/url/IdnaTestV2.json>
+
+# the program every backend builds: it reads the case file at `cases` and prints one answer record per case
+task url-program
+  take cases, like text
+  like text
+
+  back <load @term/base/url\n  find make-url\n  find href, name serialize\n  find origin\n  find url\n\nload @term/base/exception\n  find mismatch\n\nload @term/base/file\n  find read, name read-case-file\n\nload @term/base/text\n  find split\n\nload @term/base/text/hex\n  find encode-hex\n  find decode-hex\n\nload @term/base/list\n  find list\n  find get\n  find push\n  find join\n\n# one parsed address as its getters, hex-encoded and joined with the status 0\ntask describe\n  take address, like url\n  like text\n  save parts, make list\n  push(parts, \<0\>)\n  push(parts, encode-hex(serialize(address)))\n  push(parts, encode-hex(origin(address)))\n  push(parts, encode-hex(address/scheme))\n  push(parts, encode-hex(address/username))\n  push(parts, encode-hex(address/password))\n  push(parts, encode-hex(address/host))\n  push(parts, encode-hex(address/port))\n  push(parts, encode-hex(address/path))\n  push(parts, encode-hex(address/query))\n  push(parts, encode-hex(address/fragment))\n  back join(parts, \<|\>)\n\ntask parse-based\n  take href, like text\n  take base, like text\n  like text\n  fork\n    mark unsafe\n    back describe(make-url(href, base))\n  halt take\n    take problem\n    sift problem\n      case mismatch\n        back \<1|||||||||\>\n      case failure\n        back \<2|||||||||\>\n\ntask parse-record\n  take record, like text\n  like text\n  save fields, split(record, \<|\>)\n  back parse-based(decode-hex(get(fields, 0)), decode-hex(get(fields, 1)))\n\ntask run\n  mark async\n  like text\n  save data, read-case-file(\<{cases}\>)\n  save records, split(data, \<;\>)\n  save out, make list\n  walk list, read records\n    hook next\n      take site, name record\n      push(out, parse-record(record))\n  back join(out, \<;\>)\n>
+
+# host native: the corpus as the original read it, by JSON.parse: IdnaTestV2.json and toascii.json escape lone
+# surrogates on purpose, which the stdlib's parse refuses (its check-json holds every backend to one reading)
+bind corpus-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+# a text with its first code point left off, as the original's `.slice(1)` of a search or a hash
+task after-first
+  take value, like text
+  like text
+
+  back substring(value, 1)
+
+# a text with its last code point left off, as the original's `.slice(0, -1)` of a protocol
+task before-last
+  take value, like text
+  like text
+
+  save count, char-count(value)
+  fork test, is-equal(count, 0)
+    hold
+      back <>
+  back substring(value, 0, subtract(count, 1))
+
+# the cases of one corpus file, every entry that is not a comment text, `at` counted among those
+task cases-of
+  mark async
+  take name, like text
+  like void
+
+  save entries, corpus-json(file-text(corpus-path(name)))
+  save size, array-size(entries)
+  save index, 0
+  save at, 0
+  walk test
+    hook test, is-below(index, size)
+    hook hold
+      save entry, array-item(entries, index)
+      save index, add(index, 1)
+      fork test, is-equal(json-kind(entry), <text>)
+        hold
+          turn next
+      fork test, is-equal(name, <urltestdata>)
+        hold
+          save failure, field-boolean(entry, <failure>)
+          save want, make list
+          save asked, make list
+          fork test, not(failure)
+            hold
+              want/push(field-text(entry, <href>))
+              asked/push(true)
+              want/push(field-text(entry, <origin>))
+              asked/push(not(is-null(get-field(entry, <origin>))))
+              want/push(before-last(field-text(entry, <protocol>)))
+              asked/push(true)
+              want/push(field-text(entry, <username>))
+              asked/push(true)
+              want/push(field-text(entry, <password>))
+              asked/push(true)
+              want/push(field-text(entry, <hostname>))
+              asked/push(true)
+              want/push(field-text(entry, <port>))
+              asked/push(true)
+              want/push(field-text(entry, <pathname>))
+              asked/push(true)
+              want/push(after-first(field-text(entry, <search>)))
+              asked/push(true)
+              want/push(after-first(field-text(entry, <hash>)))
+              asked/push(true)
+          state/cases/push(make(url-case, bind(file, name), bind(at, at), bind(href, field-text(entry, <input>)), bind(base, field-text(entry, <base>)), bind(failure, failure), bind(want, want), bind(asked, asked)))
+        miss
+          # only the host is asked: every other getter of `https://<domain>/x` is fixed by the scheme and the path
+          save failure, is-null(get-field(entry, <output>))
+          save want, make list
+          save asked, make list
+          fork test, not(failure)
+            hold
+              save want, make list(<>, <>, <https>, <>, <>, field-text(entry, <output>), <>, </x>, <>, <>)
+              save asked, make list(false, false, true, true, true, true, true, true, true, true)
+          state/cases/push(make(url-case, bind(file, name), bind(at, at), bind(href, <https://{field-text(entry, <input>)}/x>), bind(base, <>), bind(failure, failure), bind(want, want), bind(asked, asked)))
+      save at, add(at, 1)
+
+# the cases, the ratchet, and the case file in a scratch folder. Once
+task prepare
+  mark async
+  like void
+
+  fork test, state/ready
+    hold
+      back
+  save state/ready, true
+  save state/folder, temp-folder(<term-url->)
+  walk corpus-files
+    take name, like text
+    cases-of(name)
+  save records, make list
+  walk state/cases
+    take one, like url-case
+    records/push(<{encode-hex(one/href)}|{encode-hex(one/base)}>)
+  write-file(<{state/folder}/cases.txt>, records/join(<;>))
+  save state/known, parse-json(file-text(<test/stdlib/url/known.json>))
+
+# whether one case's answer record is right
+task is-good
+  take one, like url-case
+  take record, like text
+  like boolean
+
+  save got, text-split(record, <|>)
+  save status, got/get(0)
+  fork test, one/failure
+    hold
+      back or(is-equal(status, <1>), is-equal(status, <2>))
+  fork test, is-unequal(status, <0>)
+    hold
+      back false
+  save index, 0
+  walk one/want
+    take value, like text
+    fork test, one/asked/get(index)
+      hold
+        save field, <>
+        fork test, is-below(add(index, 1), got/length)
+          hold
+            save field, decode-hex(got/get(add(index, 1)))
+        fork test, is-unequal(field, value)
+          hold
+            back false
+    save index, add(index, 1)
+  back true
+
+# build, run and grade `backend`, once
+task grade-of
+  mark async
+  take backend, like text
+  like url-grade
+
+  walk state/grades
+    take one, like url-grade
+    fork test, is-equal(one/backend, backend)
+      hold
+        back one
+  prepare()
+  save ran, run-text(url-program(<{state/folder}/cases.txt>), backend, state/folder, <url>)
+  save wrong, make hash
+  walk corpus-files
+    take name, like text
+    wrong/set(name, make list)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save records, text-split(ran/output, <;>)
+      save index, 0
+      walk state/cases
+        take one, like url-case
+        save record, <>
+        fork test, is-below(index, records/length)
+          hold
+            save record, records/get(index)
+        fork test, not(is-good(one, record))
+          hold
+            save empty, make list
+            save listed, wrong/get-or-default(one/file, empty)
+            listed/push(<{one/at}>)
+        save index, add(index, 1)
+  save grade, make(url-grade, bind(backend, backend), bind(ran, ran), bind(wrong, wrong))
+  state/grades/push(grade)
+  back grade
+
+# the ratchet's entry for `backend`, null when known.json names none
+task known-of
+  mark async
+  take backend, like text
+  like dynamic
+
+  back get-field(state/known, backend)
+
+# whether known.json records a build failure for `backend`
+task known-build-failure
+  mark async
+  take backend, like text
+  like boolean
+
+  back not(is-null(get-field(known-of(backend), <build_failure>)))
+
+# the indexes of `name` known.json lists as still failing on `backend`
+task known-listed
+  mark async
+  take backend, like text
+  take name, like text
+  like list, like text
+
+  save listed, make list
+  fork test, known-build-failure(backend)
+    hold
+      back listed
+  save entry, get-field(known-of(backend), name)
+  save size, array-size(entry)
+  save index, 0
+  walk test
+    hook test, is-below(index, size)
+    hook hold
+      save value, as-number(array-item(entry, index))
+      listed/push(<{value}>)
+      save index, add(index, 1)
+  back listed
+
+# the indexes `backend` got wrong in `name`
+task wrong-in
+  mark async
+  take backend, like text
+  take name, like text
+  like list, like text
+
+  save grade, grade-of(backend)
+  save empty, make list
+  back grade/wrong/get-or-default(name, empty)
+
+# failures of `name` known.json does not list
+task fresh-in
+  mark async
+  take backend, like text
+  take name, like text
+  like list, like text
+
+  save listed, known-listed(backend, name)
+  save fresh, make list
+  walk wrong-in(backend, name)
+    take at, like text
+    fork test, not(listed/contains(at))
+      hold
+        fresh/push(at)
+  back fresh
+
+# cases of `name` known.json lists that now pass
+task gone-in
+  mark async
+  take backend, like text
+  take name, like text
+  like list, like text
+
+  save now, wrong-in(backend, name)
+  save gone, make list
+  walk known-listed(backend, name)
+    take at, like text
+    fork test, not(now/contains(at))
+      hold
+        gone/push(at)
+  back gone
+
+# why the ratchet of `backend` is not judged here, <> when it is
+task skip-reason
+  mark async
+  take backend, like text
+  like text
+
+  save only, variable(<URL_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <URL_ONLY names {only}>
+  save grade, grade-of(backend)
+  fork test, is-equal(grade/ran/state, <skipped>)
+    hold
+      back <{backend} skipped: {grade/ran/reason}>
+  back <>
+
+# why the corpus of `backend` is not judged here, <> when it is: a build that failed is the build test's
+task corpus-skip
+  mark async
+  take backend, like text
+  like text
+
+  save reason, skip-reason(backend)
+  fork test, is-unequal(reason, <>)
+    hold
+      back reason
+  fork test, is-equal(grade-of(backend)/ran/state, <failed>)
+    hold
+      back <{backend} {grade-of(backend)/ran/stage} failed, judged by the build test>
+  fork test, is-equal(object-keys(state/known)/length, 0)
+    hold
+      back <known.json is empty>
+  back <>
+
+test <url: a backend that fails to build is one known.json lists as a build failure>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  host grade, grade-of(backend)
+  want hold, or(is-equal(grade/ran/state, <ran>), known-build-failure(backend))
+
+test <url: urltestdata has no new failures>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(corpus-skip(backend), <>)
+    hold
+      skip corpus-skip(backend)
+  want hold, is-equal(fresh-in(backend, <urltestdata>)/length, 0)
+
+test <url: urltestdata has no case known.json lists that now passes>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(corpus-skip(backend), <>)
+    hold
+      skip corpus-skip(backend)
+  want hold, is-equal(gone-in(backend, <urltestdata>)/length, 0)
+
+test <url: toascii has no new failures>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(corpus-skip(backend), <>)
+    hold
+      skip corpus-skip(backend)
+  want hold, is-equal(fresh-in(backend, <toascii>)/length, 0)
+
+test <url: toascii has no case known.json lists that now passes>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(corpus-skip(backend), <>)
+    hold
+      skip corpus-skip(backend)
+  want hold, is-equal(gone-in(backend, <toascii>)/length, 0)
+
+test <url: idna has no new failures>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(corpus-skip(backend), <>)
+    hold
+      skip corpus-skip(backend)
+  want hold, is-equal(fresh-in(backend, <idna>)/length, 0)
+
+test <url: idna has no case known.json lists that now passes>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(corpus-skip(backend), <>)
+    hold
+      skip corpus-skip(backend)
+  want hold, is-equal(gone-in(backend, <idna>)/length, 0)

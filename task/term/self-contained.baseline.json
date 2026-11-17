@@ -1,5 +1,5 @@
 {
-  "note": "Parent-name lines per package may only fall (task/term/self-contained.ts). Lower it with --write-baseline. pending: known leaks the tree mode passes while their item is open. A payload never gets that pass. payload oci rose from 531 to 616 once, by item 1603 (2026-11-16): 74 lines are the baked code grammar written one literal a line (item 0008), text the payload already carried in one line before, 9 are new comments in deck/base/code/native that item 1543 owns, 7 are messages the bundles now carry more than once.",
+  "note": "Parent-name lines per package may only fall (task/term/self-contained.ts). Lower it with --write-baseline. pending: known leaks the tree mode passes while their item is open. A payload never gets that pass. payload oci rose from 531 to 616 once, by item 1603 (2026-11-16): 74 lines are the baked code grammar written one literal a line (item 0008), text the payload already carried in one line before, 9 are new comments in deck/base/code/native that item 1543 owns, 7 are messages the bundles now carry more than once. It fell from 616 to 437 by item 1636 (2026-11-17): since item 1609 a release bundles make:port's units layout, which holds each module once, where the whole ports held a copy of a shared module in every port that loaded it. The 179 lines were those copies: the same texts, which the bundles still hold once each.",
   "parentNames": {
     "deck/base": 150,
     "deck/bind": 1,
@@ -22,7 +22,7 @@
   },
   "payload": {
     "npm": 368,
-    "oci": 616
+    "oci": 437
   },
   "pending": {}
 }

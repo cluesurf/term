@@ -1,0 +1,240 @@
+note <the blog API answers /posts and /posts/:id over real HTTP, from Postgres through the trie router and hono>
+
+# Ported from test/site/blog-loop.ts by statement (item term-self-host-001-0679), one test per ok in its order.
+# Full-stack loop: compile the blog API (trie router + Postgres repository) with both runtime shims (Postgres + hono),
+# start it on a port, seed two posts into Postgres, then fetch `/posts` and `/posts/:id` over real HTTP and see the JSON
+# come back through hono, the trie router and Postgres. This is the complete backend loop end to end. Without
+# DATABASE_URL every test skips: the database is the one DATABASE_URL names, never a default.
+#
+# The original bundled the API with esbuild, the drivers left out, imported it, started it on port 38571 and fetched it
+# from the suite. Here a driver program loads the API and runs in a child (run-text), in a folder under this repository
+# so node finds the drivers in its node_modules. It starts the API on a port this suite held a moment ago and let go (no
+# fixed port, T-1595), seeds, fetches both paths itself, writes each answer and ends the process: the server would hold
+# node's loop.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find file-text
+
+load ../support/temp
+  find remove-at-exit
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/process/current
+  find read, name process-now
+
+load @term/base/environment
+  find variable
+
+load @term/base/network/server
+  find start, name serve-start
+  find stop, name serve-stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-status
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/text/hex
+  find decode-hex
+
+load @term/base/json
+  find parse, name parse-json
+  find array-size
+  find array-item
+  find field-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host entry, <deck/site/test/site/hook/blog.tree>
+
+# the driver for the API on `port`: start, reset, seed, then each path's status and body (hex) as `<status>|<body>`, a
+# line each
+task driver
+  take port, like number
+  like text
+
+  back <load @term/site/test/site/hook/blog\n  find start\n  find reset\n  find seed-post\n\nload @term/base/network/http\n  find fetch\n\nload @term/base/list\n  find list\n  find join\n\nload @term/base/text/hex\n  find encode-hex\n\nload @term/base/environment\n  find variable\n\nload @term/base/clock\n  find sleep\n\nload @term/base/console\n  find write, name write-out\n\nload @term/base/process/current\n  find exit\n\ntask asked\n  take path, like text\n  like text\n  mark async\n  save got, fetch(\<http://localhost:{port}\{path\}\>)\n  save parts, make list(\<\{got/status\}\>, encode-hex(got/body))\n  back join(parts, \<|\>)\n\ntask run\n  mark async\n  like text\n  start(variable(\<DATABASE_URL\>), {port})\n  sleep(250)\n  reset()\n  seed-post(\<p1\>, \<First Post\>, \<Hello world\>)\n  seed-post(\<p2\>, \<Second Post\>, \<More text\>)\n  save listed, asked(\</posts\>)\n  save single, asked(\</posts/p2\>)\n  write-out(\<\{listed\}\\n\{single\}\>)\n  exit(0)\n  back \<\>\n>
+
+# one fetched answer as the driver wrote it
+form fetched
+  link status, like text
+  link body, like text
+
+form loop-state
+  mark shared
+  link done, like boolean
+  link compiled, like boolean
+  link emitted, like text
+  link ran, like ran-program
+  link list, like fetched
+  link one, like fetched
+
+host nothing, make(fetched, bind(status, <>), bind(body, <>))
+
+host state, make(loop-state, bind(done, false), bind(compiled, false), bind(emitted, <>), bind(ran, make(ran-program, bind(state, <>))), bind(list, nothing), bind(one, nothing))
+
+task fetched-of
+  take text, like text
+  like fetched
+
+  save fields, text-split(text, <|>)
+  fork test, is-below(fields/length, 2)
+    hold
+      back nothing
+  back make(fetched, bind(status, fields/get(0)), bind(body, decode-hex(fields/get(1))))
+
+task no-route
+  take asked, like request
+  like response
+
+  back make-status(404)
+
+# a port nothing listens on now: one this suite held a moment ago and let go
+task free-port
+  mark async
+  like number
+
+  save probe, serve-start(0, <127.0.0.1>, no-route)
+  save port, probe/port
+  serve-stop(probe)
+  back port
+
+# the API compiled, then the driver run once, its answers read back
+task prepare
+  mark async
+  like loop-state
+
+  fork test, state/done
+    hold
+      back state
+  save state/done, true
+  save out, compile-text(file-text(entry), make(compile-choice, bind(file, entry), bind(project, <.>)))
+  save state/compiled, out/ok
+  save state/emitted, out/emitted
+  fork test, not(out/ok)
+    hold
+      back state
+  save folder, <test/tmp/term-blogloop-{process-now()/id}>
+  make-folder(folder)
+  remove-at-exit(folder)
+  save state/ran, run-text(driver(free-port()), <typescript>, folder, <blogloop>)
+  fork test, is-equal(state/ran/state, <ran>)
+    hold
+      save lines, text-split(state/ran/output, <\n>)
+      save state/list, fetched-of(lines/get(0))
+      fork test, is-above(lines/length, 1)
+        hold
+          save state/one, fetched-of(lines/get(1))
+  back state
+
+# the field `name` of the post at `n` of the list's JSON, <> when there is none
+task listed-field
+  mark async
+  take n, like number
+  take name, like text
+  like text
+
+  fork
+    mark unsafe
+    save posts, parse-json(prepare()/list/body)
+    fork test, is-below(n, array-size(posts))
+      hold
+        back field-text(array-item(posts, n), name)
+    back <>
+  halt take
+    take cause
+    back <>
+
+# how many posts the list's JSON holds, -1 when it is not a JSON array
+task listed-count
+  mark async
+  like number
+
+  fork
+    mark unsafe
+    back array-size(parse-json(prepare()/list/body))
+  halt take
+    take cause
+    back subtract(0, 1)
+
+# the field `name` of the one post's JSON, <> when there is none
+task one-field
+  mark async
+  take name, like text
+  like text
+
+  fork
+    mark unsafe
+    back field-text(parse-json(prepare()/one/body), name)
+  halt take
+    take cause
+    back <>
+
+task skip-reason
+  like text
+
+  fork test, is-equal(variable(<DATABASE_URL>), <>)
+    hold
+      back <blog-loop: set DATABASE_URL to a Postgres the suite may write>
+  back <>
+
+test <blog API compiles against the abstract db + http>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  want hold, prepare()/compiled
+
+test <userland has no driver imports>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  want hold, prepare()/compiled
+  host emitted, prepare()/emitted
+  want hold, and(not(matches(make(pattern, <<from ['"]pg['"]>>), emitted)), not(matches(make(pattern, <<from ['"]hono['"]>>), emitted)))
+
+test <connects to Postgres + starts hono>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  host ran, prepare()/ran
+  want hold, is-equal(ran/reason, <>)
+  want hold, is-equal(ran/state, <ran>)
+
+test <GET /posts returns the two posts as JSON>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  want hold, and(is-equal(prepare()/list/status, <200>), is-equal(listed-count(), 2))
+
+test <first post came through the loop (Postgres -> trie -> hono -> fetch)>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  want hold, and(is-equal(listed-field(0, <id>), <p1>), and(is-equal(listed-field(0, <title>), <First Post>), is-equal(listed-field(0, <body>), <Hello world>)))
+
+test <second post too>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  want hold, and(is-equal(listed-field(1, <id>), <p2>), is-equal(listed-field(1, <title>), <Second Post>))
+
+test <GET /posts/:id binds the id and reads one post>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip skip-reason()
+  want hold, and(is-equal(prepare()/one/status, <200>), and(is-equal(one-field(<id>), <p2>), and(is-equal(one-field(<title>), <Second Post>), is-equal(one-field(<body>), <More text>))))

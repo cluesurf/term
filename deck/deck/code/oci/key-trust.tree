@@ -28,8 +28,8 @@
 #     repository, scope, keypair, add, remove) with add and remove need false, the empty list where left out
 #     (decision 176 rule 1). env stays like dynamic: it is the caller's host record, or none for the process's
 #   - the transport is registry-transport.tree's form oci-transport, each method called with its own record
-#     (manifest-request, blob-request, blob-upload, manifest-upload). get-manifest answers like dynamic (a
-#     fetched-manifest, or the host's nothing on 404: traps T-1546), read here as the fetched-manifest it holds
+#     (manifest-request, blob-request, blob-upload, manifest-upload). get-manifest answers a maybe (a
+#     fetched-manifest, or none on 404: decision 176 rule 2, item term-self-host-001-1582), sifted here
 #   - a key set, its statement, its config and its manifest are JSON values, read and built with @term/base/json in
 #     the original's key order, so the bytes a signature and a digest cover are the original's (item
 #     term-self-host-001-1532). A served set is checked field by field before anything reads it (is-sound-key-set)
@@ -394,13 +394,19 @@ task signed-by
       back false
   back verify-id(key-set-statement(set), text-of(json-field(set, <sig>)), signer)
 
-# the fetched-manifest get-manifest's like dynamic answer holds (registry-transport.tree's oci-transport)
+# the fetched-manifest get-manifest's maybe holds (registry-transport.tree's oci-transport), read once its none was
+# answered
 task fetched-of
-  take found, like fetched-manifest
+  take found, like maybe, like fetched-manifest
   like fetched-manifest
   mark private
 
-  back found
+  sift found
+    case some
+      link held
+      back held
+    case none
+      halt <a key set's manifest was read before it was found>
 
 task fetch-key-set
   take transport, like oci-transport
@@ -410,9 +416,14 @@ task fetch-key-set
   like maybe, like fetched-key-set
   mark private
 
+  # get-manifest answers a maybe (decision 176 rule 2, item term-self-host-001-1582): none is the original's 404. The
+  # some arm is first: the none came from another port, whose frozen none this one's identity test never matches
   save found, transport/get-manifest(make(manifest-request, bind(repository, repository), bind(reference, reference)))
-  fork test, json-is-null(found)
-    hold
+  sift found
+    case some
+      link held
+      save present, held/digest
+    case none
       back make none
 
   save manifest, fetched-of(found)

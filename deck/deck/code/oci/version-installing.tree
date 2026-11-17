@@ -104,11 +104,13 @@ bind install-list-tags
   case node
     text <<$transport.listTags({ repository: $repository })>>
 
+# the transport's get-manifest, which answers a maybe (registry-transport.tree's oci-transport, item
+# term-self-host-001-1582): the face hands every port the port's own transport (portTransport), so it is the box
 bind install-get-manifest
   take transport, like dynamic
   take repository, like dynamic
   take reference, like dynamic
-  like dynamic
+  like maybe, like dynamic
   case node
     text <<$transport.getManifest({ repository: $repository, reference: $reference })>>
 
@@ -283,9 +285,13 @@ task read-oci-version
   take warn, like dynamic
   like dynamic
 
-  save fetched, wait install-get-manifest(transport, repository, reference)
-  fork test, not(install-truthy(fetched))
-    hold
+  save found, wait install-get-manifest(transport, repository, reference)
+  save fetched, install-nothing()
+  sift found
+    case some
+      link held
+      save fetched, held
+    case none
       save label, install-field(transport, <label>)
       halt oci-failure
         bind thing, <{package-name}: {label}/{repository} has no {reference}>

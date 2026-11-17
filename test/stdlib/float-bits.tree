@@ -1,0 +1,668 @@
+note <a float's words round trip on every backend, and two-sum, fast-two-sum and two-product are exact, the double-double add and multiply within 2^-100>
+
+# Ported from test/stdlib/float-bits.ts by statement (item term-self-host-001-0680), its oks per backend each a walked
+# test, a backend a case. The float bit primitives (deck/base/code/float/bits.tree) and the error-free transformations
+# built on them (float/double-double.tree), on every backend: note/project/term/decisions-2026-10/float/spec.md 4.1, 4.2
+# and 7.4.
+#
+# Words: a float's high and low 32-bit words round trip for +-0, +-inf, the canonical NaN, subnormals, 1.0 (high word
+# 1072693248, which fails on a big-endian host) and more, and `x + x` built from the words has the words `x + x` has
+# here, so `float-from-words` makes a real double and not a copy of its inputs.
+#
+# Arithmetic: on 1,000 fixed-seed pairs (and a list of edge pairs: subnormals, near the largest float, ties) two-sum,
+# fast-two-sum and two-product answer `high + low` EXACTLY equal to a + b (a * b), checked here with big integers
+# (@term/base/integer/big) on the exact binary expansion of every float, and `high` is the correctly rounded sum
+# (product). The double-double add and multiply agree with the big integers to a relative 2^-100. A compiler that
+# reassociated or contracted float operations would fail the two-sum or the two-product here, on the backend that did it.
+#
+# The inputs travel as decimal words inside one text, parsed by the program, so the same source runs everywhere and no
+# case is inlined as code. The program is the original's (escaped by tmp/self-host/suites-g/escape2.mjs), its chunks
+# and round trips filled in here. The original drew its pairs with BigInt (xorshift64 over one 64-bit word): here the
+# same generator over two 32-bit words, by the word tasks of ./float-digits. FLOAT_ONLY=typescript, rust, swift or
+# kotlin runs one backend.
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/text/number
+  find host-parse-float
+
+load @term/base/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find shift-left
+  find unsigned-shift-right
+
+load @term/base/float/bits
+  find float-high-word
+  find float-low-word
+  find float-from-words
+
+load @term/base/float
+  find to-number
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+  find big-negate
+
+load @term/base/list
+  find join, name list-join
+
+host random-count, 1000
+
+host chunk-size, 250
+
+host word-mask, 4294967295
+
+# ---- one 64-bit word as two 32-bit words (the same tasks as ./float-digits, which a test file cannot load)
+
+form word-pair
+  link high, like number
+  link low, like number
+
+# the low 32 bits of `value << count` for a 32-bit word, count 0 to 31
+task shift-word
+  take value, like number
+  take count, like number
+  like number
+
+  fork test, is-equal(count, 0)
+    hold
+      back value
+  host kept, bitwise-and(value, subtract(shift-left(1, subtract(32, count)), 1))
+  back shift-left(kept, count)
+
+# `value >> count` on 64 bits, count 1 to 63
+task shift-pair-right
+  take value, like word-pair
+  take count, like number
+  like word-pair
+
+  fork test, is-below(count, 32)
+    hold
+      back make(word-pair, bind(high, unsigned-shift-right(value/high, count)), bind(low, bitwise-or(unsigned-shift-right(value/low, count), shift-word(value/high, subtract(32, count)))))
+  back make(word-pair, bind(high, 0), bind(low, unsigned-shift-right(value/high, subtract(count, 32))))
+
+# `(value << count) & MASK` on 64 bits, count 1 to 31
+task shift-pair-left
+  take value, like word-pair
+  take count, like number
+  like word-pair
+
+  back make(word-pair, bind(high, bitwise-or(shift-word(value/high, count), unsigned-shift-right(value/low, subtract(32, count)))), bind(low, shift-word(value/low, count)))
+
+task exclusive-pair
+  take left, like word-pair
+  take right, like word-pair
+  like word-pair
+
+  back make(word-pair, bind(high, bitwise-exclusive-or(left/high, right/high)), bind(low, bitwise-exclusive-or(left/low, right/low)))
+
+task float-of
+  take bits, like word-pair
+  like float
+
+  back float-from-words(bits/high, bits/low)
+
+task bits-of
+  take x, like float
+  like word-pair
+
+  back make(word-pair, bind(high, float-high-word(x)), bind(low, float-low-word(x)))
+
+# 2 to the power `k`, for k from -1022 to 1023: its words
+task power-of-two
+  take k, like number
+  like float
+
+  back float-from-words(multiply(add(k, 1023), 1048576), 0)
+
+# ---- the generator: xorshift64 over two 32-bit words, the original's seed 0x9e3779b97f4a7c15
+
+form pair-state
+  mark shared
+  link state, like word-pair
+
+host pair-draws, make(pair-state, bind(state, make(word-pair, bind(high, 2654435769), bind(low, 2135587861))))
+
+task next-bits
+  like word-pair
+
+  save s, pair-draws/state
+  save s, exclusive-pair(s, shift-pair-left(s, 13))
+  save s, exclusive-pair(s, shift-pair-right(s, 7))
+  save s, exclusive-pair(s, shift-pair-left(s, 17))
+  save pair-draws/state, s
+  back s
+
+# `bits % n`, by the four 16-bit pieces of the word
+task remainder-of
+  take bits, like word-pair
+  take n, like number
+  like number
+
+  save r, 0
+  walk make list(unsigned-shift-right(bits/high, 16), bitwise-and(bits/high, 65535), unsigned-shift-right(bits/low, 16), bitwise-and(bits/low, 65535))
+    take piece, like number
+    save r, modulo(add(multiply(r, 65536), piece), n)
+  back r
+
+# a float with a random sign, a random mantissa, and an exponent within +-200 of one
+task random-float
+  like float
+
+  host bits, next-bits()
+  host exponent, subtract(add(1023, remainder-of(bits, 401)), 200)
+  host mantissa, shift-pair-right(bits, 12)
+  host high, add(add(multiply(unsigned-shift-right(bits/high, 31), 2147483648), multiply(exponent, 1048576)), bitwise-and(mantissa/high, 1048575))
+  back float-from-words(high, mantissa/low)
+
+form float-pair
+  link a, like float
+  link b, like float
+
+task absolute-of
+  take x, like float
+  like float
+
+  fork test, is-below(x, 0.0)
+    hold
+      back multiply(x, -1.0)
+  back x
+
+# ordered so that |a| >= |b|, which fast-two-sum needs
+task ordered
+  take a, like float
+  take b, like float
+  like float-pair
+
+  fork test, not(is-below(absolute-of(a), absolute-of(b)))
+    hold
+      back make(float-pair, bind(a, a), bind(b, b))
+  back make(float-pair, bind(a, b), bind(b, a))
+
+# ---- the cases, in the original's order of draws
+
+form held-cases
+  mark shared
+  link made, like boolean
+  link pairs, like list, like float-pair
+  link values, like list, like word-pair
+
+host cases, make(held-cases, bind(made, false), bind(pairs, make list), bind(values, make list))
+
+task word
+  take high, like number
+  take low, like number
+  like word-pair
+
+  back make(word-pair, bind(high, high), bind(low, low))
+
+task make-cases
+  like held-cases
+
+  fork test, cases/made
+    hold
+      back cases
+  save cases/made, true
+  save i, 0
+  walk test
+    hook test, is-below(i, random-count)
+    hold
+      host a, random-float()
+      host b, random-float()
+      cases/pairs/push(ordered(a, b))
+      save i, add(i, 1)
+  # edge pairs: sums and products are checked only where they cannot overflow or underflow (the two-sum and
+  # fast-two-sum checks), so the random pairs above carry the product checks
+  host largest, host-parse-float(<1.7976931348623157e308>)
+  host tiny, float-from-words(0, 1)
+  host one, 1.0
+  cases/pairs/push(ordered(tiny, tiny))
+  cases/pairs/push(ordered(multiply(tiny, 3.0), multiply(tiny, -1.0)))
+  cases/pairs/push(ordered(float-from-words(1048575, 4294967295), tiny))
+  cases/pairs/push(ordered(power-of-two(-1022), multiply(tiny, -1.0)))
+  cases/pairs/push(ordered(largest, power-of-two(969)))
+  cases/pairs/push(ordered(largest, multiply(divide(largest, 2.0), -1.0)))
+  cases/pairs/push(ordered(largest, one))
+  cases/pairs/push(ordered(one, power-of-two(-53)))
+  cases/pairs/push(ordered(one, power-of-two(-54)))
+  cases/pairs/push(ordered(one, multiply(power-of-two(-54), -1.0)))
+  cases/pairs/push(ordered(add(one, power-of-two(-52)), power-of-two(-53)))
+  cases/pairs/push(ordered(one, 0.0))
+  cases/pairs/push(ordered(0.0, 0.0))
+  cases/pairs/push(ordered(-1.0, one))
+  cases/pairs/push(ordered(3.0, -3.0))
+  cases/pairs/push(ordered(power-of-two(996), power-of-two(943)))
+  cases/pairs/push(ordered(host-parse-float(<1e300>), host-parse-float(<-1e284>)))
+  # a word list for the round trip
+  save values, cases/values
+  values/push(word(0, 0))
+  values/push(word(2147483648, 0))
+  values/push(word(2146435072, 0))
+  values/push(word(4293918720, 0))
+  values/push(word(2146959360, 0))
+  values/push(word(0, 1))
+  values/push(word(2147483648, 1))
+  values/push(word(1048575, 4294967295))
+  values/push(word(1048576, 0))
+  values/push(word(1072693248, 0))
+  values/push(word(3220176896, 0))
+  values/push(word(2146435071, 4294967295))
+  values/push(word(4293918719, 4294967295))
+  values/push(word(1074340347, 1413754136))
+  values/push(word(1069128089, 2576980378))
+  save i, 0
+  walk test
+    hook test, is-below(i, 24)
+    hold
+      values/push(bits-of(random-float()))
+      save i, add(i, 1)
+  back cases
+
+# ---- the program
+
+# the original's program, its chunk tasks, chunk calls and round trips filled in
+task bits-program
+  take chunk-tasks, like text
+  take chunk-calls, like text
+  take trip-lines, like text
+  like text
+
+  back <load @term/base/float/bits\n  find float-high-word\n  find float-low-word\n  find float-from-words\n\nload @term/base/float/double-double\n  find double-double\n  find two-sum\n  find fast-two-sum\n  find two-product\n  find double-double-add\n  find double-double-multiply\n\nload @term/base/text\n  find split\n  find char-code-at\n  find char-count\n\nload @term/base/list\n  find list\n  find join\n\n{chunk-tasks}\ntask parse-word\n  take s, like text\n  like number\n  host n\n    call char-count\n      read s\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take site, name i\n      save total\n        call add\n          call multiply\n            read total\n            code 10\n          call subtract\n            call char-code-at\n              read s\n              read i\n            code 48\n  send back, read total\n\ntask float-at\n  take words, like list\n  take index, like number\n  like float\n  host high\n    call parse-word\n      call words/at\n        read index\n  host low\n    call parse-word\n      call words/at\n        call add\n          read index\n          code 1\n  send back\n    call float-from-words\n      read high\n      read low\n\ntask words-of\n  take pair, like double-double\n  like text\n  host a\n    call float-high-word\n      read pair/high\n  host b\n    call float-low-word\n      read pair/high\n  host c\n    call float-high-word\n      read pair/low\n  host d\n    call float-low-word\n      read pair/low\n  send back, text \<\{a\} \{b\} \{c\} \{d\}\>\n\ntask line-of\n  take a, like float\n  take b, like float\n  like text\n  host ab\n    call two-sum\n      read a\n      read b\n  host ba\n    call two-sum\n      read b\n      read a\n  host fast\n    call fast-two-sum\n      read a\n      read b\n  host product\n    call two-product\n      read a\n      read b\n  host sum\n    call double-double-add\n      read product\n      read ab\n  host times\n    call double-double-multiply\n      read product\n      read ab\n  send back, text \<\{words-of(ab)\} \{words-of(ba)\} \{words-of(fast)\} \{words-of(product)\} \{words-of(sum)\} \{words-of(times)\}\>\n\ntask round-trip\n  take high, like number\n  take low, like number\n  like text\n  host x\n    call float-from-words\n      read high\n      read low\n  host doubled\n    call add\n      read x\n      read x\n  send back, text \<\{float-high-word(x)\} \{float-low-word(x)\} \{float-high-word(doubled)\} \{float-low-word(doubled)\}\>\n\ntask run\n  like text\n  host all\n    text \<{chunk-calls}\>\n  host words\n    call split\n      read all\n      text \<,\>\n  host count\n    call divide\n      read words/length\n      code 4\n  save pairs, make list\n  walk size\n    bind base, code 0\n    bind head, read count\n    hook next\n      take site, name i\n      host at\n        call multiply\n          read i\n          code 4\n      push(pairs, line-of(float-at(words, at), float-at(words, add(at, 2))))\n  save trips, make list\n{trip-lines}\n  host one\n    code 1.0\n  host built\n    call float-from-words\n      code 1072693248\n      code 0\n  send back, text \<\{join(trips, \<|\>)\}#\{join(pairs, \<|\>)\}#\{float-high-word(one)\} \{float-high-word(built)\}\>\n>
+
+# the program's text for the cases: the pairs as decimal words in chunks of 250, a task each, and a round trip a value
+task program-text
+  like text
+
+  host made, make-cases()
+  save chunks, make list
+  save words, make list
+  save at, 0
+  walk made/pairs
+    take pair, like float-pair
+    words/push(<{float-high-word(pair/a)},{float-low-word(pair/a)},{float-high-word(pair/b)},{float-low-word(pair/b)}>)
+    save at, add(at, 1)
+    fork test, or(is-equal(modulo(at, chunk-size), 0), is-equal(at, made/pairs/length))
+      hold
+        chunks/push(list-join(words, <,>))
+        save words, make list
+  save tasks, make list
+  save calls, make list
+  save n, 0
+  walk chunks
+    take chunk, like text
+    tasks/push(<task chunk-{n}\n  like text\n  send back, text \<{chunk}\>\n>)
+    calls/push(<\{chunk-{n}()\}>)
+    save n, add(n, 1)
+  save trips, make list
+  walk made/values
+    take value, like word-pair
+    trips/push(<  push(trips, round-trip({value/high}, {value/low}))>)
+  back bits-program(list-join(tasks, <\n>), list-join(calls, <,>), list-join(trips, <\n>))
+
+# ---- the exact values
+
+# 2 to the power `k` as a big integer, kept by k
+form held-powers
+  mark shared
+  link known, like hash, like number, like big-integer
+
+host powers, make(held-powers, bind(known, make hash))
+
+task big-power-of-two
+  take k, like number
+  like big-integer
+
+  fork test, powers/known/has(k)
+    hold
+      back powers/known/{k}
+  save out, big-from-number(1)
+  save step, big-from-number(2)
+  save left, k
+  walk test
+    hook test, is-above(left, 0)
+    hold
+      fork test, is-equal(modulo(left, 2), 1)
+        hold
+          save out, big-multiply(out, step)
+      save step, big-multiply(step, step)
+      save left, unsigned-shift-right(left, 1)
+  save powers/known/{k}, out
+  back out
+
+# the exact value of a finite float, times 2^1074, as a big integer
+task scaled
+  take bits, like word-pair
+  like big-integer
+
+  host exponent, bitwise-and(unsigned-shift-right(bits/high, 20), 2047)
+  host mantissa, add(multiply(bitwise-and(bits/high, 1048575), 4294967296), bits/low)
+  save value, big-from-number(mantissa)
+  fork test, is-above(exponent, 0)
+    hold
+      save value, big-multiply(big-from-number(add(mantissa, 4503599627370496)), big-power-of-two(subtract(exponent, 1)))
+  fork test, is-equal(unsigned-shift-right(bits/high, 31), 1)
+    hold
+      back big-negate(value)
+  back value
+
+task big-absolute
+  take value, like big-integer
+  like big-integer
+
+  fork test, is-below(big-compare(value, big-from-number(0)), 0)
+    hold
+      back big-negate(value)
+  back value
+
+task same-big
+  take a, like big-integer
+  take b, like big-integer
+  like boolean
+
+  back is-equal(big-compare(a, b), 0)
+
+task key-of
+  take bits, like word-pair
+  like text
+
+  back <{bits/high} {bits/low}>
+
+task float-key
+  take x, like float
+  like text
+
+  back key-of(bits-of(x))
+
+# ---- the grades
+
+form bits-grade
+  link backend, like text
+  link ran, like ran-program
+  link trips, like number
+  link trip-fails, like list, like text
+  link literal, like text
+  link lines, like number
+  link checks, like number
+  link two-sum, like list, like text
+  link fast-two-sum, like list, like text
+  link two-product, like list, like text
+  link double-double-add, like list, like text
+  link double-double-multiply, like list, like text
+
+form bits-state
+  mark shared
+  link ready, like boolean
+  link folder, like text
+  link program, like text
+  link grades, like list, like bits-grade
+
+host state, make(bits-state, bind(ready, false), bind(folder, <>), bind(program, <>), bind(grades, make list))
+
+# four numbers of a line, from place `n`, as two words
+task words-at
+  take parts, like list, like text
+  take n, like number
+  like list, like word-pair
+
+  save numbers, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, 4)
+    hold
+      save at, add(multiply(n, 4), i)
+      save one, 0
+      fork test, is-below(at, parts/length)
+        hold
+          save one, to-number(host-parse-float(parts/get(at)))
+      numbers/push(one)
+      save i, add(i, 1)
+  back make list(word(numbers/get(0), numbers/get(1)), word(numbers/get(2), numbers/get(3)))
+
+task exact-sum
+  take parts, like list, like text
+  take n, like number
+  take sum, like big-integer
+  take rounded, like text
+  like boolean
+
+  host got, words-at(parts, n)
+  back and(same-big(big-add(scaled(got/get(0)), scaled(got/get(1))), sum), is-equal(key-of(got/get(0)), rounded))
+
+# the two words at place `n`, summed exactly and scaled up by 2^`k`
+task got-value
+  take parts, like list, like text
+  take n, like number
+  take k, like number
+  like big-integer
+
+  host got, words-at(parts, n)
+  back big-multiply(big-add(scaled(got/get(0)), scaled(got/get(1))), big-power-of-two(k))
+
+# |got - want| * 2^100 > |want|
+task beyond
+  take got, like big-integer
+  take want, like big-integer
+  like boolean
+
+  back is-above(big-compare(big-multiply(big-absolute(big-subtract(got, want)), big-power-of-two(100)), big-absolute(want)), 0)
+
+task grade-of
+  take backend, like text
+  like bits-grade
+
+  walk state/grades
+    take one, like bits-grade
+    fork test, is-equal(one/backend, backend)
+      hold
+        back one
+  fork test, not(state/ready)
+    hold
+      save state/ready, true
+      save state/folder, temp-folder(<term-float-bits->)
+      save state/program, program-text()
+  host made, make-cases()
+  save ran, run-text(state/program, backend, state/folder, <float-bits>)
+  save trip-fails, make list
+  save trips, 0
+  save literal, <>
+  save lines, 0
+  save checks, 0
+  save sums, make list
+  save fasts, make list
+  save products, make list
+  save adds, make list
+  save multiplies, make list
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save sections, text-split(ran/output, <#>)
+      save trip-texts, text-split(sections/get(0), <|>)
+      save trips, trip-texts/length
+      save line-texts, make list
+      fork test, is-above(sections/length, 1)
+        hold
+          save line-texts, text-split(sections/get(1), <|>)
+      save lines, line-texts/length
+      fork test, is-above(sections/length, 2)
+        hold
+          save literal, sections/get(2)
+      # words
+      save at, 0
+      walk made/values
+        take value, like word-pair
+        save parts, make list
+        fork test, is-below(at, trip-texts/length)
+          hold
+            save parts, text-split(trip-texts/get(at), < >)
+        host got, words-at(parts, 0)
+        host x, float-of(value)
+        host doubled, float-key(add(x, x))
+        fork test, is-unequal(key-of(got/get(0)), key-of(value))
+          hold
+            trip-fails/push(<round trip {key-of(value)} gave {key-of(got/get(0))}>)
+        fork test, is-unequal(key-of(got/get(1)), doubled)
+          hold
+            trip-fails/push(<doubling {key-of(value)} gave {key-of(got/get(1))}, want {doubled}>)
+        save at, add(at, 1)
+      # arithmetic
+      save at, 0
+      walk made/pairs
+        take pair, like float-pair
+        save parts, make list
+        fork test, is-below(at, line-texts/length)
+          hold
+            save parts, text-split(line-texts/get(at), < >)
+        host big-a, scaled(bits-of(pair/a))
+        host big-b, scaled(bits-of(pair/b))
+        host sum, big-add(big-a, big-b)
+        host rounded, float-key(add(pair/a, pair/b))
+        host shown, <{pair/a} {pair/b}>
+        fork test, not(exact-sum(parts, 0, sum, rounded))
+          hold
+            sums/push(shown)
+        fork test, not(exact-sum(parts, 1, sum, rounded))
+          hold
+            sums/push(shown)
+        fork test, not(exact-sum(parts, 2, sum, rounded))
+          hold
+            fasts/push(shown)
+        save checks, add(checks, 3)
+        fork test, is-below(at, random-count)
+          hold
+            save checks, add(checks, 3)
+            # the product is exact at scale 2^2148 and the two words at scale 2^1074, so compare them at one scale
+            host exact-product, big-multiply(big-a, big-b)
+            host product-words, words-at(parts, 3)
+            fork test, or(not(same-big(got-value(parts, 3, 1074), exact-product)), is-unequal(key-of(product-words/get(0)), float-key(multiply(pair/a, pair/b))))
+              hold
+                products/push(shown)
+            # x = a * b and y = a + b as exact numerators over 2^2148
+            host want-add, big-add(exact-product, big-multiply(sum, big-power-of-two(1074)))
+            host want-multiply, big-multiply(exact-product, big-multiply(sum, big-power-of-two(1074)))
+            fork test, beyond(got-value(parts, 4, 1074), want-add)
+              hold
+                adds/push(shown)
+            fork test, beyond(got-value(parts, 5, 3222), want-multiply)
+              hold
+                multiplies/push(shown)
+        save at, add(at, 1)
+  save grade, make(bits-grade, bind(backend, backend), bind(ran, ran), bind(trips, trips), bind(trip-fails, trip-fails), bind(literal, literal), bind(lines, lines), bind(checks, checks), bind(two-sum, sums), bind(fast-two-sum, fasts), bind(two-product, products), bind(double-double-add, adds), bind(double-double-multiply, multiplies))
+  state/grades/push(grade)
+  back grade
+
+# why `backend` is not run here, <> when it is
+task skip-reason
+  take backend, like text
+  like text
+
+  save only, variable(<FLOAT_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <FLOAT_ONLY names {only}>
+  save grade, grade-of(backend)
+  fork test, is-equal(grade/ran/state, <skipped>)
+    hold
+      back <{backend}: {grade/ran/reason}>
+  back <>
+
+test <float-bits: words round trip and double like a real float>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  want hold, is-equal(<{grade-of(backend)/ran/state} {grade-of(backend)/ran/reason}>, <ran >)
+  host grade, grade-of(backend)
+  want hold, is-equal(grade/trips, make-cases()/values/length)
+  want hold, is-equal(list-join(grade/trip-fails, < \| >), <>)
+
+test <float-bits: float-high-word of the literal 1.0 and of the built one is 1072693248>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  want hold, is-equal(<{grade-of(backend)/ran/state} {grade-of(backend)/ran/reason}>, <ran >)
+  want hold, is-equal(grade-of(backend)/literal, <1072693248 1072693248>)
+
+test <float-bits: one result line per pair>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  want hold, is-equal(<{grade-of(backend)/ran/state} {grade-of(backend)/ran/reason}>, <ran >)
+  want hold, is-equal(grade-of(backend)/lines, make-cases()/pairs/length)
+
+test <float-bits: two-sum, no fail across all five>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  want hold, is-equal(<{grade-of(backend)/ran/state} {grade-of(backend)/ran/reason}>, <ran >)
+  host grade, grade-of(backend)
+  want hold, is-above(grade/checks, 0)
+  want hold, is-equal(list-join(grade/two-sum, < \| >), <>)
+
+test <float-bits: fast-two-sum, no fail across all five>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  want hold, is-equal(<{grade-of(backend)/ran/state} {grade-of(backend)/ran/reason}>, <ran >)
+  host grade, grade-of(backend)
+  want hold, is-above(grade/checks, 0)
+  want hold, is-equal(list-join(grade/fast-two-sum, < \| >), <>)
+
+test <float-bits: two-product, no fail across all five>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  want hold, is-equal(<{grade-of(backend)/ran/state} {grade-of(backend)/ran/reason}>, <ran >)
+  host grade, grade-of(backend)
+  want hold, is-above(grade/checks, 0)
+  want hold, is-equal(list-join(grade/two-product, < \| >), <>)
+
+test <float-bits: double-double-add, no fail across all five>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  want hold, is-equal(<{grade-of(backend)/ran/state} {grade-of(backend)/ran/reason}>, <ran >)
+  host grade, grade-of(backend)
+  want hold, is-above(grade/checks, 0)
+  want hold, is-equal(list-join(grade/double-double-add, < \| >), <>)
+
+test <float-bits: double-double-multiply, no fail across all five>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  want hold, is-equal(<{grade-of(backend)/ran/state} {grade-of(backend)/ran/reason}>, <ran >)
+  host grade, grade-of(backend)
+  want hold, is-above(grade/checks, 0)
+  want hold, is-equal(list-join(grade/double-double-multiply, < \| >), <>)

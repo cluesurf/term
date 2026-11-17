@@ -610,13 +610,16 @@ mine text-def
     'deck @probe/save\n  mark <0.0.1>\n',
   )
 
-  // the install after it has no registry to reach here, so only the manifest is read
-  term(saved, 'save', '@probe/none', '^1.2.0')
+  // the install has no registry to reach here, so the save fails, and deck.tree is written only after an install
+  // that went through (item 1622): it stays as it was. The range a save writes is held by
+  // deck/deck/test/dependency-edit.test.tree, over a loopback registry
+  const before = readFileSync(join(saved, 'deck.tree'), 'utf8')
+  const none = term(saved, 'save', '@probe/none', '^1.2.0')
   const written = readFileSync(join(saved, 'deck.tree'), 'utf8')
 
   ok(
-    '`term save @probe/none ^1.2.0` writes the range it means',
-    /link @probe\/none, mark <1\.2\.0\.\.2\.0\.0>/.test(written),
+    '`term save @probe/none ^1.2.0` that cannot install fails, and leaves deck.tree as it was',
+    none.status !== 0 && written === before,
     written,
   )
 

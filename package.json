@@ -46,6 +46,7 @@
     "term:distro": "node host/line.js boot task/distro.tree -- pack",
     "term:index-revoke": "node host/line.js boot task/index-revoke.tree -- revoke",
     "term:mill-forms": "tsx task/term/mill-forms.ts",
+    "term:asset-declarations": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON task/term/asset-declarations.ts",
     "term:unknown-types": "tsx task/term/unknown-types.ts",
     "term:rust": "bash deck/base/code/native/toolchain/rust.sh",
     "term:swift": "bash deck/base/code/native/toolchain/swift.sh",

@@ -7,6 +7,7 @@
 import * as port from '@term/deck/code/oci/oci-publishing'
 import {
   ociErrorOf,
+  portTransport,
   type Descriptor,
   type OciTransport,
 } from './transport'
@@ -102,7 +103,7 @@ export const publishToOci = (
         input.package,
         input.version,
         input.link,
-        input.transport,
+        portTransport(input.transport),
         input.repository,
         input.scope,
         input.keysRepository,

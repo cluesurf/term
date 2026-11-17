@@ -1,0 +1,326 @@
+note <an unknown gives a value out only through a run-time test, on every backend, and is refused straight into a typed place>
+
+# Ported from unknown-narrow.ts by statement (item term-self-host-001-0661), one test per `ok` in its order. THE GRADUAL
+# SEAM, CLOSED (guides/types/gradual, 2026-10-05). An `unknown` takes any value in, and gives one out only through a
+# run-time test: `sift value` with an arm per type (`case number`, `case float`, `case text`, `case boolean`) and a
+# `miss`. Inside an arm the subject IS that type. An `unknown` handed straight to a typed place is refused by `term
+# make`. `dynamic` stays the FFI's `any`. So a value of a static type is that type at run time on every backend.
+# NARROW_ONLY=typescript, rust, swift or kotlin runs one backend.
+#
+# The original's loop over backends is one walked test per program, a backend a case, each program resolved from this
+# project for the backend's env as its projectResolver(process.cwd(), env) was. Its refusals ran with the seam on, set
+# once for the rest of the process: here each compile turns check/strict's seam on and puts it back (check/strict is the
+# subject, decision 106, as test/compile/guide-gaps/part-two.tree sets it).
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/check/strict>, name strict-switches
+
+# one task narrows each kind, a `link` names the narrowed value apart from the subject, and a value read through two
+# unknowns arrives as itself
+host narrow, <task describe\n  take value, like unknown\n\n  like text\n\n  sift value\n    case number\n      back \<whole \{add(value, 1)\}\>\n    case float\n      back \<fraction\>\n    case text\n      back \<text of \{value\}\>\n    case boolean\n      fork test, value\n        hold\n          back \<yes\>\n        miss\n          back \<no\>\n    miss\n      back \<other\>\n\ntask doubled\n  take value, like unknown\n\n  like number\n\n  sift value\n    case number\n      link n\n      back multiply(n, 2)\n    miss\n      back 0\n\ntask relay\n  take value, like unknown\n\n  like unknown\n\n  back value\n\ntask run\n  like text\n\n  back \<\{describe(41)\} \{describe(2.5)\} \{describe(\<ada\>)\} \{describe(true)\} \{describe(make list)\} \{doubled(relay(21))\} \{doubled(\<x\>)\}\>\n>
+
+host narrow-expected, <whole 42 fraction text of ada yes other 42 0>
+
+# FLOW TYPING AFTER A TEST (decisions-2026-10.md, D10): `is-text(value)` as a branch's test narrows an `unknown` in the
+# branch it guards, exactly as the `sift` arm does, in a chain of tests where each later test sits in the miss of the
+# one before, and in a test with no miss that the task carries on after
+host flow, <task kind-of\n  take value, like unknown\n\n  like text\n\n  fork test\n    hook test\n      call is-text\n        read value\n    hook hold\n      back \<text \{value\}\>\n    hook test\n      call is-number\n        read value\n    hook hold\n      back \<number \{add(value, 1)\}\>\n    hook miss\n      back \<other\>\n\ntask flag\n  take value, like unknown\n\n  like text\n\n  fork test, is-boolean(value)\n    hold\n      fork test, value\n        hold\n          back \<on\>\n      back \<off\>\n  back \<none\>\n\ntask sized\n  take value, like unknown\n  take big, like boolean\n\n  like text\n\n  fork test\n    hook test\n      read big\n    hook hold\n      back \<big\>\n    hook test\n      call is-number\n        read value\n    hook hold\n      back \<n \{add(value, 1)\}\>\n    hook miss\n      back \<no\>\n\ntask run\n  like text\n\n  back \<\{kind-of(\<ada\>)\} \{kind-of(41)\} \{kind-of(2.5)\} \{flag(true)\} \{flag(false)\} \{flag(3)\} \{sized(1, true)\} \{sized(4, false)\} \{sized(\<a\>, false)\}\>\n>
+
+host flow-expected, <text ada number 42 other on off none big n 5 no>
+
+# A FORM, A LIST AND A HASH OUT OF AN UNKNOWN (term-decisions-2026-10-seam-0012, gap 318): `case point` tests for the
+# record, `case list` / `like text` for a list of text (every item), `case hash` / `like text` / `like number` for a
+# hash (every key and value). A list of numbers is not a list of text, a point with a text field is not a point, and a
+# record of another form is not one
+host shapes, <load @term/base/list\n  find join\n\nform point\n  link x, like number\n  link y, like number\n\nform label\n  link x, like number\n  link y, like number\n  link name, like text\n\ntask describe\n  take value, like unknown\n\n  like text\n\n  sift value\n    case point\n      back \<point \{add(value/x, value/y)\}\>\n    case list\n      like text\n      link names\n      back \<names \{join(names, \<+\>)\}\>\n    case hash\n      like text\n      like number\n      link table\n      back \<hash \{table/length()\}\>\n    case number\n      back \<number \{value\}\>\n    miss\n      back \<other\>\n\ntask run\n  like text\n\n  save p\n    make point\n      bind x, 1\n      bind y, 2\n  save l\n    make label\n      bind x, 1\n      bind y, 2\n      bind name, \<a\>\n  save names, make list\n  push(names, \<ada\>)\n  push(names, \<bo\>)\n  save counts, make list\n  push(counts, 1)\n  save table\n    make hash\n      save a, 1\n      save b, 2\n  save other\n    make hash\n      save a, \<x\>\n  back \<\{describe(p)\}, \{describe(names)\}, \{describe(table)\}, \{describe(7)\}, \{describe(counts)\}, \{describe(other)\}, \{describe(l)\}, \{describe(\<x\>)\}\>\n>
+
+host shapes-expected, <point 3, names ada+bo, hash 2, number 7, other, other, other, other>
+
+# A FORM WITH CASES OUT OF AN UNKNOWN (seam decision 003): `case shape` tests for a value of any of its cases, a `mark
+# tag` form by its own tag field, a `mark text` form by its case texts, and a list or a hash of a form with cases item
+# by item. A record of a form of fields and a number go to the miss
+host cased, <load @term/base/list\n  find push\n\nform shape\n  case dot\n  case box\n    link side, like number\n\nform flag\n  mark tag, name kind\n  case up\n  case down\n    link by, like number\n\nform tone\n  mark text\n  case warm\n  case cool, text \<ice\>\n\nform point\n  link x, like number\n\ntask describe\n  take value, like unknown\n\n  like text\n\n  sift value\n    case shape\n      link s\n      sift s\n        case dot\n          back \<dot\>\n        case box\n          back \<box \{side\}\>\n    case flag\n      link f\n      sift f\n        case up\n          back \<up\>\n        case down\n          back \<down \{by\}\>\n    case tone\n      link t\n      sift t\n        case warm\n          back \<warm\>\n        case cool\n          back \<cool\>\n    case list\n      like shape\n      link shapes\n      back \<shapes \{shapes/length\}\>\n    case hash\n      like text\n      like shape\n      link table\n      back \<table \{table/length()\}\>\n    miss\n      back \<other\>\n\ntask run\n  like text\n\n  save d, make dot\n  save b\n    make box\n      bind side, 3\n  save u, make up\n  save n\n    make down\n      bind by, 2\n  save w, make warm\n  save c, make cool\n  save shapes, like list, like shape\n    make list\n  push(shapes, d)\n  push(shapes, b)\n  save table, like hash, like text, like shape\n    make hash\n  table/set(\<one\>, b)\n  save p\n    make point\n      bind x, 1\n  back \<\{describe(d)\}, \{describe(b)\}, \{describe(u)\}, \{describe(n)\}, \{describe(w)\}, \{describe(c)\}, \{describe(shapes)\}, \{describe(table)\}, \{describe(p)\}, \{describe(7)\}\>\n>
+
+host cased-expected, <dot, box 3, up, down 2, warm, cool, shapes 2, table 1, other, other>
+
+# A TEST OF A FORM'S CASE NARROWS (gap 105): `is-some(m)` is the `sift m` arm `case some`, so inside the branch
+# `m/value` reads, and the other case is the rest. A field named like a local in scope is not bound over it
+host cases, <load @term/base/maybe\n  find maybe\n  find is-some\n  find is-none\n\ntask show\n  take m, like maybe, like text\n\n  like text\n\n  fork test, is-some(m)\n    hold\n      back \<some \{m/value\}\>\n  back \<none\>\n\ntask other\n  take m, like maybe, like text\n  take extra, like text\n\n  like text\n\n  fork test, is-none(m)\n    hold\n      back \<none \{extra\}\>\n    miss\n      back \<some \{m/value\} \{extra\}\>\n\ntask run\n  like text\n\n  back \<\{show(make(some, \<a\>))\} \{show(make none)\} \{other(make(some, \<b\>), \<c\>)\} \{other(make(none), \<d\>)\}\>\n>
+
+host cases-expected, <some a none some b c none d>
+
+# A NUMBER OUT OF A MAYBE PARAMETER (seam-0020): Rust lends a parameter, so a `sift` arm over it bound the payload as
+# `&i64`, and `add(m/value, 1)` failed rustc (E0308 at `i64::checked_add(value, 1)`). A Copy payload is bound by value
+host borrowed, <load @term/base/maybe\n  find maybe\n\ntask bump\n  take m, like maybe, like number\n\n  like number\n\n  sift m\n    case some\n      back add(m/value, 1)\n    case none\n      back 0\n\ntask run\n  like text\n\n  back \<\{bump(make(some, 41))\} \{bump(make none)\}\>\n>
+
+host borrowed-expected, <42 0>
+
+# <> when NARROW_ONLY lets `backend` run, else why not
+task only-reason
+  take backend, like text
+  like text
+
+  save only, variable(<NARROW_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <NARROW_ONLY names {only}>
+  back <>
+
+# `program` built and run on `backend`, its loads from this project for the backend's env
+task ran-on
+  take program, like text
+  take backend, like text
+  take name, like text
+  like ran-program
+
+  save folder, temp-folder(<term-narrow->)
+  back run-text(program, backend, folder, name)
+
+test <an unknown is narrowed by a type arm, its subject typed inside it, a link names it apart, and a miss takes the rest>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-on(narrow, backend, <narrow>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, narrow-expected)
+
+test <a test of what an unknown holds narrows it in the branch it guards, through a chain and with no miss>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-on(flow, backend, <flow>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, flow-expected)
+
+test <a form, a list of text and a hash are narrowed out of an unknown, and a value of another shape goes to the miss>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-on(shapes, backend, <shapes>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, shapes-expected)
+
+test <a form with cases, a mark tag form, a mark text form and a list and hash of one are narrowed out of an unknown, a record and a number go to the miss>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-on(cased, backend, <cased>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, cased-expected)
+
+test <a test of a form's case narrows the value to that case in the branch it guards>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-on(cases, backend, <cases>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, cases-expected)
+
+test <a number read out of a sift arm over a maybe parameter is a number>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(only-reason(backend), <>)
+    hold
+      skip only-reason(backend)
+  host ran, ran-on(borrowed, backend, <borrowed>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, borrowed-expected)
+
+# the refusals, which need only the checker: each compiled with the seam on, from this project on node, and the seam put
+# back as it was. The messages of a refused program, empty for one that compiled
+task refused
+  take source, like text
+  like list, like text
+
+  save was, strict-switches/unknown-seam-on()
+  strict-switches/set-unknown-seam(true)
+  host out, compile-text(source, make(compile-choice, bind(file, <refused.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  strict-switches/set-unknown-seam(was)
+  fork test, out/ok
+    hold
+      back make list
+  back out/messages
+
+# whether any message holds both words
+task any-holding-both
+  take messages, like list, like text
+  take first, like text
+  take second, like text
+  like boolean
+
+  walk messages
+    take message, like text
+    fork test, and(text-contains(message, first), text-contains(message, second))
+      hold
+        back true
+  back false
+
+# whether any message holds the word
+task any-holding-one
+  take messages, like list, like text
+  take word, like text
+  like boolean
+
+  walk messages
+    take message, like text
+    fork test, text-contains(message, word)
+      hold
+        back true
+  back false
+
+# the guide's seam: text through an unknown to a task that wants a number
+host seam-text, <task bump\n  take n, like number\n\n  like number\n\n  back add(n, 1)\n\ntask pass-through\n  take value, like unknown\n\n  like number\n\n  back bump(value)\n>
+
+host returned-text, <task give\n  take value, like unknown\n\n  like text\n\n  back value\n>
+
+host added-text, <task plus-one\n  take value, like unknown\n\n  like number\n\n  back add(value, 1)\n>
+
+host missing-text, <task f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case number\n      back value\n  back 0\n>
+
+host form-text, <form point\n  link x, like number\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case point\n      back value/x\n    miss\n      back 0\n>
+
+host cased-text, <form shape\n  case dot\n  case box\n    link side, like number\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case shape\n      back 1\n    miss\n      back 0\n>
+
+host generic-text, <form held\n  head t\n  case empty\n  case full\n    link item, like t\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case held\n      back 1\n    miss\n      back 0\n>
+
+host bare-text, <task f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case list\n      back 1\n    miss\n      back 0\n>
+
+host stray-text, <task f\n  take value, like text\n\n  like number\n\n  sift value\n    case text\n      like number\n      back 1\n    miss\n      back 0\n>
+
+host wrong-text, <form point\n  link x, like number\n\ntask f\n  take value, like unknown\n\n  like text\n\n  sift value\n    case list\n      like text\n      link names\n      back names\n    miss\n      back \<\>\n>
+
+host fine-text, <task same\n  take a, like unknown\n  take b, like unknown\n\n  like boolean\n\n  back is-equal(a, b)\n\ntask use\n  like boolean\n\n  back same(1, \<a\>)\n>
+
+host typed-text, <task f\n  take value, like text\n\n  like text\n\n  fork test, is-text(value)\n    hold\n      back value\n  back \<\>\n>
+
+host native-text, <dock load\n  load \<global:host\>, name host\n\ntask f\n  take value, like dynamic\n\n  like number\n\n  back value\n>
+
+# the refusals run where the original ran them: with NARROW_ONLY unset or typescript
+task refusals-reason
+  like text
+
+  back only-reason(<typescript>)
+
+test <an unknown handed to a number is refused, naming the narrowing>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, any-holding-both(refused(seam-text), <an unknown value where a number is wanted>, <sift>)
+
+test <an unknown returned where text is the result is refused>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, any-holding-one(refused(returned-text), <an unknown value where a text is wanted>)
+
+test <arithmetic on an unknown is refused>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, is-above(refused(added-text)/length, 0)
+
+test <a sift over an unknown with no miss is refused>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, any-holding-one(refused(missing-text), <needs a `miss`>)
+
+test <a form arm over an unknown builds, its subject the form inside it>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, is-equal(refused(form-text)/length, 0)
+
+test <an arm naming a form with cases builds (seam decision 003)>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, is-equal(refused(cased-text)/length, 0)
+
+test <an arm naming a form with cases and a type parameter is refused, saying what can be told apart>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, any-holding-both(refused(generic-text), <a form with type parameters>, <a form with cases>)
+
+test <a list arm that does not say what the list holds is refused>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, any-holding-one(refused(bare-text), <says what it holds>)
+
+test <a `like` under an arm of a sift over a typed value is refused>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, any-holding-one(refused(stray-text), <names the type an unknown is tested for>)
+
+test <a list of text narrowed is a list of text, not text>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, any-holding-one(refused(wrong-text), <expected>)
+
+test <any value into an unknown, and an unknown into an unknown, still build>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, is-equal(refused(fine-text)/length, 0)
+
+test <a type test over a value already typed is refused, saying there is nothing to narrow>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, any-holding-one(refused(typed-text), <"value" is text already>)
+
+test <a dynamic, the FFI any, still passes both ways>
+  fork test, is-unequal(refusals-reason(), <>)
+    hold
+      skip refusals-reason()
+  want hold, is-equal(refused(native-text)/length, 0)

@@ -1,0 +1,579 @@
+note <the shortest round-trip digits of 20,000 floats equal JavaScript's own text on every backend>
+
+# Ported from test/stdlib/float-digits.ts by statement (item term-self-host-001-0680). The shortest round-trip decimal
+# digits of a float (deck/base/code/text/format/digits.tree, decision D7, term/decisions-2026-10/locale item 0003) on
+# every backend, held to JavaScript's `Number` toString, which ECMA-402 rounds. 20,000 floats from a seeded generator:
+# the hard cases first (zero and negative zero, the largest and the smallest, the smallest normal, every power of two,
+# every power of ten with its neighbors a unit in the last place either side, 1e21 where JavaScript changes how it
+# writes), then subnormals, halfway decimals (1.005), dyadic halves, short decimals, and random bit patterns. ONE Term
+# program per backend reads the cases from a file, never inline, and writes `<sign>:<digits>:<exponent>` per case,
+# which is compared with what JavaScript's own text gives.
+#
+# The cases are written as 17 significant digits, never the shortest text, so the input is the float exactly and does
+# not hand a backend the answer.
+#
+# The original drew its corpus with BigInt: xorshift64* over one 64-bit word. Here the same generator runs over two
+# 32-bit words through @term/base/bit, the product by its multiplier in 16-bit halves, so each draw is the original's to
+# the last bit, and a float is made from its words by @term/base/float/bits. JavaScript stays the oracle in two binds:
+# the 17-digit text the cases are written in (`toExponential(16)`) and the text the answers are held to (`String`).
+# The original printed `<backend> <agree> of <cases>` and exited 1 on any disagreement: here one walked test, a backend
+# a case. FLOAT_ONLY=typescript, rust, swift or kotlin runs one backend, FLOAT_LIMIT=n keeps the first n cases.
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find split, name text-split
+  find char-count
+  find substring
+  find index-of, name text-index-of
+  find starts-with
+
+load @term/base/text/number
+  find host-parse-float
+
+load @term/base/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find shift-left
+  find unsigned-shift-right
+  find multiply-32
+
+load @term/base/float/bits
+  find float-high-word
+  find float-low-word
+  find float-from-words
+
+load @term/base/float
+  find to-decimal
+  find to-number
+  find is-not-a-number
+  find is-finite
+
+load @term/base/list
+  find join, name list-join
+
+host total, 20000
+
+host word-mask, 4294967295
+
+# the program every backend builds (the original's, escaped by tmp/self-host/suites-d/escape.mjs): it reads the cases
+# at `cases` and writes one `<sign>:<digits>:<exponent>` per case
+task digits-program
+  take cases, like text
+  like text
+
+  back <load @term/base/text/format/digits\n  find shortest-digits\n\nload @term/base/text\n  find split\n  find char-count\n\nload @term/base/text/number\n  find host-parse-float\n\nload @term/base/file\n  find read\n\nload @term/base/list\n  find list\n  find join\n\ntask run\n  like text\n  save out, make list\n  save rows\n    call split\n      call read\n        text \<{cases}\>\n      text \<\\n\>\n  walk list, read rows\n    hook next\n      take site, name row\n      fork test\n        hook test\n          call is-above\n            call char-count\n              read row\n            code 0\n        hook hold\n          save d\n            call shortest-digits\n              call host-parse-float\n                read row\n          save sign, text \<+\>\n          fork test\n            hook test\n              read d/negative\n            hook hold\n              save sign, text \<-\>\n          push\n            read out\n            text \<\{sign\}:\{d/digits\}:\{d/exponent\}\>\n  send back\n    call join\n      read out\n      text \<|\>\n>
+
+# ---- the generator: one 64-bit word as two 32-bit words
+
+form word-pair
+  link high, like number
+  link low, like number
+
+form generator
+  mark shared
+  link state, like word-pair
+
+# 0x9e3779b97f4a7c15, the original's seed
+host draws, make(generator, bind(state, make(word-pair, bind(high, 2654435769), bind(low, 2135587861))))
+
+# 0x2545f4914f6cdd1d, xorshift64*'s multiplier
+host multiplier, make(word-pair, bind(high, 625341585), bind(low, 1332534557))
+
+# the low 32 bits of `value << count` for a 32-bit word, count 0 to 31
+task shift-word
+  take value, like number
+  take count, like number
+  like number
+
+  fork test, is-equal(count, 0)
+    hold
+      back value
+  host kept, bitwise-and(value, subtract(shift-left(1, subtract(32, count)), 1))
+  back shift-left(kept, count)
+
+# `value >> count` on 64 bits, count 1 to 63
+task shift-pair-right
+  take value, like word-pair
+  take count, like number
+  like word-pair
+
+  fork test, is-below(count, 32)
+    hold
+      back make(word-pair, bind(high, unsigned-shift-right(value/high, count)), bind(low, bitwise-or(unsigned-shift-right(value/low, count), shift-word(value/high, subtract(32, count)))))
+  back make(word-pair, bind(high, 0), bind(low, unsigned-shift-right(value/high, subtract(count, 32))))
+
+# `(value << count) & MASK` on 64 bits, count 1 to 31
+task shift-pair-left
+  take value, like word-pair
+  take count, like number
+  like word-pair
+
+  back make(word-pair, bind(high, bitwise-or(shift-word(value/high, count), unsigned-shift-right(value/low, subtract(32, count)))), bind(low, shift-word(value/low, count)))
+
+task exclusive-pair
+  take left, like word-pair
+  take right, like word-pair
+  like word-pair
+
+  back make(word-pair, bind(high, bitwise-exclusive-or(left/high, right/high)), bind(low, bitwise-exclusive-or(left/low, right/low)))
+
+# the whole 64-bit product of two 32-bit words, by 16-bit halves so every sum stays exact
+task multiply-words
+  take left, like number
+  take right, like number
+  like word-pair
+
+  host a0, bitwise-and(left, 65535)
+  host a1, unsigned-shift-right(left, 16)
+  host b0, bitwise-and(right, 65535)
+  host b1, unsigned-shift-right(right, 16)
+  host middle, add(multiply(a0, b1), multiply(a1, b0))
+  host low, add(multiply(a0, b0), multiply(bitwise-and(middle, 65535), 65536))
+  host high, add(add(multiply(a1, b1), unsigned-shift-right(middle, 16)), unsigned-shift-right(low, 32))
+  back make(word-pair, bind(high, bitwise-and(high, word-mask)), bind(low, bitwise-and(low, word-mask)))
+
+# `(left * right) & MASK` on 64 bits
+task multiply-pair
+  take left, like word-pair
+  take right, like word-pair
+  like word-pair
+
+  host lows, multiply-words(left/low, right/low)
+  host across, add(bitwise-and(multiply-32(left/high, right/low), word-mask), bitwise-and(multiply-32(left/low, right/high), word-mask))
+  back make(word-pair, bind(high, bitwise-and(add(lows/high, across), word-mask)), bind(low, lows/low))
+
+# xorshift64*: the next draw, the state stepped
+task next-draw
+  like word-pair
+
+  save s, draws/state
+  save s, exclusive-pair(s, shift-pair-right(s, 12))
+  save s, exclusive-pair(s, shift-pair-left(s, 25))
+  save s, exclusive-pair(s, shift-pair-right(s, 27))
+  save draws/state, s
+  back multiply-pair(s, multiplier)
+
+# `next() % n`, by the four 16-bit pieces of the draw
+task below
+  take n, like number
+  like number
+
+  host v, next-draw()
+  save r, 0
+  walk make list(unsigned-shift-right(v/high, 16), bitwise-and(v/high, 65535), unsigned-shift-right(v/low, 16), bitwise-and(v/low, 65535))
+    take piece, like number
+    save r, modulo(add(multiply(r, 65536), piece), n)
+  back r
+
+task float-of
+  take bits, like word-pair
+  like float
+
+  back float-from-words(bits/high, bits/low)
+
+task bits-of
+  take x, like float
+  like word-pair
+
+  back make(word-pair, bind(high, float-high-word(x)), bind(low, float-low-word(x)))
+
+# a 64-bit word as the float nearest it (one rounding, as Number(bigint))
+task decimal-of
+  take bits, like word-pair
+  like float
+
+  back add(multiply(to-decimal(bits/high), 4294967296.0), to-decimal(bits/low))
+
+# 2 to the power `k`, for k from -1022 to 1023: its words
+task power-of-two
+  take k, like number
+  like float
+
+  back float-from-words(multiply(add(k, 1023), 1048576), 0)
+
+task power-of-ten
+  take k, like number
+  like number
+
+  save out, 1
+  save i, 0
+  walk test
+    hook test, is-below(i, k)
+    hold
+      save out, multiply(out, 10)
+      save i, add(i, 1)
+  back out
+
+# the float one unit in the last place from `x`, toward larger magnitude when `up`
+task neighbor
+  take x, like float
+  take up, like boolean
+  like float
+
+  host bits, bits-of(x)
+  fork test, up
+    hold
+      fork test, is-equal(bits/low, word-mask)
+        hold
+          back float-from-words(add(bits/high, 1), 0)
+      back float-from-words(bits/high, add(bits/low, 1))
+  fork test, is-equal(bits/low, 0)
+    hold
+      back float-from-words(subtract(bits/high, 1), word-mask)
+  back float-from-words(bits/high, subtract(bits/low, 1))
+
+task signed
+  take x, like float
+  take negative, like boolean
+  like float
+
+  fork test, negative
+    hold
+      back multiply(x, -1.0)
+  back x
+
+task padded
+  take text, like text
+  take width, like number
+  like text
+
+  save out, text
+  walk test
+    hook test, is-below(char-count(out), width)
+    hold
+      save out, <0{out}>
+  back out
+
+# ---- the corpus, in the original's order of draws
+
+form held-corpus
+  mark shared
+  link made, like boolean
+  link cases, like list, like float
+
+host corpus, make(held-corpus, bind(made, false), bind(cases, make list))
+
+host hard-texts, make list(<0>, <-0>, <1.7976931348623157e308>, <-1.7976931348623157e308>, <5e-324>, <-5e-324>, <2.2250738585072014e-308>, <2.225073858507201e-308>, <1e21>, <-1e21>, <1e22>, <1e23>, <9007199254740993>, <9007199254740992>)
+
+host hard-tail, make list(<1.005>, <1.015>, <4.35>, <NaN>, <Infinity>, <-Infinity>, <123456789.12345679>, <5e-324>, <1e-7>, <1e-6>, <0.000001234>)
+
+host around-texts, make list(<1e15>, <1e16>, <1e17>, <1e20>, <1e21>, <1e22>, <9007199254740992>, <9223372036854775808>, <18446744073709551616>)
+
+task make-corpus
+  like list, like float
+
+  fork test, corpus/made
+    hold
+      back corpus/cases
+  save corpus/made, true
+  save cases, corpus/cases
+  # 1 the hard cases
+  walk hard-texts
+    take text, like text
+    cases/push(host-parse-float(text))
+  cases/push(add(host-parse-float(<0.1>), host-parse-float(<0.2>)))
+  walk hard-tail
+    take text, like text
+    cases/push(host-parse-float(text))
+  # 2 every power of two
+  save k, -1074
+  walk test
+    hook test, is-below(k, 1024)
+    hold
+      fork test, is-below(k, -1022)
+        hold
+          save j, add(k, 1074)
+          fork test, is-below(j, 32)
+            hold
+              cases/push(float-from-words(0, shift-left(1, j)))
+            miss
+              cases/push(float-from-words(shift-left(1, subtract(j, 32)), 0))
+        miss
+          cases/push(power-of-two(k))
+      save k, add(k, 1)
+  # 3 every power of ten with its neighbors a unit in the last place either side
+  save k, -323
+  walk test
+    hook test, is-below(k, 309)
+    hold
+      host x, host-parse-float(<1e{k}>)
+      cases/push(x)
+      cases/push(neighbor(x, true))
+      cases/push(neighbor(x, false))
+      cases/push(multiply(x, -1.0))
+      save k, add(k, 1)
+  # 4 subnormals: a mantissa of 1 to 52 bits
+  save i, 0
+  walk test
+    hook test, is-below(i, 3000)
+    hold
+      host width, add(1, below(52))
+      host v, next-draw()
+      save mantissa, make(word-pair, bind(high, 0), bind(low, bitwise-or(v/low, 1)))
+      fork test, is-below(width, 32)
+        hold
+          save mantissa, make(word-pair, bind(high, 0), bind(low, bitwise-or(bitwise-and(v/low, subtract(shift-left(1, width), 1)), 1)))
+        miss
+          fork test, is-above(width, 32)
+            hold
+              save mantissa, make(word-pair, bind(high, bitwise-and(v/high, subtract(shift-left(1, subtract(width, 32)), 1))), bind(low, bitwise-or(v/low, 1)))
+      cases/push(multiply(float-of(mantissa), signed(1.0, is-unequal(below(2), 0))))
+      save i, add(i, 1)
+  # 5 halfway decimals: a short decimal ending in 5 and its neighbors
+  save i, 0
+  walk test
+    hook test, is-below(i, 2000)
+    hold
+      host whole, below(power-of-ten(add(1, below(8))))
+      host places, add(1, below(6))
+      host fraction, padded(<{below(power-of-ten(places))}>, places)
+      host value, host-parse-float(<{whole}.{fraction}5>)
+      cases/push(signed(value, is-equal(below(4), 0)))
+      save i, add(i, 1)
+  # 6 dyadic halves: k times a power of two
+  save i, 0
+  walk test
+    hook test, is-below(i, 1500)
+    hold
+      host v, next-draw()
+      host shifted, decimal-of(shift-pair-right(v, add(1, below(60))))
+      host scaled, multiply(shifted, power-of-two(subtract(0, below(80))))
+      cases/push(signed(scaled, is-unequal(below(2), 0)))
+      save i, add(i, 1)
+  # 7 short decimals: up to six digits times a power of ten
+  save i, 0
+  walk test
+    hook test, is-below(i, 2500)
+    hold
+      host digits, add(1, below(999999))
+      host power, subtract(below(61), 30)
+      host value, host-parse-float(<{digits}e{power}>)
+      cases/push(signed(value, is-equal(below(4), 0)))
+      save i, add(i, 1)
+  # 8 integers around the places JavaScript changes how it writes
+  save i, 0
+  walk test
+    hook test, is-below(i, 1000)
+    hold
+      host around, host-parse-float(around-texts/get(below(9)))
+      cases/push(subtract(add(around, to-decimal(below(2000))), 1000.0))
+      save i, add(i, 1)
+  # 9 random bit patterns, finite only, to fill the rest
+  walk test
+    hook test, is-below(cases/length, total)
+    hold
+      host x, float-of(next-draw())
+      fork test, is-finite(x)
+        hold
+          cases/push(x)
+  back cases
+
+# ---- JavaScript, the oracle
+
+# the 17 significant digits a case is written in, which read back as the float exactly
+# host native: the original wrote each case with toExponential(16), the text the program reads
+bind seventeen-digits
+  take value, like float
+  like text
+  case node
+    text <$value.toExponential(16)>
+
+# what JavaScript's own text gives for a finite float's size
+# host native: Number's toString is the oracle the original held every backend to
+bind script-text
+  take value, like float
+  like text
+  case node
+    text <String(Math.abs($value))>
+
+task is-negative-zero
+  take x, like float
+  like boolean
+
+  back and(is-equal(x, 0.0), is-equal(float-high-word(x), 2147483648))
+
+task written
+  take x, like float
+  like text
+
+  fork test, is-not-a-number(x)
+    hold
+      back <NaN>
+  fork test, not(is-finite(x))
+    hold
+      fork test, is-below(x, 0.0)
+        hold
+          back <-Infinity>
+      back <Infinity>
+  fork test, is-negative-zero(x)
+    hold
+      back <-0>
+  back seventeen-digits(x)
+
+# the digits with no leading or trailing zero, and the exponent, from JavaScript's own text
+task expected
+  take x, like float
+  like text
+
+  fork test, is-not-a-number(x)
+    hold
+      back <+:NaN:0>
+  save sign, <+>
+  fork test, or(is-below(x, 0.0), is-negative-zero(x))
+    hold
+      save sign, <->
+  fork test, not(is-finite(x))
+    hold
+      back <{sign}:Infinity:0>
+  save text, script-text(x)
+  save exponent, 0
+  save at, text-index-of(text, <e>)
+  fork test, not(is-below(at, 0))
+    hold
+      save exponent, to-number(host-parse-float(substring(text, add(at, 1))))
+      save text, substring(text, 0, at)
+  save fraction, <>
+  save point, text-index-of(text, <.>)
+  fork test, not(is-below(point, 0))
+    hold
+      save fraction, substring(text, add(point, 1))
+      save text, substring(text, 0, point)
+  save digits, <{text}{fraction}>
+  save exponent, subtract(exponent, char-count(fraction))
+  walk test
+    hook test, starts-with(digits, <0>)
+    hold
+      save digits, substring(digits, 1)
+  walk test
+    hook test, and(is-above(char-count(digits), 0), is-equal(substring(digits, subtract(char-count(digits), 1)), <0>))
+    hold
+      save digits, substring(digits, 0, subtract(char-count(digits), 1))
+      save exponent, add(exponent, 1)
+  fork test, is-equal(digits, <>)
+    hold
+      back <{sign}:0:0>
+  back <{sign}:{digits}:{exponent}>
+
+# ---- the runs
+
+form digits-grade
+  link backend, like text
+  link ran, like ran-program
+  link agree, like number
+  link count, like number
+  link answers, like number
+  link bad, like list, like text
+
+form digits-state
+  mark shared
+  link ready, like boolean
+  link folder, like text
+  link written, like list, like text
+  link wants, like list, like text
+  link grades, like list, like digits-grade
+
+host state, make(digits-state, bind(ready, false), bind(folder, <>), bind(written, make list), bind(wants, make list), bind(grades, make list))
+
+# the corpus, its written form in a case file and its wants, once
+task prepare
+  like void
+
+  fork test, state/ready
+    hold
+      back
+  save state/ready, true
+  save cases, make-corpus()
+  save limit, cases/length
+  save named, variable(<FLOAT_LIMIT>)
+  fork test, is-unequal(named, <>)
+    hold
+      save limit, to-number(host-parse-float(named))
+  save at, 0
+  walk cases
+    take x, like float
+    fork test, is-below(at, limit)
+      hold
+        state/written/push(written(x))
+        state/wants/push(expected(x))
+    save at, add(at, 1)
+  save state/folder, temp-folder(<term-float-digits->)
+  write-file(<{state/folder}/cases.txt>, <{list-join(state/written, <\n>)}\n>)
+
+# build, run and grade `backend`, once
+task grade-of
+  take backend, like text
+  like digits-grade
+
+  walk state/grades
+    take one, like digits-grade
+    fork test, is-equal(one/backend, backend)
+      hold
+        back one
+  prepare()
+  save ran, run-text(digits-program(<{state/folder}/cases.txt>), backend, state/folder, <float-digits>)
+  save agree, 0
+  save answers, 0
+  save bad, make list
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save got, text-split(ran/output, <|>)
+      save answers, got/length
+      save at, 0
+      walk state/wants
+        take want, like text
+        save line, <>
+        fork test, is-below(at, got/length)
+          hold
+            save line, got/get(at)
+        fork test, is-equal(line, want)
+          hold
+            save agree, add(agree, 1)
+          miss
+            fork test, is-below(bad/length, 10)
+              hold
+                bad/push(<{state/written/get(at)}: got {line}, JavaScript {want}>)
+        save at, add(at, 1)
+  save grade, make(digits-grade, bind(backend, backend), bind(ran, ran), bind(agree, agree), bind(count, state/wants/length), bind(answers, answers), bind(bad, bad))
+  state/grades/push(grade)
+  back grade
+
+# why `backend` is not run here, <> when it is
+task skip-reason
+  take backend, like text
+  like text
+
+  save only, variable(<FLOAT_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <FLOAT_ONLY names {only}>
+  save grade, grade-of(backend)
+  fork test, is-equal(grade/ran/state, <skipped>)
+    hold
+      back <{backend}: {grade/ran/reason}>
+  back <>
+
+test <float-digits: every case's shortest digits equal JavaScript's text>
+  take backend, like text
+    walk backends()
+  fork test, is-unequal(skip-reason(backend), <>)
+    hold
+      skip skip-reason(backend)
+  host grade, grade-of(backend)
+  want hold, is-equal(grade/ran/reason, <>)
+  want hold, is-equal(grade/ran/state, <ran>)
+  want hold, is-equal(list-join(grade/bad, < \| >), <>)
+  want hold, is-equal(<{backend} {grade/agree} of {grade/count}, {grade/answers} answers>, <{backend} {grade/count} of {grade/count}, {grade/count} answers>)
