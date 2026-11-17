@@ -5,11 +5,11 @@ load @term/base/hash
   find hash
 
 dock load
-  load <global:http>, name http
   load <global:http-exchange>, name http-exchange
 
 # `ok`, the status and the body, then each response header as a lower-case name and its value; or `timeout` or
-# `outage` and the host's own message
+# `outage` and the host's own message. `timeout` is one deadline from the call to the body's last byte, kept by the
+# `http-exchange` shim as its exchanges keep it (term-self-host-001-1585), not URLSession's limit between two arrivals
 task send-request
   mark async
   take method, like text
@@ -23,7 +23,7 @@ task send-request
   like list
     like text
   send back
-    call http/request
+    call http-exchange/request
       read method
       read url
       read body
@@ -34,7 +34,8 @@ task send-request
 # An exchange, held by number in the `http-exchange` runtime shim. `exchange-open` sends `body` as bytes (none when it
 # is empty), redirects followed only when `follow` holds, and answers `ok`, the exchange's number, the status, then
 # each response header as a lower-case name and its value; or `timeout` or `outage` and the host's own message. The
-# body stays unread for the next three
+# body stays unread for the next three, and `timeout` is one deadline from here to its last byte, so each read gets
+# only what is left of it
 task exchange-open
   mark async
   take method, like text

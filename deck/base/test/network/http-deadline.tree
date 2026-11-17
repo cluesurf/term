@@ -1,0 +1,252 @@
+# The `timeout` of @term/base/network/http is one deadline over the whole answer, from the call to the body's last
+# byte, the same on every backend (term-self-host-001-1585, decision 179 rule 7). A server that answers its headers
+# after 700 ms and ends its body 1,700 ms later, under a timeout of 2000, makes `read-exchange` and `request` raise
+# `timeout` with `waited` 2000, though the headers and the body each come inside 2 s and no gap between two arrivals
+# comes near it. The same body sent at once, the headers still after 700 ms, is read whole. Held by
+# `pnpm term:base-gate`; a page has no server, so not in the browser.
+#
+# Every request goes to a raw TCP listener on 127.0.0.1, on a port draw-port picks (never a fixed one,
+# term-self-host-001-1595), which answers with no `content-length` and closes when the body is sent.
+
+load @term/base/network/http
+  find open-exchange
+  find read-exchange
+  find request
+
+load @term/base/network/tcp
+  find listen
+  find listener
+
+load @term/base/bytes
+  find from-byte-list
+  find to-hex
+
+load @term/base/clock
+  find sleep
+
+load @term/base/task
+  find spawn
+  find handle
+
+load @term/base/exception
+  find timeout
+  find outage
+  find absence
+  find excess
+  find exclusion
+  find refusal
+
+load @term/base/random
+  find integer, name draw-integer
+
+# a port for the listener, drawn at random below every system's ephemeral range (32768 on Linux, 49152 on macOS and
+# Windows), never a fixed one: a fixed port collides with any other run of this file at the same moment
+task draw-port
+  like number
+  send back
+    call draw-integer
+      code 20000
+      code 32767
+
+# one connection on `server`: its request read, then after 700 ms the headers, then 16 bytes of `x`. When `slow` the
+# bytes come one every 50 ms and the connection is closed 900 ms after the last (the body ends at about 2,400 ms, its
+# last write at about 1,500, so nothing is written to a client that gave up at 2,000: swift's tcp would die of
+# SIGPIPE); else they come at once and it is closed. Everything it meets is caught here, so the client's answer is
+# still read
+task serve
+  mark async
+  take server, like listener
+  take slow, like boolean
+  like void
+  fork
+    mark unsafe
+    save peer
+      call server/accept
+        wait true
+    save asked
+      call peer/read
+        wait true
+    call sleep
+      code 700
+      wait true
+    save written
+      call peer/write
+        text <HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\nconnection: close\r\n\r\n>
+        wait true
+    fork test
+      hook test
+        call is-equal
+          read slow
+          true
+      hook hold
+        save k, code 0
+        walk test
+          down
+            call subtract
+              code 16
+              read k
+          hook test
+            call is-below
+              read k
+              code 16
+          hook step
+            call sleep
+              code 50
+              wait true
+            save written
+              call peer/write
+                text <x>
+                wait true
+            save k
+              call add
+                read k
+                code 1
+        call sleep
+          code 900
+          wait true
+      hook miss
+        save written
+          call peer/write
+            text <xxxxxxxxxxxxxxxx>
+            wait true
+    call peer/close
+      wait true
+  halt take
+    take problem
+
+# what a GET of the listener on `port` with a timeout of 2000 said: `read <hex>` from `read-exchange`, `<status>
+# <body>` from `request` (`asked` is `exchange` or `request`), or what either raised, `timeout <waited>`, `outage` or
+# `other`. A job of its own, so it catches everything
+task client-said
+  mark async
+  take port, like number
+  take asked, like text
+  like text
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call is-equal
+          read asked
+          text <request>
+      hook hold
+        save got
+          call request
+            text <GET>
+            text <http://127.0.0.1:{{port}}/>
+            text <>
+            bind timeout, code 2000
+            wait true
+        send back, text <{{got/status}} {{got/body}}>
+    save opened
+      call open-exchange
+        text <GET>
+        text <http://127.0.0.1:{{port}}/>
+        call from-byte-list
+          make list
+        bind timeout, code 2000
+        wait true
+    save got
+      call read-exchange
+        read opened
+        code 1000
+        wait true
+    save hex
+      call to-hex
+        read got
+    send back, text <read {{hex}}>
+  halt take
+    take problem
+    fork case, read problem
+      case timeout
+        send back, text <timeout {{waited}}>
+      case outage
+        send back, text <outage>
+      case absence
+        send back, text <other>
+      case excess
+        send back, text <other>
+      case exclusion
+        send back, text <other>
+      case refusal
+        send back, text <other>
+      case failure
+        send back, text <other>
+
+# what client-said answered against a listener on a drawn port, its body `slow` or not, or `unanswered` when it took
+# past 20 s. The client is the job: it runs to its first wait, the request on its way, and the server here then
+# answers it. The swift and kotlin listeners' accept, read and write block the program's one thread, so a server in a
+# job would hold it before the client ever sent
+task served-said
+  mark async
+  take slow, like boolean
+  take asked, like text
+  like text
+  save port
+    call draw-port
+  save server
+    call listen
+      read port
+      text <127.0.0.1>
+      wait true
+  save job, tick client-said(read(port), read(asked))
+  call serve
+    read server
+    read slow
+    wait true
+  save said, text <unanswered>
+  fork
+    mark unsafe
+    save said
+      call job/wait-within
+        code 20000
+        wait true
+  halt take
+    take problem
+  call server/close
+    wait true
+  send back, read said
+
+test <a body read past the deadline raises timeout from read-exchange, though each part comes in time>
+  save said
+    call served-said
+      true
+      text <exchange>
+      wait true
+  want hold
+    call is-equal
+      read said
+      text <timeout 2000>
+
+test <a body read past the deadline raises timeout from request, though each part comes in time>
+  save said
+    call served-said
+      true
+      text <request>
+      wait true
+  want hold
+    call is-equal
+      read said
+      text <timeout 2000>
+
+test <the same body sent at once is read whole by read-exchange>
+  save said
+    call served-said
+      false
+      text <exchange>
+      wait true
+  want hold
+    call is-equal
+      read said
+      text <read 78787878787878787878787878787878>
+
+test <the same body sent at once is read whole by request>
+  save said
+    call served-said
+      false
+      text <request>
+      wait true
+  want hold
+    call is-equal
+      read said
+      text <200 xxxxxxxxxxxxxxxx>
