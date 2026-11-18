@@ -1,4 +1,5 @@
-# rust child processes (std::process::Command, three piped streams, a reader thread per output stream), held by number
+# rust child processes (std::process::Command, three piped streams or all three passed through, a reader thread per
+# output stream), held by number
 # in the child-process shim. Every wait is a poll beside a timer of the program's executor, so other jobs run while one
 # waits on a child. Internal: reached only through the public process/child API.
 
@@ -18,6 +19,7 @@ task child-start
       like text
   take limit, like number
   take group, like boolean
+  take attached, like boolean
   like number
   send back
     call child-process/start
@@ -27,6 +29,7 @@ task child-start
       read environment
       read limit
       read group
+      read attached
       wait true
 
 task child-refusal
@@ -45,6 +48,17 @@ task child-next-line
     call child-process/line
       read handle
       read error
+      wait true
+
+# the next line of either stream in arrival order, after its stream's letter (`o` or `e`), or the empty text at the
+# end of both
+task child-next-any-line
+  mark async
+  take handle, like number
+  like text
+  send back
+    call child-process/any-line
+      read handle
       wait true
 
 task child-rest

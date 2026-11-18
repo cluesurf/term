@@ -38,8 +38,8 @@ load @term/make/compile/feed-compile
 load @term/make/compile/feed-mill-loads
   find feed-mine-loads
 
-dock load
-  load <node:path>, name node-path
+load @term/base/path
+  find file-name, name base-file-name
 
 # The cursor library a generated reader reads through. Every format grammar reads a cursor from `@term/mill/feed`
 # (deck/mill/code/feed.tree), so this is where `make-text-cursor`, `read-byte` and the rest come from
@@ -70,7 +70,7 @@ task feed-grammar-of
   take text, like text
   like maybe, like feed-grammar
 
-  fork test, is-unequal(node-path/basename(file), <mine.tree>)
+  fork test, is-unequal(base-file-name(file), <mine.tree>)
     hold
       back make none
   save parsed, parse(make(token-source, bind(file, file), bind(text, text)))

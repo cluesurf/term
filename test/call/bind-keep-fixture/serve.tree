@@ -1,0 +1,119 @@
+# A stand-in for term.surf, which test/call/bind-keep.tree builds for node and runs beside its test through
+# test/support/children.tree. It listens on a free port of 127.0.0.1 and says `listening <port>`, then says
+# `asked <path>` for each request before it answers. `select!` answers the token `ws-good` with its session and any
+# other with 401, or 404 for every token when BIND_KEEP_SELECT says <404>. Every other path is a login that starts,
+# answered 503 with no URL, so no browser ever opens.
+
+load @term/base/network/server
+  find start, name start-server
+  find server
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make, name make-response
+  find with-content-type
+
+load @term/base/console
+  find log
+
+load @term/base/environment
+  find variable
+
+# the port node chose for the server, which asked for port 0
+bind bound-port
+  take server, like server
+  like number
+  case node
+    text <$server.dock.address().port>
+
+# the request's authorization header, the empty text when it has none
+bind authorization-of
+  take request, like request
+  like text
+  case node
+    text <String($request.dock.headers.authorization ?? "")>
+
+task json-answer
+  take status, like number
+  take body, like text
+  like response
+
+  send back
+    call with-content-type
+      call make-response
+        read status
+        read body
+      text <application/json>
+
+# a line on standard output. A handler raises nothing, so a write that fails is let go: the test then never reads its
+# mark, and fails there
+task say
+  take line, like text
+  like void
+
+  fork
+    mark unsafe
+    call log
+      read line
+  halt take
+    take problem
+    save ignored, 0
+
+task answer
+  take request, like request
+  like response
+
+  call say
+    text <asked {request/path}>
+  fork test
+    hook test
+      call is-unequal
+        read request/path
+        text </sessions/terminal/select!>
+    hook hold
+      send back
+        call json-answer
+          code 503
+          text <\{"note":"Terminal login is not configured"\}>
+  fork test
+    hook test
+      call is-equal
+        call variable
+          text <BIND_KEEP_SELECT>
+        text <404>
+    hook hold
+      send back
+        call json-answer
+          code 404
+          text <\{"note":"refused, 404"\}>
+  fork test
+    hook test
+      call is-equal
+        call authorization-of
+          read request
+        text <Bearer ws-good>
+    hook hold
+      send back
+        call json-answer
+          code 200
+          text <\{"result":\{"name":"term bind · laptop","expires_at":"2027-10-05T00:00:00.000Z","user":\{"slug":"alice"\}\}\}>
+  send back
+    call json-answer
+      code 401
+      text <\{"note":"This token is unknown, revoked or expired"\}>
+
+task run
+  mark async
+  like text
+
+  save server
+    call start-server
+      code 0
+      text <127.0.0.1>
+      read answer
+  call log
+    text <listening {bound-port(server)}>
+  send back, text <>

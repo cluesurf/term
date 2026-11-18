@@ -116,6 +116,9 @@ load ./build-ledger
 load ./cache-store
   find hash-fields
 
+load ../check/unfolding
+  find scope-locator
+
 dock load
   load <@term/make/code/compile/cache>, name separate-cache
   load <@term/make/code/compile/stub>, name separate-stub
@@ -1326,7 +1329,8 @@ task carried-grown-to
       save run/carried-grown, add(unit, 1)
   back true
 
-# the print a locator has now, none when it stands in no unit this one reaches
+# the print a locator has now, none when it stands in no unit this one reaches. The names in scope are never a carried
+# stub's: their print is the surface of everything reached (`scope-print`)
 task carried-now
   take run, like separate-run
   take state, like unit-state
@@ -1334,6 +1338,10 @@ task carried-now
   like maybe, like text
   mark private
 
+  fork test, is-equal(locator, scope-locator())
+    hold
+      save print, scope-print(run, state)
+      back make(some, print)
   carried-grown-to(run, state/at)
   fork test, not(run/carried/has(locator))
     hold
@@ -1344,6 +1352,24 @@ task carried-now
     hold
       back make none
   back make(some, at/print)
+
+# THE PRINT OF THE NAMES IN SCOPE (item term-self-host-001-1639): what a refusal that read every name in scope depends
+# on, the surface of every unit this one reaches, each unit's fingerprint and its import name, as the memo's key holds
+# them (`key-as`). The name key holds only the definitions the unit's own names reach, so a suggestion of a name it never
+# wrote, stored under that key alone, outlived the name's rename. Its own files are the name key's already
+task scope-print
+  take run, like separate-run
+  take state, like unit-state
+  like text
+  mark private
+
+  save fields, make list
+  push(fields, <scope>)
+  push(fields, slugs-field(run, reach-sorted(run, state/at)))
+  walk state/dep-hashes
+    take one
+    push(fields, one)
+  back hash-fields(fields)
 
 # a trace as its pointer holds it: `trace:` and the locators, each deck's root a token, sorted, so a clone reads the same
 task pointer-text

@@ -32,6 +32,36 @@ const SEED = path.resolve(
 // browser native impl by the `browser` env.
 const resolve = projectResolver(SEED, 'browser')
 
+// The browser DOM docks @floating-ui/dom straight (deck/site/code/dom/native/browser/dom.tree), so the app carries that
+// import though it anchors nothing. As Term's page bundler does (deck/call/code/work/cask/page.tree `page-alias`,
+// decision 152), the bundle sends it to a stub whose members raise on first use when the package is not installed
+// where the page's modules find it
+function floatingAlias(dir: string): Record<string, string> {
+  for (let at = dir; ; at = path.dirname(at)) {
+    if (fs.existsSync(path.join(at, 'node_modules', '@floating-ui', 'dom'))) {
+      return {}
+    }
+
+    if (path.dirname(at) === at) {
+      break
+    }
+  }
+
+  const stub = path.join(dir, 'floating-ui-stub', 'dom.js')
+  fs.mkdirSync(path.dirname(stub), { recursive: true })
+  fs.writeFileSync(
+    stub,
+    [
+      `const missing = () => { throw new Error(${JSON.stringify('@floating-ui/dom is not in this bundle')}) }`,
+      ...['computePosition', 'offset', 'flip', 'shift', 'autoUpdate'].map(
+        name => `export const ${name} = missing`,
+      ),
+    ].join('\n'),
+  )
+
+  return { '@floating-ui/dom': stub }
+}
+
 // a minimal DOM stub for the headless run (a real browser supplies these natively). The compiled app calls the real
 // DOM via bind: `document.createElement(tag, opts)`, `el.setAttribute`, `parent.appendChild`, `el.addEventListener`,
 // `node.textContent = ...`. The stub implements exactly that surface.
@@ -68,7 +98,8 @@ async function main(): Promise<void> {
   )
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
-    { resolve },
+    // the browser env: the browser DOM's module-level registry calls binds that answer only for the browser
+    { resolve, env: 'browser' },
   )
   ok(
     'app compiles against the browser DOM (bind)',
@@ -113,6 +144,7 @@ async function main(): Promise<void> {
     bundle: true,
     format: 'esm',
     write: false,
+    alias: floatingAlias(dir),
   })
   const code = bundled.outputFiles[0]!.text
   ok('bundles to a single browser module', code.length > 0)

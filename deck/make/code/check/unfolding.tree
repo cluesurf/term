@@ -713,6 +713,24 @@ bind trace-replay
   case kotlin
     text <true>
 
+# THE NAMES IN SCOPE IN THE TRACE (item term-self-host-001-1639): a refusal that reads every name in scope (the
+# nearest name an unknown name or trait suggests, check/resolving.tree and check/traits.tree) depends on names the unit
+# never writes, which its name key does not hold. It tells the scope locator, and the unit's stored key then holds the
+# surface of every unit it reaches (compile/separate-units.tree `scope-print`), so a name added, renamed or gone there
+# moves the key. A stored answer keyed by the name key alone suggested a name no file defined any more
+task scope-noted
+  like boolean
+
+  save locators, make list
+  push(locators, scope-locator())
+  back trace-replay(locators)
+
+# the locator of the names in scope: no carried stub has it, since a stub's names a file and `shape` or `body`
+task scope-locator
+  like text
+
+  back <#scope#names>
+
 # a table nobody traces
 task unnoted
   take statement, like statement

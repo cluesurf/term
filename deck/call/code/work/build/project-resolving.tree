@@ -26,10 +26,6 @@ load @term/base/text
 load @term/make/package-paths
   find package-rest
 
-load ./real-paths
-  find safe-real
-  find is-within
-
 load ./tree-finding
   find resolve-tree-file
 
@@ -46,12 +42,27 @@ load @term/make/compile/runtime-prelude
 load @term/make/compile/native-env
   find native-env-of
 
+load @term/base/path
+  find join, name base-join
+  find directory, name base-directory
+
+# existsSync, realpathSync and readFileSync on node
+load @term/base/file/blocking
+  find exists, name base-exists
+  find resolve-real, name base-real
+  find read, name base-read
+
+# the one-character text of a code point, `String.fromCodePoint` on node
+load @term/base/rune
+  find rune-to-text, name base-rune-text
+
+load ./real-paths
+  find safe-real
+  find is-within
+  find resolve-under
+
 dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
   load <@term/make/code/resolve>, name resolve-module
-  # node's global scope, for `String.fromCharCode` (a `<global:globalThis>` dock is emitted renamed, traps.md)
-  load <global:global>, name host-global
 
 # a module a load reached: its real path and its text. `shadowed` is the package root's file a code root's file hid,
 # so `term lint` can say so
@@ -119,7 +130,7 @@ task make-project-resolver
     hold
       save fallback-linked, resolve-module/linkResolver(fallback-link-root)
   save root-real, safe-real(root)
-  save root-face, node-path/join(root-real, <deck.tree>)
+  save root-face, base-join(root-real, <deck.tree>)
   back make(project-resolver, bind(root, root), bind(env, env), bind(stdlib, stdlib), bind(sibling, sibling), bind(linked, linked), bind(fallback-linked, fallback-linked), bind(root-real, root-real), bind(root-face, root-face), bind(reads, make hash), bind(package-roots, make hash), bind(package-names, make hash), bind(answers, make hash))
 
 # Where a load lands, and its text, or nothing. The native-env rewrite: an import with a `{platform}` slot is tried
@@ -182,7 +193,7 @@ task shadow-or-resolve
 
   fork test, and(is-none-text(base-of(how)), is-face-native(import-path))
     hold
-      fork test, node-file/exists-sync(resolver/root-face)
+      fork test, base-exists(resolver/root-face)
         hold
           fork test, is-not-face(resolver/root-face)
             hold
@@ -314,7 +325,7 @@ task package-root-of
   take file, like text
   like text
 
-  save start, node-path/dirname(file)
+  save start, base-directory(file)
   fork test, resolver/package-roots/has(start)
     hold
       back resolver/package-roots/get(start)
@@ -325,12 +336,12 @@ task package-root-of
     hook test
       going
     hook hold
-      fork test, node-file/exists-sync(node-path/join(dir, <deck.tree>))
+      fork test, base-exists(base-join(dir, <deck.tree>))
         hold
           save found, safe-real(dir)
           save going, false
         miss
-          save up, node-path/dirname(dir)
+          save up, base-directory(dir)
           fork test, is-equal(up, dir)
             hold
               save going, false
@@ -350,7 +361,7 @@ task package-name-of
   fork test, resolver/package-names/has(dir)
     hold
       back resolver/package-names/get(dir)
-  save name, manifest-name-of(node-path/join(dir, <deck.tree>))
+  save name, manifest-name-of(base-join(dir, <deck.tree>))
   save resolver/package-names/{dir}, name
   back name
 
@@ -375,10 +386,10 @@ task read-source
 
   fork
     mark unsafe
-    save file, node-file/realpath-sync(candidate)
-    save text, node-file/read-file-sync(candidate, <utf8>)
-    save read, make(source, bind(file, file), bind(text, text))
-    back make(some, read)
+    save file, base-real(candidate)
+    save text, base-read(candidate)
+    save found, make(source, bind(file, file), bind(text, text))
+    back make(some, found)
   halt take
     take problem
     back make none
@@ -463,7 +474,7 @@ task resolve-memoized
   save key, <>
   fork test, relative
     hold
-      save key, <{node-path/dirname(from-file)}{key-gap()}{import-path}>
+      save key, <{base-directory(from-file)}{key-gap()}{import-path}>
     miss
       save key, <{package-root-of(resolver, from-file)}{key-gap()}{import-path}>
   sift base-of(how)
@@ -484,7 +495,7 @@ task key-gap
   like text
   mark private
 
-  back host-global/String/fromCharCode(0)
+  back base-rune-text(0)
 
 task resolve-uncached
   take resolver, like project-resolver
@@ -502,7 +513,7 @@ task resolve-uncached
       fork test, not(is-none-text(base-of(how)))
         hold
           back make none
-      save resolved, node-path/resolve(node-path/dirname(from-file), import-path)
+      save resolved, resolve-under(base-directory(from-file), import-path)
       # confine: the resolved file must stay within the importer's package or the project root. Anything escaping
       # both is not found, never read off the host
       save bound, package-root-of(resolver, from-file)

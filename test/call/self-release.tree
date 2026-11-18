@@ -353,7 +353,7 @@ task run-steps
   save now/server, start-oci-server()
   save now/served, true
   save now/host, now/server/host
-  save transport, http-transport(now/host, tester-credentials, make(none), make(none), make(none), make(some, 0))
+  save transport, http-transport(now/host, tester-credentials, bind(retries, make(some, 0)))
   save keypair, generate-keypair()
   ensure-publisher(transport, <cluesurf/term/name>, <@term>, keypair)
   walk make(list, version, next)

@@ -25,6 +25,10 @@ load ../support/cli
 load @term/base/test/temp
   find temp-folder
 
+load @term/call/work/cask/page
+  find floating-installed
+  find stub-text
+
 load @term/base/pattern
   find pattern
   find matches
@@ -80,6 +84,22 @@ form answers
 
 host now, make(answers, bind(done, false), bind(bundled, false), bind(artifacts, false), bind(parts, make list), bind(reason, <>))
 
+# esbuild's alias flags for a page bundled in `folder`: none when @floating-ui/dom is installed where it finds it, else
+# the stub Term's page bundler writes (deck/call/code/work/cask/page.tree, decision 152), written into `folder`. The
+# browser DOM docks the package straight, so the bundle carries its import though the app anchors nothing.
+task floating-flags
+  take folder, like text
+  like list, like text
+
+  fork test, floating-installed(folder)
+    hold
+      back make list
+  save stubs, path-join(folder, <floating-ui-stub>)
+  make-folder(stubs)
+  save stub, path-join(stubs, <dom.js>)
+  write-file(stub, stub-text())
+  back make list(<--alias:@floating-ui/dom={stub}>)
+
 task the-answers
   like answers
   mark async
@@ -95,7 +115,11 @@ task the-answers
       write-file(path-join(folder, <entry.ts>), entry-text)
       save bundle, path-join(folder, <bundle.mjs>)
       save esbuild, path-join(term-root(), <node_modules/.bin/esbuild>)
-      save made, run(esbuild, make list(path-join(folder, <entry.ts>), <--bundle>, <--format=esm>, <--outfile={bundle}>))
+      save flags, make list(path-join(folder, <entry.ts>), <--bundle>, <--format=esm>, <--outfile={bundle}>)
+      walk floating-flags(folder)
+        take flag, like text
+        flags/push(flag)
+      save made, run(esbuild, flags)
       fork test, is-equal(made/code, 0)
         hold
           save code, read-file(bundle)

@@ -1,0 +1,152 @@
+note <term bind keeps a login that works, against a stand-in for term.surf running beside the test>
+
+# Ported from test/call/bind-keep.ts (batch 0602) by item 1308, as the proof of test/support/children.tree. `term bind`
+# keeps a login that works (deck/call/code/bind.ts `keepsLogin`): a good saved token is reported and NO login starts, a
+# token term.surf refuses starts one, no saved token starts one, an API that cannot answer keeps the token, and
+# `--again` starts one whatever the token. A login that starts asks `create!`, which the stand-in answers with no URL,
+# so no browser ever opens here.
+#
+# The original served term.surf from its own process. Here the stand-in is a Term program, ./bind-keep-fixture/serve,
+# built for node and run as a child beside the test: it says the port it listens on, and `asked <path>` for each
+# request. After each `term bind` the test asks the stand-in for a mark of its own and reads its lines up to the mark,
+# so every request the bind made has been read. The original's one server switched to refusing `select!` for one case,
+# and here that case runs a second stand-in started that way.
+
+load @term/test/self
+  find run-self
+
+load ../support/children
+  find held-child
+  find start-child
+  find wait-for-line
+  find stop-child
+
+load ../support/running
+  find build-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/network/http
+  find fetch
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/list
+  find push
+  find contains, name list-contains
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find substring
+  find trim
+  find to-lower-case
+
+# a stand-in running: its child, its address, and how many marks it was asked for
+form stand-in
+  mark shared
+  link held, like held-child
+  link base, like text
+  link marks, like number
+
+# what one `term bind` said, and the paths it asked the stand-in for, in order
+form bound
+  link said, like text
+  link asked, like list, like text
+
+# the stand-in built and started, `select` (<200> or <404>) saying how it answers `select!`. Its base is <> when it
+# did not build or never said its port
+task open-stand-in
+  take select, like text
+  like stand-in
+
+  save folder, temp-folder(<bind-keep->)
+  save program, read-file(<test/call/bind-keep-fixture/serve.tree>)
+  save built, build-text(program, <typescript>, folder, <serve>)
+  save environment
+    make hash
+      save <BIND_KEEP_SELECT>, select
+  save held, start-child(built/command, <>, environment, 300000)
+  save line, wait-for-line(held, <listening >, 60000)
+  save base, <>
+  fork test, is-unequal(line, <>)
+    hold
+      save base, <http://127.0.0.1:{trim(substring(line, 10, line/length))}>
+  back make(stand-in, bind(held, held), bind(base, base), bind(marks, 0))
+
+# `term bind` with `arguments`, its home holding `token` as the saved login (<> for none), against the stand-in
+task bind-with
+  take stand, like stand-in
+  take token, like text
+  take arguments, like list, like text
+  like bound
+
+  save home, temp-folder(<term-bind->)
+  fork test, is-unequal(token, <>)
+    hold
+      make-folder(<{home}/.base/@term/code>)
+      write-file(<{home}/.base/@term/code/auth>, <{token}\n>)
+  save from, stand/held/heard/length
+  save environment
+    make hash
+      save <HOME>, home
+      save <TERM_INDEX_URL>, stand/base
+      save <TERM_TOKEN>, <>
+  save all, make list(<bind>)
+  walk arguments
+    take part, like text
+    all/push(part)
+  all/push(<--plain>)
+  all/push(<--color>)
+  all/push(<never>)
+  save result, run-self(all, <>, 120000, environment)
+  save stand/marks, add(stand/marks, 1)
+  save mark, </mark-{stand/marks}>
+  fetch(<{stand/base}{mark}>)
+  wait-for-line(stand/held, <asked {mark}>, 10000)
+  save asked, make list
+  save at, 0
+  walk stand/held/heard
+    take line, like text
+    fork test, and(not(is-below(at, from)), and(starts-with(line, <asked >), is-unequal(line, <asked {mark}>)))
+      hold
+        asked/push(substring(line, 6, line/length))
+    save at, add(at, 1)
+  back make(bound, bind(said, <{result/output}{result/error}>), bind(asked, asked))
+
+test <a working token is reported, and no login starts>
+  host stand, open-stand-in(<200>)
+  want hold, is-unequal(stand/base, <>)
+  host kept, bind-with(stand, <ws-good>, make list)
+  want hold, and(text-contains(to-lower-case(kept/said), <logged in as @alice>), not(list-contains(kept/asked, </sessions/terminal/create!>)))
+  stop-child(stand/held)
+
+test <a token term.surf refuses starts a login>
+  host stand, open-stand-in(<200>)
+  host refused, bind-with(stand, <ws-revoked>, make list)
+  want hold, and(text-contains(refused/said, <no longer works>), list-contains(refused/asked, </sessions/terminal/create!>))
+  stop-child(stand/held)
+
+test <no saved token starts a login>
+  host stand, open-stand-in(<200>)
+  host none, bind-with(stand, <>, make list)
+  want hold, and(not(list-contains(none/asked, </sessions/terminal/select!>)), list-contains(none/asked, </sessions/terminal/create!>))
+  stop-child(stand/held)
+
+test <an API that cannot answer keeps the token, and no login starts>
+  host stand, open-stand-in(<404>)
+  host unchecked, bind-with(stand, <ws-good>, make list)
+  want hold, and(text-contains(unchecked/said, <could not be checked>), not(list-contains(unchecked/asked, </sessions/terminal/create!>)))
+  stop-child(stand/held)
+
+test <--again starts a login whatever the token>
+  host stand, open-stand-in(<200>)
+  host again, bind-with(stand, <ws-good>, make list(<--again>))
+  want hold, and(not(list-contains(again/asked, </sessions/terminal/select!>)), list-contains(again/asked, </sessions/terminal/create!>))
+  stop-child(stand/held)

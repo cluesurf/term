@@ -4260,6 +4260,13 @@ task emit-closure
           fork test, and(and(closure-async, falls-off), is-unequal(fall-value, <()>))
             hold
               push(lines, fall-value)
+            miss
+              # a valued sync closure ending in a guard marks the fall-through unreachable, as a valued task does: the
+              # guard's match answers `()` where every path returned, so a serve handler whose body is a guard answered
+              # `()` for its `Response` (E0308, item term-self-host-001-1644)
+              fork test, and(and(and(not(closure-async), is-equal(closure-last, <guard>)), is-unequal(fall-kind, <>)), and(is-unequal(fall-kind, <unit>), not(rust-sees-divergence(last-statement(closure-body)))))
+                hold
+                  push(lines, <unreachable!()>)
       save st/local-names, previous-locals
       save body, join-texts(lines, < >)
       save closure-output, st/current-result

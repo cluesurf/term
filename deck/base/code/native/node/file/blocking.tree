@@ -1,5 +1,5 @@
 # node whole-path file calls that never await, over node:fs's *Sync calls. `blocking-stat` and `blocking-list` build
-# each record from one host call. `changed` is `mtimeMs`, which keeps the fraction. Internal: reached only through the
+# each record from one host call. `changed` is `mtimeMs`, which keeps the fraction, and `inode` is `ino`. Internal: reached only through the
 # public file/blocking API, which has already ruled out a missing path for read, stat, list and real. The kind and the
 # four that change the disk rule out nothing first: each answers for a path that is not there itself.
 #
@@ -86,6 +86,7 @@ task blocking-stat
       bind kind, read kind
       bind size, read stats/size
       bind changed, read stats/mtime-ms
+      bind inode, read stats/ino
 
 # the platform's own order, no `.` or `..`, each kind the entry's own with links not followed
 task blocking-list

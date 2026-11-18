@@ -57,6 +57,9 @@ load ./lean-nest
 load ./arm
   find arm-locals
 
+load ./unfolding
+  find scope-noted
+
 load ./seam
   find type-test-of
 
@@ -357,6 +360,9 @@ task unknown-name
   take at, like span
   mark private
 
+  # the suggestion, or its absence, reads every name in scope, most of them names the unit never writes: told to the
+  # trace, so the unit's stored key holds them (item term-self-host-001-1639)
+  save told, scope-noted()
   save suggestion, nearest(name, known-names(state))
   save message, <the name "{name}" is not defined>
   fork test, is-equal(suggestion, <>)

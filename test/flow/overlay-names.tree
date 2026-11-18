@@ -1,0 +1,212 @@
+note <an unsaved file refuses a find as the disk build does, and a stored suggestion follows the names it read>
+
+# Item term-self-host-001-1639 (1621's stale "did you mean"). The language server builds a document through the build
+# graph, the editor's unsaved texts over the disk. Two answers parted from `term make`:
+#   - a `find` of a name an unsaved file no longer defines read as found, because the stale finds read that file from
+#     the disk, so the document got the unknown name's suggestion of the unsaved file's names instead of the disk
+#     build's refusal. The disk build of the same texts is the want
+#   - a refusal suggesting a name the unit never writes was stored under the unit's name key, which holds none of the
+#     names the suggestion read, so a later build, that name renamed on the disk, read the old suggestion back. A
+#     second server on the same store must answer what a clean build answers
+# @term/flow's server is the subject (decision 106). The scenes depend on one another, so they run once, in the first
+# test, and are kept in `names-now`. Every text carries a line no earlier run wrote, since a unit's key is the same in
+# every clone and a store an earlier run filled would answer it.
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/list
+  find join
+
+load @term/base/text
+  find contains
+
+load @term/base/clock
+  find now, name clock-now
+
+dock load
+  load <@term/flow/code/server>, name names-server
+  load <node:fs>, name names-file
+  load <node:path>, name names-path
+
+bind names-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+bind names-new-server
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.LanguageServer()>
+
+bind names-message
+  take method, like text
+  take params, like dynamic
+  like dynamic
+  case node
+    text <(\{ jsonrpc: "2.0", method: $method, params: $params \})>
+
+bind names-uri
+  take file, like text
+  like text
+  case node
+    text <("file://" + $file)>
+
+bind names-initialize
+  take root, like text
+  like dynamic
+  case node
+    text <(\{ processId: null, rootUri: "file://" + $root, capabilities: \{\} \})>
+
+bind names-open
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ textDocument: \{ uri: "file://" + $file, languageId: "tree", version: 1, text: $text \} \})>
+
+bind names-diagnostics
+  take published, like dynamic
+  like list, like dynamic
+  case node
+    text <($published.params.diagnostics)>
+
+# what each scene answered: the messages b.tree was last published with, joined by a line end
+form names-state
+  mark shared
+  link made, like boolean
+  # a.tree unsaved, defining another name than the disk's, and the same texts all on the disk
+  link overlay, like text
+  link disk, like text
+  # a refusal suggesting a name of a.tree's, then that name renamed on the disk, then the same texts never built
+  link first, like text
+  link later, like text
+  link clean, like text
+
+host names-now, make(names-state, bind(made, false), bind(overlay, <>), bind(disk, <>), bind(first, <>), bind(later, <>), bind(clean, <>))
+
+# the messages of the last diagnostics published for `file`, the empty text for none
+task last-published
+  take out, like list, like dynamic
+  take file, like text
+  like text
+
+  save found, <>
+  walk out
+    take one, like dynamic
+    fork test, and(is-equal(one/method, <textDocument/publishDiagnostics>), is-equal(one/params/uri, names-uri(file)))
+      hold
+        save texts, like list, like text
+          make list
+        walk names-diagnostics(one)
+          take diagnostic, like dynamic
+          texts/push(diagnostic/message)
+        save found, join(texts, <\n>)
+  back found
+
+# a package of its own: its root, its code folder made. Each scene's package has a name of its own, since a unit's key
+# writes its files by their deck and two packages of one name and one text would share their stored answers
+task names-project
+  take kind, like text
+  like text
+
+  save root, names-file/realpath-sync(temp-folder(<overlay-names-{kind}->))
+  names-file/mkdir-sync(names-path/join(root, <code>), names-folder-options(0))
+  names-file/write-file-sync(names-path/join(root, <deck.tree>), <deck @test/overlay-names-{kind}\n  head \<A scratch package\>\n  mark \<0.0.0\>\n  lock mit\n>)
+  back root
+
+# a server over `root`, initialized
+task names-serving
+  take root, like text
+  like dynamic
+  mark async
+
+  save server, names-new-server(names-server)
+  save started, wait server/dispatch(names-message(<initialize>, names-initialize(root)))
+  back server
+
+# b.tree opened in a new server over `root`, after a.tree is opened with `unsaved` when it is not empty: what b.tree was
+# published with
+task names-opened
+  take root, like text
+  take unsaved, like text
+  like text
+  mark async
+
+  save server, names-serving(root)
+  fork test, is-unequal(unsaved, <>)
+    hold
+      save opened, wait server/dispatch(names-message(<textDocument/didOpen>, names-open(names-path/join(root, <code>, <a.tree>), unsaved)))
+  save b, names-path/join(root, <code>, <b.tree>)
+  save out, wait server/dispatch(names-message(<textDocument/didOpen>, names-open(b, names-file/read-file-sync(b, <utf8>))))
+  back last-published(out, b)
+
+task a-text
+  take fresh, like text
+  take name, like text
+  take other, like text
+  like text
+
+  back <{fresh}task {name}\n  take m, like text\n  like text\n  send back, read m\n\ntask {other}\n  take m, like text\n  like text\n  send back, read m\n>
+
+task names-scenes
+  like names-state
+  mark async
+
+  fork test, names-now/made
+    hold
+      back names-now
+  save names-now/made, true
+  save stamp, <{clock-now()}>
+  # an unsaved a.tree no longer defining `shout`, and then the same texts on the disk
+  save loud, <load ./a\n  find shout\n\n# {stamp}\ntask loud\n  take m, like text\n  like text\n  send back\n    call shout\n      read m\n>
+  save fresh, <# overlay {stamp}\n>
+  save open-root, names-project(<open>)
+  names-file/write-file-sync(names-path/join(open-root, <code>, <a.tree>), a-text(fresh, <shout>, <hush>))
+  names-file/write-file-sync(names-path/join(open-root, <code>, <b.tree>), loud)
+  save names-now/overlay, names-opened(open-root, a-text(fresh, <shouty>, <hush>))
+  save disk-root, names-project(<disk>)
+  names-file/write-file-sync(names-path/join(disk-root, <code>, <a.tree>), a-text(fresh, <shouty>, <hush>))
+  names-file/write-file-sync(names-path/join(disk-root, <code>, <b.tree>), loud)
+  save names-now/disk, names-opened(disk-root, <>)
+  # b.tree finds `shout` and calls `trumpex`, which nothing defines and a.tree's `trumpet` is nearest to; then a.tree's
+  # `trumpet` is renamed on the disk; then b.tree under a line of its own, which no store holds
+  save near, <# near {stamp}\n>
+  save calls, <load ./a\n  find shout\n\ntask loud\n  take m, like text\n  like text\n  send back\n    call shout\n      call trumpex\n        read m\n>
+  save near-root, names-project(<near>)
+  save a-file, names-path/join(near-root, <code>, <a.tree>)
+  save b-file, names-path/join(near-root, <code>, <b.tree>)
+  names-file/write-file-sync(a-file, a-text(near, <shout>, <trumpet>))
+  names-file/write-file-sync(b-file, <{near}{calls}>)
+  save names-now/first, names-opened(near-root, <>)
+  names-file/write-file-sync(a-file, a-text(near, <shout>, <quiet>))
+  save names-now/later, names-opened(near-root, <>)
+  names-file/write-file-sync(b-file, <# clean {stamp}\n{calls}>)
+  save names-now/clean, names-opened(near-root, <>)
+  back names-now
+
+test <an unsaved file that no longer defines a found name refuses the find>
+  save state, names-scenes()
+  want hold, contains(state/overlay, <"shout" is found in code/a.tree, which does not define it>)
+
+test <and suggests none of the unsaved file's names>
+  save state, names-scenes()
+  want hold, not(contains(state/overlay, <shouty>))
+
+test <the same texts on the disk answer the same>
+  save state, names-scenes()
+  want hold, is-equal(state/overlay, state/disk)
+
+test <a refusal suggests the nearest name of a file the unit loads>
+  save state, names-scenes()
+  want hold, contains(state/first, <did you mean "trumpet"?>)
+
+test <once that name is renamed on the disk, a new server on the same store no longer suggests it>
+  save state, names-scenes()
+  want hold, not(contains(state/later, <trumpet>))
+
+test <and answers what a build no store holds answers>
+  save state, names-scenes()
+  want hold, is-equal(state/later, state/clean)

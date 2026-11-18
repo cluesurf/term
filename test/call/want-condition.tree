@@ -1,0 +1,111 @@
+note <a want's condition is read by the parser into a comparison's two values or an and's parts, cut where its commas are>
+
+# work/preprocess/condition-reading.tree, item term-self-host-001-1657. A token's column counts UTF-16 units, so a
+# value holding a character past U+FFFF is cut at the same place the original's `slice` cut it. Each answer below is
+# what the node reading answered before the port.
+
+load @term/base/list
+  find join
+
+load @term/base/text
+  find split
+
+load @term/call/work/preprocess/condition-reading
+  find source-row
+  find comparison
+  find conjuncts
+  find save-of
+
+# one row per line of `text`, the first on line `from`
+task rows-of
+  take text, like text
+  take from, like number
+  like list, like source-row
+
+  save rows, make list
+  save at, from
+  walk split(text, <\n>)
+    take line, like text
+    rows/push(make(source-row, bind(text, line), bind(from, at)))
+    save at, add(at, 1)
+  back rows
+
+# rows as `<from>:<text>`, `;` between
+task rows-said
+  take rows, like list, like source-row
+  like text
+
+  save said, make list
+  walk rows
+    take row, like source-row
+    said/push(<{row/from}:{row/text}>)
+  back join(said, <;>)
+
+task yes-no
+  take found, like boolean
+  like text
+
+  fork test, found
+    hold
+      back <yes>
+  back <no>
+
+# a comparison read: `found|head|left|right`
+task compared
+  take text, like text
+  take from, like number
+  like text
+
+  save read, comparison(rows-of(text, from))
+  back <{yes-no(read/found)}|{read/head}|{rows-said(read/left)}|{rows-said(read/right)}>
+
+# an and read: `found|part|part...`
+task anded
+  take text, like text
+  take from, like number
+  like text
+
+  save read, conjuncts(rows-of(text, from))
+  save said, make list
+  said/push(yes-no(read/found))
+  walk read/parts
+    take part, like list, like source-row
+    said/push(rows-said(part))
+  back join(said, <|>)
+
+test <an inline comparison gives its two values on the want's line>
+  want hold, is-equal(compared(<is-equal double(0), 1>, 4), <yes|is-equal|4:double(0)|4:1>)
+  want hold, is-equal(compared(<is-above(a, b)>, 0), <yes|is-above|0:a|0:b>)
+
+test <a value past U+FFFF is cut where its comma is>
+  want hold, is-equal(compared(<is-equal f(\<𝄞\>), \<𝄞ü\>>, 0), <yes|is-equal|0:f(\<𝄞\>)|0:\<𝄞ü\>>)
+  want hold, is-equal(compared(<is-below(size(\<𝄞𝄞\>), 3)>, 2), <yes|is-below|2:size(\<𝄞𝄞\>)|2:3>)
+  want hold, is-equal(compared(<is-equal(\<a𝄞b\>, \<𝄞\>)>, 0), <yes|is-equal|0:\<a𝄞b\>|0:\<𝄞\>>)
+
+test <a stacked comparison gives each value's own line at its own indent>
+  want hold, is-equal(compared(<    is-equal\n      double(0)\n      1>, 10), <yes|is-equal|11:double(0)|12:1>)
+  want hold, is-equal(compared(<call is-equal\n  a\n  b>, 0), <yes|call is-equal|1:a|2:b>)
+  want hold, is-equal(compared(<call is-equal, a, b>, 0), <no|||>)
+  want hold, is-equal(compared(<is-equal size(\<𝄞\>)\n  1>, 0), <no|||>)
+
+test <what is no comparison of two values is not found>
+  want hold, is-equal(compared(<is-equal a>, 0), <no|||>)
+  want hold, is-equal(compared(<hold a, b>, 0), <no|||>)
+  want hold, is-equal(compared(<>, 0), <no|||>)
+
+test <an and gives each part, inline, wrapped or stacked>
+  want hold, is-equal(anded(<and(is-equal(a, 1), b)>, 0), <yes|0:is-equal(a, 1)|0:b>)
+  want hold, is-equal(anded(<and x, y, z>, 3), <yes|3:x|3:y|3:z>)
+  want hold, is-equal(anded(<and\n  is-equal(a, 1)\n  hold\n    deeper>, 1), <yes|2:is-equal(a, 1)|3:hold;4:  deeper>)
+
+test <a comma inside a text past U+FFFF does not cut a part>
+  want hold, is-equal(anded(<and(contains(\<𝄞,\>, \<,\>), b)>, 0), <yes|0:contains(\<𝄞,\>, \<,\>)|0:b>)
+
+test <an and of one part, or a part shallower than one level in, is not found>
+  want hold, is-equal(anded(<and(a)>, 0), <no>)
+  want hold, is-equal(anded(<and\n a\n  b>, 0), <no>)
+  want hold, is-equal(anded(<call and\n  a\n  b>, 0), <yes|1:a|2:b>)
+
+test <a save of a value is inline on the want's own line, else stacked>
+  want hold, is-equal(rows-said(save-of(<got>, rows-of(<double(0)>, 4), 4)), <4:  save got, double(0)>)
+  want hold, is-equal(rows-said(save-of(<got>, rows-of(<double(0)>, 5), 4)), <4:  save got;5:    double(0)>)

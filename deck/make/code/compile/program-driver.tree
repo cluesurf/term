@@ -186,6 +186,9 @@ form program-input
   # the render runtime's own file, `<>` when the build found none
   link render-file, like text
   link cover, like maybe, like cover-target
+  # every module the build walked, with the text it read (the overlay's for a file the editor holds unsaved): the stale
+  # finds read a module as the walk read it (compile/program-gate.tree `stale-finds-of`, item term-self-host-001-1639)
+  link sources, like list, like token-source
 
 # WHAT THE DRIVER READS THAT THE RUN CANNOT HOLD AS TERM READS IT, filled by the face
 form driver-given
@@ -661,6 +664,7 @@ task run-program
       bind expose, input/expose
       bind twins, input/twins
       bind choices, input/choices
+      bind sources, input/sources
   # A CONSOLE ON RUST: the entry's command routes lowered to the table, the match and the run, before the gate binds a
   # name (decision 138 rules 2 and 3, item term-self-host-001-1121). Node keeps its dock-route records (item 1122)
   fork test, is-equal(input/env, <rust>)
@@ -1166,6 +1170,7 @@ task build-graph
       bind emit-only, make list
       bind render-file, render-file
       bind cover, graph/cover
+      bind sources, graph/sources
   save answer, run-program(input, given)
 
   sift answer/refused

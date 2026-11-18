@@ -566,15 +566,14 @@ task write-samples
   save host
     call samples-text-of
       read server/host
+  save no-retries
+    make some
+      bind value, code 0
   save transport
     call http-transport
       read host
       call samples-credentials
-      make none
-      make none
-      make none
-      make some
-        bind value, code 0
+      bind retries, read no-retries
   save keypair
     call generate-keypair
   call ensure-publisher

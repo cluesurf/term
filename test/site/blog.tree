@@ -1,0 +1,213 @@
+note <the blog compiles onto the browser DOM, bundles to one module, mounts its form and list, and adds posts>
+
+# Ported from blog.ts by statement (item term-self-host-001-1647), one test per `ok` in its order. The blog is
+# deck/site/test/site/face/blog.tree: it compiles through the project under the browser env, as the original compiled it,
+# and its emitted TypeScript is read for the real DOM calls. That TypeScript and an entry mounting the blog on
+# `document.body` are bundled by esbuild's command line, and the bundle and an index.html are written to
+# deck/site/host/web-blog, the runnable browser artifacts. The browser DOM docks @floating-ui/dom straight, so the bundle
+# carries its import though the blog anchors nothing: as Term's own page bundler does (deck/call/code/work/cask/page.tree,
+# decision 152), the package goes to a stub whose members raise on first use when it is not installed where the page's
+# modules find it. The original ran the bundle against a DOM stub of its own JavaScript. Here the same blog is mounted on
+# the in-memory dom instead (its dom and view modules pinned to `native/memory`, as test/zone/browser.tree pins them),
+# built and run once on node through test/support/running: its run task fills the two fields, clicks the button twice,
+# and answers what a person would see, as the original read it off its stub.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-rewrite
+  find project-path
+  find file-text
+
+load ../support/running
+  find run-text
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/call/work/cask/page
+  find floating-installed
+  find stub-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+  find trim
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/path
+  find join, name path-join
+
+host blog-file, <deck/site/test/site/face/blog.tree>
+
+# where the runnable browser artifacts go, as the original wrote them
+host web, <deck/site/host/web-blog>
+
+host element-shape, make pattern, <<\.createElement\(>>
+host append-shape, make pattern, <<\.appendChild\(>>
+host shadow-shape, make pattern, <<const document = \w>>
+
+# the view takes the posts to start from and the store to hand each new post to: in-memory here, so an empty list and a
+# store that keeps nothing. Inside a cask the store is the database over the bridge
+host entry-text, <import \{ blog \} from './app'\nblog(\{ handle: document.body \}, [], async () =\> \{\})\n>
+
+host page-text, <\<!doctype html\>\n\<html\>\n  \<head\>\<meta charset="utf-8" /\>\<title\>Seed blog\</title\>\</head\>\n  \<body\>\n    \<script type="module" src="./app.js"\>\</script\>\n  \</body\>\n\</html\>\n>
+
+# the blog mounted on a body of the in-memory dom, then two posts added through its fields and button. It answers, `|`
+# apart: the root's tag; the two fields' tags; the button's tag and text; the list's tag and length; the length after one
+# post; the first post's tags; its heading and body; the two fields after adding; the length after two; the first post's
+# heading; the second post's heading and body
+host program, <load @term/site/test/site/face/blog\n  find blog\n\nload @term/site/test/site/back/model\n  find post\n\nload @term/site/dom/dom\n  find view\n\nload @term/site/dom/native/memory/dom\n  find create-element\n  find child-at\n  find child-count\n  find fire\n  find get-value\n  find set-value\n\nload @term/base/clock\n  find sleep\n\nload @term/base/list\n  find list\n  find push\n  find join\n\ntask keep\n  take item, like post\n  mark async\n\ntask tag-of\n  take node, like view\n  like text\n\n  back node/handle/tag\n\n# the element children of a node, its text nodes left out, as a browser's `children`\ntask elements-of\n  take node, like view\n  like list, like view\n\n  save found, make list\n  save at, 0\n  walk test\n    hook test, is-below(at, child-count(node))\n    hook hold\n      save one, child-at(node, at)\n      fork test, is-unequal(tag-of(one), \<\>)\n        hold\n          found/push(one)\n      save at, add(at, 1)\n  back found\n\n# the rendered text of a node: its first child node's, a text node\ntask text-of\n  take node, like view\n  like text\n\n  fork test, is-above(child-count(node), 0)\n    hold\n      back child-at(node, 0)/handle/text\n  back \<\>\n\n# a post as the list holds it: a `seed-fragment` item node keeps the post's stack as its first element\ntask card-of\n  take item, like view\n  like view\n\n  fork test, is-equal(tag-of(item), \<seed-fragment\>)\n    hold\n      back elements-of(item)/0\n  back item\n\ntask run\n  like text\n  mark async\n\n  save said, make list\n  save body, create-element(\<body\>)\n  save initial, make list\n  blog(body, initial, keep)\n  save root, elements-of(body)/0\n  said/push(tag-of(root))\n  save parts, elements-of(root)\n  save title-field, parts/0\n  save body-field, parts/1\n  save button, parts/2\n  save posts, parts/3\n  said/push(tag-of(title-field))\n  said/push(tag-of(body-field))\n  said/push(\<\{tag-of(button)\} \{text-of(button)\}\>)\n  said/push(\<\{tag-of(posts)\} \{elements-of(posts)/length\}\>)\n  set-value(title-field, \<First Post\>)\n  set-value(body-field, \<Hello world\>)\n  fire(button, \<click\>)\n  sleep(0)\n  said/push(\<\{elements-of(posts)/length\}\>)\n  save first, card-of(elements-of(posts)/0)\n  save inside, elements-of(first)\n  save tags, make list\n  walk inside\n    take one, like view\n    tags/push(tag-of(one))\n  said/push(join(tags, \<,\>))\n  said/push(text-of(inside/0))\n  said/push(text-of(inside/1))\n  said/push(\<\{get-value(title-field)\},\{get-value(body-field)\}\>)\n  set-value(title-field, \<Second Post\>)\n  set-value(body-field, \<More text\>)\n  fire(button, \<click\>)\n  sleep(0)\n  save now, elements-of(posts)\n  said/push(\<\{now/length\}\>)\n  said/push(text-of(elements-of(card-of(now/0))/0))\n  save second, elements-of(card-of(now/1))\n  said/push(\<\{text-of(second/0)\},\{text-of(second/1)\}\>)\n  back join(said, \<|\>)\n>
+
+host memory-choice, make(compile-choice, bind(file, <blog-run.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|view)$>>), bind(into, <native/memory/$1>)))))
+
+host out, compile-text(file-text(blog-file), make(compile-choice, bind(file, project-path(<.>, blog-file)), bind(project, <.>), bind(project-env, <browser>), bind(env, <browser>)))
+
+# the answers, made once: `bundled` whether esbuild wrote a bundle that is not empty, `artifacts` whether both browser
+# files are there, `parts` what the in-memory run answered, `reason` why a step did not go
+form answers
+  mark shared
+  link done, like boolean
+  link bundled, like boolean
+  link artifacts, like boolean
+  link parts, like list, like text
+  link reason, like text
+
+host now, make(answers, bind(done, false), bind(bundled, false), bind(artifacts, false), bind(parts, make list), bind(reason, <>))
+
+# esbuild's alias flags for a page bundled in `folder`: none when @floating-ui/dom is installed where it finds it, else
+# the stub Term's page bundler writes, written into `folder`
+task floating-flags
+  take folder, like text
+  like list, like text
+
+  fork test, floating-installed(folder)
+    hold
+      back make list
+  save stubs, path-join(folder, <floating-ui-stub>)
+  make-folder(stubs)
+  save stub, path-join(stubs, <dom.js>)
+  write-file(stub, stub-text())
+  back make list(<--alias:@floating-ui/dom={stub}>)
+
+task the-answers
+  like answers
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  host folder, temp-folder(<term-site-blog->)
+  fork test, out/ok
+    hold
+      # lay out the bundle inputs: the compiled blog and an entry that mounts it onto the body
+      write-file(path-join(folder, <app.ts>), out/emitted)
+      write-file(path-join(folder, <entry.ts>), entry-text)
+      save bundle, path-join(folder, <bundle.mjs>)
+      save esbuild, path-join(term-root(), <node_modules/.bin/esbuild>)
+      save flags, make list(path-join(folder, <entry.ts>), <--bundle>, <--format=esm>, <--outfile={bundle}>)
+      walk floating-flags(folder)
+        take flag, like text
+        flags/push(flag)
+      save made, run(esbuild, flags)
+      fork test, is-equal(made/code, 0)
+        hold
+          save code, read-file(bundle)
+          save now/bundled, is-above(code/length, 0)
+          make-folder(web)
+          write-file(path-join(web, <app.js>), code)
+          write-file(path-join(web, <index.html>), page-text)
+          save now/artifacts, and(file-exists(path-join(web, <index.html>)), file-exists(path-join(web, <app.js>)))
+        miss
+          save now/reason, <esbuild exit {made/code}: {made/error}>
+  host ran, run-text(program, <typescript>, folder, <blog>, memory-choice)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save now/parts, text-split(trim(ran/output), <|>)
+    miss
+      save now/reason, <{ran/state} at {ran/stage}: {ran/reason}>
+  save now/done, true
+  back now
+
+# what the in-memory run answered at `at`, <> when it did not run
+task part-at
+  take at, like number
+  like text
+  mark async
+
+  save parts, the-answers()/parts
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+test <blog compiles against the browser DOM (bind)>
+  want hold, out/ok
+
+test <emits native createElement/appendChild>
+  want hold, and(matches(element-shape, out/emitted), matches(append-shape, out/emitted))
+
+test <does not shadow the document global>
+  want hold, not(matches(shadow-shape, out/emitted))
+
+test <bundles to a single browser module>
+  want hold, the-answers()/bundled
+
+test <mounts a root element>
+  want hold, is-equal(part-at(0), <div>)
+
+test <renders a title input>
+  want hold, is-equal(part-at(1), <input>)
+
+test <renders a body input>
+  want hold, is-equal(part-at(2), <input>)
+
+test <renders an Add button>
+  want hold, is-equal(part-at(3), <button Add post>)
+
+test <post list starts empty>
+  want hold, is-equal(part-at(4), <div 0>)
+
+test <one post after adding>
+  want hold, is-equal(part-at(5), <1>)
+
+# a post is a `stack` component, and the stack's `text`s are an h2 (level 2) and a span
+test <post renders heading + body>
+  want hold, is-equal(part-at(6), <h2,span>)
+
+test <post heading is the title>
+  want hold, is-equal(part-at(7), <First Post>)
+
+test <post body is the content>
+  want hold, is-equal(part-at(8), <Hello world>)
+
+test <inputs cleared after adding>
+  want hold, is-equal(part-at(9), <,>)
+
+test <two posts after adding again>
+  want hold, is-equal(part-at(10), <2>)
+
+test <first post unchanged>
+  want hold, is-equal(part-at(11), <First Post>)
+
+test <second post rendered>
+  want hold, is-equal(part-at(12), <Second Post,More text>)
+
+test <emits browser artifacts (index.html + app.js)>
+  want hold, the-answers()/artifacts

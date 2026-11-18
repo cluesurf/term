@@ -872,6 +872,9 @@ export function compileProgram(
   emitOnly?: Set<string>,
   renderFile?: string,
   cover?: CoverTarget,
+  // every module the build walked, with the text it read (an unsaved file's for the language server), which the stale
+  // finds read before the disk (compile/program-gate.tree `stale-finds-of`, item term-self-host-001-1639)
+  sources?: { file: string; text: string }[],
 ): CompileResult {
   const answer = runProgramPort(
     {
@@ -902,6 +905,7 @@ export function compileProgram(
       emitOnly: [...(emitOnly ?? [])],
       renderFile: renderFile ?? '',
       cover: cover ? { form: 'some', value: cover } : { form: 'none' },
+      sources: sources ?? [],
     } as never,
     givenOf(deckOf, modulesUrl, emitOnly),
   )

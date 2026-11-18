@@ -1,0 +1,148 @@
+note <A named argument may follow `need false` maybe parameters the call leaves out: each one left out is none, on every backend, as a trailing one is. The checker refused it until item term-self-host-001-1605 (`"score" needs "loud", which this call leaves out`). Held by `pnpm term:base-gate`.>
+
+load @term/base/code/maybe
+  find maybe
+  find is-some
+  find unwrap-or
+
+# the weight when the maybe holds a value, else 0
+task weight-of
+  take given
+    like maybe, like number
+  take weight, like number
+  like number
+
+  save x, 0
+  fork test
+    hook test
+      call is-some
+        read given
+    hook hold
+      save x, read weight
+  send back, read x
+
+# which maybes arrived: a thousand for loud, a hundred for count, ten for tail, plus the count and the tail
+task score
+  take label, like text
+  take loud
+    like maybe, like boolean
+    need false
+  take count
+    like maybe, like number
+    need false
+  take tail
+    like maybe, like number
+    need false
+  like number
+
+  save total, 0
+  fork test
+    hook test
+      call is-some
+        read loud
+    hook hold
+      save total, 1000
+  save total
+    call add
+      read total
+      call add
+        call weight-of
+          read count
+          code 100
+        call weight-of
+          read tail
+          code 10
+  send back
+    call add
+      read total
+      call add
+        call unwrap-or
+          read count
+          code 0
+        call unwrap-or
+          read tail
+          code 0
+
+# only the last, by name: loud and count left out before it
+task late-tail
+  like number
+
+  save three
+    make some
+      bind value, code 3
+  send back
+    call score
+      text <x>
+      bind tail, read three
+
+# the middle one by name: loud left out before it, tail after it
+task middle-count
+  like number
+
+  save four
+    make some
+      bind value, code 4
+  send back
+    call score
+      text <x>
+      bind count, read four
+
+# the first and the last by name: count left out between them
+task loud-and-tail
+  like number
+
+  save yes
+    make some
+      bind value, true
+  save five
+    make some
+      bind value, code 5
+  send back
+    call score
+      text <x>
+      bind loud, read yes
+      bind tail, read five
+
+# every one by position, the control
+task all-given
+  like number
+
+  save yes
+    make some
+      bind value, true
+  save two
+    make some
+      bind value, code 2
+  save one
+    make some
+      bind value, code 1
+  send back
+    call score
+      text <x>
+      read yes
+      read two
+      read one
+
+test <a late named maybe leaves the two before it none>
+  want hold
+    call is-equal
+      call late-tail
+      code 13
+
+test <a named maybe in the middle leaves the one before it none and the one after it none>
+  want hold
+    call is-equal
+      call middle-count
+      code 104
+
+test <a maybe left out between two named ones is none>
+  want hold
+    call is-equal
+      call loud-and-tail
+      code 1015
+
+test <every maybe given by position arrives>
+  want hold
+    call is-equal
+      call all-given
+      code 1113

@@ -9,8 +9,9 @@
 load @term/call/draft-mark
   find declares-draft, name marks-draft
 
-dock load
-  load <node:fs>, name node-file
+# the whole file as text, node's readFileSync on node: it raises for a file that cannot be read
+load @term/base/file/blocking
+  find read, name base-read
 
 # does this text shelve its file?
 task declares-draft
@@ -26,7 +27,7 @@ task is-draft-tree
 
   fork
     mark unsafe
-    save text, node-file/read-file-sync(file, <utf8>)
+    save text, base-read(file)
     back marks-draft(text)
   halt take
     take error

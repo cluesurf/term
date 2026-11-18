@@ -27,8 +27,15 @@ load ./temp
 load ./compiling
   find compile-outcome
 
+load @term/call/work/cask/page
+  find floating-installed
+  find stub-text
+
 load @term/base/environment
   find variable
+
+load @term/base/file/directory
+  find make, name make-folder
 
 load @term/base/file
   find exists, name file-exists
@@ -142,14 +149,45 @@ bind browsing-said
   case node
     text <String($problem?.message ?? $problem).split(String.fromCharCode(10))[0].slice(0, 160)>
 
-# host native: the script esbuild makes of an entry file, one iife for the browser
+# host native: the script esbuild makes of an entry file, one iife for the browser, with esbuild's `alias`
 bind browsing-bundled
   take bundler, like dynamic
   take entry, like text
+  take alias, like dynamic
   like text
   mark async
   case node
-    text <<(await $bundler.build({ entryPoints: [$entry], bundle: true, write: false, format: "iife", platform: "browser", logLevel: "silent" })).outputFiles[0].text>>
+    text <<(await $bundler.build({ entryPoints: [$entry], bundle: true, write: false, format: "iife", platform: "browser", logLevel: "silent", alias: $alias })).outputFiles[0].text>>
+
+# esbuild's alias sending @floating-ui/dom to the stub file
+bind browsing-stub-alias
+  take stub, like text
+  like dynamic
+  case node
+    text <(\{ "@floating-ui/dom": $stub \})>
+
+# no alias: esbuild resolves every package itself
+bind browsing-no-alias
+  like dynamic
+  case node
+    text <(\{\})>
+
+# The browser DOM docks @floating-ui/dom straight (deck/site/code/dom/native/browser/dom.tree), so a page carries that
+# import though it anchors nothing. As Term's page bundler does (deck/call/code/work/cask/page.tree `page-alias`,
+# decision 152), a page bundled in `folder` sends it to the stub page.tree writes, whose members raise on first use,
+# when the package is not installed where the page's modules find it
+task browsing-alias
+  take folder, like text
+  like dynamic
+
+  fork test, floating-installed(folder)
+    hold
+      back browsing-no-alias()
+  save stubs, <{folder}/floating-ui-stub>
+  make-folder(stubs)
+  save stub, <{stubs}/dom.js>
+  write-file(stub, stub-text())
+  back browsing-stub-alias(stub)
 
 # host native: a node server on 127.0.0.1 at a port the system picks, answering /app.js with the script and every other
 # path with the page. unref'd, so a suite that raises before close-browser still ends
@@ -253,7 +291,7 @@ task browser-script
   save folder, temp-folder(<term-browsing->)
   save entry, <{folder}/page.ts>
   write-file(entry, <{prelude}\n{outcome/emitted}\n{harness}>)
-  back browsing-bundled(browsing-bundler, entry)
+  back browsing-bundled(browsing-bundler, entry, browsing-alias(folder))
 
 # ---- the browser ----
 

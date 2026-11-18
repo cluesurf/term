@@ -20,9 +20,18 @@ load ../small/manifest-mark
   find manifest-mark-of
   find manifest-line-of
 
-dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
+load @term/base/path
+  find join, name base-join
+  find directory, name base-directory
+
+# existsSync on node
+load @term/base/file/blocking
+  find exists, name base-exists
+
+# node's path.resolve, made absolute against the working directory
+load ./real-paths
+  find resolve-here
+  find resolve-under
 
 # where a deck is: its declared name, the directory its manifest sits in, and `mark`, the version a console the
 # compiler lowers from a file of this directory answers `--version` with (term/compiler decision 018): the mark of the
@@ -60,13 +69,13 @@ task line-folder-at
   fork test, not(finder/lines/has(at))
     hold
       save named, <>
-      save manifest-path, node-path/join(at, <deck.tree>)
-      fork test, node-file/exists-sync(manifest-path)
+      save manifest-path, base-join(at, <deck.tree>)
+      fork test, base-exists(manifest-path)
         hold
           save written, manifest-line-of(manifest-path)
           fork test, is-unequal(written, <>)
             hold
-              save named, node-path/resolve(at, written)
+              save named, resolve-under(at, written)
       save finder/lines/{at}, named
   back finder/lines/get(at)
 
@@ -82,7 +91,7 @@ task console-mark-at
   mark private
 
   # absolute, as a `line` is resolved
-  save target, node-path/resolve(dir)
+  save target, resolve-here(dir)
   save at, target
   save going, true
   walk test
@@ -91,8 +100,8 @@ task console-mark-at
     hook hold
       fork test, is-equal(line-folder-at(finder, at), target)
         hold
-          back mark-at(finder, at, node-path/join(at, <deck.tree>))
-      save parent, node-path/dirname(at)
+          back mark-at(finder, at, base-join(at, <deck.tree>))
+      save parent, base-directory(at)
       fork test, is-equal(parent, at)
         hold
           save going, false
@@ -140,7 +149,7 @@ task find-deck
   take file, like text
   like maybe, like deck-place
 
-  save dir, node-path/dirname(file)
+  save dir, base-directory(file)
   fork test, finder/asked/has(dir)
     hold
       fork test, finder/asked/get(dir)
@@ -155,8 +164,8 @@ task find-deck
     hook test
       going
     hook hold
-      save manifest-path, node-path/join(at, <deck.tree>)
-      fork test, node-file/exists-sync(manifest-path)
+      save manifest-path, base-join(at, <deck.tree>)
+      fork test, base-exists(manifest-path)
         hold
           sift manifest-name-at(manifest-path)
             case some
@@ -168,7 +177,7 @@ task find-deck
               save nothing, 0
       fork test, going
         hold
-          save parent, node-path/dirname(at)
+          save parent, base-directory(at)
           fork test, is-equal(parent, at)
             hold
               save going, false

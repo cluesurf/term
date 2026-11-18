@@ -16,12 +16,26 @@ load @term/base/text
 load ./shelving
   find is-draft-tree
 
-dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
+load @term/base/list
+  find sort, name base-sort
 
-form listing-ask
-  link with-file-types, like boolean
+# by code point, on every backend
+load @term/base/ordering
+  find from-texts, name base-text-order
+
+load @term/base/path
+  find join, name base-join
+
+# existsSync, statSync and readdirSync with the entries' types on node
+load @term/base/file/blocking
+  find exists, name base-exists
+  find stat, name base-stat
+  find list, name base-entries
+  find path-entry
+
+# node's path.resolve, made absolute against the working directory
+load ./real-paths
+  find resolve-under
 
 # `link` is where `term link` puts a DEPENDENCY's source, and walking into it formats, lints and times another
 # package's files: the three `deck/zone/link/@term/base/...` entries in `term form deck --check` were @term/base's own
@@ -41,14 +55,15 @@ task kind-at
 
   fork
     mark unsafe
-    save stat, node-file/stat-sync(target)
-    fork test, stat/is-file()
-      hold
+    save stat, base-stat(target)
+    save kind, stat/kind
+    sift kind
+      case file
         back 1
-    fork test, stat/is-directory()
-      hold
+      case directory
         back 2
-    back 3
+      miss
+        back 3
   halt take
     take error
     back 0
@@ -73,16 +88,16 @@ task walk-target
     hold
       back found
   # a `draft.tree` shelves this directory and everything under it, in one place instead of per file
-  fork test, node-file/exists-sync(node-path/join(target, <draft.tree>))
+  fork test, base-exists(base-join(target, <draft.tree>))
     hold
       back found
-  walk node-file/readdir-sync(target, make(listing-ask, bind(with-file-types, true)))
+  walk base-entries(target)
     take entry
-    save name, entry-name(entry)
+    save name, entry/name
     fork test, and(entry-is-folder(entry), is-skipped-folder(name))
       hold
         turn next
-    walk walk-target(node-path/join(target, name), false)
+    walk walk-target(base-join(target, name), false)
       take inner
       found/push(inner)
   back found
@@ -94,27 +109,27 @@ task ends-with-tree
 
   back ends-with(file, <.tree>)
 
-task entry-name
-  take entry, like dynamic
-  like text
-  mark private
-
-  back entry/name
-
+# a folder entry's own kind, a link not followed (node's Dirent `isDirectory`)
 task entry-is-folder
-  take entry, like dynamic
+  take entry, like path-entry
   like boolean
   mark private
 
-  back entry/is-directory()
+  save kind, entry/kind
+  sift kind
+    case directory
+      back true
+    miss
+      back false
 
-# the host's own sort, by UTF-16 unit, as the TypeScript sorted
+# sorted by code point, the same order on every backend (the TypeScript sorted by UTF-16 unit, which differs only
+# where a character past U+FFFF meets one from U+E000 to U+FFFF)
 task host-sorted
-  take files, like dynamic
+  take files, like list, like text
   like list, like text
   mark private
 
-  back files/sort()
+  back base-sort(files, base-text-order)
 
 # Collect the `.tree` files the given paths name, each resolved against the root, or walk the root when none is given
 task collect-tree-files
@@ -129,7 +144,7 @@ task collect-tree-files
     hold
       walk paths
         take one
-        targets/push(node-path/resolve(root, one))
+        targets/push(resolve-under(root, one))
     miss
       targets/push(root)
   save found, make list

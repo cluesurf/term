@@ -37,6 +37,20 @@ mod blocking {
         seconds as f64 * 1000.0 + nanoseconds as f64 / 1e6
     }
 
+    // the inode number as node's `ino` holds it: the 64-bit number rounded to the nearest double (`as` rounds to the
+    // nearest, ties to even, as node's own conversion does). Zero where the system has no inode
+    #[cfg(unix)]
+    fn inode(meta: &std::fs::Metadata) -> f64 {
+        use std::os::unix::fs::MetadataExt;
+
+        meta.ino() as f64
+    }
+
+    #[cfg(not(unix))]
+    fn inode(_meta: &std::fs::Metadata) -> f64 {
+        0.0
+    }
+
     // open(2) is the `open` step and the reads the `read` step, as node's readFileSync names them: a folder opens and
     // its read is refused
     pub fn read_path(path: String) -> Vec<String> {
@@ -76,11 +90,13 @@ mod blocking {
                 },
                 size: meta.len() as i64,
                 changed: moment(meta.modified()),
+                inode: inode(&meta),
             },
             Err(_) => StatRaw {
                 kind: "other".to_string(),
                 size: 0,
                 changed: 0.0,
+                inode: 0.0,
             },
         }
     }

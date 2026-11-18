@@ -38,6 +38,10 @@ load ./explain-store
   find recall-explain
   find remember-explain
 
+# what compile/separate.ts hands `remember`, the compiler's own form
+load @term/make/compile/explain
+  find unit-inputs
+
 # compile/separate.ts `UnitExplain`: why each unit was built, and the inputs it was last built from
 form explain-face
   link reasons, like hash, like text, like list, like text
@@ -174,7 +178,7 @@ task face-explain-store
   save remember
     task
       take id, like text
-      take inputs, like dynamic
+      take inputs, like unit-inputs
       like void
       remember-explain(store, id, inputs)
   back make(explain-face, bind(reasons, store/reasons), bind(recall, recall), bind(remember, remember))

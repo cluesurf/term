@@ -384,6 +384,12 @@ task defined-names-of
     save file, file-of(one)
     sift one
       case function
+        # a private task is no value another module may import: its module never exports it, so a local of the same
+        # name in another module (rust-assemble's `save cut`, parser/diagnostic's private `cut`) imported it and tsc
+        # refused the import (TS2459, item term-self-host-001-1674). As separate-units `exported-of` reads it
+        fork test, one/private
+          hold
+            turn next
         fork test, and(has-stub-export(one), is-unequal(read(stub-export), name))
           hold
             save exported/{name}, read(stub-export)

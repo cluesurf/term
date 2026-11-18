@@ -551,6 +551,24 @@ test <OCI transport: never sends a credential to a plain http registry that is n
   want hold, text-contains(has-refusal(signed, ask), <refusing to send credentials>)
   want hold, is-equal(token-asks(got/server), asked-before)
 
+# a registry on loopback whose challenge names a plain http token realm on another host (audit 0145 round 2, item
+# 1669): the realm is 0.0.0.0 at the registry's own port, which reaches this machine's listener but is no loopback
+# name, so it stands in for a realm across the network. That the registry is loopback never makes the realm safe: the
+# transport refuses before the realm is asked, with a credential and without one
+test <OCI transport: never sends a credential to a plain http token realm off loopback, though the registry is on loopback>
+  save server, start-oci-server(<tester>, <secret>, true, 1000, <0.0.0.0>)
+  save ask, record(make(list, <repository>, <t/a>, <digest>, transport-face/sha256Digest(bytes-of(<small blob>))))
+  save signed, transport-face/httpTransport(record(make(list, <host>, server/host, <credentials>, tester, <retries>, 0)))
+  save signed-said, has-refusal(signed, ask)
+  save anonymous, transport-face/httpTransport(record(make(list, <host>, server/host, <retries>, 0)))
+  save anonymous-said, has-refusal(anonymous, ask)
+  save asked, token-asks(server)
+  close-oci-server(server)
+  want hold, text-contains(signed-said, <token realm http://0.0.0.0:>)
+  want hold, text-contains(signed-said, <refusing to send credentials>)
+  want hold, text-contains(anonymous-said, <token realm http://0.0.0.0:>)
+  want hold, is-equal(asked, 0)
+
 test <OCI transport: pages the tag list>
   save got, transporting()
   save transport, got/transport

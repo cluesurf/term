@@ -49,6 +49,9 @@ load @term/base/file/blocking
 load ../parser/diagnostic
   find diagnostic
 
+load ../parser/token
+  find token-source
+
 load ./node
   find statement
   find statement-span
@@ -181,6 +184,10 @@ form gate-given
   link expose, like boolean
   link twins, like list, like twin
   link choices, like list, like task-choice
+  # every module the build walked, with the text it read: the editor's unsaved text for a file the overlay holds. The
+  # stale finds read a module here before the disk, so an unsaved file refuses a `find` as the disk build does once it
+  # is saved (item term-self-host-001-1639)
+  link sources, like list, like token-source
 
 # the overload groups and the render runtime names as the binding left them, which check/overload.ts keeps as module
 # state
@@ -698,12 +705,21 @@ task dropped-docks
 
 # ---- the stale finds ----
 
-# a module's source as the check reads it: its text, none for a path that is not there
+# a module's source as the check reads it: the text the build walked, else the disk's, none for a path that is not
+# there
 task read-gate-source
   take want, like text
+  take walked, like hash, like text, like text
   like read-source
   mark private
 
+  fork test, walked/has(want)
+    hold
+      save walked-text, walked/get(want)
+      back
+        make read-source
+          bind file, want
+          bind text, make(some, walked-text)
   fork test, gate-file-exists(want)
     hold
       save content, gate-file-read(want)
@@ -716,7 +732,9 @@ task read-gate-source
       bind file, want
 
 # every `find` naming something the module it loads defines: the check asks for the sources it needs, and each is read
-# here, none for a path that is not there, until it asks for nothing more.
+# here, none for a path that is not there, until it asks for nothing more. A module the build walked is read as the walk
+# read it (`sources`), so a document request over an unsaved file answers what the disk build answers for the same
+# texts: the disk held another text, and a `find` the unsaved file no longer defined read as found (item 1639).
 #
 # The check is asked once with nothing read, which answers most programs. When it wants a source, every file the
 # import scope names (each find's targets and each bear, every file it can want) is read at once, and the check asked
@@ -730,6 +748,7 @@ task stale-finds-of
   take program, like list, like statement
   take file, like text
   take scopes, like list, like file-scope
+  take walked-sources, like list, like token-source
   like list, like diagnostic
 
   save sources, make list
@@ -737,6 +756,15 @@ task stale-finds-of
   fork test, is-equal(first/wants/length, 0)
     hold
       back first/diagnostics
+  # the walk's text of each module, by file
+  save walked
+    like hash
+      like text
+      like text
+    make hash
+  walk walked-sources
+    take one
+    save walked/{one/file}, one/text
   save seen, make hash
   save listed, make list
   walk scopes
@@ -751,7 +779,7 @@ task stale-finds-of
       add-file(seen, listed, borne)
   walk listed
     take want
-    sources/push(read-gate-source(want))
+    sources/push(read-gate-source(want, walked))
   save found, make list
   save done, false
   walk test
@@ -765,7 +793,7 @@ task stale-finds-of
           turn next
       walk answer/wants
         take want
-        sources/push(read-gate-source(want))
+        sources/push(read-gate-source(want, walked))
   back found
 
 # ---- the gate ----
@@ -906,7 +934,7 @@ task program-gate
       back refusal(private-finds, no-bound())
 
   # every `find` names something the module it loads defines, before overloads rename anything
-  save run/stale-finds, stale-finds-of(run/program, file, given/scopes)
+  save run/stale-finds, stale-finds-of(run/program, file, given/scopes, given/sources)
   fork test, and(is-above(run/stale-finds/length, 0), not(described))
     hold
       back refusal(run/stale-finds, no-bound())

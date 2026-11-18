@@ -56,12 +56,15 @@ form entry-kind
   case link
   case other
 
-# a path's kind, its size in bytes, and when it last changed in milliseconds since the epoch WITH the fraction
-# (seconds times 1000 plus nanoseconds over 1e6, which is node's `mtimeMs`)
+# a path's kind, its size in bytes, when it last changed in milliseconds since the epoch WITH the fraction (seconds
+# times 1000 plus nanoseconds over 1e6, which is node's `mtimeMs`), and its inode number. The inode is a float, as
+# node's `ino` is: the host's 64-bit number rounded to the nearest double, so its text (`<{stat/inode}>`) is the digits
+# node prints on every backend, past 2^53 included. Zero where the system has no inode (Windows, but on node)
 form path-stat
   link kind, like entry-kind
   link size, like size
   link changed, like float
+  link inode, like float
 
 # one entry of a directory: its name, and what it is, asked of the entry itself with links not followed
 form path-entry
@@ -77,6 +80,7 @@ form stat-raw
   link kind, like text
   link size, like size
   link changed, like float
+  link inode, like float
 
 # the whole file as UTF-8 text. The binding answers a list of text: the refusal's code name (empty when carried out),
 # step and host text, then the text
@@ -99,7 +103,7 @@ task exists
     call blocking-exists
       read path
 
-# a path's kind, size and change time. A symbolic link is followed, so it describes what the link points at
+# a path's kind, size, change time and inode. A symbolic link is followed, so it describes what the link points at
 task stat
   take path, like text
   like path-stat
@@ -121,6 +125,7 @@ task stat
           make other
       bind size, read raw/size
       bind changed, read raw/changed
+      bind inode, read raw/inode
 
 # the entries of a directory in the platform's order, never `.` or `..`. Each kind is the entry's own, links not
 # followed. The binding answers a list of text: the refusal's code name (empty when carried out), step and host text,

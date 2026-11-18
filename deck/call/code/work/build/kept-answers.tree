@@ -24,10 +24,14 @@ load ./project-resolving
   find project-resolver
   find resolve-in-project
 
-dock load
-  load <node:fs>, name node-file
-  # node's global scope, for `String.fromCharCode` (a `<global:globalThis>` dock is emitted renamed, traps.md)
-  load <global:global>, name host-global
+# readFileSync and statSync on node
+load @term/base/file/blocking
+  find read, name base-read
+  find stat, name base-stat
+
+# the one-character text of a code point, `String.fromCodePoint` on node
+load @term/base/rune
+  find rune-to-text, name base-rune-text
 
 # one build's answers: each question once
 form build-memo
@@ -48,7 +52,7 @@ task question-key
   take how, like maybe, like load-how
   like text
 
-  save gap, host-global/String/fromCharCode(0)
+  save gap, base-rune-text(0)
   save base, <>
   sift how
     case some
@@ -146,8 +150,8 @@ task stat-stamp
 
   fork
     mark unsafe
-    save stat, node-file/stat-sync(file)
-    back <{stat/size}:{stat/mtime-ms}>
+    save stat, base-stat(file)
+    back <{stat/size}:{stat/changed}>
   halt take
     take problem
     back <missing>
@@ -202,7 +206,7 @@ task read-text
 
   fork
     mark unsafe
-    save text, node-file/read-file-sync(file, <utf8>)
+    save text, base-read(file)
     back make(some, text)
   halt take
     take problem

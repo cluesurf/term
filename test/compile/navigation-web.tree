@@ -1,0 +1,154 @@
+note <the navigation contract in headless Chromium: the app's navigate pushes History, the browser's back and a link move it the same way>
+
+# Ported from navigation-web.ts by statement (item term-self-host-001-0617), one test per `ok` in its order. The browser
+# host, refitted onto the navigation contract (native-navigation-0001), runs in headless Chromium at a real origin,
+# since History refuses pushState on about:blank. The app's own `navigate` must push the browser's History and draw the
+# new place, the browser's back must reach the contract through `follow-address` and draw the place before, and a
+# same-origin link click must move it the same way. One effect draws all three. The program and the page's own
+# JavaScript are the original's, byte for byte. The original served its page from http://term.test/ by Playwright's
+# request routing: here test/support/browsing serves it on 127.0.0.1 at a free port, which every path answers with the
+# one page, as a single-page app's server does. Where Playwright or its Chromium is absent each browser test says `skip`
+# with the reason. The original skipped before it compiled: here the compile test still runs.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/browsing
+  find browser-absent
+  find browser-script
+  find open-browser
+  find page-ask
+  find page-click
+  find page-wait
+  find close-browser
+
+load @term/base/text
+  find starts-with
+  find split, name text-split
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/list
+  find push
+
+host program, <load @term/site/code/dom/dom\n  find view\n  find create-element\n  find create-text\n  find set-attribute\n  find append\n\nload @term/site/code/view/native/browser/host\n  find host\n\nload @term/site/code/view/navigation\n  find navigate\n\nload @term/site/code/http/http\n  find request\n  find response\n\nload @term/base/maybe\n  find maybe\n\n# a place drawn: its path as text, and a same-origin link to /c. The host's dispatcher shape is\n# route(host, request) answering maybe a response (decision 001 of note/project/term/site-framework): a GET draws\n# into the host and answers nothing\ntask draw\n  take host, like view\n  take request, like request\n  like maybe, like response\n  save path, read request/path\n  save here\n    call create-element\n      text \<p\>\n  call set-attribute\n    read here\n    text \<id\>\n    text \<here\>\n  call append\n    read here\n    call create-text\n      read path\n  call append\n    read host\n    read here\n  save link\n    call create-element\n      text \<a\>\n  call set-attribute\n    read link\n    text \<href\>\n    text \</c\>\n  call set-attribute\n    read link\n    text \<id\>\n    text \<to-c\>\n  call append\n    read link\n    call create-text\n      text \<to c\>\n  call append\n    read host\n    read link\n  send back, make none\n\ntask start\n  call host\n    read draw\n    code 0\n\ntask go-to-b\n  call navigate\n    text \</b\>\n>
+
+host harness, <\n\{\nwindow.__start = start\nwindow.__goToB = goToB\n\}\n>
+
+host out, compile-text(program, make(compile-choice, bind(file, <navigation.tree>), bind(project, <.>), bind(project-env, <browser>), bind(env, <browser>)))
+
+# where the page is, as the original read it: the path, the drawn place's text and History's length, a space apart
+host here, <location.pathname + ' ' + (document.getElementById('here')?.textContent ?? '') + ' ' + history.length>
+
+# the page, run once: `state` <open> when it ran, <skipped> with the reason, <failed> when a step raised. `said` holds
+# where the page was after the start, after the app's navigate, after the browser's back and after the link's click
+form held-run
+  mark shared
+  link done, like boolean
+  link state, like text
+  link reason, like text
+  link said, like list, like text
+
+host held, make(held-run, bind(done, false), bind(state, <>), bind(reason, <>), bind(said, make list))
+
+task the-run
+  like held-run
+  mark async
+
+  fork test, held/done
+    hold
+      back held
+  save held/done, true
+  save absent, browser-absent()
+  fork test, is-unequal(absent, <>)
+    hold
+      save held/state, <skipped>
+      save held/reason, absent
+      back held
+  save script, <>
+  fork
+    mark unsafe
+    save script, browser-script(out, harness)
+  halt take
+    take problem
+    save held/state, <failed>
+    back held
+  host open, open-browser(script)
+  save held/state, open/state
+  save held/reason, open/reason
+  fork test, is-equal(open/state, <open>)
+    hold
+      fork
+        mark unsafe
+        page-ask(open, <window.__start()>)
+        held/said/push(page-ask(open, here))
+        page-ask(open, <window.__goToB()>)
+        held/said/push(page-ask(open, here))
+        page-ask(open, <history.back()>)
+        page-wait(open, <document.getElementById('here')?.textContent === '/'>)
+        held/said/push(page-ask(open, here))
+        page-click(open, <#to-c>)
+        page-wait(open, <document.getElementById('here')?.textContent === '/c'>)
+        held/said/push(page-ask(open, here))
+      halt take
+        take problem
+        save held/state, <failed>
+      close-browser(open)
+  back held
+
+# where the page was at `at`, <nothing said> when it never got there
+task said-of
+  take at, like number
+  like text
+  mark async
+
+  save said, the-run()/said
+  fork test, is-below(at, said/length)
+    hold
+      back said/{at}
+  back <nothing said>
+
+# whether History holds at least two entries, read off the third word of what the page said
+task pushed-twice
+  take said, like text
+  like boolean
+
+  save words, text-split(said, < >)
+  fork test, is-below(words/length, 3)
+    hold
+      back false
+  back not(is-below(parse-integer(words/2), 2))
+
+test <the app compiles for the browser>
+  want hold, out/ok
+
+test <the page draws where the browser is: />
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, starts-with(said-of(0), </ />)
+
+test <the app's navigate pushes History and draws /b>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  host pushed, said-of(1)
+  want hold, and(starts-with(pushed, </b /b>), pushed-twice(pushed))
+
+test <the browser's back reaches the contract and draws / again>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, starts-with(said-of(2), </ />)
+
+test <a same-origin link moves it the same way, to /c, with no reload>
+  host run, the-run()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip <{run/reason}>
+  want hold, starts-with(said-of(3), </c /c>)

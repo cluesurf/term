@@ -72,7 +72,7 @@ enum blocking {
     #endif
 
     guard lstat(realPath(path), &info) == 0 else {
-      return StatRaw(kind: "other", size: 0, changed: 0.0)
+      return StatRaw(kind: "other", size: 0, changed: 0.0, inode: 0.0)
     }
 
     #if canImport(Darwin)
@@ -86,7 +86,9 @@ enum blocking {
     return StatRaw(
       kind: entryKind(info.st_mode),
       size: Int(info.st_size),
-      changed: Double(seconds) * 1000.0 + Double(nanoseconds) / 1e6
+      changed: Double(seconds) * 1000.0 + Double(nanoseconds) / 1e6,
+      // node's `ino`: the 64-bit number rounded to the nearest double
+      inode: Double(info.st_ino)
     )
   }
 

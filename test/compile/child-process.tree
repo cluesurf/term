@@ -8,6 +8,15 @@ note <process/child talks to a running child on node and rust: lines by one, std
 # grandchild, `run` with a limit and a group ending a grandchild where without the group it stays, and the environment,
 # the directory and the error stream reaching the reader. A grandchild is proven gone by `kill -0`. Swift and Kotlin
 # build the same program and answer `command-absence` for `start` and for a group.
+#
+# Item 1652 added three (the needs of child-run.tree, item 1653). An `attached` child writes straight into the program's
+# own output, which the harness reads, with both streams read as ended at once, and with `group` it leads its own
+# process group (its pgid is its pid) where without it joins the program's. `read-any-line` reads a child that writes to
+# its output and its error stream by turns, each line waiting on a handshake the program writes after reading the one
+# before, so the order the lines arrived in is the child's own and no timing decides it. A group child whose program
+# exits through `exit` or a raise nothing caught is gone at once, its grandchild with it: the program reads the child's
+# `ready` line only after the child wrote the grandchild's pid to a file, then exits, and the suite reads the pid and
+# asks `kill -0`. Swift and Kotlin answer `command-absence` for an attached start.
 
 load ../support/running
   find run-text
@@ -21,6 +30,10 @@ load ../support/compiling
 load @term/base/text
   find contains, name text-contains
   find starts-with
+  find trim
+
+load @term/base/process/run
+  find run, name run-command
 
 # the stdlib the programs load, and the helpers they share: `sh-words` the arguments of `sh -c`, `gone` whether a
 # process is gone within 2 s by `kill -0`
@@ -41,6 +54,63 @@ host run-grouped, <{head}task timed-out\n  take group, like boolean\n  like text
 host shaped, <{head}task run\n  like text\n\n  save env\n    make hash\n      save \<CHILD_CHECK\>, \<handed\>\n  save c, start-child(\<sh\>, sh-words(\<echo $CHILD_CHECK; pwd\>), bind(directory, \</\>), bind(environment, env))\n  save a, read-line(c)\n  save b, read-line(c)\n  save r, wait-child(c)\n  save e, start-child(\<ls\>, make list(\</term-no-such-folder\>))\n  save oops, read-line(e, \<error\>)\n  save out, read-line(e)\n  save s, wait-child(e)\n  back \<\{a/line\} \{b/line\} \{text-contains(oops/line, \<term-no-such-folder\>)\} \{out/ended\} \{is-unequal(s/code, 0)\} \{r/code\}\>\n>
 
 host absent, <{head}task started\n  take command, like text\n  like text\n\n  fork\n    mark unsafe\n    save c, start-child(command, sh-words(\<echo one\>))\n    save r, wait-child(c)\n    back \<started \{r/code\}\>\n  halt take\n    take problem\n    sift problem\n      case command-absence\n        back \<absent \{thing\}: \{reason\}\>\n      case command-timeout\n        back \<timeout\>\n      case failure\n        back \<failure\>\n\ntask grouped\n  like text\n\n  fork\n    mark unsafe\n    save r, run-command(\<sh\>, sh-words(\<echo one\>), bind(group, true))\n    back \<ran \{r/code\}\>\n  halt take\n    take problem\n    sift problem\n      case command-absence\n        back \<absent \{reason\}\>\n      case command-timeout\n        back \<timeout\>\n      case failure\n        back \<failure\>\n\ntask plain\n  like text\n\n  save r, run-command(\<sh\>, sh-words(\<echo one\>))\n  back \<ran \{r/code\}\>\n\ntask run\n  like text\n\n  back \<\{started(\<sh\>)\} / \{started(\<term-no-such-tool\>)\} / \{grouped()\} / \{plain()\}\>\n>
+
+# the head with read-any-line too, for the two programs that read it (the others keep the head live already builds)
+host any-head, <load @term/base/process/child\n  find read-any-line\n\n{head}>
+
+# an attached child writes into the program's own output; read-line and read-any-line answer the end at once; with a
+# group it leads its own group, without one it joins the program's
+host attached, <{any-head}task run\n  like text\n\n  save c, start-child(\<sh\>, sh-words(\<echo through; p=$(ps -o pgid= -p $$ | tr -d ' '); if [ "$p" = "$$" ]; then echo leads; else echo joins; fi\>), bind(attached, true))\n  save l, read-line(c)\n  save a, read-any-line(c)\n  save r, wait-child(c)\n  save g, start-child(\<sh\>, sh-words(\<p=$(ps -o pgid= -p $$ | tr -d ' '); if [ "$p" = "$$" ]; then echo leads; else echo joins; fi\>), bind(group, true), bind(attached, true))\n  save s, wait-child(g)\n  back \<[\{l/ended\} \{a/ended\}] \{r/code\} \{s/code\}\>\n>
+host any-line, <load @term/base/process\n  find child\n\n{any-head}task next\n  take c, like child\n  like text\n\n  save got, read-any-line(c)\n  write-child(c, \<go\\n\>)\n  fork test, got/ended\n    hold\n      back \<end[\{got/kind\}]\>\n  back \<\{got/kind\}:\{got/line\}\>\n\ntask run\n  like text\n\n  save c, start-child(\<sh\>, sh-words(\<echo o1; read a; echo e1 \\\>&2; read a; echo e2 \\\>&2; read a; echo o2; read a; printf o3\>))\n  save a, next(c)\n  save b, next(c)\n  save d, next(c)\n  save e, next(c)\n  save f, next(c)\n  save g, next(c)\n  save r, wait-child(c)\n  back \<\{a\} \{b\} \{d\} \{e\} \{f\} \{g\} \{r/code\}\>\n>
+
+# a program that starts a group child, whose grandchild `sleep` writes its pid to `place`, reads the child's `ready`
+# line, then leaves by `way`: <exit> calls exit with code 3, <raise> raises what nothing catches
+task leaving
+  take way, like text
+  take place, like text
+  like text
+
+  save leave, <      exit-process(3)>
+  fork test, is-equal(way, <raise>)
+    hold
+      save leave, <      halt \<left by a raise\>>
+  back <load @term/base/process/current\n  find exit, name exit-process\n\n{head}task run\n  like text\n\n  save c, start-child(\<sh\>, sh-words(\<sleep 30 & echo $! \\\> '{place}'; echo ready; wait\>), bind(group, true))\n  save ready, read-line(c)\n  fork test, is-equal(ready/line, \<ready\>)\n    hold\n{leave}\n  back \<not ready: \{ready/line\}\>\n>
+
+# whether the process `pid` is gone within 2 s, by `kill -0`
+task gone-now
+  take pid, like text
+  like boolean
+
+  save r, run-command(<sh>, make list(<-c>, <for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do kill -0 "$0" 2\>/dev/null || exit 0; sleep 0.1; done; exit 1>, pid))
+  back is-equal(r/code, 0)
+
+# a program left by `way` on `backend`: how its run ended, and whether its group child's grandchild is gone. A grandchild
+# still there is ended here, so no case leaves one behind
+task left-on
+  take way, like text
+  take backend, like text
+  like text
+
+  save folder, temp-folder(<child-exit->)
+  save place, <{folder}/pid>
+  save program, leaving(way, place)
+  save ran, run-text(program, backend, folder, <leaving-{way}>, make(compile-choice, bind(lean, true)))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back <skipped>
+  save read, run-command(<cat>, make list(place))
+  save pid, trim(read/output)
+  fork test, is-equal(pid, <>)
+    hold
+      back <{ran/state} {ran/stage}: no pid written: {ran/reason}>
+  save went, gone-now(pid)
+  fork test, not(went)
+    hold
+      run-command(<kill>, make list(pid))
+  back <{ran/state} {ran/stage} {went}>
+
+# an attached start where children are not on the target
+host attached-absent, <{head}task run\n  like text\n\n  fork\n    mark unsafe\n    save c, start-child(\<sh\>, sh-words(\<true\>), bind(attached, true), bind(group, true))\n    save r, wait-child(c)\n    back \<started \{r/code\}\>\n  halt take\n    take problem\n    sift problem\n      case command-absence\n        back \<absent \{thing\}: \{reason\}\>\n      case command-timeout\n        back \<timeout\>\n      case failure\n        back \<failure\>\n>
 
 # the backends that run children
 task child-backends
@@ -152,3 +222,48 @@ test <swift and kotlin build, and answer command-absence for start and for a gro
     hold
       skip <the backend's toolchain is not installed>
   want hold, is-equal(out, <absent sh: not on this target / absent term-no-such-tool: not on this target / absent process groups are not on this target / ran 0>)
+
+test <an attached child writes into the program's own output, reads as ended at once, and leads its own group only with group>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(attached, backend, <attached>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <through\njoins\nleads\n[true true] 0 0>)
+
+test <read-any-line answers both streams in the order the lines arrived, each with its kind, then the end>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(any-line, backend, <any-line>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <output:o1 error:e1 error:e2 output:o2 output:o3 end[] 0>)
+
+test <a group child is gone with its grandchild once its program calls exit>
+  take backend, like text
+    walk child-backends()
+  host out, left-on(<exit>, backend)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <failed run true>)
+
+test <a group child is gone with its grandchild once its program ends by a raise nothing caught>
+  take backend, like text
+    walk child-backends()
+  host out, left-on(<raise>, backend)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <failed run true>)
+
+test <swift and kotlin answer command-absence for an attached start>
+  take backend, like text
+    walk absent-backends()
+  host out, ran-on(attached-absent, backend, <attached-absent>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <absent sh: not on this target>)

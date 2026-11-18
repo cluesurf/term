@@ -1,4 +1,5 @@
-# node child processes (node:child_process spawn, three piped streams), held by number in the child-process shim.
+# node child processes (node:child_process spawn, three piped streams or all three passed through), held by number in
+# the child-process shim.
 # Internal: reached only through the public process/child API.
 
 dock load
@@ -17,6 +18,7 @@ task child-start
       like text
   take limit, like number
   take group, like boolean
+  take attached, like boolean
   like number
   send back
     call child-process/start
@@ -26,6 +28,7 @@ task child-start
       read environment
       read limit
       read group
+      read attached
       wait true
 
 task child-refusal
@@ -44,6 +47,17 @@ task child-next-line
     call child-process/line
       read handle
       read error
+      wait true
+
+# the next line of either stream in arrival order, after its stream's letter (`o` or `e`), or the empty text at the
+# end of both
+task child-next-any-line
+  mark async
+  take handle, like number
+  like text
+  send back
+    call child-process/any-line
+      read handle
       wait true
 
 task child-rest

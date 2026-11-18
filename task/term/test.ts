@@ -429,10 +429,11 @@ async function emitTypes(env: Record<string, string> = {}): Promise<Result> {
 
 // a package's own Term tests through the CLI
 // a package's own `.tree` tests, run in the package's directory. `dir` defaults to its place in the Term tree; zone
-// passes its own, because it moved out to the repository's deck/zone on 2026-10-02
-function packageTests(pack: string, dir = join(TERM, 'deck', pack)): (env: Record<string, string>) => Promise<Result> {
+// passes its own, because it moved out to the repository's deck/zone on 2026-10-02. `timeout` is the seconds before the
+// run is killed
+function packageTests(pack: string, dir = join(TERM, 'deck', pack), timeout = 900): (env: Record<string, string>) => Promise<Result> {
   return async (env = {}) => {
-    const run = await child('node', [LINE, 'test'], dir, 900, env)
+    const run = await child('node', [LINE, 'test'], dir, timeout, env)
 
     // the run's closing line (gate/term-test-counts.ts): none, or no test run, fails
     return termTestResult(run.status, `${run.stdout}\n${run.stderr}`)
@@ -799,6 +800,12 @@ const SUITES: Suite[] = [
   // the CLI's own Term tests: the item card (test/item, also run by item/unit) and the build engine's (test/build,
   // item term-self-host-001-0495)
   { name: 'call package tests', run: packageTests('call') },
+  // the package manager's own Term tests (deck/deck/test): the archive refusals, the OCI transport and install, the
+  // credential rules (a credential never crosses plain http off loopback), save and toss. And the mill engine's
+  // grammars (deck/mill/test). Neither ran in any leg before (audit 0145 round 2, item 1670). MEASURED on an M3 warm
+  // clone, 2026-11-18, a first run with nothing built: deck 309 tests in 81 s, mill 162 in 492 s, so mill gets 1800 s
+  { name: 'deck package tests', run: packageTests('deck'), slow: 90 },
+  { name: 'mill package tests', run: packageTests('mill', join(TERM, 'deck', 'mill'), 1800), slow: 500 },
   { name: 'zone package tests', run: packageTests('zone', join(PARENT_ROOT ?? '', 'deck/zone')), needsEnv: ['TERM_PARENT_ROOT'] },
   // the native toolchains, one leg per toolchain so they run side by side (HN_ONLY and RT_ONLY are the suites' own
   // filters; `other` is the roundtrip's node and emitted-text checks)

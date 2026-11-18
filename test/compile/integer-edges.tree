@@ -1,0 +1,324 @@
+note <a number is the integer or the program stops, at every edge where a host integer wraps in silence, on every backend>
+
+# Ported from integer-edges.ts by statement (item term-self-host-001-0617). A `number` is the integer or the program
+# stops (note/project/term/proof/numbers.md), at the edges where a host integer type wraps in silence: the minimum
+# divided by -1, a difference below the minimum, a product past the maximum, a list read or write outside the list, a
+# counted loop reading one past the end, a swap with an index outside the list, and the native power past the maximum.
+# Each program takes its operand as a PARAMETER (2^62), so no compiler folds the edge away, runs on every backend, and
+# must end with a code that is not 0, never print an integer. Kotlin's `MIN / -1` wrapped to MIN, a different integer,
+# until 2026-10-02 (codegen-performance-0003). The native power is also exact where it fits: 3^39 is past 2^53, where a
+# Double rounds it to a different integer. IE_ONLY=rust, swift, kotlin or typescript runs one backend.
+#
+# Each program is built as the original built it: TypeScript is its native prelude and module with a line printing
+# edge(2^62), run under tsx; Rust its prelude, the emitted Rust and a main, by rustc at opt-level 3 (a release build,
+# where an unchecked overflow wraps); Swift the same by swiftc -O; Kotlin the same, its imports hoisted by compile/kotlin
+# (the emitter is the subject, decision 106), by kotlinc into a jar java runs. The original's loop of `ok`s over the
+# edges is one walked test per backend, an edge a case of it. A backend whose tools are missing is each case's skip,
+# where the original printed one skip line per edge, and the exact power's, where the original printed nothing. A
+# program that does not build fails its case with the reason, where the original printed a `builds` FAIL in its place.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find prelude-text
+
+load ../support/running
+  find running-node
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+
+# the operand, 2^62, as each backend writes it
+host operand, <4611686018427387904>
+
+# the minimum from a parameter: 0 - x - x with x = 2^62 is -2^63 exactly, in range on every 64-bit backend
+host minimum, <  save low\n    call subtract\n      call subtract\n        code 0\n        read x\n      read x>
+
+# a list of one item, and two indexes built from the parameter (x - x + 1, and 0 - 1) so nothing folds them
+host one-item, <  save xs\n    make list\n  call push\n    bind list, read xs\n    bind item, code 7\n  save past\n    call add\n      call subtract\n        read x\n        read x\n      code 1\n  save before\n    call subtract\n      call subtract\n        read x\n        read x\n      code 1>
+
+host zero, <\n  save at\n    call subtract\n      read x\n      read x>
+
+# the body of each edge's task, by its label, in the original's order. TypeScript writes the list checks in place since
+# 2026-10-02 (typescript.ts, readAt), so these hold the inline form as well as `__termAt`. The counted loop is guarded
+# (ir/facts/bounds.ts) and the guard is false here, so the checked copy runs: `past` is 1 and the list has one item, so
+# `i < past + 1` reaches i = 1. The swap of two slots is one native call on Swift, Rust and Kotlin (backend.ts, swapAt):
+# either index outside the list still stops, as the three statements it replaces stop. The native power (imath.pow on
+# Rust, Swift and Kotlin) went through Double on Swift and Kotlin and saturated, and wrapped on a Rust release build. Not
+# TypeScript, whose native power is JavaScript's float `Math.pow` by design
+task edge-body
+  take label, like text
+  like text
+
+  fork test, is-equal(label, <minimum divided by -1>)
+    hold
+      back <{minimum}\n  send back\n    call divide\n      read low\n      code -1>
+  fork test, is-equal(label, <a difference below the minimum>)
+    hold
+      back <{minimum}\n  send back\n    call subtract\n      read low\n      code 1>
+  fork test, is-equal(label, <a product past the maximum>)
+    hold
+      back <  send back\n    call multiply\n      read x\n      code 2>
+  fork test, is-equal(label, <a list read one past the end>)
+    hold
+      back <{one-item}\n  send back, read xs/\{past\}>
+  fork test, is-equal(label, <a list read at -1>)
+    hold
+      back <{one-item}\n  send back, read xs/\{before\}>
+  fork test, is-equal(label, <a list write one past the end>)
+    hold
+      back <{one-item}\n  save xs/\{past\}, code 9\n  send back, read xs/0>
+  fork test, is-equal(label, <a counted loop reading one past the end>)
+    hold
+      back <{one-item}\n  save total, code 0\n  save i, code 0\n  save upto\n    call add\n      read past\n      code 1\n  walk test\n    hook test\n      call is-below\n        read i\n        read upto\n    hook hold\n      save total\n        call add\n          read total\n          read xs/\{i\}\n      save i\n        call add\n          read i\n          code 1\n  send back, read total>
+  fork test, is-equal(label, <a swap with one index past the end>)
+    hold
+      back <{one-item}{zero}\n  host t, read xs/\{at\}\n  save xs/\{at\}, read xs/\{past\}\n  save xs/\{past\}, read t\n  send back, read xs/0>
+  fork test, is-equal(label, <a swap with one index at -1>)
+    hold
+      back <{one-item}{zero}\n  host t, read xs/\{before\}\n  save xs/\{before\}, read xs/\{at\}\n  save xs/\{at\}, read t\n  send back, read xs/0>
+  back <  send back\n    call pow\n      read x\n      code 2>
+
+# the edges a backend is asked, in the original's order: the native power is not asked of TypeScript
+task edges-of
+  take target, like text
+  like list, like text
+
+  save labels, make list(<minimum divided by -1>, <a difference below the minimum>, <a product past the maximum>, <a list read one past the end>, <a list read at -1>, <a list write one past the end>, <a counted loop reading one past the end>, <a swap with one index past the end>, <a swap with one index at -1>)
+  fork test, is-unequal(target, <typescript>)
+    hold
+      labels/push(<a native power past the maximum>)
+  back labels
+
+# the program of an edge: the loads its body needs, then the task
+task program-of
+  take body, like text
+  like text
+
+  save loads, <>
+  fork test, text-contains(body, <call pow>)
+    hold
+      save loads, <load @term/base/code/native/\{platform\}/math\n  find pow\n\n>
+  fork test, text-contains(body, <call push>)
+    hold
+      save loads, <{loads}load @term/base/code/list\n  find list\n\n>
+  back <{loads}task edge\n  take x, like number\n  like number\n{body}\n>
+
+# the tools a backend needs, joined by a comma
+task tools-of
+  take target, like text
+  like list, like text
+
+  fork test, is-equal(target, <typescript>)
+    hold
+      back make list(<node>)
+  fork test, is-equal(target, <rust>)
+    hold
+      back make list(<rustc>)
+  fork test, is-equal(target, <swift>)
+    hold
+      back make list(<swiftc>)
+  back make list(<kotlinc>, <java>)
+
+# why a backend's case is skipped: IE_ONLY names another, or a tool is not installed. <> when it runs
+task skipped-why
+  take target, like text
+  like text
+
+  save only, trim(variable(<IE_ONLY>))
+  fork test, and(is-unequal(only, <>), is-unequal(only, target))
+    hold
+      back <IE_ONLY is {only}>
+  walk tools-of(target)
+    take tool, like text
+    fork test, is-equal(find-tool(tool), <>)
+      hold
+        back <{join(tools-of(target), <, >)} not installed>
+  back <>
+
+host rust-result, make pattern, <<fn edge\([^)]*\) -> std::result::Result>>
+host swift-throws, make pattern, <<func edge\([^)]*\) throws>>
+host bare-integer, make pattern, <<^-?\d+\s*$>>
+
+# a task calling a native shim (`pow` into imath) raises `failure` in every program (compiler decision 014), so on Rust
+# it answers `Result` and on Swift it throws: the main unwraps it as the native mains do, a raise ending the program
+task rust-main
+  take rust, like text
+  take argument, like text
+  like text
+
+  fork test, matches(rust-result, rust)
+    hold
+      back <fn main() \{ match edge({argument}) \{ Ok(v) =\> println!("\{\}", v), Err(e) =\> \{ eprintln!("\{\}", e); std::process::exit(1) \} \} \}>
+  back <fn main() \{ println!("\{\}", edge({argument})); \}>
+
+task swift-main
+  take swift, like text
+  take argument, like text
+  like text
+
+  fork test, matches(swift-throws, swift)
+    hold
+      back <print(try edge(x: {argument}))>
+  back <print(edge(x: {argument}))>
+
+# A program built for a backend, or why not: `command` runs it, `reason` says why it did not build (<> when it did)
+form built-edge
+  link command, like list, like text
+  link reason, like text
+
+# compile `text` for `target`, write it with its main into `stem` and build it as the original did. `argument` is the
+# operand the main passes
+task build-edge
+  take text, like text
+  take target, like text
+  take stem, like text
+  take argument, like text
+  like built-edge
+
+  save env, target
+  fork test, is-equal(target, <typescript>)
+    hold
+      save env, <node>
+  host out, compile-text(text, make(compile-choice, bind(file, <edge.tree>), bind(stdlib, env), bind(env, env)))
+  fork test, not(out/ok)
+    hold
+      back make(built-edge, bind(command, make list), bind(reason, <the program was refused: {join(out/messages, < | >)}>))
+  save prelude, prelude-text(out, env)
+  fork test, is-equal(target, <typescript>)
+    hold
+      write-file(<{stem}.ts>, <{prelude}\n{emit-text(out, <typescript>)}\nconsole.log(edge({argument}))\n>)
+      back make(built-edge, bind(command, make list(running-node(0), <--import>, <tsx>, <{stem}.ts>)), bind(reason, <>))
+  fork test, is-equal(target, <rust>)
+    hold
+      save rust, emit-text(out, <rust>)
+      write-file(<{stem}.rs>, <{prelude}\n{rust}\n{rust-main(rust, argument)}\n>)
+      save said, run-tool(make list(<rustc>, <-A>, <warnings>, <-C>, <opt-level=3>, <{stem}.rs>, <-o>, stem))
+      back make(built-edge, bind(command, make list(stem)), bind(reason, said))
+  fork test, is-equal(target, <swift>)
+    hold
+      save swift, emit-text(out, <swift>)
+      write-file(<{stem}.swift>, <{prelude}\n{swift}\n{swift-main(swift, argument)}\n>)
+      save said, run-tool(make list(<swiftc>, <-O>, <-o>, stem, <{stem}.swift>))
+      back make(built-edge, bind(command, make list(stem)), bind(reason, said))
+  write-file(<{stem}.kt>, kotlin-module/hoist-kotlin-imports(<{prelude}\n{emit-text(out, <kotlin>)}\nfun main() \{ println(edge({argument}L)) \}\n>))
+  save said, run-tool(make list(<kotlinc>, <{stem}.kt>, <-nowarn>, <-include-runtime>, <-d>, <{stem}.jar>))
+  back make(built-edge, bind(command, make list(<java>, <-jar>, <{stem}.jar>)), bind(reason, said))
+
+# the built program run once
+task run-built
+  take built, like built-edge
+  like run-result
+
+  save rest, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, built/command/length)
+    hook hold
+      rest/push(built/command/{at})
+      save at, add(at, 1)
+  back run(built/command/0, rest)
+
+# what an edge did on a backend: <stops> when it ended with a code that is not 0 and printed no integer, else why not
+task edge-verdict
+  take target, like text
+  take label, like text
+  like text
+
+  host folder, temp-folder(<integer-edges->)
+  save built, build-edge(program-of(edge-body(label)), target, <{folder}/{target}-edge>, operand)
+  fork test, is-unequal(built/reason, <>)
+    hold
+      back <{target}: {label} builds: {built/reason}>
+  save ran, run-built(built)
+  fork test, and(is-unequal(ran/code, 0), not(matches(bare-integer, ran/output)))
+    hold
+      back <stops>
+  back <exit {ran/code}, printed {trim(ran/output)}>
+
+# what 3 to the 39th printed on a backend, or why it did not build
+task exact-power
+  take target, like text
+  like text
+
+  host folder, temp-folder(<integer-edges-exact->)
+  save built, build-edge(<load @term/base/code/native/\{platform\}/math\n  find pow\n\ntask edge\n  take x, like number\n  like number\n  send back\n    call pow\n      read x\n      code 39\n>, target, <{folder}/{target}-exact>, <3>)
+  fork test, is-unequal(built/reason, <>)
+    hold
+      back built/reason
+  back trim(run-built(built)/output)
+
+test <typescript: an edge stops instead of answering>
+  take label, like text
+    walk edges-of(<typescript>)
+  host why, skipped-why(<typescript>)
+  fork test, is-unequal(why, <>)
+    hold
+      skip <typescript: {label} ({why})>
+  want hold, is-equal(edge-verdict(<typescript>, label), <stops>)
+
+test <rust: an edge stops instead of answering>
+  take label, like text
+    walk edges-of(<rust>)
+  host why, skipped-why(<rust>)
+  fork test, is-unequal(why, <>)
+    hold
+      skip <rust: {label} ({why})>
+  want hold, is-equal(edge-verdict(<rust>, label), <stops>)
+
+test <swift: an edge stops instead of answering>
+  take label, like text
+    walk edges-of(<swift>)
+  host why, skipped-why(<swift>)
+  fork test, is-unequal(why, <>)
+    hold
+      skip <swift: {label} ({why})>
+  want hold, is-equal(edge-verdict(<swift>, label), <stops>)
+
+test <kotlin: an edge stops instead of answering>
+  take label, like text
+    walk edges-of(<kotlin>)
+  host why, skipped-why(<kotlin>)
+  fork test, is-unequal(why, <>)
+    hold
+      skip <kotlin: {label} ({why})>
+  want hold, is-equal(edge-verdict(<kotlin>, label), <stops>)
+
+# and the native power is EXACT where it fits: 3^39 is past 2^53, where a Double rounds it to a different integer
+test <the native power of 3 to 39 is exact>
+  take target, like text
+    walk make list(<rust>, <swift>, <kotlin>)
+  host why, skipped-why(target)
+  fork test, is-unequal(why, <>)
+    hold
+      skip <{target}: the exact power ({why})>
+  want hold, is-equal(exact-power(target), <4052555153018976267>)

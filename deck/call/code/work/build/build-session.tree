@@ -41,8 +41,8 @@ load ./tree-finding
 load ../cache/compile-store
   find make-parse-memo
 
-dock load
-  load <node:path>, name node-path
+load @term/base/path
+  find join, name base-join
 
 # an entry's build, as much of it as the next build needs to replay it: its own problems, its open claims, its
 # obligations, and how many units it reached. Its artifacts are already on disk, written when it was built, and their
@@ -105,10 +105,10 @@ task make-build-session
 
   save kept, make-kept-answers(make-project-resolver(root))
   save settings, make list
-  settings/push(node-path/join(root, <deck.tree>))
-  settings/push(node-path/join(root, <lock.tree>))
-  settings/push(node-path/join(root, <role.tree>))
-  settings/push(node-path/join(root, <base/role.tree>))
+  settings/push(base-join(root, <deck.tree>))
+  settings/push(base-join(root, <lock.tree>))
+  settings/push(base-join(root, <role.tree>))
+  settings/push(base-join(root, <base/role.tree>))
   save parsed, make-parse-memo()
   back make(build-session, bind(root, root), bind(kept, kept), bind(parsed, parsed), bind(units, make hash), bind(walked, make hash), bind(entries, make hash), bind(rolls, make hash), bind(stamps, make hash), bind(settings, settings), bind(known, make none), bind(edges, make hash), bind(noted, make hash), bind(generation, 0), bind(snapshot-sum, <>), bind(listing, make none), bind(folder-notes, make hash), bind(turns, 0))
 

@@ -57,6 +57,8 @@ form oci-state
   link referrers, like boolean
   link page-size, like number
   link base, like text
+  # the origin a challenge names as its token realm: the registry's own base, unless a test names another host
+  link realm-base, like text
   link storage-base, like text
   link blobs, like dynamic
   link tags, like dynamic
@@ -316,7 +318,7 @@ task oci-challenge
   like void
   mark private
 
-  host realm, <Bearer realm="{state/base}/token",service="test-registry",scope="{scope}">
+  host realm, <Bearer realm="{state/realm-base}/token",service="test-registry",scope="{scope}">
   host headers, make list(<www-authenticate>, realm, <content-type>, <application/json>)
   oci-answer(response, 401, headers, <\{"errors":[\{"code":"UNAUTHORIZED","message":"authentication required"\}]\}>)
 
@@ -773,18 +775,21 @@ task oci-listen
   save heard, wait oci-events/once(server, <listening>)
   back oci-port(server)
 
-# a registry and its storage host, both listening. A username and password are what a push must present at /token
+# a registry and its storage host, both listening. A username and password are what a push must present at /token.
+# A `realm-host` names the host a challenge's token realm is on, at the registry's own port (0.0.0.0 reaches this
+# listener but is no loopback name), else the realm is the registry's own base
 task start-oci-server
   take username, like text, fall <tester>
   take password, like text, fall <secret>
   take referrers, like boolean, fall true
   take page-size, like number, fall 1000
+  take realm-host, like text, fall <>
   like oci-server
   mark async
 
   host requests, make list
   host leaked-auth, make list
-  host state, make(oci-state, bind(username, username), bind(password, password), bind(referrers, referrers), bind(page-size, page-size), bind(base, <>), bind(storage-base, <>), bind(blobs, oci-map(0)), bind(tags, oci-map(0)), bind(manifests, oci-map(0)), bind(uploads, oci-map(0)), bind(repo-blobs, oci-map(0)), bind(issued, oci-map(0)), bind(requests, requests), bind(leaked-auth, leaked-auth))
+  host state, make(oci-state, bind(username, username), bind(password, password), bind(referrers, referrers), bind(page-size, page-size), bind(base, <>), bind(realm-base, <>), bind(storage-base, <>), bind(blobs, oci-map(0)), bind(tags, oci-map(0)), bind(manifests, oci-map(0)), bind(uploads, oci-map(0)), bind(repo-blobs, oci-map(0)), bind(issued, oci-map(0)), bind(requests, requests), bind(leaked-auth, leaked-auth))
   save storage
     oci-http/create-server
       task
@@ -805,6 +810,10 @@ task start-oci-server
         oci-answer-registry(state, request, response)
   host port, oci-listen(registry)
   save state/base, <http://127.0.0.1:{port}>
+  save state/realm-base, state/base
+  fork test, not(is-equal(realm-host, <>))
+    hold
+      save state/realm-base, <http://{realm-host}:{port}>
   back make(oci-server, bind(host, <127.0.0.1:{port}>), bind(storage-port, storage-port), bind(blobs, state/blobs), bind(tags, state/tags), bind(manifests, state/manifests), bind(requests, state/requests), bind(leaked-auth, state/leaked-auth), bind(registry, registry), bind(storage, storage))
 
 # overwrite a stored blob, so a client that trusts what it reads is caught

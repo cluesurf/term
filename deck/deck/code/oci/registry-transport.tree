@@ -1211,8 +1211,10 @@ task fetch-token
 
   save realm, wire-url(realm-text, <>)
   save protocol, protocol-of(realm)
-  save plain, wire/plain
-  fork test, and(not(is-equal(protocol, <https:>)), not(and(is-equal(protocol, <http:>), plain)))
+  # a plain http realm only for a plain registry, and only on loopback or at the registry's own origin: a loopback
+  # registry never vouches for a realm on another host (audit 0145, item 1669)
+  save near, or(is-loopback(realm/host), is-equal(url-origin(realm), wire/origin))
+  fork test, and(not(is-equal(protocol, <https:>)), not(and(is-equal(protocol, <http:>), and(wire/plain, near))))
     hold
       halt oci-failure
         bind thing, <token realm {url-origin(realm)} is not https, refusing to send credentials to it>

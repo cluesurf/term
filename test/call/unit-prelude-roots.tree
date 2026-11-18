@@ -1,0 +1,118 @@
+note <a unit's text is the same from every entry that reaches it: its prelude takes only the docks of its own closure>
+
+# Item term-self-host-001-1687. port-build --units writes one file per module, its native prelude in front, and the
+# prelude takes a dock's shim when the unit's code, or a shim already taken, mentions the dock's alias. The docks it
+# chose from were the ENTRY's, everything that entry's closure reaches, and process/runtime/runner.ts (the shim of
+# native/node/process/run's one dock, global:runner) imports 'node:child_process', the snake_case of the child-process
+# dock of native/node/process/child. So the unit of native/node/process/run held the whole child-process shim when its
+# entry also reached process/child (1653's child-run.tree under boot-running) and not otherwise (lean-running): two
+# texts, DISAGREE, port-build exit 1. Each case here is built the way task/port-build.ts builds a unit (its own
+# `unit-text`, the subject), from an entry held in memory at a path under deck/test/code (nothing is written): the
+# natives of the entry's compile, the load graph of its walk, and the unit's code as the emitter writes it (its
+# `declare const` line, then its call).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/cli
+  find term-root
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains
+
+dock load
+  load <@term/term/task/port-build>, name port-build
+  load <@term/make/code/compile/load>, name unit-loading
+  load <@term/call/code/make>, name unit-making
+
+form entry-source
+  link file, like text
+  link text, like text
+
+# an entry that reaches native/node/process/run alone
+host run-alone, <load @term/base/process/run\n  find run\n\ntask probe\n  like number\n  back 0\n>
+
+# an entry that reaches it beside native/node/process/child, whose dock is global:child-process
+host run-and-child, <load @term/base/process/run\n  find run\n\nload @term/base/process/child\n  find start\n\ntask probe\n  like number\n  back 0\n>
+
+# the unit's code: the one global it calls, declared, then the call
+host run-code, <declare const runner: any\nrunner.run()\n>
+
+task entry-file
+  like text
+
+  back <{term-root()}/deck/test/code/__unit-prelude-roots.tree>
+
+task run-module
+  like text
+
+  back <{term-root()}/deck/base/code/native/node/process/run.tree>
+
+task child-module
+  like text
+
+  back <{term-root()}/deck/base/code/native/node/process/child.tree>
+
+# each module of the entry's walk and the modules it loads, as port-build's compileEntry takes them
+task edges-of
+  take text, like text
+  like dynamic
+
+  save entry
+    make entry-source
+      bind file, entry-file()
+      bind text, text
+  save walked, unit-loading/collect-modules(entry, unit-making/project-resolver(<{term-root()}/deck/test>))
+  back walked/edges
+
+# the natives of the entry's compile, every dock its closure reaches; void when it does not compile
+task natives-of
+  take text, like text
+  like dynamic
+
+  save out, compile-text(text, make(compile-choice, bind(file, entry-file()), bind(project, <{term-root()}/deck/test>), bind(project-lean, true), bind(library, true)))
+  fork test, not(out/ok)
+    hold
+      back void
+  back out/program
+
+# the unit of native/node/process/run as port-build writes it from this entry; <> when the entry does not compile
+task unit-text-of
+  take text, like text
+  take edges, like dynamic
+  like text
+
+  save natives, natives-of(text)
+  fork test, is-equal(natives, void)
+    hold
+      back <>
+  back port-build/unit-text(natives, edges, run-module(), run-code, false)
+
+# the same, as the unit's closure grown by an edge from native/node/process/run to native/node/process/child
+task unit-text-reaching-child
+  like text
+
+  save edges, edges-of(run-and-child)
+  save loads, make list
+  push(loads, child-module())
+  edges/set(run-module(), loads)
+  back unit-text-of(run-and-child, edges)
+
+# (the next case says the text holds its shim, so the two are never two empty texts)
+test <both entries give the unit one text>
+  want hold, is-equal(unit-text-of(run-alone, edges-of(run-alone)), unit-text-of(run-and-child, edges-of(run-and-child)))
+
+test <the unit takes the shim of its own dock>
+  want hold, contains(unit-text-of(run-and-child, edges-of(run-and-child)), <const runner = >)
+
+test <the unit takes no shim of a dock outside its closure>
+  want miss, contains(unit-text-of(run-and-child, edges-of(run-and-child)), <const childProcessHeld = >)
+
+# the fixpoint is kept inside the closure: a dock the closure holds is still reached through a taken shim's text (the
+# runner shim's 'node:child_process'), so the case above reaches the mechanism of the defect and is no empty check
+test <a dock inside the closure is still reached through a taken shim>
+  want hold, contains(unit-text-reaching-child(), <const childProcessHeld = >)

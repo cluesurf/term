@@ -71,9 +71,19 @@ object blocking {
         kind,
         Files.size(at),
         moment.epochSecond.toDouble() * 1000.0 + moment.nano.toDouble() / 1e6,
+        inodeOf(at),
       )
     } catch (error: kotlin.Exception) {
-      StatRaw("other", 0L, 0.0)
+      StatRaw("other", 0L, 0.0, 0.0)
+    }
+
+  // node's `ino`: the unix view's 64-bit number, read unsigned and rounded to the nearest double. Zero where the system
+  // has no unix view (Windows)
+  private fun inodeOf(at: java.nio.file.Path): Double =
+    try {
+      (Files.getAttribute(at, "unix:ino") as Long).toULong().toDouble()
+    } catch (error: kotlin.Exception) {
+      0.0
     }
 
   // the platform's own order, no `.` or `..`, each kind the entry's own with links not followed. The opening and every

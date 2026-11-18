@@ -44,6 +44,9 @@ load ./native-env
 load ./main-entry
   find whitespace-code
 
+load ./rust-executor
+  find shim-executor
+
 # what a prelude build answers: the prelude, or why it could not be built
 form prelude-answer
   case built
@@ -530,6 +533,20 @@ task native-prelude
               halt
             case none
               turn next
+
+  # the executor a Rust shim taken names and the program lacks, last, so it sits right before the program (rust-executor
+  # `shim-executor`, item term-self-host-001-1644). The program is `used-in`, else `linked-from`
+  save program-code, linked-from
+  sift used-in
+    case some
+      link emitted
+      save program-code, emitted
+    case none
+      save nothing, 0
+  save executor, shim-executor(join(parts, <\n>), program-code)
+  fork test, is-unequal(executor, <>)
+    hold
+      push(parts, executor)
 
   fork test, is-equal(parts/length, 0)
     hold

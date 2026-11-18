@@ -35,12 +35,78 @@ load @term/base/text
 load @term/make/term/hash
   find hash-key
 
+# node's path module, over `/` on every backend
+load @term/base/path
+  find join, name base-join
+  find directory, name base-directory
+  find is-absolute, name base-is-absolute
+  find normalize-path, name base-normal
+  find resolve-path, name base-resolve
+  find relative-path, name base-relative
+
+# existsSync, readFileSync, statSync, readdirSync, writeFileSync and renameSync on node
+load @term/base/file/blocking
+  find exists, name base-exists
+  find read, name base-read
+  find stat, name base-stat
+  find list, name base-entries
+  find write-path, name base-write
+  find rename-path, name base-rename
+  find entry-kind
+  find path-entry
+
+# mkdirSync with recursive, and rmSync with force, on node
+load @term/base/file/create
+  find make-folder, name base-make-folder
+
+load @term/base/file/remove
+  find remove-all, name base-remove
+
+# a stat's change time against a racy line kept in whole milliseconds
+load @term/base/float
+  find to-decimal, name base-decimal
+  find to-number, name base-whole
+
+# `Date.now()`, `process.env`, `process.pid` and the running bundle (`process.argv[1]`) on node
+load @term/base/time
+  find now, name epoch-now
+
+load @term/base/environment
+  find variables, name base-variables
+
+load @term/base/process/current
+  find read, name base-process
+  find program-file, name base-program-file
+
+# JSON.parse and JSON.stringify, and every read and write of a value the snapshot's JSON or the compiler hands back
+load @term/base/json
+  find parse, name graph-parse
+  find stringify, name graph-stringify
+  find get-field, name graph-field
+  find set-field, name graph-set
+  find make-object, name graph-object
+  find make-array, name graph-array
+  find push-item, name graph-push
+  find array-size, name graph-size
+  find array-item, name graph-item
+  find object-keys, name graph-keys
+  find json-kind, name graph-kind
+  find is-null, name graph-null
+  find as-text, name graph-text
+  find as-number, name graph-number
+  find as-boolean, name graph-boolean
+  find field-text, name graph-field-text
+  find field-boolean, name graph-field-boolean
+  find from-text, name graph-from-text
+  find from-number, name graph-from-number
+
 load ./project-resolving
   find source
 
 load ./tree-finding
   find carry-tree-files
   find for-platform
+  find folder-note
 
 load ./deck-finding
   find deck-finder
@@ -58,6 +124,7 @@ load ./build-input
 load ./build-session
   find build-session
   find file-note
+  find entry-outcome
   find make-build-session
   find resolve-in-session
   find turn-session
@@ -74,10 +141,7 @@ load ./project-build
   find role-text
   find framed
   find is-own-warning
-  find items-of
-  find texts-of
   find sorted-texts
-  find is-text
 
 load ./host-faces
   find how-of
@@ -103,14 +167,10 @@ load @term/call/code/launch-only
   find is-launch-only
 
 dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/separate>, name separate-module
   # the store as a document request sees it: no mill or scan write of a file the overlay holds (decision 098 rule 6)
   load <@term/make/code/compile/cache>, name cache-module
-  # node's global scope, for `Object.assign` (a `<global:globalThis>` dock is emitted renamed, traps.md)
-  load <global:global>, name host-global
 
 # what a request asks for
 form build-mode
@@ -202,7 +262,7 @@ task set-overlay
   take file, like text
   take text, like text
 
-  save fresh, and(not(graph/overlay/has(file)), not(node-file/exists-sync(file)))
+  save fresh, and(not(graph/overlay/has(file)), not(base-exists(file)))
   save graph/overlay/{file}, text
   fork test, fresh
     hold
@@ -223,7 +283,7 @@ task drop-overlay
   # read, so a graph that does not turn (the language server, decision 098 rule 1) never hands out the text the disk
   # held before the edit
   forget-kept-stamp(graph/session, file)
-  fork test, and(held, not(node-file/exists-sync(file)))
+  fork test, and(held, not(base-exists(file)))
     hold
       save gone, make list
       gone/push(file)
@@ -272,11 +332,17 @@ task forget-kept-stamp
   session/kept/stamps/delete(file)
 
 # whether a module's walk holds a load that found nothing (compile/loading.tree's `unresolved-load`)
-bind has-unresolved-load
+task has-unresolved-load
   take walked, like dynamic
   like boolean
-  case node
-    text <(($walked)?.diagnostics ?? []).some((one) =\> one?.name === "unresolved-load")>
+  mark private
+
+  walk graph-items(graph-field(walked, <diagnostics>))
+    take one
+    fork test, is-equal(graph-field-text(one, <name>), <unresolved-load>)
+      hold
+        back true
+  back false
 
 # THE ENTRY. Every caller's build goes through here
 task build-request
@@ -308,7 +374,7 @@ task request-project
   # pool between) has done both, once (decision 094 rule 3)
   fork test, is-equal(started, 0)
     hold
-      save snapped, begin-project(graph, host-global/Date/now(), ask/platform)
+      save snapped, begin-project(graph, epoch-now(), ask/platform)
       save started, graph/begun
   save graph/begun, 0
   cap-units(graph)
@@ -444,7 +510,8 @@ task request-document
     hold
       save resolve, ask/resolve
   # the empty text is no env at all: the compiler tells an env given from none (compile.ts `hasEnv`)
-  save emit-env, env-or-none(ask/env)
+  save env-asked, handed-text(ask/env)
+  save emit-env, env-or-none(env-asked)
   save keeps-program, is-handed-true(ask/keep-program)
   save slug
     task
@@ -473,7 +540,7 @@ task request-document
       link refusals
       walk refusals
         take fault
-        faults/push(<{node-path/relative(root, file)}: {fault}>)
+        faults/push(<{base-relative(root, file)}: {fault}>)
       back make(document-answer, bind(ok, false), bind(problems, problems), bind(faults, faults), bind(result, void))
     case readable
       link unit-text
@@ -484,26 +551,24 @@ task request-document
       fork test, or(whole, is-whole-file(file, unit-text, role))
         hold
           save options, make(compile-options, bind(resolve, resolve), bind(cache, cache), bind(parsed, session/parsed), bind(walked, session/walked), bind(deck-of, deck-of), bind(role-of, role-of-file), bind(lean-of, lean-of-file))
-          fork test, whole
+          save one, compile-module/compile(make(compile-source, bind(file, file), bind(text, unit-text)), with-env(options, whole, env-asked))
+          save one-ok, graph-field-boolean(one, <ok>)
+          fork test, not(one-ok)
             hold
-              save options, with-env(options, emit-env)
-          save one, compile-module/compile(make(compile-source, bind(file, file), bind(text, unit-text)), options)
-          fork test, not(one/ok)
-            hold
-              walk items-of(one/diagnostics)
+              walk graph-items(graph-field(one, <diagnostics>))
                 take diagnostic
                 problems/push(framed(unit, file, diagnostic))
-          back make(document-answer, bind(ok, one/ok), bind(problems, problems), bind(faults, faults), bind(result, one))
+          back make(document-answer, bind(ok, one-ok), bind(problems, problems), bind(faults, faults), bind(result, one))
       save options, make(entry-options, bind(resolve, resolve), bind(cache, cache), bind(modules, modules), bind(role-of, role-of-file), bind(lean-of, lean-of-file), bind(deck-of, deck-of), bind(parsed, session/parsed), bind(units, session/units), bind(walked, session/walked), bind(explain, void), bind(env, emit-env), bind(keep-program, keeps-program), bind(is-clean, is-clean))
       save result, separate-module/compileSeparate(make(compile-source, bind(file, file), bind(text, unit-text)), options)
-      fork test, not(result/ok)
+      fork test, not(graph-field-boolean(result, <ok>))
         hold
-          walk items-of(result/diagnostics)
+          walk graph-items(graph-field(result, <diagnostics>))
             take diagnostic
             problems/push(framed(unit, file, diagnostic))
           back make(document-answer, bind(ok, false), bind(problems, problems), bind(faults, faults), bind(result, result))
       # only this file's warnings, as the project build reports them
-      walk items-of(result/warnings)
+      walk graph-items(graph-field(result, <warnings>))
         take warning
         fork test, is-own-warning(warning, file, and(grammar, is-equal(caller-text, <>)))
           hold
@@ -529,10 +594,11 @@ form entry-options
   link is-clean, like dynamic
 
 # no clean test: every write, as term make, test, boot and the pool write
-bind every-write
+task every-write
   like dynamic
-  case node
-    text <undefined>
+  mark private
+
+  back void
 
 # whether a file is clean in this graph: the overlay does not hold it (decision 098 rule 6)
 task clean-test
@@ -591,41 +657,58 @@ task clean-store
 
   back cache-module/cleanView(store, clean-test(graph))
 
-# an env the caller named, or undefined for the empty text or none
-bind env-or-none
-  take value, like dynamic
+# an env the caller named, as the text the compiler reads, or undefined for the empty text
+task env-or-none
+  take env, like text
   like dynamic
-  case node
-    text <(($value) || undefined)>
+  mark private
 
-# compile options with the platform emitted for (undefined for the compiler's default), as `compile()` reads `env`
-bind with-env
-  take options, like dynamic
-  take env, like dynamic
+  fork test, is-equal(env, <>)
+    hold
+      back void
+  back graph-from-text(env)
+
+# compile options with the platform emitted for, when the entry is asked for as one program and names one, as
+# `compile()` reads `env`: set on the options made for this one compile, which nothing reads after. Else the options
+# as they are, the compiler's default platform
+task with-env
+  take options, like compile-options
+  take whole, like boolean
+  take env, like text
   like dynamic
-  case node
-    text <((($env) === undefined ? ($options) : \{ ...($options), env: ($env) \}) as any)>
+  mark private
 
-# a value the caller handed, as against undefined or null
-bind is-handed
+  fork test, and(whole, is-unequal(env, <>))
+    hold
+      back graph-set(options, <env>, graph-from-text(env))
+  back options
+
+# THE ASK AS A TYPESCRIPT CALLER HANDS IT: a typed `build-ask` whose fields a caller may have left out or set to null
+# (the language server's document ask holds no `whole`). Each is read as a JSON value is, so a field left out reads as
+# its kind's empty value, and the same on every backend
+# a value the caller handed, as against one left out or null
+task is-handed
   take value, like dynamic
   like boolean
-  case node
-    text <(($value) !== undefined && ($value) !== null)>
+  mark private
 
-# a text field the caller may have left out (a TypeScript caller's ask), as the empty text
-bind handed-text
-  take value, like dynamic
+  back not(graph-null(value))
+
+# a text field the caller may have left out, as the empty text
+task handed-text
+  take value, like text
   like text
-  case node
-    text <(($value) ?? "")>
+  mark private
+
+  back graph-text(value)
 
 # a flag the caller may have left out, as false
-bind is-handed-true
-  take value, like dynamic
+task is-handed-true
+  take value, like boolean
   like boolean
-  case node
-    text <(($value) === true)>
+  mark private
+
+  back graph-boolean(value)
 
 # the project's store, as a project request makes it when it is handed none
 task project-cache-of
@@ -692,7 +775,7 @@ task text-of-file
   fork test, and(shadow, graph/overlay/has(file))
     hold
       back graph/overlay/get(file)
-  back node-file/read-file-sync(file, <utf8>)
+  back base-read(file)
 
 # the session's kept answers as a resolver function, with the overlay's text over a file it shadows
 task face-graph
@@ -732,11 +815,11 @@ task unsaved-at
   fork test, or(starts-with(import-path, <./>), starts-with(import-path, <../>))
     miss
       back void
-  save base, node-path/resolve(node-path/dirname(origin), import-path)
+  save base, base-resolve(base-directory(origin), import-path)
   save candidates, make list
   candidates/push(<{base}.tree>)
-  candidates/push(node-path/join(base, <base.tree>))
-  candidates/push(node-path/join(base, <note.tree>))
+  candidates/push(base-join(base, <base.tree>))
+  candidates/push(base-join(base, <note.tree>))
   walk candidates
     take candidate
     fork test, graph/overlay/has(candidate)
@@ -788,17 +871,14 @@ task shadowed-source
 
 host snapshot-header, <# term graph 2>
 
+# the separator a path's parts are joined with (node's `path.sep`), `/` on every backend as @term/base path joins
+host graph-separator, </>
+
 # a file as it is now: its stamp as `stamp-of` spells it (`missing` for none), its inode and modification time
 form file-seen
   link stamp, like text
   link inode, like text
-  link mtime, like number
-
-form graph-folder-ask
-  link recursive, like boolean
-
-form graph-listing-ask
-  link with-file-types, like boolean
+  link mtime, like float
 
 # the snapshot's body. `stable` is the sum of the body with `generation`, `taken` and `stable` empty, so a build that
 # changed nothing writes nothing
@@ -851,13 +931,8 @@ task compiler-fingerprint
   like text
   mark private
 
-  save bundle, seen-now(running-script())
-  back <{host-global/JSON/stringify(compiler-versions())}|{bundle/stamp}>
-
-bind running-script
-  like text
-  case node
-    text <String(process.argv[1] ?? "")>
+  save bundle, seen-now(base-program-file())
+  back <{graph-stringify(compiler-versions())}|{bundle/stamp}>
 
 # the settings every build reads: `TERM_*` and `SEED_*`, but the verify switch, which changes what is checked and
 # never what is built, and the variables that say only how the process was started (call/code/launch-only.tree, the one
@@ -868,15 +943,15 @@ task env-text
   like text
   mark private
 
-  save env, host-global/process/env
+  save env, base-variables()
   save lines, make list
-  walk sorted-texts(host-global/Object/keys(env))
+  walk sorted-texts(env/keys())
     take name
     fork test, or(starts-with(name, <TERM_>), starts-with(name, <SEED_>))
       hold
         fork test, and(not(is-launch-only(name)), is-unequal(name, <TERM_CACHE_VERIFY>))
           hold
-            lines/push(<{name}={env/{name}}>)
+            lines/push(<{name}={env/get(name)}>)
   back join(lines, <\n>)
 
 task seen-now
@@ -886,11 +961,20 @@ task seen-now
 
   fork
     mark unsafe
-    save stat, node-file/stat-sync(file)
-    back make(file-seen, bind(stamp, <{stat/size}:{stat/mtime-ms}>), bind(inode, <{stat/ino}>), bind(mtime, stat/mtime-ms))
+    save seen, base-stat(file)
+    back make(file-seen, bind(stamp, <{seen/size}:{seen/changed}>), bind(inode, <{seen/inode}>), bind(mtime, seen/changed))
   halt take
     take problem
-    back make(file-seen, bind(stamp, <missing>), bind(inode, <>), bind(mtime, 0))
+    back make(file-seen, bind(stamp, <missing>), bind(inode, <>), bind(mtime, base-decimal(0)))
+
+# whether a modification time is older than a racy line, which is kept in whole milliseconds
+task is-before-line
+  take mtime, like float
+  take line, like number
+  like boolean
+  mark private
+
+  back is-below(mtime, base-decimal(line))
 
 # a file's text hashed, `missing` when it cannot be read
 task hash-of-file
@@ -900,7 +984,7 @@ task hash-of-file
 
   fork
     mark unsafe
-    back hash-key(node-file/read-file-sync(file, <utf8>))
+    back hash-key(base-read(file))
   halt take
     take problem
     back <missing>
@@ -909,7 +993,7 @@ task hash-of-file
 # missing), `rehashed` (its text hashed again to the same hash) or `moved`
 task check-note
   take file, like text
-  take note, like dynamic
+  take note, like file-note
   take now, like file-seen
   take line, like number
   like text
@@ -924,7 +1008,7 @@ task check-note
   fork test, or(is-equal(now/stamp, <missing>), is-equal(note/stamp, <moved>))
     hold
       back <moved>
-  fork test, and(is-equal(now/stamp, note/stamp), and(is-equal(now/inode, note/inode), is-below(now/mtime, line)))
+  fork test, and(is-equal(now/stamp, note/stamp), and(is-equal(now/inode, note/inode), is-before-line(now/mtime, line)))
     hold
       back <same>
   fork test, is-equal(hash-of-file(file), note/hash)
@@ -932,13 +1016,43 @@ task check-note
       back <rehashed>
   back <moved>
 
-# a host object's entries, `[key, value]` each
-task pairs-in
+# a note as the snapshot's JSON holds it (`file-note`'s three texts), read back as one
+task snapshot-note
+  take value, like dynamic
+  like file-note
+  mark private
+
+  back make(file-note, bind(stamp, graph-field-text(value, <stamp>)), bind(inode, graph-field-text(value, <inode>)), bind(hash, graph-field-text(value, <hash>)))
+
+# the items of a JSON array, or of a list the compiler hands back, in order; none for anything else
+task graph-items
   take value, like dynamic
   like list, like dynamic
   mark private
 
-  back host-global/Object/entries(value)
+  save out, like list, like dynamic
+    make list
+  save count, graph-size(value)
+  save at, 0
+  walk test
+    hook test
+      is-below(at, count)
+    hook hold
+      out/push(graph-item(value, at))
+      save at, add(at, 1)
+  back out
+
+# the texts of a JSON array of texts
+task graph-texts
+  take value, like dynamic
+  like list, like text
+  mark private
+
+  save out, make list
+  walk graph-items(value)
+    take item
+    out/push(graph-text(item))
+  back out
 
 # a name a folder walk keeps: no hidden folder, no installed packages, no build output or scratch
 task kept-name
@@ -960,13 +1074,11 @@ task listing-hash
   fork
     mark unsafe
     save names, make list
-    save entries, like list, like dynamic
-      node-file/readdir-sync(folder, make(graph-listing-ask, bind(with-file-types, true)))
-    walk entries
+    walk base-entries(folder)
       take entry
       fork test, kept-name(entry/name)
         hold
-          fork test, entry/is-directory()
+          fork test, is-folder-kind(entry/kind)
             hold
               names/push(<{entry/name}/>)
             miss
@@ -978,6 +1090,18 @@ task listing-hash
     take problem
     back <missing>
 
+# whether a directory entry is a folder, its own kind with links not followed (node's `Dirent.isDirectory()`)
+task is-folder-kind
+  take kind, like entry-kind
+  like boolean
+  mark private
+
+  sift kind
+    case directory
+      back true
+    miss
+      back false
+
 # A folder and every folder under it a walk keeps, each with the hash of its listing as `listing-hash` spells it, from
 # one listing of each (`folders-under` and `listing-hash` listed each folder twice, item 0450's profile of the writer)
 task folders-listed
@@ -985,18 +1109,18 @@ task folders-listed
   take into, like hash, like text, like text
   mark private
 
-  save entries, like list, like dynamic
+  save entries, like list, like path-entry
     make list
   save listing, <missing>
   fork
     mark unsafe
-    save entries, node-file/readdir-sync(base, make(graph-listing-ask, bind(with-file-types, true)))
+    save entries, base-entries(base)
     save names, make list
     walk entries
       take entry
       fork test, kept-name(entry/name)
         hold
-          fork test, entry/is-directory()
+          fork test, is-folder-kind(entry/kind)
             hold
               names/push(<{entry/name}/>)
             miss
@@ -1010,9 +1134,9 @@ task folders-listed
   save into/{base}, listing
   walk entries
     take entry
-    fork test, and(entry/is-directory(), kept-name(entry/name))
+    fork test, and(is-folder-kind(entry/kind), kept-name(entry/name))
       hold
-        folders-listed(node-path/join(base, entry/name), into)
+        folders-listed(base-join(base, entry/name), into)
 
 # A package's folders as the snapshot this session took noted them (take-snapshot keeps each under its path and a
 # separator), written to `folders` when every one is still at its noted stamp and inode and older than the racy line:
@@ -1026,7 +1150,7 @@ task carried-folders
   like boolean
   mark private
 
-  save sep, node-path/sep
+  save sep, graph-separator
   save own, <{package}{sep}>
   save found, make list
   walk session/noted/keys()
@@ -1042,9 +1166,9 @@ task carried-folders
     take key
     save note, session/noted/get(key)
     # the folder's own path, the separator off its end
-    save folder, node-path/resolve(key)
+    save folder, base-normal(key)
     save now, seen-now(folder)
-    fork test, not(and(and(is-equal(now/stamp, note/stamp), is-equal(now/inode, note/inode)), is-below(now/mtime, line)))
+    fork test, not(and(and(is-equal(now/stamp, note/stamp), is-equal(now/inode, note/inode)), is-before-line(now/mtime, line)))
       hold
         back false
     save notes/{folder}, make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, note/hash))
@@ -1064,11 +1188,11 @@ task package-of
     hold
       back memo/get(folder)
   save found, <>
-  fork test, node-file/exists-sync(node-path/join(folder, <deck.tree>))
+  fork test, base-exists(base-join(folder, <deck.tree>))
     hold
       save found, folder
     miss
-      save up, node-path/dirname(folder)
+      save up, base-directory(folder)
       fork test, is-unequal(up, folder)
         hold
           save found, package-of(up, memo)
@@ -1082,10 +1206,10 @@ task deck-settings
   mark private
 
   save files, make list
-  files/push(node-path/join(package, <deck.tree>))
-  files/push(node-path/join(package, <lock.tree>))
-  files/push(node-path/join(package, <role.tree>))
-  files/push(node-path/join(package, <base/role.tree>))
+  files/push(base-join(package, <deck.tree>))
+  files/push(base-join(package, <lock.tree>))
+  files/push(base-join(package, <role.tree>))
+  files/push(base-join(package, <base/role.tree>))
   back files
 
 # THE READER. A session that has built nothing takes the project's last snapshot, when every part of it validates, and
@@ -1118,10 +1242,10 @@ task take-snapshot
     case none
       save nothing, 0
   save path, snapshot-held-at(session/root, snapshot-at)
-  fork test, not(node-file/exists-sync(path))
+  fork test, not(base-exists(path))
     hold
       back false
-  save text, node-file/read-file-sync(path, <utf8>)
+  save text, base-read(path)
   save head, <{snapshot-header}\n>
   save at, char-count(head)
   fork test, is-below(char-count(text), add(at, 33))
@@ -1135,15 +1259,14 @@ task take-snapshot
   fork test, is-unequal(hash-key(body-text), sum)
     hold
       back false
-  save coded, like dynamic
-    host-global/JSON/parse(body-text)
-  fork test, is-unequal(coded/root, session/root)
+  save coded, graph-parse(body-text)
+  fork test, is-unequal(graph-field-text(coded, <root>), session/root)
     hold
       back false
-  fork test, is-unequal(coded/fingerprint, compiler-fingerprint())
+  fork test, is-unequal(graph-field-text(coded, <fingerprint>), compiler-fingerprint())
     hold
       back false
-  fork test, is-unequal(coded/env, env-text())
+  fork test, is-unequal(graph-field-text(coded, <env>), env-text())
     hold
       back false
   # every path read back from the table and every problem's text from the disk (decision 083). An entry whose file reads
@@ -1162,27 +1285,29 @@ task take-snapshot
       back false
   # every folder of a package reached outside the project: a file added or removed there may move where a load lands
   save noted, make hash
-  walk pairs-in(body/folders)
-    take pair
-    save note, pair/1
-    save now, seen-now(pair/0)
+  save folders, body/folders
+  walk graph-keys(folders)
+    take folder
+    save note, snapshot-note(graph-field(folders, folder))
+    save now, seen-now(folder)
     fork test, or(is-equal(note/hash, <moved>), is-equal(now/stamp, <missing>))
       hold
         back false
-    fork test, not(and(is-equal(now/stamp, note/stamp), is-below(now/mtime, line)))
+    fork test, not(and(is-equal(now/stamp, note/stamp), is-before-line(now/mtime, line)))
       hold
-        fork test, is-unequal(listing-hash(pair/0), note/hash)
+        fork test, is-unequal(listing-hash(folder), note/hash)
           hold
             back false
         save rehashed, true
     # kept as it validated, under the folder's path and a separator (no file's path), so the writer lists it again only
     # when it moved (`carried-folders`)
-    save folder-key, <{pair/0}{node-path/sep}>
+    save folder-key, <{folder}{graph-separator}>
     save noted/{folder-key}, make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, note/hash))
   # every package's manifest, lock and roles
-  walk pairs-in(body/decks)
-    take pair
-    save state, check-note(pair/0, pair/1, seen-now(pair/0), line)
+  save decks, body/decks
+  walk graph-keys(decks)
+    take file
+    save state, check-note(file, snapshot-note(graph-field(decks, file)), seen-now(file), line)
     fork test, is-equal(state, <moved>)
       hold
         back false
@@ -1191,10 +1316,10 @@ task take-snapshot
         save rehashed, true
   # every module and setting, as the next turn will find it: its stamp now where it is as noted, `moved` where not
   save stamps, make hash
-  walk pairs-in(body/files)
-    take pair
-    save file, pair/0
-    save note, pair/1
+  save files, body/files
+  walk graph-keys(files)
+    take file
+    save note, snapshot-note(graph-field(files, file))
     save now, seen-now(file)
     save state, check-note(file, note, now, line)
     # a project setting that moved would start the session over too
@@ -1214,10 +1339,10 @@ task take-snapshot
             save rehashed, true
   # every artifact an entry stands behind: an entry with one gone or moved builds again
   save standing, make hash
-  walk pairs-in(body/artifacts)
-    take pair
-    save artifact, pair/0
-    save note, pair/1
+  save artifacts, body/artifacts
+  walk graph-keys(artifacts)
+    take artifact
+    save note, snapshot-note(graph-field(artifacts, artifact))
     save now, seen-now(artifact)
     save state, check-note(artifact, note, now, line)
     fork test, is-unequal(state, <moved>)
@@ -1228,21 +1353,19 @@ task take-snapshot
           hold
             save rehashed, true
   save entries, make hash
-  walk pairs-in(body/entries)
-    take pair
-    save outcome, like dynamic
-      pair/1
+  save outcomes, body/entries
+  walk graph-keys(outcomes)
+    take entry
+    save outcome, graph-field(outcomes, entry)
     save whole, true
-    save paths, like list, like text
-      outcome/artifacts
-    walk paths
+    walk graph-texts(graph-field(outcome, <artifacts>))
       take artifact
       fork test, not(standing/has(artifact))
         hold
           save whole, false
     fork test, whole
       hold
-        save entries/{pair/0}, outcome
+        save entries/{entry}, outcome
       miss
         save rehashed, true
   # it validated: the session takes it whole
@@ -1250,15 +1373,17 @@ task take-snapshot
   walk stamps/keys()
     take file
     save session/stamps/{file}, stamps/get(file)
-  walk pairs-in(body/edges)
-    take pair
-    save session/edges/{pair/0}, pair/1
+  save edges, body/edges
+  walk graph-keys(edges)
+    take file
+    save session/edges/{file}, graph-texts(graph-field(edges, file))
   walk entries/keys()
     take file
     save session/entries/{file}, entries/get(file)
-  walk pairs-in(body/rolls)
-    take pair
-    save session/rolls/{pair/0}, pair/1
+  save rolls, body/rolls
+  walk graph-keys(rolls)
+    take label
+    save session/rolls/{label}, graph-field(rolls, label)
   walk noted/keys()
     take file
     save session/noted/{file}, noted/get(file)
@@ -1352,14 +1477,14 @@ task snapshot-body
   save edges, make hash
   save packages, make hash
   save memo, make hash
-  save prefix, <{root}{node-path/sep}>
+  save prefix, <{root}{graph-separator}>
   walk reached/keys()
     take file
     save files/{file}, module-note(session, file)
     save edges/{file}, edges-at(session, file)
     fork test, not(starts-with(file, prefix))
       hold
-        save package, package-of(node-path/dirname(file), memo)
+        save package, package-of(base-directory(file), memo)
         fork test, and(is-unequal(package, <>), is-unequal(package, root))
           hold
             save packages/{package}, true
@@ -1385,7 +1510,7 @@ task snapshot-body
       take folder
       save now, seen-now(folder)
       save listing, <moved>
-      fork test, is-below(now/mtime, line)
+      fork test, is-before-line(now/mtime, line)
         hold
           save listing, listings/get(folder)
       save folders/{folder}, make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, listing))
@@ -1398,7 +1523,7 @@ task snapshot-body
       fork test, not(artifacts/has(artifact))
         hold
           save artifacts/{artifact}, artifact-note(session, artifact)
-  save body, make(graph-snapshot, bind(root, root), bind(fingerprint, compiler-fingerprint()), bind(env, env-text()), bind(generation, 0), bind(taken, 0), bind(stable, <>), bind(known, listed), bind(files, object-of(files)), bind(edges, object-of(edges)), bind(decks, object-of(decks)), bind(folders, object-of(folders)), bind(entries, object-of(session/entries)), bind(rolls, object-of(session/rolls)), bind(artifacts, object-of(artifacts)), bind(walk, object-of(session/folder-notes)))
+  save body, make(graph-snapshot, bind(root, root), bind(fingerprint, compiler-fingerprint()), bind(env, env-text()), bind(generation, 0), bind(taken, 0), bind(stable, <>), bind(known, listed), bind(files, notes-object(files)), bind(edges, edges-object(edges)), bind(decks, notes-object(decks)), bind(folders, notes-object(folders)), bind(entries, outcomes-object(session/entries)), bind(rolls, rolls-object(session/rolls)), bind(artifacts, notes-object(artifacts)), bind(walk, walk-object(session/folder-notes)))
   back make(some, body)
 
 task write-snapshot
@@ -1423,38 +1548,38 @@ task write-coded
   mark private
 
   save root, session/root
-  save stable, hash-key(host-global/JSON/stringify(coded))
+  save stable, hash-key(graph-stringify(coded))
   save path, snapshot-held-at(root, snapshot-at)
-  fork test, and(is-equal(stable, session/snapshot-sum), node-file/exists-sync(path))
+  fork test, and(is-equal(stable, session/snapshot-sum), base-exists(path))
     hold
       back
   save generation, add(session/generation, 1)
   save coded/generation, generation
   save coded/taken, started
   save coded/stable, stable
-  save body-text, host-global/JSON/stringify(coded)
+  save body-text, graph-stringify(coded)
   save text, <{snapshot-header}\n{hash-key(body-text)}\n{body-text}>
-  node-file/mkdir-sync(node-path/dirname(path), make(graph-folder-ask, bind(recursive, true)))
-  save temp, <{path}.{host-global/process/pid}.{started}.tmp>
-  fork
-    mark unsafe
-    node-file/write-file-sync(temp, text)
-    node-file/rename-sync(temp, path)
-  halt take
-    take problem
-    fork
-      mark unsafe
-      node-file/rm-sync(temp, make(graph-remove-ask, bind(force, true)))
-    halt take
-      take missing
+  base-make-folder(base-directory(path))
+  save me, base-process()
+  save temp, <{path}.{me/id}.{started}.tmp>
+  # the write and the rename each answer whether they were made; a failure of either takes the temp file away and
+  # leaves the session as it was
+  save written, base-write(temp, text)
+  fork test, written
+    hold
+      save written, base-rename(temp, path)
+  fork test, not(written)
+    hold
+      fork
+        mark unsafe
+        base-remove(temp)
+      halt take
+        take missing
+        back
       back
-    back
   save session/generation, generation
   save session/snapshot-sum, stable
   reclaim-snapshots(path)
-
-form graph-remove-ask
-  link force, like boolean
 
 # a module's or setting's note: its stamp as the build first asked it, and its text's hash. `moved` when the file moved
 # while the build ran, so the next process builds what reaches it
@@ -1483,12 +1608,10 @@ task module-note
   save sum, <>
   fork test, session/walked/has(file)
     hold
-      save walk-record, like dynamic
-        session/walked/get(file)
-      save walked-text, walk-record/text
-      fork test, is-text(walked-text)
+      save walked-text, graph-field(session/walked/get(file), <text>)
+      fork test, is-equal(graph-kind(walked-text), <text>)
         hold
-          save sum, hash-key(walked-text)
+          save sum, hash-key(graph-text(walked-text))
   fork test, is-equal(sum, <>)
     hold
       save sum, hash-of-file(file)
@@ -1509,7 +1632,7 @@ task setting-note
   fork test, is-equal(now/stamp, <missing>)
     hold
       back make(file-note, bind(stamp, <missing>), bind(inode, <>), bind(hash, <>))
-  fork test, not(is-below(now/mtime, line))
+  fork test, not(is-before-line(now/mtime, line))
     hold
       back make(file-note, bind(stamp, <moved>), bind(inode, <>), bind(hash, <>))
   save kept, carried(session, file, now)
@@ -1554,13 +1677,66 @@ task carried
           back kept/hash
   back <>
 
-# a host map as a plain object, for JSON
-task object-of
-  take table, like dynamic
+# Each table of the session as a JSON object, its keys in the table's order (node's `Object.fromEntries` of the map),
+# one task for each kind of value a table holds
+task notes-object
+  take table, like hash, like text, like file-note
   like dynamic
   mark private
 
-  back host-global/Object/fromEntries(table)
+  save out, graph-object()
+  walk table/keys()
+    take key
+    save out, graph-set(out, key, table/get(key))
+  back out
+
+task edges-object
+  take table, like hash, like text, like list, like text
+  like dynamic
+  mark private
+
+  save out, graph-object()
+  walk table/keys()
+    take key
+    save edges, graph-array()
+    walk table/get(key)
+      take edge
+      save edges, graph-push(edges, graph-from-text(edge))
+    save out, graph-set(out, key, edges)
+  back out
+
+task outcomes-object
+  take table, like hash, like text, like entry-outcome
+  like dynamic
+  mark private
+
+  save out, graph-object()
+  walk table/keys()
+    take key
+    save out, graph-set(out, key, table/get(key))
+  back out
+
+task rolls-object
+  take table, like hash, like text, like dynamic
+  like dynamic
+  mark private
+
+  save out, graph-object()
+  walk table/keys()
+    take key
+    save out, graph-set(out, key, table/get(key))
+  back out
+
+task walk-object
+  take table, like hash, like text, like folder-note
+  like dynamic
+  mark private
+
+  save out, graph-object()
+  walk table/keys()
+    take key
+    save out, graph-set(out, key, table/get(key))
+  back out
 
 # ---- the snapshot as written (decision 083) ----
 #
@@ -1605,12 +1781,11 @@ form decoded-graph
   link body, like graph-snapshot
   link dropped, like number
 
-# what a host value is: `list`, `object`, `null` or its `typeof`
-bind kind-of-value
-  take value, like dynamic
-  like text
-  case node
-    text <(Array.isArray($value) ? "list" : $value === null ? "null" : typeof $value)>
+# the paths of a written body read back: by index, and by the index's text, as an object's key or a text's digits
+# hold it
+form path-names
+  link paths, like list, like text
+  link named, like hash, like text, like text
 
 # a path's index, the path added at the end when the table lacks it
 task table-add
@@ -1627,25 +1802,42 @@ task table-add
   save table/index/{path}, at
   back at
 
-# a `[key, value]` pair for `Object.fromEntries`
-task pair-of
-  take key, like text
-  take value, like dynamic
-  like list, like dynamic
+# an index as the JSON number it is written as
+task graph-index
+  take at, like number
+  like dynamic
   mark private
 
-  save out, like list, like dynamic
-    make list
-  out/push(key)
-  out/push(value)
-  back out
+  back graph-from-number(base-decimal(at))
 
-task text-of-value
+# the index a JSON number holds
+task graph-whole
   take value, like dynamic
+  like number
+  mark private
+
+  back base-whole(graph-number(value))
+
+# the path a written index names, by its digits (an object's key, or the digits in a text), the empty text for none
+task path-named
+  take names, like path-names
+  take digits, like text
   like text
   mark private
 
-  back <{value}>
+  fork test, names/named/has(digits)
+    hold
+      back names/named/get(digits)
+  back <>
+
+# a whole number field of a JSON object
+task whole-field
+  take value, like dynamic
+  take key, like text
+  like number
+  mark private
+
+  back graph-whole(graph-field(value, key))
 
 # a text inside a problem or a roll, as written
 task encode-text
@@ -1671,7 +1863,7 @@ task encode-text
 
 # a text written by `encode-text`, read back
 task decode-text
-  take paths, like list, like text
+  take names, like path-names
   take text, like text
   like text
   mark private
@@ -1690,9 +1882,7 @@ task decode-text
     hold
       save digits, substring(rest, 0, colon)
       save tail, substring(rest, colon)
-  save at, like dynamic
-    host-global/Number(digits)
-  back <{paths/{at}}{tail}>
+  back <{path-named(names, digits)}{tail}>
 
 # any value inside a problem or a roll, as written: each text and each key by `encode-text`
 task encode-value
@@ -1701,52 +1891,49 @@ task encode-value
   like dynamic
   mark private
 
-  save kind, kind-of-value(value)
-  fork test, is-equal(kind, <string>)
+  save kind, graph-kind(value)
+  fork test, is-equal(kind, <text>)
     hold
-      back encode-text(table, text-of-value(value))
-  fork test, is-equal(kind, <list>)
+      back graph-from-text(encode-text(table, graph-text(value)))
+  fork test, is-equal(kind, <array>)
     hold
-      save out, like list, like dynamic
-        make list
-      walk items-of(value)
+      save out, graph-array()
+      walk graph-items(value)
         take item
-        out/push(encode-value(table, item))
+        save out, graph-push(out, encode-value(table, item))
       back out
   fork test, is-equal(kind, <object>)
     hold
-      save pairs, make list
-      walk pairs-in(value)
-        take pair
-        pairs/push(pair-of(encode-text(table, text-of-value(pair/0)), encode-value(table, pair/1)))
-      back host-global/Object/fromEntries(pairs)
+      save out, graph-object()
+      walk graph-keys(value)
+        take key
+        save out, graph-set(out, encode-text(table, key), encode-value(table, graph-field(value, key)))
+      back out
   back value
 
-# Any value written by `encode-value`, read back IN PLACE: the value was parsed for this read alone, so each text is
-# put back where it stands and no list or object is made again, but an object holding a key that starts with the mark,
-# which is made again with its keys read back, in their order
+# Any value written by `encode-value`, read back. The value was parsed for this read alone, so an object's texts are put
+# back where they stand and the object is not made again, but an object holding a key that starts with the mark, which
+# is made again with its keys read back, in their order. A list is made again, item by item
 task decode-value
-  take paths, like list, like text
+  take names, like path-names
   take value, like dynamic
   like dynamic
   mark private
 
-  save kind, kind-of-value(value)
-  fork test, is-equal(kind, <string>)
+  save kind, graph-kind(value)
+  fork test, is-equal(kind, <text>)
     hold
-      back decode-text(paths, text-of-value(value))
-  fork test, is-equal(kind, <list>)
+      back graph-from-text(decode-text(names, graph-text(value)))
+  fork test, is-equal(kind, <array>)
     hold
-      save at, 0
-      walk items-of(value)
+      save out, graph-array()
+      walk graph-items(value)
         take item
-        put-at(value, at, decode-value(paths, item))
-        save at, add(at, 1)
-      back value
+        save out, graph-push(out, decode-value(names, item))
+      back out
   fork test, is-equal(kind, <object>)
     hold
-      save keys, like list, like text
-        host-global/Object/keys(value)
+      save keys, graph-keys(value)
       save marked, false
       walk keys
         take key
@@ -1755,44 +1942,29 @@ task decode-value
             save marked, true
       fork test, marked
         hold
-          save pairs, make list
+          save out, graph-object()
           walk keys
             take key
-            pairs/push(pair-of(decode-text(paths, key), decode-value(paths, value-at(value, key))))
-          back host-global/Object/fromEntries(pairs)
+            save out, graph-set(out, decode-text(names, key), decode-value(names, graph-field(value, key)))
+          back out
+      save held, value
       walk keys
         take key
-        put-at(value, key, decode-value(paths, value-at(value, key)))
-      back value
+        save held, graph-set(held, key, decode-value(names, graph-field(held, key)))
+      back held
   back value
 
-# a host object's or list's member, read and written by its key or index
-bind value-at
-  take holder, like dynamic
-  take key, like dynamic
-  like dynamic
-  case node
-    text <$holder[$key]>
-
-bind put-at
-  take holder, like dynamic
-  take key, like dynamic
-  take value, like dynamic
-  like void
-  case node
-    text <$holder[$key] = $value>
-
-# a list of paths as their indexes
+# a list of paths as their indexes, a JSON array
 task indexes-of
   take table, like path-table
   take paths, like dynamic
-  like list, like number
+  like dynamic
   mark private
 
-  save out, make list
-  walk texts-of(paths)
+  save out, graph-array()
+  walk graph-texts(paths)
     take path
-    out/push(table-add(table, path))
+    save out, graph-push(out, graph-index(table-add(table, path)))
   back out
 
 task paths-at
@@ -1802,8 +1974,9 @@ task paths-at
   mark private
 
   save out, make list
-  walk items-of(indexes)
-    take at
+  walk graph-items(indexes)
+    take item
+    save at, graph-whole(item)
     out/push(paths/{at})
   back out
 
@@ -1814,25 +1987,23 @@ task index-keys
   like dynamic
   mark private
 
-  save pairs, make list
-  walk pairs-in(value)
-    take pair
-    pairs/push(pair-of(<{table-add(table, text-of-value(pair/0))}>, pair/1))
-  back host-global/Object/fromEntries(pairs)
+  save out, graph-object()
+  walk graph-keys(value)
+    take key
+    save out, graph-set(out, <{table-add(table, key)}>, graph-field(value, key))
+  back out
 
 task path-keys
-  take paths, like list, like text
+  take names, like path-names
   take value, like dynamic
   like dynamic
   mark private
 
-  save pairs, make list
-  walk pairs-in(value)
-    take pair
-    save at, like dynamic
-      host-global/Number(pair/0)
-    pairs/push(pair-of(paths/{at}, pair/1))
-  back host-global/Object/fromEntries(pairs)
+  save out, graph-object()
+  walk graph-keys(value)
+    take key
+    save out, graph-set(out, path-named(names, key), graph-field(value, key))
+  back out
 
 # a unit's label (its files joined by `+`) as written: the mark and the files' indexes, or the label escaped when a part
 # is no table path
@@ -1855,7 +2026,7 @@ task encode-label
   back <{graph-mark}{join(parts, <+>)}>
 
 task decode-label
-  take paths, like list, like text
+  take names, like path-names
   take label, like text
   like text
   mark private
@@ -1870,9 +2041,7 @@ task decode-label
   save parts, make list
   walk split(rest, <+>)
     take digits
-    save at, like dynamic
-      host-global/Number(digits)
-    parts/push(paths/{at})
+    parts/push(path-named(names, digits))
   back join(parts, <+>)
 
 # a problem as written: its file's text by reference when it hashes as that file's noted hash
@@ -1883,55 +2052,56 @@ task encode-problem
   like dynamic
   mark private
 
-  save pairs, make list
-  walk pairs-in(problem)
-    take pair
-    save key, text-of-value(pair/0)
+  save out, graph-object()
+  walk graph-keys(problem)
+    take key
+    save item, graph-field(problem, key)
     fork test, is-equal(key, <text>)
       hold
-        save file, problem/diagnostic/file
-        fork test, and(is-text(pair/1), and(is-text(file), table/index/has(text-of-value(file))))
+        save file, graph-field(graph-field(problem, <diagnostic>), <file>)
+        fork test, and(is-equal(graph-kind(item), <text>), is-equal(graph-kind(file), <text>))
           hold
-            save note, like dynamic
-              files/{file}
-            fork test, is-unequal(note, void)
+            save file-path, graph-text(file)
+            fork test, table/index/has(file-path)
               hold
-                save hash, text-of-value(note/hash)
-                fork test, and(is-unequal(hash, <>), is-equal(hash-key(text-of-value(pair/1)), hash))
+                save note, graph-field(files, file-path)
+                fork test, not(graph-null(note))
                   hold
-                    pairs/push(pair-of(<{graph-mark}text>, table/index/get(text-of-value(file))))
-                    turn next
-    pairs/push(pair-of(encode-text(table, key), encode-value(table, pair/1)))
-  back host-global/Object/fromEntries(pairs)
+                    save hash, graph-field-text(note, <hash>)
+                    fork test, and(is-unequal(hash, <>), is-equal(hash-key(graph-text(item)), hash))
+                      hold
+                        save out, graph-set(out, <{graph-mark}text>, graph-index(table/index/get(file-path)))
+                        turn next
+    save out, graph-set(out, encode-text(table, key), encode-value(table, item))
+  back out
 
 # a problem read back, its file's text read from the disk and checked against the hash noted for it (`texts` holds the
 # texts read so far by file). Nothing when a file reads otherwise
 task decode-problem
-  take paths, like list, like text
+  take names, like path-names
   take files, like dynamic
   take texts, like hash, like text, like text
   take problem, like dynamic
   like maybe, like dynamic
   mark private
 
-  save pairs, make list
-  walk pairs-in(problem)
-    take pair
-    save key, text-of-value(pair/0)
+  save out, graph-object()
+  walk graph-keys(problem)
+    take key
+    save item, graph-field(problem, key)
     fork test, is-equal(key, <{graph-mark}text>)
       hold
-        save at, like dynamic
-          pair/1
-        save file, paths/{at}
+        save at, graph-whole(item)
+        save file, names/paths/{at}
         sift text-on-disk(files, texts, file)
           case some
             link text
-            pairs/push(pair-of(<text>, text))
+            save out, graph-set(out, <text>, graph-from-text(text))
           case none
             back make none
         turn next
-    pairs/push(pair-of(decode-text(paths, key), decode-value(paths, pair/1)))
-  back make(some, host-global/Object/fromEntries(pairs))
+    save out, graph-set(out, decode-text(names, key), decode-value(names, item))
+  back make(some, out)
 
 # a file's text as its note says it was: read, and hashed as noted
 task text-on-disk
@@ -1944,15 +2114,14 @@ task text-on-disk
   fork test, texts/has(file)
     hold
       back make(some, texts/get(file))
-  save note, like dynamic
-    files/{file}
-  fork test, is-equal(note, void)
+  save note, graph-field(files, file)
+  fork test, graph-null(note)
     hold
       back make none
   fork
     mark unsafe
-    save text, node-file/read-file-sync(file, <utf8>)
-    fork test, is-equal(hash-key(text), text-of-value(note/hash))
+    save text, base-read(file)
+    fork test, is-equal(hash-key(text), graph-field-text(note, <hash>))
       hold
         save texts/{file}, text
         back make(some, text)
@@ -1969,58 +2138,57 @@ task encode-outcome
   like dynamic
   mark private
 
-  save pairs, make list
-  walk pairs-in(outcome)
-    take pair
-    save key, text-of-value(pair/0)
+  save out, graph-object()
+  walk graph-keys(outcome)
+    take key
+    save item, graph-field(outcome, key)
     fork test, is-equal(key, <artifacts>)
       hold
-        pairs/push(pair-of(key, indexes-of(table, pair/1)))
+        save out, graph-set(out, key, indexes-of(table, item))
         turn next
     fork test, is-equal(key, <problems>)
       hold
-        save problems, like list, like dynamic
-          make list
-        walk items-of(pair/1)
+        save problems, graph-array()
+        walk graph-items(item)
           take problem
-          problems/push(encode-problem(table, files, problem))
-        pairs/push(pair-of(key, problems))
+          save problems, graph-push(problems, encode-problem(table, files, problem))
+        save out, graph-set(out, key, problems)
         turn next
-    pairs/push(pair-of(key, encode-value(table, pair/1)))
-  back host-global/Object/fromEntries(pairs)
+    save out, graph-set(out, key, encode-value(table, item))
+  back out
 
 task decode-outcome
-  take paths, like list, like text
+  take names, like path-names
   take files, like dynamic
   take texts, like hash, like text, like text
   take outcome, like dynamic
   like maybe, like dynamic
   mark private
 
-  save pairs, make list
-  walk pairs-in(outcome)
-    take pair
-    save key, text-of-value(pair/0)
+  save out, graph-object()
+  walk graph-keys(outcome)
+    take key
+    save item, graph-field(outcome, key)
     fork test, is-equal(key, <artifacts>)
       hold
-        pairs/push(pair-of(key, paths-at(paths, pair/1)))
+        save out, graph-set(out, key, paths-at(names/paths, item))
         turn next
     fork test, is-equal(key, <problems>)
       hold
         save problems, like list, like dynamic
           make list
-        walk items-of(pair/1)
+        walk graph-items(item)
           take problem
-          sift decode-problem(paths, files, texts, problem)
+          sift decode-problem(names, files, texts, problem)
             case some
               link decoded
               problems/push(decoded)
             case none
               back make none
-        pairs/push(pair-of(key, problems))
+        save out, graph-set(out, key, problems)
         turn next
-    pairs/push(pair-of(key, decode-value(paths, pair/1)))
-  back make(some, host-global/Object/fromEntries(pairs))
+    save out, graph-set(out, key, decode-value(names, item))
+  back make(some, out)
 
 # THE ENCODER: the body as the session holds it, written with each thing once
 task encode-body
@@ -2037,45 +2205,46 @@ task encode-body
       hold
         known/push(table-add(table, file))
   save files, index-keys(table, body/files)
-  save edges-pairs, make list
-  walk pairs-in(body/edges)
-    take pair
-    save at, table-add(table, text-of-value(pair/0))
-    edges-pairs/push(pair-of(<{at}>, indexes-of(table, pair/1)))
+  save edges, graph-object()
+  save body-edges, body/edges
+  walk graph-keys(body-edges)
+    take file
+    save at, table-add(table, file)
+    save edges, graph-set(edges, <{at}>, indexes-of(table, graph-field(body-edges, file)))
   save decks, index-keys(table, body/decks)
   save folders, index-keys(table, body/folders)
   save artifacts, index-keys(table, body/artifacts)
   save walk-notes, index-keys(table, body/walk)
-  walk pairs-in(body/entries)
-    take pair
-    table-add(table, text-of-value(pair/0))
-    save outcome, like dynamic
-      pair/1
-    indexes-of(table, outcome/artifacts)
-  walk pairs-in(body/rolls)
-    take pair
-    walk split(text-of-value(pair/0), <+>)
+  save body-entries, body/entries
+  walk graph-keys(body-entries)
+    take entry
+    table-add(table, entry)
+    indexes-of(table, graph-field(graph-field(body-entries, entry), <artifacts>))
+  save body-rolls, body/rolls
+  walk graph-keys(body-rolls)
+    take label
+    walk split(label, <+>)
       take part
       table-add(table, part)
   # then every place that may hold one
-  save entries-pairs, make list
-  walk pairs-in(body/entries)
-    take pair
-    entries-pairs/push(pair-of(<{table/index/get(text-of-value(pair/0))}>, encode-outcome(table, body/files, pair/1)))
-  save rolls-pairs, make list
-  walk pairs-in(body/rolls)
-    take pair
-    rolls-pairs/push(pair-of(encode-label(table, text-of-value(pair/0)), encode-value(table, pair/1)))
-  save prefix, <{root}{node-path/sep}>
+  save entries, graph-object()
+  walk graph-keys(body-entries)
+    take entry
+    save entries, graph-set(entries, <{table/index/get(entry)}>, encode-outcome(table, body/files, graph-field(body-entries, entry)))
+  save rolls, graph-object()
+  walk graph-keys(body-rolls)
+    take label
+    save rolls, graph-set(rolls, encode-label(table, label), encode-value(table, graph-field(body-rolls, label)))
+  save prefix, <{root}{graph-separator}>
   save spelled, make list
   walk table/paths
     take path
     fork test, starts-with(path, prefix)
       hold
-        spelled/push(node-path/relative(root, path))
+        spelled/push(base-relative(root, path))
       miss
         spelled/push(path)
-  back make(coded-graph, bind(root, root), bind(fingerprint, body/fingerprint), bind(env, body/env), bind(generation, body/generation), bind(taken, body/taken), bind(stable, body/stable), bind(paths, spelled), bind(known, known), bind(files, files), bind(edges, host-global/Object/fromEntries(edges-pairs)), bind(decks, decks), bind(folders, folders), bind(entries, host-global/Object/fromEntries(entries-pairs)), bind(rolls, host-global/Object/fromEntries(rolls-pairs)), bind(artifacts, artifacts), bind(walk, walk-notes))
+  back make(coded-graph, bind(root, root), bind(fingerprint, body/fingerprint), bind(env, body/env), bind(generation, body/generation), bind(taken, body/taken), bind(stable, body/stable), bind(paths, spelled), bind(known, known), bind(files, files), bind(edges, edges), bind(decks, decks), bind(folders, folders), bind(entries, entries), bind(rolls, rolls), bind(artifacts, artifacts), bind(walk, walk-notes))
 
 # THE DECODER: a written body read back as the session held it, each problem's text filled from the disk. An entry with
 # a problem whose file reads otherwise than noted is left out, and counted
@@ -2085,38 +2254,41 @@ task decode-body
   like decoded-graph
 
   save paths, make list
-  walk texts-of(coded/paths)
+  save named, make hash
+  walk graph-texts(graph-field(coded, <paths>))
     take spelled
-    fork test, node-path/is-absolute(spelled)
+    save full, spelled
+    fork test, not(base-is-absolute(spelled))
       hold
-        paths/push(spelled)
-      miss
-        paths/push(<{root}{node-path/sep}{spelled}>)
-  save files, path-keys(paths, coded/files)
-  save edges-pairs, make list
-  walk pairs-in(coded/edges)
-    take pair
-    save at, like dynamic
-      host-global/Number(pair/0)
-    edges-pairs/push(pair-of(paths/{at}, paths-at(paths, pair/1)))
+        save full, <{root}{graph-separator}{spelled}>
+    save digits, <{paths/length}>
+    save named/{digits}, full
+    paths/push(full)
+  save names, make(path-names, bind(paths, paths), bind(named, named))
+  save files, path-keys(names, graph-field(coded, <files>))
+  save edges, graph-object()
+  save coded-edges, graph-field(coded, <edges>)
+  walk graph-keys(coded-edges)
+    take key
+    save edges, graph-set(edges, path-named(names, key), paths-at(paths, graph-field(coded-edges, key)))
   save texts, make hash
   save dropped, 0
-  save entries-pairs, make list
-  walk pairs-in(coded/entries)
-    take pair
-    save at, like dynamic
-      host-global/Number(pair/0)
-    sift decode-outcome(paths, files, texts, pair/1)
+  save entries, graph-object()
+  save coded-entries, graph-field(coded, <entries>)
+  walk graph-keys(coded-entries)
+    take key
+    sift decode-outcome(names, files, texts, graph-field(coded-entries, key))
       case some
         link outcome
-        entries-pairs/push(pair-of(paths/{at}, outcome))
+        save entries, graph-set(entries, path-named(names, key), outcome)
       case none
         save dropped, add(dropped, 1)
-  save rolls-pairs, make list
-  walk pairs-in(coded/rolls)
-    take pair
-    rolls-pairs/push(pair-of(decode-label(paths, text-of-value(pair/0)), decode-value(paths, pair/1)))
-  save body, make(graph-snapshot, bind(root, coded/root), bind(fingerprint, coded/fingerprint), bind(env, coded/env), bind(generation, coded/generation), bind(taken, coded/taken), bind(stable, coded/stable), bind(known, join(paths-at(paths, coded/known), <\n>)), bind(files, files), bind(edges, host-global/Object/fromEntries(edges-pairs)), bind(decks, path-keys(paths, coded/decks)), bind(folders, path-keys(paths, coded/folders)), bind(entries, host-global/Object/fromEntries(entries-pairs)), bind(rolls, host-global/Object/fromEntries(rolls-pairs)), bind(artifacts, path-keys(paths, coded/artifacts)), bind(walk, path-keys(paths, coded/walk)))
+  save rolls, graph-object()
+  save coded-rolls, graph-field(coded, <rolls>)
+  walk graph-keys(coded-rolls)
+    take label
+    save rolls, graph-set(rolls, decode-label(names, label), decode-value(names, graph-field(coded-rolls, label)))
+  save body, make(graph-snapshot, bind(root, graph-field-text(coded, <root>)), bind(fingerprint, graph-field-text(coded, <fingerprint>)), bind(env, graph-field-text(coded, <env>)), bind(generation, whole-field(coded, <generation>)), bind(taken, whole-field(coded, <taken>)), bind(stable, graph-field-text(coded, <stable>)), bind(known, join(paths-at(paths, graph-field(coded, <known>)), <\n>)), bind(files, files), bind(edges, edges), bind(decks, path-keys(names, graph-field(coded, <decks>))), bind(folders, path-keys(names, graph-field(coded, <folders>))), bind(entries, entries), bind(rolls, rolls), bind(artifacts, path-keys(names, graph-field(coded, <artifacts>))), bind(walk, path-keys(names, graph-field(coded, <walk>))))
   back make(decoded-graph, bind(body, body), bind(dropped, dropped))
 
 # the project's snapshot read back and decoded, when its header and sum hold, for a test that holds the decoding equal to
@@ -2127,16 +2299,15 @@ task decoded-snapshot
 
   fork
     mark unsafe
-    save text, node-file/read-file-sync(snapshot-path(root), <utf8>)
+    save text, base-read(snapshot-path(root))
     save head, <{snapshot-header}\n>
     save at, char-count(head)
     save body-text, substring(text, add(at, 33))
     fork test, is-unequal(hash-key(body-text), substring(text, at, add(at, 32)))
       hold
         back void
-    save coded, like dynamic
-      host-global/JSON/parse(body-text)
-    back decode-body(coded, root)/body
+    save decoded, decode-body(graph-parse(body-text), root)
+    back decoded/body
   halt take
     take problem
     back void
@@ -2150,16 +2321,23 @@ task reclaim-snapshots
 
   fork
     mark unsafe
-    save folder, node-path/dirname(kept)
+    save folder, base-directory(kept)
     save names, make list
     save times, make list
-    walk node-file/readdir-sync(folder)
-      take name
-      save full, node-path/join(folder, name)
-      fork test, and(not(ends-with(name, <.tmp>)), is-unequal(full, kept))
+    walk base-entries(folder)
+      take entry
+      save full, base-join(folder, entry/name)
+      fork test, and(not(ends-with(entry/name, <.tmp>)), is-unequal(full, kept))
         hold
           names/push(full)
-          times/push(node-file/stat-sync(full)/mtime-ms)
+          times/push(base-stat(full)/changed)
+    # each name's place in the host's order of texts (UTF-16 units, JavaScript's `>`), for a tie of times
+    save order, make hash
+    save place, 0
+    walk sorted-texts(names)
+      take one
+      save order/{one}, place
+      save place, add(place, 1)
     save at, 0
     walk names
       take full
@@ -2168,21 +2346,14 @@ task reclaim-snapshots
       save other, 0
       walk names
         take one
-        fork test, or(is-above(times/{other}, times/{at}), and(is-equal(times/{other}, times/{at}), is-above-text(one, full)))
+        fork test, or(is-above(times/{other}, times/{at}), and(is-equal(times/{other}, times/{at}), is-above(order/get(one), order/get(full))))
           hold
             save newer, add(newer, 1)
         save other, add(other, 1)
       fork test, is-minimum(newer, 3)
         hold
-          node-file/rm-sync(full, make(graph-remove-ask, bind(force, true)))
+          base-remove(full)
       save at, add(at, 1)
   halt take
     take problem
     save nothing, 0
-
-bind is-above-text
-  take a, like text
-  take b, like text
-  like boolean
-  case node
-    text <($a \> $b)>

@@ -43,12 +43,15 @@ bind flow-shared
   case node
     text <<({ bundle: true, platform: "node", logLevel: "info", define: { "import.meta.url": "__bundleUrl" }, banner: { js: "const __bundleUrl = require('node:url').pathToFileURL(__filename).href;" } })>>
 
+# the client's units are the Term root's host/unit/ (port-build --units), and node resolution from there reaches only
+# the root's node_modules, which has no vscode-languageclient: it is this package's own dependency. So a bare import
+# that the unit's own folders miss is looked up in this package's node_modules too (item 1672)
 bind flow-extension-options
   take shared, like dynamic
   take flow, like text
   like dynamic
   case node
-    text <<((shared_, flow_) => ({ ...shared_, entryPoints: [require("node:path").join(flow_, "host", "port", "code", "extension.ts")], outfile: require("node:path").join(flow_, "make", "extension.js"), format: "cjs", external: ["vscode"] }))($shared, $flow)>>
+    text <<((shared_, flow_) => ({ ...shared_, entryPoints: [require("node:path").join(flow_, "host", "port", "code", "extension.ts")], outfile: require("node:path").join(flow_, "make", "extension.js"), format: "cjs", external: ["vscode"], nodePaths: [require("node:path").join(flow_, "node_modules")] }))($shared, $flow)>>
 
 # esbuild reaches the graph through one DYNAMIC import, call/code/make.ts `callMake` loading build-parallel.ts for
 # `term make --parallel`, which the server never calls (it imports only `projectResolver` and `findTreeFiles` from that
@@ -63,13 +66,15 @@ bind flow-server-options
   case node
     text <<((shared_, flow_, term_) => ({ ...shared_, entryPoints: [require("node:path").join(flow_, "code", "main.ts")], outfile: require("node:path").join(flow_, "make", "server.js"), format: "cjs", tsconfig: require("node:path").join(term_, "tsconfig.json"), external: ["esbuild"] }))($shared, $flow, $term)>>
 
+# both bundles built side by side, and both awaited to the end before the first failure is raised: Promise.all
+# rejected on the first, so the process exited while the other was still writing its file (item 1672)
 bind flow-build-both
   take esbuild, like dynamic
   take extension, like dynamic
   take server, like dynamic
   like dynamic
   case node
-    text <<((esbuild_, extension_, server_) => Promise.all([esbuild_.build(extension_), esbuild_.build(server_)]))($esbuild, $extension, $server)>>
+    text <<(async (esbuild_, extension_, server_) => { const settled_ = await Promise.allSettled([esbuild_.build(extension_), esbuild_.build(server_)]); const failed_ = settled_.find(one_ => one_.status === "rejected"); if (failed_) throw failed_.reason; return settled_.map(one_ => one_.value) })($esbuild, $extension, $server)>>
 
 bind flow-watch-both
   take esbuild, like dynamic

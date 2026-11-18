@@ -4,10 +4,15 @@
 # of the things it has to be able to say. Ported from call/code/make.ts (`explainStore`), part 2 of that file.
 #
 # The TypeScript handed back a record of closures (`recall`, `remember`, `reasons`). Here the store is a record and
-# those are tasks taking it. A unit's inputs are the compiler's shape (compile/separate.ts `UnitInputs`: `compiler`,
-# `own`, `read`, `settings`, `names`, `carried`, four of them maps), built and read as host values. The project cache
-# folder is call/code/cache-store.ts's, docked. `carried` was left out of the port when the original gained it, so a
-# recalled unit had none and `term make --explain` stopped on its second build of a unit, reading its keys (item 0910).
+# those are tasks taking it. A unit's inputs are the compiler's `unit-inputs` (compile/explain.tree: `compiler`, `own`,
+# `read`, `settings`, `names`, `carried`, four of them maps of text), written as JSON with each map as its entries and
+# read back into the form. The project cache folder is cache/compile-store.tree's. `carried` was left out of the port
+# when the original gained it, so a recalled unit had none and `term make --explain` stopped on its second build of a
+# unit, reading its keys (item 0910). A file kept before `read` or `carried` was is read with no entries for them.
+#
+# The file system and JSON come from @term/base (item term-self-host-001-1397): the map a kept file reads back is a
+# Term `hash`, a JavaScript Map on node as `new Map(entries)` made it, and the entries written are its pairs in the
+# order their keys were first set, as `[...map]` spread them.
 
 load @term/base/list
   find list
@@ -15,18 +20,44 @@ load @term/base/list
 load @term/base/maybe
   find maybe
 
+load @term/base/hash
+  find hash
+
+load @term/base/path
+  find join, name base-join
+
+# readFileSync and writeFileSync on node
+load @term/base/file/blocking
+  find read, name base-read
+  find write-path, name base-write
+
+# mkdirSync with recursive on node
+load @term/base/file/create
+  find make-folder, name base-make-folder
+
+# JSON.parse and JSON.stringify on node, and the value a kept file holds
+load @term/base/json
+  find parse, name kept-parse
+  find stringify, name kept-stringify
+  find get-field, name kept-field
+  find as-text, name kept-text
+  find is-null, name kept-null
+  find array-size, name kept-size
+  find array-item, name kept-item
+  find make-object, name kept-object
+  find set-field, name kept-set
+  find make-array, name kept-array
+  find push-item, name kept-push
+  find from-text, name kept-from-text
+
 load @term/make/term/hash
   find hash-text
 
+load @term/make/compile/explain
+  find unit-inputs
+
 load ../cache/compile-store
   find project-cache-dir
-
-dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
-  # node's global scope, for `JSON`, `Map` and `Array` (a `<global:JSON>` dock beside @term/base/json is prepended
-  # twice, and `<global:globalThis>` is emitted renamed: traps.md)
-  load <global:global>, name host-global
 
 form explain-store
   # the folder the explanations are kept in
@@ -34,23 +65,11 @@ form explain-store
   # why each unit built was built, filled by the separate build
   link reasons, like hash, like text, like list, like text
 
-# the inputs as they are written to disk: each map as its entries
-form kept-inputs
-  link compiler, like dynamic
-  link own, like dynamic
-  link read, like dynamic
-  link settings, like dynamic
-  link names, like dynamic
-  link carried, like dynamic
-
-form folder-options
-  link recursive, like boolean
-
 task make-explain-store
   take root, like text
   like explain-store
 
-  save dir, node-path/join(project-cache-dir(root), <explain>)
+  save dir, base-join(project-cache-dir(root), <explain>)
   back make(explain-store, bind(dir, dir), bind(reasons, make hash))
 
 # the file a unit's explanation is kept in
@@ -59,73 +78,82 @@ task explain-file
   take id, like text
   like text
 
-  back node-path/join(store/dir, <{hash-text(id)}.json>)
+  back base-join(store/dir, <{hash-text(id)}.json>)
 
 # the inputs a unit was last built from, or nothing when none were kept or they cannot be read
 task recall-explain
   take store, like explain-store
   take id, like text
-  like maybe, like dynamic
+  like maybe, like unit-inputs
 
   fork
     mark unsafe
-    save kept, host-global/JSON/parse(node-file/read-file-sync(explain-file(store, id), <utf8>))
-    save own, map-of(kept/own)
-    save read, map-of(read-entries(kept/read))
-    save names, map-of(kept/names)
-    save carried, map-of(read-entries(kept/carried))
-    save inputs, host-global/Object/fromEntries(make list)
-    save inputs/compiler, kept/compiler
-    save inputs/own, own
-    save inputs/read, read
-    save inputs/settings, kept/settings
-    save inputs/names, names
-    save inputs/carried, carried
+    save kept, kept-parse(base-read(explain-file(store, id)))
+    save own, map-of(kept-field(kept, <own>))
+    save read, map-of(kept-field(kept, <read>))
+    save names, map-of(kept-field(kept, <names>))
+    save carried, map-of(kept-field(kept, <carried>))
+    save inputs, make(unit-inputs, bind(compiler, kept-text(kept-field(kept, <compiler>))), bind(own, own), bind(read, read), bind(settings, kept-text(kept-field(kept, <settings>))), bind(names, names), bind(carried, carried))
     back make(some, inputs)
   halt take
     take problem
     back make none
 
-# a map of the entries, as `new Map(entries)` makes it (and refuses what it refuses)
+# a map of the entries a kept file holds, each a key and its value, the keys in the order written. No entries, an
+# empty map: a file kept before the field was
 task map-of
   take entries, like dynamic
-  like dynamic
+  like hash, like text, like text
   mark private
 
-  save arguments, make list
-  arguments/push(entries)
-  back host-global/Reflect/construct(host-global/Map, arguments)
-
-# a kept `read` or `carried`, or no entries when the file predates it
-task read-entries
-  take value, like dynamic
-  like dynamic
-  mark private
-
-  fork test, is-equal(value, void)
+  save out, like hash, like text, like text
+    make hash
+  fork test, kept-null(entries)
     hold
-      back make list
-  back value
+      back out
+  save at, 0
+  walk test
+    hook test
+      is-below(at, kept-size(entries))
+    hook hold
+      save entry, kept-item(entries, at)
+      save key, kept-text(kept-item(entry, 0))
+      save out/{key}, kept-text(kept-item(entry, 1))
+      save at, add(at, 1)
+  back out
 
 # keep the inputs a unit was built from. An explanation is never worth failing a build over
 task remember-explain
   take store, like explain-store
   take id, like text
-  take inputs, like dynamic
+  take inputs, like unit-inputs
 
   fork
     mark unsafe
-    node-file/mkdir-sync(store/dir, make(folder-options, bind(recursive, true)))
-    save written, make(kept-inputs, bind(compiler, inputs/compiler), bind(own, entries-of(inputs/own)), bind(read, entries-of(inputs/read)), bind(settings, inputs/settings), bind(names, entries-of(inputs/names)), bind(carried, entries-of(inputs/carried)))
-    node-file/write-file-sync(explain-file(store, id), host-global/JSON/stringify(written))
+    base-make-folder(store/dir)
+    save written, kept-object()
+    kept-set(written, <compiler>, kept-from-text(inputs/compiler))
+    kept-set(written, <own>, entries-of(inputs/own))
+    kept-set(written, <read>, entries-of(inputs/read))
+    kept-set(written, <settings>, kept-from-text(inputs/settings))
+    kept-set(written, <names>, entries-of(inputs/names))
+    kept-set(written, <carried>, entries-of(inputs/carried))
+    save done, base-write(explain-file(store, id), kept-stringify(written))
   halt take
     take problem
     save nothing, 0
 
-# a map's entries, as `[...map]` spreads them
+# a map's entries, each a pair of its key and its value, in the order their keys were first set
 task entries-of
-  take map, like dynamic
+  take map, like hash, like text, like text
   like dynamic
   mark private
 
-  back host-global/Array/from(map)
+  save out, kept-array()
+  walk map/keys()
+    take key
+    save entry, kept-array()
+    kept-push(entry, kept-from-text(key))
+    kept-push(entry, kept-from-text(map/get-or-default(key, <>)))
+    kept-push(out, entry)
+  back out

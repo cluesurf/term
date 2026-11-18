@@ -1078,6 +1078,12 @@ task arrange-arguments
         fork test, and(is-below(at, filled), optional)
           hold
             save empty-gap, empty-value(gap-type, call-span)
+            # a maybe has no empty value: left out before one the call fills, it is none (item term-self-host-001-1605)
+            sift empty-gap
+              case some
+                save nothing, 0
+              miss
+                save empty-gap, left-out-maybe(gap-type, call-span)
         sift fallback-at(signature, at)
           case some
             link fallback
@@ -4183,6 +4189,33 @@ task empty-value
       back make(some, made)
     miss
       back make none
+
+# A `need false` MAYBE LEFT OUT BEFORE AN ARGUMENT THE CALL FILLS is none (decision 176 of
+# term/self-host/change/001-finish-self-host, rule 1: a caller leaves an absent argument out). It is the `make none`
+# a caller would write, left untyped, so the call infers it against the parameter as it infers a written one, and each
+# backend emits its own none. Any other type answers none here, and the gap stays refused
+# (item term-self-host-001-1605: `bind retries` after host and credentials was refused, needing insecure)
+task left-out-maybe
+  take given, like type
+  take at, like span
+  like maybe, like expression
+  mark private
+
+  sift given
+    case named
+      link type-name
+      fork test, is-equal(type-name, <maybe>)
+        hold
+          save no-fields, make list
+          save made
+            make expression/record
+              bind name, <none>
+              bind fields, no-fields
+              bind span, at
+          back make(some, made)
+    miss
+      save nothing, 0
+  back make none
 
 # whether the parameter a label names takes one value: a parameter of the callee that is not a list
 task single-here

@@ -4,25 +4,23 @@ note <What `term make --explain` keeps of a unit reads back whole>
 # without `carried`, which the separate build gained after the port: a cold `term make --trees --explain` of @term/base
 # recalled a unit it had built once already that run and stopped with exit 70, reading the keys of the missing map. Each
 # map the build hands over now reads back with its entries, and a file written before `carried` reads it as empty.
+#
+# The store takes and answers the compiler's own `unit-inputs` (compile/explain.tree) since item term-self-host-001-1397,
+# so this builds one.
 
 load @term/call/work/build/explain-store
   find make-explain-store
   find remember-explain
   find recall-explain
 
+load @term/make/compile/explain
+  find unit-inputs
+
 load @term/base/file/temporary
   find make, name make-temporary
 
 load @term/base/file/directory
   find remove, name remove-folder
-
-form inputs-given
-  link compiler, like text
-  link own, like hash, like text, like text
-  link read, like hash, like text, like text
-  link settings, like text
-  link names, like hash, like text, like text
-  link carried, like hash, like text, like text
 
 task one-entry
   take key, like text
@@ -33,6 +31,23 @@ task one-entry
   out/set(key, value)
   back out
 
+# how many entries the recalled map named `field` holds
+task field-size
+  take got, like unit-inputs
+  take field, like text
+  like number
+
+  fork test, is-equal(field, <own>)
+    hold
+      back got/own/length()
+  fork test, is-equal(field, <read>)
+    hold
+      back got/read/length()
+  fork test, is-equal(field, <names>)
+    hold
+      back got/names/length()
+  back got/carried/length()
+
 # remember inputs for a unit in a new folder, then recall them: the size of a recalled map, -1 when nothing came back
 task recalled-size
   take field, like text
@@ -41,17 +56,13 @@ task recalled-size
 
   save root, make-temporary(<directory>, <explain->)
   save store, make-explain-store(root)
-  save given, make(inputs-given, bind(compiler, <c1>), bind(own, one-entry(<a.tree>, <p1>)), bind(read, one-entry(<b.tree>, <p2>)), bind(settings, <s1>), bind(names, one-entry(<x>, <a.tree>)), bind(carried, one-entry(<c.tree>, <p3>)))
+  save given, make(unit-inputs, bind(compiler, <c1>), bind(own, one-entry(<a.tree>, <p1>)), bind(read, one-entry(<b.tree>, <p2>)), bind(settings, <s1>), bind(names, one-entry(<x>, <a.tree>)), bind(carried, one-entry(<c.tree>, <p3>)))
   remember-explain(store, <unit-a>, given)
   save size, -1
   sift recall-explain(store, <unit-a>)
     case some
       link got
-      save map, got/{field}
-      save size, -2
-      fork test, is-unequal(map, void)
-        hold
-          save size, map/size
+      save size, field-size(got, field)
     case none
       save nothing, 0
   remove-folder(root)
@@ -64,3 +75,35 @@ test <a recalled unit holds its own, read and names maps>
   want hold, is-equal recalled-size(<own>), 1
   want hold, is-equal recalled-size(<read>), 1
   want hold, is-equal recalled-size(<names>), 1
+
+test <a recalled unit's compiler, settings and entries are the ones remembered>
+  want hold, is-equal recalled-text(), <c1 s1 a.tree=p1 b.tree=p2 x=a.tree c.tree=p3>
+
+# the recalled compiler and settings and each map's one entry, laid out in one text, or `none`
+task recalled-text
+  like text
+  mark async
+
+  save root, make-temporary(<directory>, <explain->)
+  save store, make-explain-store(root)
+  save given, make(unit-inputs, bind(compiler, <c1>), bind(own, one-entry(<a.tree>, <p1>)), bind(read, one-entry(<b.tree>, <p2>)), bind(settings, <s1>), bind(names, one-entry(<x>, <a.tree>)), bind(carried, one-entry(<c.tree>, <p3>)))
+  remember-explain(store, <unit-a>, given)
+  save out, <none>
+  sift recall-explain(store, <unit-a>)
+    case some
+      link got
+      save out, <{got/compiler} {got/settings} {entry-text(got/own)} {entry-text(got/read)} {entry-text(got/names)} {entry-text(got/carried)}>
+    case none
+      save nothing, 0
+  remove-folder(root)
+  back out
+
+# a map's first entry as `key=value`, or the empty text
+task entry-text
+  take map, like hash, like text, like text
+  like text
+
+  walk map/keys()
+    take key
+    back <{key}={map/get-or-default(key, <>)}>
+  back <>

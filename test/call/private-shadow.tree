@@ -1,0 +1,67 @@
+note <a local that shares its name with another module's private task never imports that task>
+
+# Item term-self-host-001-1674: module-emit's import planner took every name a module reads that another file of the
+# program defines, a local `save` included, and a private task counted as defined. rust-assemble's `save cut` imported
+# parser/diagnostic's private `cut`, which no module exports, and tsc refused the import (TS2459). Here a.tree has a
+# private `cut` and a public `trim` that calls it, and b.tree loads `trim` and has a local `cut`. The built b.ts must
+# import `trim` from a and must not import `cut` (live wrote `import { cut, trim } from ...`). The run is the `term`
+# under test (@term/test/self), made once
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+form shadow-run
+  link done, like boolean
+  link code, like number
+  link out, like text
+  link emitted, like text
+
+form shadow-state
+  mark shared
+  link run, like shadow-run
+
+host shadow-now, make(shadow-state, bind(run, make(shadow-run, bind(done, false), bind(code, -1), bind(out, <>), bind(emitted, <>))))
+
+task shadow-build
+  like shadow-run
+  mark async
+
+  fork test, shadow-now/run/done
+    hold
+      back shadow-now/run
+  save root, temp-folder(<term-shadow->)
+  make-folder(<{root}/code>)
+  write-file(<{root}/deck.tree>, <deck @probe/private-shadow\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>)
+  write-file(<{root}/code/a.tree>, <task cut\n  take x, like number\n  like number\n  mark private\n\n  back subtract(x, 1)\n\ntask trim\n  take x, like number\n  like number\n\n  back cut(x)\n>)
+  write-file(<{root}/code/b.tree>, <load ./a\n  find trim\n\ntask shorten\n  take x, like number\n  like number\n\n  save cut, add(x, 2)\n  back trim(cut)\n>)
+  save ran, run-self(make(list, <make>), root, 600000)
+  save emitted, <>
+  fork test, is-equal(ran/code, 0)
+    hold
+      # host/code/b.ts is the unit's shim (`export { shorten } from ...`): the imports are the unit's own
+      save emitted, read-file(<{root}/host/.unit/_probe_private-shadow_code_b.ts>)
+  save shadow-now/run, make(shadow-run, bind(done, true), bind(code, ran/code), bind(out, <{ran/output}\n{ran/error}>), bind(emitted, emitted))
+  back shadow-now/run
+
+test <the project with a shadowing local builds>
+  want hold, is-equal(shadow-build()/code, 0)
+
+test <b.ts imports the public trim from a>
+  want hold, matches(make(pattern, <import [^\n]*[ ,]trim[ ,][^\n]*from>), shadow-build()/emitted)
+
+test <b.ts never imports the private cut>
+  want hold, not(matches(make(pattern, <import [^\n]*[ ,]cut[ ,][^\n]*from>), shadow-build()/emitted))

@@ -721,6 +721,9 @@ export function compileSeparate(
 
   // the walk's text of every module, which a file read under `ledger` must have read
   const ledgerTexts = new Map<string, string>()
+  // every module the walk read, with its text (an unsaved file's where the resolver shadows the disk): a unit's stale
+  // finds read a module as the walk read it, never the disk's other text (item term-self-host-001-1639)
+  let walkedSources: { file: string; text: string }[] = []
 
   if (verify.ledger) {installLedger()}
 
@@ -762,6 +765,9 @@ export function compileSeparate(
         undefined,
         naming,
         new Set(files),
+        undefined,
+        undefined,
+        walkedSources,
       )
     const carried = carriedOf(program as unknown[])
     const outer = traceState.now
@@ -868,6 +874,8 @@ export function compileSeparate(
           : undefined,
         options.walked,
       )
+
+      walkedSources = collected.sources
 
       if (verify.ledger) {
         for (const unit of collected.sources)

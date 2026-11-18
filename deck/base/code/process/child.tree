@@ -9,8 +9,18 @@
 #   save first, read-line(one)
 #   save done, wait(one)
 #
-# Node and Rust run children. Swift and Kotlin raise `command-absence` at `start` ("not on this target"), and the
-# browser runs no processes at all (item 0188, finding/platform-apis.md row 12).
+# `attached` passes the three streams through to this process's own (the terminal), with nothing piped: what the child
+# writes goes straight out, it reads this process's input, and `read-line`, `read-any-line` and `read` answer the end at
+# once. With `group` too, the child leads its own process group and session (node's `detached`), so the terminal's ctrl-c
+# no longer reaches it and the program that started it owns its teardown. `read-any-line` reads the next line from
+# either stream, in the order the lines arrived, with the stream it came from. A child that leads its own group and has
+# not ended is stopped hard (KILL to its whole group) when this process exits: at the end of the program, at `exit`, and
+# at a raise nothing caught. No process can run anything when a signal it does not handle ends it (KILL above all), so
+# those exits leave the group running, on every backend.
+#
+# Node and Rust run children. Swift and Kotlin raise `command-absence` at `start` ("not on this target"), attached or
+# not, so nothing above is reached there, and the browser runs no processes at all (item 0188, finding/platform-apis.md
+# row 12).
 
 mark unstable
 
@@ -18,6 +28,7 @@ load @term/base/native/{platform}/process/child
   find child-start
   find child-refusal
   find child-next-line
+  find child-next-any-line
   find child-rest
   find child-write
   find child-close
@@ -35,15 +46,18 @@ load @term/base/process/run
 
 load @term/base/text
   find ends-with
+  find starts-with
   find substring
 
-# one line read from a child's stream: the line without its newline, and `ended` once the stream has nothing more,
-# with the empty `line`
+# one line read from a child's stream: the line without its newline, `kind` the stream it came from (<output> or
+# <error>), and `ended` once there is nothing more, with the empty `line` (and for `read-any-line` the empty `kind`)
 form child-line
   link line, like text
+  link kind, like text
   link ended, like boolean
 
-# start `command` with `argument-list`, its three streams piped to this process
+# start `command` with `argument-list`, its three streams piped to this process, or with `attached` passed through to
+# this process's own
 task start
   mark async
   take command, like text
@@ -64,6 +78,9 @@ task start
   take group
     like boolean
     fall false
+  take attached
+    like boolean
+    fall false
   like child
   save handle
     call child-start
@@ -73,6 +90,7 @@ task start
       read environment
       read limit
       read group
+      read attached
   save refusal
     call child-refusal
       read handle
@@ -118,6 +136,72 @@ task read-line
         read kind
   fork test
     hook test
+      call is-equal
+        read got
+        text <>
+    hook hold
+      send back
+        make child-line
+          bind line, text <>
+          bind kind, read kind
+          bind ended, true
+  send back
+    call cut-line
+      read got
+      read kind
+
+# the next line the child wrote to either stream, in the order the lines arrived (a line arrives when its newline does,
+# a last line with no newline when its stream ends), with `kind` the stream it came from. At the end of both streams
+# the answer is the empty line with the empty `kind` and `ended`
+task read-any-line
+  mark async
+  take child, like child
+  like child-line
+  # the native answers the stream's letter, `o` or `e`, then the line, or the empty text at the end of both
+  save got
+    call child-next-any-line
+      read child/handle
+  fork test
+    hook test
+      call is-equal
+        read got
+        text <>
+    hook hold
+      send back
+        make child-line
+          bind line, text <>
+          bind kind, text <>
+          bind ended, true
+  send back
+    call cut-line
+      call substring
+        read got
+        code 1
+      call kind-of
+        read got
+
+# the stream a native answer of `read-any-line` names by its first letter
+task kind-of
+  mark private
+  take got, like text
+  like text
+  fork test
+    hook test
+      call starts-with
+        read got
+        text <e>
+    hook hold
+      send back, text <error>
+  send back, text <output>
+
+# a line as a native read answered it, its newline taken off when it has one
+task cut-line
+  mark private
+  take got, like text
+  take kind, like text
+  like child-line
+  fork test
+    hook test
       call ends-with
         read got
         text <\n>
@@ -131,14 +215,13 @@ task read-line
               call subtract
                 read got/length
                 code 1
+          bind kind, read kind
           bind ended, false
   send back
     make child-line
       bind line, read got
-      bind ended
-        call is-equal
-          read got
-          text <>
+      bind kind, read kind
+      bind ended, false
 
 # everything left on `kind`'s stream, once the child has closed it
 task read

@@ -1,0 +1,158 @@
+# The inode `stat` of @term/base/file/blocking answers is the number the system itself lists for the path (`ls -di`),
+# so it is the same number on every backend, and its text is the digits the system prints, which is what node's
+# `statSync` `ino` gives (the graph snapshot of work/build/build-graph.tree writes that text, decision 131). A rename
+# keeps a file's inode, a write in place keeps it, and a file renamed over another hands the path its own. Held by
+# `pnpm term:base-gate`.
+#
+# The fixture is built by one `sh` run through `process/run`, as in test/file/blocking.tree, each test on a directory
+# of its own under the system's temporary directory, left for it to clear.
+
+load @term/base/file/blocking
+  find stat, name stat-path
+  find rename-path
+  find write-path
+
+load @term/base/process/run
+  find run
+
+# a new directory holding `plain.txt`, `other.txt`, the folder `inner` and `shortcut` (a link to `plain.txt`). It
+# answers the directory's path, which the script prints without a newline
+task make-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); printf %s a \> "$d/plain.txt"; printf %s bb \> "$d/other.txt"; mkdir "$d/inner"; ln -s "$d/plain.txt" "$d/shortcut"; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# the inode the system lists for a path, as `ls -di` prints it: the first word of its line
+task listed-inode
+  take path, like text
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <set -- $(ls -di "$1"); printf %s "$1">
+  call arguments/push
+    text <sh>
+  call arguments/push
+    read path
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+test <the inode of a file and a folder is the number the system lists for it, as text the digits it prints>
+  save dir
+    call make-fixture
+  save file
+    call stat-path
+      text <{{dir}}/plain.txt>
+  save folder
+    call stat-path
+      text <{{dir}}/inner>
+  # each listing is saved before it is compared: swift refuses an await to the right of `==`
+  save file-listed
+    call listed-inode
+      text <{{dir}}/plain.txt>
+  save folder-listed
+    call listed-inode
+      text <{{dir}}/inner>
+  want hold
+    call and
+      call and
+        call is-above
+          read file/inode
+          0.0
+        call is-equal
+          text <{{file/inode}}>
+          read file-listed
+      call is-equal
+        text <{{folder/inode}}>
+        read folder-listed
+
+test <stat follows a link to its target's inode, and two files have two inodes>
+  save dir
+    call make-fixture
+  save file
+    call stat-path
+      text <{{dir}}/plain.txt>
+  save through
+    call stat-path
+      text <{{dir}}/shortcut>
+  save other
+    call stat-path
+      text <{{dir}}/other.txt>
+  want hold
+    call and
+      call is-equal
+        read through/inode
+        read file/inode
+      call is-unequal
+        read other/inode
+        read file/inode
+
+test <a rename and a write in place keep the inode, and a file renamed over another hands the path its own>
+  save dir
+    call make-fixture
+  save first
+    call stat-path
+      text <{{dir}}/plain.txt>
+  save second
+    call stat-path
+      text <{{dir}}/other.txt>
+  save moved
+    call rename-path
+      text <{{dir}}/plain.txt>
+      text <{{dir}}/moved.txt>
+  save after-move
+    call stat-path
+      text <{{dir}}/moved.txt>
+  save written
+    call write-path
+      text <{{dir}}/moved.txt>
+      text <ccc>
+  save after-write
+    call stat-path
+      text <{{dir}}/moved.txt>
+  save over
+    call rename-path
+      text <{{dir}}/other.txt>
+      text <{{dir}}/moved.txt>
+  save after-over
+    call stat-path
+      text <{{dir}}/moved.txt>
+  save over-listed
+    call listed-inode
+      text <{{dir}}/moved.txt>
+  want hold
+    call and
+      call and
+        call and
+          read moved
+          read written
+        call and
+          call is-equal
+            read after-move/inode
+            read first/inode
+          call is-equal
+            read after-write/inode
+            read first/inode
+      call and
+        read over
+        call and
+          call is-equal
+            read after-over/inode
+            read second/inode
+          call is-equal
+            text <{{after-over/inode}}>
+            read over-listed

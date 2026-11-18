@@ -15,6 +15,7 @@ task child-start
       like text
   take limit, like number
   take group, like boolean
+  take attached, like boolean
   like number
   send back, code 0
 
@@ -27,6 +28,12 @@ task child-next-line
   mark async
   take handle, like number
   take error, like boolean
+  like text
+  send back, text <>
+
+task child-next-any-line
+  mark async
+  take handle, like number
   like text
   send back, text <>
 

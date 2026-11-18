@@ -11,12 +11,13 @@
 
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { build } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
@@ -37,6 +38,36 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const ROOT = process.cwd()
+
+// The browser DOM docks @floating-ui/dom straight (deck/site/code/dom/native/browser/dom.tree), so the page carries that
+// import though it anchors nothing. As Term's page bundler does (deck/call/code/work/cask/page.tree `page-alias`,
+// decision 152), the bundle sends it to a stub whose members raise on first use when the package is not installed
+// where the page's modules find it
+function floatingAlias(dir: string): Record<string, string> {
+  for (let at = dir; ; at = dirname(at)) {
+    if (existsSync(join(at, 'node_modules', '@floating-ui', 'dom'))) {
+      return {}
+    }
+
+    if (dirname(at) === at) {
+      break
+    }
+  }
+
+  const stub = join(dir, 'floating-ui-stub', 'dom.js')
+  mkdirSync(dirname(stub), { recursive: true })
+  writeFileSync(
+    stub,
+    [
+      `const missing = () => { throw new Error(${JSON.stringify('@floating-ui/dom is not in this bundle')}) }`,
+      ...['computePosition', 'offset', 'flip', 'shift', 'autoUpdate'].map(
+        name => `export const ${name} = missing`,
+      ),
+    ].join('\n'),
+  )
+
+  return { '@floating-ui/dom': stub }
+}
 
 type Page = {
   setContent: (html: string) => Promise<void>
@@ -321,6 +352,7 @@ async function main(): Promise<void> {
     format: 'iife',
     platform: 'browser',
     logLevel: 'silent',
+    alias: floatingAlias(dir),
   })
 
   const launched = await chromium

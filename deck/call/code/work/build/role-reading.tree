@@ -33,9 +33,20 @@ load @term/deck/package/role-shape
   find role-rule
   find role-config
 
-dock load
-  load <node:fs>, name node-file
-  load <node:path>, name node-path
+load @term/base/path
+  find join, name base-join
+  find directory, name base-directory
+
+# existsSync, readFileSync and statSync on node
+load @term/base/file/blocking
+  find exists, name base-exists
+  find read, name base-read
+  find stat, name base-stat
+
+# node's path.resolve, made absolute against the working directory
+load ./real-paths
+  find resolve-here
+  find resolve-under
 
 # one build's role answers: the role config of each package, read once, and the rule each file matched
 form role-reader
@@ -70,16 +81,16 @@ task package-root-of
   take root, like text
   like text
 
-  save root-path, node-path/resolve(root)
-  save dir, node-path/dirname(file)
+  save root-path, resolve-here(root)
+  save dir, base-directory(file)
   walk test
     hook test
       true
     hook hold
-      fork test, node-file/exists-sync(node-path/join(dir, <deck.tree>))
+      fork test, base-exists(base-join(dir, <deck.tree>))
         hold
           back dir
-      save up, node-path/dirname(dir)
+      save up, base-directory(dir)
       fork test, or(is-equal(up, dir), is-equal(dir, root-path))
         hold
           back root
@@ -119,7 +130,7 @@ task checked-roles
   take root, like text
   like role-config
 
-  save text, node-file/read-file-sync(file, <utf8>)
+  save text, base-read(file)
   # a rule's flag is `mark <word>`, and a `note` there is read by nothing
   save note, note-problem(text, file)
   fork test, is-unequal(note, <>)
@@ -161,30 +172,30 @@ task read-roles
   like maybe, like role-config
 
   save candidates, make list
-  save manifest-path, node-path/join(root, <deck.tree>)
-  fork test, node-file/exists-sync(manifest-path)
+  save manifest-path, base-join(root, <deck.tree>)
+  fork test, base-exists(manifest-path)
     hold
       sift manifest-value-of(manifest-path, <role>)
         case some
           link declared
           fork test, is-unequal(declared, <>)
             hold
-              save at, node-path/resolve(root, declared)
-              fork test, and(node-file/exists-sync(at), is-folder(at))
+              save at, resolve-under(root, declared)
+              fork test, and(base-exists(at), is-folder(at))
                 hold
-                  candidates/push(node-path/join(at, <role.tree>))
-                  candidates/push(node-path/join(at, <base.tree>))
-                  candidates/push(node-path/join(at, <note.tree>))
+                  candidates/push(base-join(at, <role.tree>))
+                  candidates/push(base-join(at, <base.tree>))
+                  candidates/push(base-join(at, <note.tree>))
                 miss
                   candidates/push(at)
                   candidates/push(<{at}.tree>)
         case none
           save nothing, 0
-  candidates/push(node-path/join(root, <base>, <role.tree>))
-  candidates/push(node-path/join(root, <role.tree>))
+  candidates/push(base-join(root, <base/role.tree>))
+  candidates/push(base-join(root, <role.tree>))
   walk candidates
     take candidate
-    fork test, node-file/exists-sync(candidate)
+    fork test, base-exists(candidate)
       hold
         save config, checked-roles(candidate, root)
         back make(some, config)
@@ -196,8 +207,13 @@ task is-folder
   like boolean
   mark private
 
-  save stat, node-file/stat-sync(at)
-  back stat/is-directory()
+  save found, base-stat(at)
+  save kind, found/kind
+  sift kind
+    case directory
+      back true
+    miss
+      back false
 
 # The matched RULE for a file, cached per package and per file, or nothing. The role and the lean flag both read it,
 # so a build that asks for both reads the role files once

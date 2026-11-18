@@ -102,6 +102,52 @@ function makeStubElement(tag: string): any {
   }
 }
 
+// The browser DOM docks @floating-ui/dom straight (deck/site/code/dom/native/browser/dom.tree), so every page it draws
+// carries that import, though this one anchors nothing. Term's own page bundler sends it to a stub whose members raise on
+// first use when the package is not installed where the page's modules find it (deck/call/code/work/cask/page.tree
+// `page-alias`, decision 152 of note/project/term/self-host/change/001-finish-self-host): this bundle does the same
+function floatingInstalled(dir: string): boolean {
+  let at = dir
+
+  for (;;) {
+    if (fs.existsSync(path.join(at, 'node_modules', '@floating-ui', 'dom'))) {
+      return true
+    }
+
+    const up = path.dirname(at)
+
+    if (up === at) {
+      return false
+    }
+
+    at = up
+  }
+}
+
+// the stub page.tree's `stub-text` writes: each member the anchor reads raises, naming the package
+const FLOATING_STUB = [
+  `const missing = () => { throw new Error(${JSON.stringify('@floating-ui/dom is not in this bundle')}) }`,
+  'export const computePosition = missing',
+  'export const offset = missing',
+  'export const flip = missing',
+  'export const shift = missing',
+  'export const autoUpdate = missing',
+].join('\n')
+
+// esbuild's alias for a page bundled in `dir`: none when the package is installed, else the stub, written into `dir`
+function floatingAlias(dir: string): Record<string, string> {
+  if (floatingInstalled(dir)) {
+    return {}
+  }
+
+  const folder = path.join(dir, 'floating-ui-stub')
+  fs.mkdirSync(folder, { recursive: true })
+  const stub = path.join(folder, 'dom.js')
+  fs.writeFileSync(stub, FLOATING_STUB)
+
+  return { '@floating-ui/dom': stub }
+}
+
 // the rendered text of a post node (its first child node's content, a text node)
 function textOf(node: any): string {
   return node?.childNodes?.[0]?.textContent ?? ''
@@ -115,7 +161,8 @@ async function main(): Promise<void> {
 
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
-    { resolve },
+    // the browser env: the browser DOM's module-level registry calls binds that answer only for the browser
+    { resolve, env: 'browser' },
   )
 
   ok(
@@ -154,6 +201,7 @@ async function main(): Promise<void> {
     bundle: true,
     format: 'esm',
     write: false,
+    alias: floatingAlias(dir),
   })
 
   const code = bundled.outputFiles[0].text

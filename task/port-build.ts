@@ -1255,18 +1255,58 @@ function compileEntry(work: UnitWork, root: string, file: string, text: string):
 
 type Compiled = Extract<ReturnType<Compiler['compileSeparate']>, { ok: true }>
 
-// a unit's file: the native prelude its own emitted code docks, then its code (the entry's own with the printer's
-// is-run-open export)
-function unitContent(c: Compiler, result: Compiled, code: string, own: boolean): string {
+// THE DOCKS A UNIT'S PRELUDE MAY TAKE ARE THOSE OF ITS OWN LOAD CLOSURE, never the whole entry's (item 1687). The
+// entry's natives are the docks of everything ITS closure reaches, and the prelude takes a dock's shim when the unit's
+// code, or a shim already taken, mentions the dock's alias as written, camelCase or snake_case (runtime-prelude
+// `native-prelude`, its fixpoint). A taken shim's text holds more than calls: process/runtime/runner.ts imports
+// 'node:child_process', which reads as the snake_case of `child-process`. So native/node/process/run's unit, which docks
+// only global:runner, took the whole child-process shim from an entry that also reached process/child (1653's
+// child-run.tree under boot-running) and not from one that did not (lean-running): two texts, DISAGREE, port-build exit
+// 1. The module's own closure is the same from every entry, so a unit's text is too. A dock its code can need (its own,
+// or one a bind inlined from a module it loads) is in that closure, and a native with no file is in none
+export function unitNatives(natives: Program, module: string, edges: Map<string, string[]>): Program {
+  const reach = new Set([module])
+  const next = [module]
+
+  while (next.length > 0) {
+    for (const loaded of edges.get(next.pop()!) ?? []) {
+      if (!reach.has(loaded)) {
+        reach.add(loaded)
+        next.push(loaded)
+      }
+    }
+  }
+
+  return natives.filter(one => {
+    const dock = one as { form?: unknown; file?: unknown }
+
+    return dock.form !== 'native' || (typeof dock.file === 'string' && reach.has(dock.file))
+  }) as Program
+}
+
+// a unit's text: the native prelude its own emitted code docks, out of its own closure's docks (`unitNatives`), then its
+// code (the entry's own with the printer's is-run-open export)
+export function unitText(
+  natives: Program,
+  edges: Map<string, string[]>,
+  module: string,
+  code: string,
+  own: boolean,
+  nativePrelude: Compiler['nativePrelude'] = stage0!.compiler.nativePrelude,
+): string {
   return portContent(
-    result.natives as Program,
+    unitNatives(natives, module, edges),
     own ? printerExports(code) : code,
-    c.nativePrelude,
+    nativePrelude,
     code
       .split('\n')
       .filter(line => /^declare const [A-Za-z_$][\w$]*\s*:/.test(line))
       .join('\n'),
   )
+}
+
+function unitContent(c: Compiler, result: Compiled, edges: Map<string, string[]>, module: string, code: string, own: boolean): string {
+  return unitText(result.natives as Program, edges, module, code, own, c.nativePrelude)
 }
 
 // an entry's shim and, for a console, its run entry
@@ -1396,7 +1436,7 @@ function unitsTurn(root: string, file: string, store: string): UnitsTurn {
   let contents: string[]
 
   try {
-    contents = [...result.modules].map(([module, emit]) => unitContent(c, result, emit.code, module === file))
+    contents = [...result.modules].map(([module, emit]) => unitContent(c, result, edges, module, emit.code, module === file))
   } finally {
     setRecording(false)
   }
@@ -1987,7 +2027,7 @@ function stageUnitsTurn(c: Compiler, root: string, file: string, store: string):
     return { tally: 'gone', lines: [], files: [] }
   }
 
-  const { result } = compileEntry(work, root, file, text)
+  const { result, edges } = compileEntry(work, root, file, text)
 
   if (!result.ok) {
     return { tally: 'failed', lines: [`  FAIL   ${name}  (stage1 cannot compile it: ${result.diagnostics[0]?.name ?? ''} ${result.diagnostics[0]?.message ?? ''})`], files: [] }
@@ -2007,7 +2047,7 @@ function stageUnitsTurn(c: Compiler, root: string, file: string, store: string):
     const own = module === file
 
     if (own || !work.ports.has(module)) {
-      put(join(UNIT_DIR, `${unitSlug(work, module)}.ts`), unitContent(c, result, emit.code, own))
+      put(join(UNIT_DIR, `${unitSlug(work, module)}.ts`), unitContent(c, result, edges, module, emit.code, own))
     }
   }
 
