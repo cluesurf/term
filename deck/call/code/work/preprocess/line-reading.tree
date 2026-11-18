@@ -1,0 +1,411 @@
+# The text work of the `test` preprocessor (work/preprocess/test-rewriting.tree): a line's indent and first word, the
+# `test`, `want`, `skip`, `walk` and `take` lines it reads, a phrase's slug and seed, and the names a file takes. Text
+# alone, so it answers the same on node, rust, swift and kotlin (test/tree/test-rewriting-text.tree runs it on all
+# four, item 1659).
+#
+# Each pattern is the JavaScript regular expression the preprocessor once ran, written out so that it means on every
+# backend what it meant on node (traps.md T-1401). @term/base pattern's \s is ASCII white space and its `.` stops only
+# at a line feed, where JavaScript's \s, \S and trim take the 25 code points of its white space set (U+0009 to U+000D,
+# U+0020, U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F, U+3000, U+FEFF) and its `.` stops at
+# U+000A, U+000D, U+2028 and U+2029. So `\s` is written as that set, `\S` as its complement, and `.` as
+# `[^\n\r\x{2028}\x{2029}]`. Every one of those code points is under U+FFFF, so a run of them is as long in code points
+# as in UTF-16 units.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find substring
+  find starts-with
+  find char-count
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-match
+
+load @term/base/hash
+  find hash
+
+load @term/base/math
+  find minimum
+  find maximum
+
+# ---- the patterns ----
+
+# a line's white space lead, as JavaScript's trimStart cuts it
+host lead-pattern, make(pattern, bind(text, <<^[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*>>))
+
+# a text as JavaScript's trim leaves it
+host trim-pattern, make(pattern, bind(text, <<^[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*([^]*?)[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*$>>))
+
+host blank-pattern, make(pattern, bind(text, <<^[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*$>>))
+
+# /[\s,]/ split off a trimmed line: its first part
+host head-pattern, make(pattern, bind(text, <<^[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*([^\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF},]*)>>))
+
+# /^test (.+)$/
+host test-header-pattern, make(pattern, bind(text, <<^test ([^\n\r\x{2028}\x{2029}]+)$>>))
+
+# /^<(.+)>$/
+host phrase-pattern, make(pattern, bind(text, <<^<([^\n\r\x{2028}\x{2029}]+)>$>>))
+
+host digit-pattern, make(pattern, bind(text, <<^[0-9]>>))
+
+# /^want(?:\s+(hold|miss))?\s*(?:,\s*(.*))?$/
+host want-pattern, make(pattern, bind(text, <<^want(?:[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]+(hold|miss))?[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*(?:,[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*([^\n\r\x{2028}\x{2029}]*))?$>>))
+
+# /^want snapshot\s*(?:,\s*(.*))?$/
+host snapshot-pattern, make(pattern, bind(text, <<^want snapshot[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*(?:,[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*([^\n\r\x{2028}\x{2029}]*))?$>>))
+
+# /^\s*skip\s+(<.*>)\s*$/
+host skip-literal-pattern, make(pattern, bind(text, <<^[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*skip[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]+(<[^\n\r\x{2028}\x{2029}]*>)[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*$>>))
+
+# /^\s*skip\s+(.*?)\s*$/
+host skip-expression-pattern, make(pattern, bind(text, <<^[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*skip[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]+([^\n\r\x{2028}\x{2029}]*?)[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*$>>))
+
+# /^\s*walk\s+(.*\S)\s*$/
+host walk-pattern, make(pattern, bind(text, <<^[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*walk[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]+([^\n\r\x{2028}\x{2029}]*[^\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}])[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*$>>))
+
+# /^\s*take\s+[^\s,]+\s*,\s*(.*\S)\s*$/
+host take-pattern, make(pattern, bind(text, <<^[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*take[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]+[^\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF},]+[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*,[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*([^\n\r\x{2028}\x{2029}]*[^\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}])[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*$>>))
+
+# /^(?:task|form|rule|bind|host)\s+([^\s,]+)/
+host defined-pattern, make(pattern, bind(text, <<^(?:task|form|rule|bind|host)[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]+([^\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF},]+)>>))
+
+# /^\s+find\s+([^\s,]+)(?:.*,\s*name\s+([^\s,]+))?/
+host found-pattern, make(pattern, bind(text, <<^[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]+find[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]+([^\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF},]+)(?:[^\n\r\x{2028}\x{2029}]*,[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*name[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]+([^\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF},]+))?>>))
+
+# /^\s*test /m: a line starts at the text's start or after any of JavaScript's four line ends
+host test-line-pattern, make(pattern, bind(text, <<(?:^|[\n\r\x{2028}\x{2029}])[\t\n\v\f\r \x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{0FEFF}]*test >>))
+
+# ---- reading a line ----
+
+# group `at` (0 the first) of the pattern's first match in the text, the empty text when nothing matches or the group
+# took no part, as each JavaScript `?.[n] ?? ""` read it
+task group-text
+  take shape, like pattern
+  take input, like text
+  take at, like number
+  like text
+
+  sift find-match(shape, input)
+    case some
+      back value/groups/{at}
+    case none
+      back <>
+
+# a text as JavaScript's trim leaves it
+task space-trimmed
+  take input, like text
+  like text
+
+  back group-text(trim-pattern, input, 0)
+
+# a line's white space lead
+task line-lead
+  take line, like text
+  like text
+
+  sift find-match(lead-pattern, line)
+    case some
+      back value/text
+    case none
+      back <>
+
+task rewrite-indent
+  take line, like text
+  like number
+
+  back char-count(line-lead(line))
+
+task rewrite-is-blank
+  take line, like text
+  like boolean
+
+  back matches(blank-pattern, line)
+
+task rewrite-joined
+  take texts, like list, like text
+  like text
+
+  back texts/join(<\n>)
+
+task comma-joined
+  take texts, like list, like text
+  like text
+
+  back texts/join(<, >)
+
+# the text from `start` on. Every caller cuts a lead under U+FFFF (two characters of white space indent, `<` or
+# `<<`), so code points and JavaScript's UTF-16 units agree
+task rewrite-cut
+  take text, like text
+  take start, like number
+  like text
+
+  back substring(text, start)
+
+# the first word of a statement: up to its first space or comma
+task statement-head
+  take line, like text
+  like text
+
+  back group-text(head-pattern, line, 0)
+
+# `test <rest>` at the start of a line, the empty text when it is no test header
+task test-header
+  take line, like text
+  like text
+
+  back group-text(test-header-pattern, line, 0)
+
+# `<phrase>`: the phrase, the empty text when the rest is a bare slug
+task header-phrase
+  take rest, like text
+  like text
+
+  back group-text(phrase-pattern, rest, 0)
+
+task starts-with-digit
+  take text, like text
+  like boolean
+
+  back matches(digit-pattern, text)
+
+# a `want` line's mode, `hold` when it names none
+task want-mode
+  take head, like text
+  like text
+
+  save mode, group-text(want-pattern, head, 0)
+  fork test, is-equal(mode, <>)
+    hold
+      back <hold>
+  back mode
+
+# whether a `want` line is one the guard can read: hold, miss, or no mode. Anything else matches no head above, so its
+# condition was left empty and the test file emitted `else` with no `if`
+task want-is-known
+  take head, like text
+  like boolean
+
+  back matches(want-pattern, head)
+
+# a one-line `want`'s condition after its comma, trimmed, the empty text when it has none
+task want-inline
+  take head, like text
+  like text
+
+  back space-trimmed(group-text(want-pattern, head, 1))
+
+task is-snapshot-head
+  take head, like text
+  like boolean
+
+  back matches(snapshot-pattern, head)
+
+task snapshot-inline
+  take head, like text
+  like text
+
+  back space-trimmed(group-text(snapshot-pattern, head, 0))
+
+# a `skip` line's literal as written, `<...>` or `<<...>>`, the empty text when what follows is no literal
+task skip-literal
+  take line, like text
+  like text
+
+  back group-text(skip-literal-pattern, line, 0)
+
+# what a `skip` line gives as its reason when that is no literal (`read x`, `x`, `reason-of(x)`), as written, the empty
+# text when the line gives nothing
+task skip-expression
+  take line, like text
+  like text
+
+  back group-text(skip-expression-pattern, line, 0)
+
+# a `walk <list>` line's list as written, the empty text when the walk names none
+task walk-expression
+  take line, like text
+  like text
+
+  back group-text(walk-pattern, line, 0)
+
+# a `take <name>, <type>` line's type as written on the line, the empty text when the type is written under it
+task take-rest
+  take line, like text
+  like text
+
+  back group-text(take-pattern, line, 0)
+
+task is-raw-literal
+  take literal, like text
+  like boolean
+
+  back starts-with(literal, <\<\<>)
+
+# does a file carry `test <phrase>` blocks
+task carries-test-blocks
+  take source, like text
+  like boolean
+
+  back matches(test-line-pattern, source)
+
+# ---- naming ----
+
+# a code point of a phrase as its slug keeps it: an ASCII letter in lower case, a digit as it is, and -1 for one a
+# dash stands for. JavaScript's toLowerCase gives an ASCII letter or digit for two code points more (counted over every
+# code point on node): U+212A, the Kelvin sign, is `k`, and U+0130 is `i` and a combining
+# dot, which `slug-dashed` writes as `i` and a dash
+task slug-rune
+  take rune, like number
+  like number
+
+  fork test, and(is-minimum(rune, 65), is-maximum(rune, 90))
+    hold
+      back add(rune, 32)
+  fork test, or(and(is-minimum(rune, 97), is-maximum(rune, 122)), and(is-minimum(rune, 48), is-maximum(rune, 57)))
+    hold
+      back rune
+  fork test, is-equal(rune, 8490)
+    hold
+      back 107
+  back -1
+
+# lower case, every run of what is not a letter or digit one dash, no dash at either end, `case` for nothing
+task slug-dashed
+  take phrase, like text
+  like text
+
+  save kept, make list
+  save dash, false
+  walk to-runes(phrase)
+    take rune, like number
+    save one, slug-rune(rune)
+    fork test, is-equal(rune, 304)
+      hold
+        save one, 105
+    fork test, is-minimum(one, 0)
+      hold
+        fork test, and(dash, is-above(kept/length, 0))
+          hold
+            kept/push(45)
+        kept/push(one)
+        save dash, false
+      miss
+        save dash, true
+    fork test, is-equal(rune, 304)
+      hold
+        save dash, true
+  fork test, is-equal(kept/length, 0)
+    hold
+      back <case>
+  back from-runes(kept)
+
+# the seed a sampled test draws from, fixed by its phrase: each character's first UTF-16 unit folded in, as
+# JavaScript's charCodeAt(0) of each code point read it. A code point past U+FFFF gives its high surrogate
+task phrase-seed
+  take label, like text
+  like number
+
+  save seed, 7
+  walk to-runes(label)
+    take rune, like number
+    save unit, rune
+    fork test, is-above(rune, 65535)
+      hold
+        save over, subtract(rune, 65536)
+        save unit, add(55296, divide(subtract(over, modulo(over, 1024)), 1024))
+    save seed, modulo(add(multiply(seed, 31), unit), 2147483647)
+  back seed
+
+# a name a file defines, the empty text for a line that defines none
+task defined-name
+  take line, like text
+  like text
+
+  back group-text(defined-pattern, line, 0)
+
+# a name a file finds, by its alias when it has one, the empty text for a line that finds none
+task found-name
+  take line, like text
+  like text
+
+  save alias, group-text(found-pattern, line, 1)
+  fork test, not(is-equal(alias, <>))
+    hold
+      back alias
+  back group-text(found-pattern, line, 0)
+
+# The names a test's task must not take: what the file defines (`task`, `form`, `rule`, `bind`, `host`) and what it
+# finds. A test named `trim` beside `find trim` became `task trim` and replaced the import (guides: tests/writing,
+# proofs/claims, 2026-10-03). Each name is a key of the hash, read with `has`: the structure @term/base set keeps its
+# items in. A `set` here made call's ports refuse to bundle (item 1659): its methods' names, setHas and setSize, are
+# also tasks of @term/base pattern/set, and the facade of the line unit exported both
+task taken-names
+  take lines, like list, like text
+  like hash, like text, like boolean
+
+  save names, make hash
+  walk lines
+    take line, like text
+    save defined, defined-name(line)
+    fork test, not(is-equal(defined, <>))
+      hold
+        save names/{defined}, true
+    save found, found-name(line)
+    fork test, not(is-equal(found, <>))
+      hold
+        save names/{found}, true
+  back names
+
+# ---- placing a diagnostic back ----
+
+# the source line a line of the rewritten text came from, the line itself past either end of `origin`
+task origin-line
+  take origin, like list, like number
+  take line, like number
+  like number
+
+  fork test, and(is-minimum(line, 0), is-below(line, origin/length))
+    hold
+      back origin/{line}
+  back line
+
+# the line at `at`, the empty text past either end
+task line-or-empty
+  take lines, like list, like text
+  take at, like number
+  like text
+
+  fork test, and(is-minimum(at, 0), is-below(at, lines/length))
+    hold
+      back lines/{at}
+  back <>
+
+task clamped-column
+  take column, like number
+  take length, like number
+  like number
+
+  back maximum(0, minimum(length, column))
+
+# a line's length in UTF-16 units, as a diagnostic's column counts it: a code point past U+FFFF is two
+task written-length
+  take text, like text
+  like number
+
+  save units, 0
+  walk to-runes(text)
+    take rune, like number
+    save units, add(units, 1)
+    fork test, is-above(rune, 65535)
+      hold
+        save units, add(units, 1)
+  back units

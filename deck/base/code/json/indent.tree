@@ -1,0 +1,1018 @@
+# JSON written with an indent, byte for byte as JavaScript's `JSON.stringify(value, null, indent)` writes it, the same
+# on every backend: `stringify-indented(value, 2)`. Its own module, so a port that only reads JSON never loads the
+# shortest-digits tables. Each host's own stringify writes the compact text, and this rewrites that text in Term: a
+# newline and the indent before each member, `": "` after a key, `{}` and `[]` for an empty object and list. Every
+# string and number of the compact text is spelled again as JavaScript spells it, so the hosts' own spellings never
+# reach the answer (Kotlin wrote `1.0E-7` and Swift `1e-07` where JavaScript writes `1e-7`, and each host escapes
+# its own set of characters):
+#   - a number is read back as the float it names and written in ECMAScript's Number toString form from its shortest
+#     digits (`../text/format/digits`): plain up to 21 digits, an exponent past them (`1e+21`, `1e-7`). A host's `NaN` or
+#     `Infinity` writes `null`, as JSON.stringify does
+#   - a string escapes `"`, the backslash and every control character, the five with a short escape (`\b`, `\t`, `\n`,
+#     `\f`, `\r`) and the rest as `\u00xx` in lower-case hex, and a lone surrogate as `\uxxxx`. Everything else is
+#     the character itself: an escaped `\/`, `\u00e9` or surrogate pair a host wrote comes back as `/`, the letter, the
+#     one character
+#
+# An indent below 1 writes the compact form, spelled the same way, and one past 10 is 10, as JSON.stringify has it. The
+# compact text is a host's own output, so it holds no whitespace and is one well-formed value. Every walk below still
+# moves forward by at least one code point and ends at the text's end.
+
+mark unstable
+
+load @term/base/native/{platform}/json
+  find json-stringify
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+  find from-runes
+
+load @term/base/list
+  find length
+  find push
+  find join
+  find slice
+
+load @term/base/text/number
+  find host-parse-float
+
+load @term/base/text/format/digits
+  find shortest-digits
+
+load @term/base/json/check
+  find json-rune-at
+  find json-is-digit
+  find json-hex-four
+
+# a newline and `depth` gaps, or nothing when the gap is empty (the compact form)
+task push-indent-break
+  mark private
+  take parts
+    like list
+      like text
+  take gap, like text
+  take depth, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read gap
+        text <>
+    hook hold
+      send back, code 0
+  call push
+    read parts
+    call rune-to-text
+      code 10
+  save k, code 0
+  walk test
+    hook test
+      call is-below
+        read k
+        read depth
+    hook step
+      call push
+        read parts
+        read gap
+      save k
+        call add
+          read k
+          code 1
+  send back, read k
+
+# one hex digit, lower case
+task hex-digit-text
+  mark private
+  take digit, like number
+  like text
+  fork test
+    hook test
+      call is-below
+        read digit
+        code 10
+    hook hold
+      send back
+        call rune-to-text
+          call add
+            read digit
+            code 48
+  send back
+    call rune-to-text
+      call add
+        read digit
+        code 87
+
+# `\u` and the code unit in four lower-case hex digits
+task unicode-escape-text
+  mark private
+  take unit, like number
+  like text
+  save parts, make list
+  call push
+    read parts
+    call rune-to-text
+      code 92
+  call push
+    read parts
+    text <u>
+  call push
+    read parts
+    call hex-digit-text
+      call modulo
+        call divide
+          read unit
+          code 4096
+        code 16
+  call push
+    read parts
+    call hex-digit-text
+      call modulo
+        call divide
+          read unit
+          code 256
+        code 16
+  call push
+    read parts
+    call hex-digit-text
+      call modulo
+        call divide
+          read unit
+          code 16
+        code 16
+  call push
+    read parts
+    call hex-digit-text
+      call modulo
+        read unit
+        code 16
+  send back
+    call join
+      read parts
+      text <>
+
+# a backslash and one letter
+task short-escape-text
+  mark private
+  take letter, like text
+  like text
+  send back
+    text <{rune-to-text(92)}{letter}>
+
+# one code point of a string's body as JSON.stringify writes it
+task quoted-rune-text
+  mark private
+  take c, like number
+  like text
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 34
+    hook hold
+      send back
+        call short-escape-text
+          call rune-to-text
+            code 34
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 92
+    hook hold
+      send back
+        call short-escape-text
+          call rune-to-text
+            code 92
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 8
+    hook hold
+      send back
+        call short-escape-text
+          text <b>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 9
+    hook hold
+      send back
+        call short-escape-text
+          text <t>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 10
+    hook hold
+      send back
+        call short-escape-text
+          text <n>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 12
+    hook hold
+      send back
+        call short-escape-text
+          text <f>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 13
+    hook hold
+      send back
+        call short-escape-text
+          text <r>
+  fork test
+    hook test
+      call or
+        call is-below
+          read c
+          code 32
+        call and
+          call is-minimum
+            read c
+            code 55296
+          call is-maximum
+            read c
+            code 57343
+    hook hold
+      send back
+        call unicode-escape-text
+          read c
+  send back
+    call rune-to-text
+      read c
+
+# the code point a one-letter escape stands for (`n` is a line feed, `/` a slash)
+task escaped-rune
+  mark private
+  take letter, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 98
+    hook hold
+      send back, code 8
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 116
+    hook hold
+      send back, code 9
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 110
+    hook hold
+      send back, code 10
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 102
+    hook hold
+      send back, code 12
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 114
+    hook hold
+      send back, code 13
+  send back, read letter
+
+# past one piece of a string's body at `at` (an escape or one code point), its text pushed on `parts`
+task push-json-string-piece
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  take parts
+    like list
+      like text
+  like number
+  save c
+    call json-rune-at
+      read runes
+      read at
+  fork test
+    hook test
+      call is-unequal
+        read c
+        code 92
+    hook hold
+      call push
+        read parts
+        call quoted-rune-text
+          read c
+      send back
+        call add
+          read at
+          code 1
+  save letter
+    call json-rune-at
+      read runes
+      call add
+        read at
+        code 1
+  fork test
+    hook test
+      call is-unequal
+        read letter
+        code 117
+    hook hold
+      call push
+        read parts
+        call quoted-rune-text
+          call escaped-rune
+            read letter
+      send back
+        call add
+          read at
+          code 2
+  save unit
+    call json-hex-four
+      read runes
+      call add
+        read at
+        code 2
+  # a high surrogate followed by an escaped low one is the one character they name
+  fork test
+    hook test
+      call and
+        call and
+          call is-minimum
+            read unit
+            code 55296
+          call is-maximum
+            read unit
+            code 56319
+        call and
+          call is-equal
+            call json-rune-at
+              read runes
+              call add
+                read at
+                code 6
+            code 92
+          call is-equal
+            call json-rune-at
+              read runes
+              call add
+                read at
+                code 7
+            code 117
+    hook hold
+      save low
+        call json-hex-four
+          read runes
+          call add
+            read at
+            code 8
+      fork test
+        hook test
+          call and
+            call is-minimum
+              read low
+              code 56320
+            call is-maximum
+              read low
+              code 57343
+        hook hold
+          call push
+            read parts
+            call rune-to-text
+              call add
+                code 65536
+                call add
+                  call multiply
+                    call subtract
+                      read unit
+                      code 55296
+                    code 1024
+                  call subtract
+                    read low
+                    code 56320
+          send back
+            call add
+              read at
+              code 12
+  call push
+    read parts
+    call quoted-rune-text
+      read unit
+  send back
+    call add
+      read at
+      code 6
+
+# past the string whose opening quote is at `at`, written on `parts`
+task push-json-string
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  take parts
+    like list
+      like text
+  like number
+  save n
+    call length
+      read runes
+  call push
+    read parts
+    call rune-to-text
+      code 34
+  save i
+    call add
+      read at
+      code 1
+  walk test
+    hook test
+      call and
+        call is-below
+          read i
+          read n
+        call is-unequal
+          call json-rune-at
+            read runes
+            read i
+          code 34
+    hook step
+      save i
+        call push-json-string-piece
+          read runes
+          read i
+          read parts
+  call push
+    read parts
+    call rune-to-text
+      code 34
+  send back
+    call add
+      read i
+      code 1
+
+# `count` zeros on `parts`
+task push-zeros
+  mark private
+  take parts
+    like list
+      like text
+  take count, like number
+  like number
+  save k, code 0
+  walk test
+    hook test
+      call is-below
+        read k
+        read count
+    hook step
+      call push
+        read parts
+        text <0>
+      save k
+        call add
+          read k
+          code 1
+  send back, read k
+
+# a float as ECMAScript's Number toString writes it, from its shortest digits: the digits and zeros up to 21 places
+# before the point, a point inside them, `0.` and up to five zeros before them, else one digit, the rest after a point,
+# and `e+` or `e-` with the exponent. Not finite is `null`, as in JSON, and negative zero is `0`
+task json-number-text
+  take value, like float
+  like text
+  save found
+    call shortest-digits
+      read value
+  fork test
+    hook test
+      call not
+        read found/finite
+    hook hold
+      send back, text <null>
+  fork test
+    hook test
+      call is-equal
+        read found/digits
+        text <0>
+    hook hold
+      send back, text <0>
+  save digits
+    call to-runes
+      read found/digits
+  save k
+    call length
+      read digits
+  save n
+    call add
+      read found/exponent
+      read k
+  save parts, make list
+  fork test
+    hook test
+      read found/negative
+    hook hold
+      call push
+        read parts
+        text <->
+  fork test
+    hook test
+      call and
+        call is-maximum
+          read k
+          read n
+        call is-maximum
+          read n
+          code 21
+    hook hold
+      call push
+        read parts
+        read found/digits
+      call push-zeros
+        read parts
+        call subtract
+          read n
+          read k
+      send back
+        call join
+          read parts
+          text <>
+  fork test
+    hook test
+      call and
+        call is-above
+          read n
+          code 0
+        call is-maximum
+          read n
+          code 21
+    hook hold
+      call push
+        read parts
+        call from-runes
+          call slice
+            read digits
+            code 0
+            read n
+      call push
+        read parts
+        text <.>
+      call push
+        read parts
+        call from-runes
+          call slice
+            read digits
+            read n
+            read k
+      send back
+        call join
+          read parts
+          text <>
+  fork test
+    hook test
+      call and
+        call is-above
+          read n
+          call subtract
+            code 0
+            code 6
+        call is-maximum
+          read n
+          code 0
+    hook hold
+      call push
+        read parts
+        text <0.>
+      call push-zeros
+        read parts
+        call subtract
+          code 0
+          read n
+      call push
+        read parts
+        read found/digits
+      send back
+        call join
+          read parts
+          text <>
+  call push
+    read parts
+    call from-runes
+      call slice
+        read digits
+        code 0
+        code 1
+  fork test
+    hook test
+      call is-above
+        read k
+        code 1
+    hook hold
+      call push
+        read parts
+        text <.>
+      call push
+        read parts
+        call from-runes
+          call slice
+            read digits
+            code 1
+            read k
+  save power
+    call subtract
+      read n
+      code 1
+  fork test
+    hook test
+      call is-minimum
+        read power
+        code 0
+    hook hold
+      call push
+        read parts
+        text <e+{power}>
+    hook miss
+      call push
+        read parts
+        text <e-{subtract(0, power)}>
+  send back
+    call join
+      read parts
+      text <>
+
+# whether a code point ends a bare token: a bracket, a comma, a colon, a quote or JSON whitespace
+task ends-bare
+  mark private
+  take c, like number
+  like boolean
+  send back
+    call or
+      call or
+        call or
+          call is-equal
+            read c
+            code 44
+          call is-equal
+            read c
+            code 58
+        call or
+          call is-equal
+            read c
+            code 93
+          call is-equal
+            read c
+            code 125
+      call or
+        call or
+          call is-equal
+            read c
+            code 34
+          call is-below
+            read c
+            code 33
+        call or
+          call is-equal
+            read c
+            code 91
+          call is-equal
+            read c
+            code 123
+
+# past the bare token at `at` (a number, `true`, `false`, `null`, or a host's `NaN` or `Infinity`), written on `parts`
+task push-json-bare
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  take parts
+    like list
+      like text
+  like number
+  save n
+    call length
+      read runes
+  save end
+    call add
+      read at
+      code 1
+  walk test
+    hook test
+      call and
+        call is-below
+          read end
+          read n
+        call not
+          call ends-bare
+            call json-rune-at
+              read runes
+              read end
+    hook step
+      save end
+        call add
+          read end
+          code 1
+  save word
+    call from-runes
+      call slice
+        read runes
+        read at
+        read end
+  save first
+    call json-rune-at
+      read runes
+      read at
+  save second
+    call json-rune-at
+      read runes
+      call add
+        read at
+        code 1
+  fork test
+    hook test
+      call or
+        call json-is-digit
+          read first
+        call and
+          call is-equal
+            read first
+            code 45
+          call json-is-digit
+            read second
+    hook hold
+      call push
+        read parts
+        call json-number-text
+          call host-parse-float
+            read word
+      send back, read end
+  fork test
+    hook test
+      call or
+        call is-equal
+          read word
+          text <true>
+        call is-equal
+          read word
+          text <false>
+    hook hold
+      call push
+        read parts
+        read word
+      send back, read end
+  call push
+    read parts
+    text <null>
+  send back, read end
+
+# past the object or array whose bracket is at `at`, written on `parts` with its members one level below `depth`
+task push-json-container
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  take gap, like text
+  take depth, like number
+  take parts
+    like list
+      like text
+  like number
+  save n
+    call length
+      read runes
+  save open
+    call json-rune-at
+      read runes
+      read at
+  save close
+    call add
+      read open
+      code 2
+  call push
+    read parts
+    call rune-to-text
+      read open
+  fork test
+    hook test
+      call is-equal
+        call json-rune-at
+          read runes
+          call add
+            read at
+            code 1
+        read close
+    hook hold
+      call push
+        read parts
+        call rune-to-text
+          read close
+      send back
+        call add
+          read at
+          code 2
+  save inner
+    call add
+      read depth
+      code 1
+  save i
+    call add
+      read at
+      code 1
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook step
+      call push-indent-break
+        read parts
+        read gap
+        read inner
+      fork test
+        hook test
+          call is-equal
+            read open
+            code 123
+        hook hold
+          save i
+            call push-json-string
+              read runes
+              read i
+              read parts
+          call push
+            read parts
+            text <:>
+          fork test
+            hook test
+              call is-unequal
+                read gap
+                text <>
+            hook hold
+              call push
+                read parts
+                text < >
+          save i
+            call add
+              read i
+              code 1
+      save i
+        call push-json-value
+          read runes
+          read i
+          read gap
+          read inner
+          read parts
+      fork test
+        hook test
+          call is-unequal
+            call json-rune-at
+              read runes
+              read i
+            code 44
+        hook hold
+          call push-indent-break
+            read parts
+            read gap
+            read depth
+          call push
+            read parts
+            call rune-to-text
+              read close
+          send back
+            call add
+              read i
+              code 1
+      call push
+        read parts
+        text <,>
+      save i
+        call add
+          read i
+          code 1
+  send back, read i
+
+# past the one value at `at`, written on `parts`
+task push-json-value
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  take gap, like text
+  take depth, like number
+  take parts
+    like list
+      like text
+  like number
+  save c
+    call json-rune-at
+      read runes
+      read at
+  fork test
+    hook test
+      call or
+        call is-equal
+          read c
+          code 123
+        call is-equal
+          read c
+          code 91
+    hook hold
+      send back
+        call push-json-container
+          read runes
+          read at
+          read gap
+          read depth
+          read parts
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 34
+    hook hold
+      send back
+        call push-json-string
+          read runes
+          read at
+          read parts
+  send back
+    call push-json-bare
+      read runes
+      read at
+      read parts
+
+# the compact JSON `text` a host's stringify wrote, written again as JSON.stringify(value, null, indent) writes it.
+# The empty text stays empty (Swift's stringify answers it for a value it cannot write)
+task indent-json
+  take text, like text
+  take indent, like number
+  like text
+  fork test
+    hook test
+      call is-equal
+        read text
+        text <>
+    hook hold
+      send back, text <>
+  save gap-parts, make list
+  save k, code 0
+  walk test
+    hook test
+      call and
+        call is-below
+          read k
+          read indent
+        call is-below
+          read k
+          code 10
+    hook step
+      call push
+        read gap-parts
+        text < >
+      save k
+        call add
+          read k
+          code 1
+  save gap
+    call join
+      read gap-parts
+      text <>
+  save parts, make list
+  call push-json-value
+    call to-runes
+      read text
+    code 0
+    read gap
+    code 0
+    read parts
+  send back
+    call join
+      read parts
+      text <>
+
+# the value written with `indent` spaces a level, byte for byte as `JSON.stringify(value, null, indent)` writes it
+task stringify-indented
+  take value, like dynamic
+  take indent, like number
+  like text
+  send back
+    call indent-json
+      call json-stringify
+        read value
+      read indent

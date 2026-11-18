@@ -1,0 +1,482 @@
+# The text work of the `test` preprocessor (work/preprocess/line-reading.tree), item term-self-host-001-1659. Each
+# answer is what the node binds it replaced computed, their JavaScript run on each input (the white space, line
+# ends and characters past U+FFFF where JavaScript and a pattern can part), so the base gate holds the JavaScript
+# meaning on node, rust, swift and kotlin.
+
+load @term/call/work/preprocess/line-reading
+  find rewrite-indent
+  find rewrite-is-blank
+  find rewrite-joined
+  find rewrite-cut
+  find statement-head
+  find test-header
+  find header-phrase
+  find slug-dashed
+  find starts-with-digit
+  find want-mode
+  find want-is-known
+  find want-inline
+  find is-snapshot-head
+  find snapshot-inline
+  find skip-literal
+  find skip-expression
+  find walk-expression
+  find take-rest
+  find line-lead
+  find is-raw-literal
+  find defined-name
+  find found-name
+  find carries-test-blocks
+  find phrase-seed
+  find origin-line
+  find line-or-empty
+  find clamped-column
+  find written-length
+  find comma-joined
+  find taken-names
+
+load @term/base/text
+  find split
+
+load @term/base/text/unicode
+  find from-runes
+
+# the one character with this code point
+task ch
+  take code, like number
+  like text
+
+  save codes, make list
+  codes/push(code)
+  back from-runes(codes)
+
+task texts-of
+  take a, like text
+  take b, like text
+  take c, like text
+  like list, like text
+
+  save texts, make list
+  texts/push(a)
+  texts/push(b)
+  texts/push(c)
+  back texts
+
+task origin-sample
+  like list, like number
+
+  save origin, make list
+  origin/push(5)
+  origin/push(7)
+  origin/push(9)
+  back origin
+
+task no-texts
+  like list, like text
+
+  save texts, make list
+  back texts
+
+test <rewrite-indent answers as the JavaScript did>
+  want hold, is-equal(rewrite-indent(<>), 0)
+  want hold, is-equal(rewrite-indent(<   >), 3)
+  want hold, is-equal(rewrite-indent(<\t x>), 2)
+  want hold, is-equal(rewrite-indent(<  want hold, a>), 2)
+  want hold, is-equal(rewrite-indent(<{ch(160)}{ch(160)}x>), 2)
+  want hold, is-equal(rewrite-indent(<{ch(65279)}test x>), 1)
+  want hold, is-equal(rewrite-indent(< {ch(8232)} y>), 3)
+  want hold, is-equal(rewrite-indent(<x\r>), 0)
+  want hold, is-equal(rewrite-indent(<  test \<a\>>), 2)
+  want hold, is-equal(rewrite-indent(<test \<a b\>>), 0)
+  want hold, is-equal(rewrite-indent(<test \<a\>\r>), 0)
+  want hold, is-equal(rewrite-indent(<test >), 0)
+  want hold, is-equal(rewrite-indent(<test x{ch(8232)}>), 0)
+  want hold, is-equal(rewrite-indent(<{ch(119070)} a>), 0)
+  want hold, is-equal(rewrite-indent(<  a,b c>), 2)
+  want hold, is-equal(rewrite-indent(<a{ch(12288)}b>), 0)
+  want hold, is-equal(rewrite-indent(<{ch(11)}{ch(12)}z>), 2)
+  want hold, is-equal(rewrite-indent(<{ch(133)}x>), 0)
+  want hold, is-equal(rewrite-indent(<{ch(8203)} x>), 0)
+  want hold, is-equal(rewrite-indent(<{ch(5760)}{ch(8239)}q>), 2)
+  want hold, is-equal(rewrite-indent(<,x>), 0)
+  want hold, is-equal(rewrite-indent(<  {ch(8233)}>), 3)
+
+test <rewrite-is-blank answers as the JavaScript did>
+  want hold, is-equal(rewrite-is-blank(<>), true)
+  want hold, is-equal(rewrite-is-blank(<   >), true)
+  want hold, is-equal(rewrite-is-blank(<\t x>), false)
+  want hold, is-equal(rewrite-is-blank(<  want hold, a>), false)
+  want hold, is-equal(rewrite-is-blank(<{ch(160)}{ch(160)}x>), false)
+  want hold, is-equal(rewrite-is-blank(<{ch(65279)}test x>), false)
+  want hold, is-equal(rewrite-is-blank(< {ch(8232)} y>), false)
+  want hold, is-equal(rewrite-is-blank(<x\r>), false)
+  want hold, is-equal(rewrite-is-blank(<  test \<a\>>), false)
+  want hold, is-equal(rewrite-is-blank(<test \<a b\>>), false)
+  want hold, is-equal(rewrite-is-blank(<test \<a\>\r>), false)
+  want hold, is-equal(rewrite-is-blank(<test >), false)
+  want hold, is-equal(rewrite-is-blank(<test x{ch(8232)}>), false)
+  want hold, is-equal(rewrite-is-blank(<{ch(119070)} a>), false)
+  want hold, is-equal(rewrite-is-blank(<  a,b c>), false)
+  want hold, is-equal(rewrite-is-blank(<a{ch(12288)}b>), false)
+  want hold, is-equal(rewrite-is-blank(<{ch(11)}{ch(12)}z>), false)
+  want hold, is-equal(rewrite-is-blank(<{ch(133)}x>), false)
+  want hold, is-equal(rewrite-is-blank(<{ch(8203)} x>), false)
+  want hold, is-equal(rewrite-is-blank(<{ch(5760)}{ch(8239)}q>), false)
+  want hold, is-equal(rewrite-is-blank(<,x>), false)
+  want hold, is-equal(rewrite-is-blank(<  {ch(8233)}>), true)
+
+test <line-lead answers as the JavaScript did>
+  want hold, is-equal(line-lead(<>), <>)
+  want hold, is-equal(line-lead(<   >), <   >)
+  want hold, is-equal(line-lead(<\t x>), <\t >)
+  want hold, is-equal(line-lead(<  want hold, a>), <  >)
+  want hold, is-equal(line-lead(<{ch(160)}{ch(160)}x>), <{ch(160)}{ch(160)}>)
+  want hold, is-equal(line-lead(<{ch(65279)}test x>), <{ch(65279)}>)
+  want hold, is-equal(line-lead(< {ch(8232)} y>), < {ch(8232)} >)
+  want hold, is-equal(line-lead(<x\r>), <>)
+  want hold, is-equal(line-lead(<  test \<a\>>), <  >)
+  want hold, is-equal(line-lead(<test \<a b\>>), <>)
+  want hold, is-equal(line-lead(<test \<a\>\r>), <>)
+  want hold, is-equal(line-lead(<test >), <>)
+  want hold, is-equal(line-lead(<test x{ch(8232)}>), <>)
+  want hold, is-equal(line-lead(<{ch(119070)} a>), <>)
+  want hold, is-equal(line-lead(<  a,b c>), <  >)
+  want hold, is-equal(line-lead(<a{ch(12288)}b>), <>)
+  want hold, is-equal(line-lead(<{ch(11)}{ch(12)}z>), <{ch(11)}{ch(12)}>)
+  want hold, is-equal(line-lead(<{ch(133)}x>), <>)
+  want hold, is-equal(line-lead(<{ch(8203)} x>), <>)
+  want hold, is-equal(line-lead(<{ch(5760)}{ch(8239)}q>), <{ch(5760)}{ch(8239)}>)
+  want hold, is-equal(line-lead(<,x>), <>)
+  want hold, is-equal(line-lead(<  {ch(8233)}>), <  {ch(8233)}>)
+
+test <statement-head answers as the JavaScript did>
+  want hold, is-equal(statement-head(<>), <>)
+  want hold, is-equal(statement-head(<   >), <>)
+  want hold, is-equal(statement-head(<\t x>), <x>)
+  want hold, is-equal(statement-head(<  want hold, a>), <want>)
+  want hold, is-equal(statement-head(<{ch(160)}{ch(160)}x>), <x>)
+  want hold, is-equal(statement-head(<{ch(65279)}test x>), <test>)
+  want hold, is-equal(statement-head(< {ch(8232)} y>), <y>)
+  want hold, is-equal(statement-head(<x\r>), <x>)
+  want hold, is-equal(statement-head(<  test \<a\>>), <test>)
+  want hold, is-equal(statement-head(<test \<a b\>>), <test>)
+  want hold, is-equal(statement-head(<test \<a\>\r>), <test>)
+  want hold, is-equal(statement-head(<test >), <test>)
+  want hold, is-equal(statement-head(<test x{ch(8232)}>), <test>)
+  want hold, is-equal(statement-head(<{ch(119070)} a>), <{ch(119070)}>)
+  want hold, is-equal(statement-head(<  a,b c>), <a>)
+  want hold, is-equal(statement-head(<a{ch(12288)}b>), <a>)
+  want hold, is-equal(statement-head(<{ch(11)}{ch(12)}z>), <z>)
+  want hold, is-equal(statement-head(<{ch(133)}x>), <{ch(133)}x>)
+  want hold, is-equal(statement-head(<{ch(8203)} x>), <{ch(8203)}>)
+  want hold, is-equal(statement-head(<{ch(5760)}{ch(8239)}q>), <q>)
+  want hold, is-equal(statement-head(<,x>), <>)
+  want hold, is-equal(statement-head(<  {ch(8233)}>), <>)
+  want hold, is-equal(statement-head(<want, x>), <want>)
+  want hold, is-equal(statement-head(<  skip{ch(160)}x>), <skip>)
+  want hold, is-equal(statement-head(<a{ch(8232)}b>), <a>)
+
+test <test-header answers as the JavaScript did>
+  want hold, is-equal(test-header(<>), <>)
+  want hold, is-equal(test-header(<   >), <>)
+  want hold, is-equal(test-header(<\t x>), <>)
+  want hold, is-equal(test-header(<  want hold, a>), <>)
+  want hold, is-equal(test-header(<{ch(160)}{ch(160)}x>), <>)
+  want hold, is-equal(test-header(<{ch(65279)}test x>), <>)
+  want hold, is-equal(test-header(< {ch(8232)} y>), <>)
+  want hold, is-equal(test-header(<x\r>), <>)
+  want hold, is-equal(test-header(<  test \<a\>>), <>)
+  want hold, is-equal(test-header(<test \<a b\>>), <\<a b\>>)
+  want hold, is-equal(test-header(<test \<a\>\r>), <>)
+  want hold, is-equal(test-header(<test >), <>)
+  want hold, is-equal(test-header(<test x{ch(8232)}>), <>)
+  want hold, is-equal(test-header(<{ch(119070)} a>), <>)
+  want hold, is-equal(test-header(<  a,b c>), <>)
+  want hold, is-equal(test-header(<a{ch(12288)}b>), <>)
+  want hold, is-equal(test-header(<{ch(11)}{ch(12)}z>), <>)
+  want hold, is-equal(test-header(<{ch(133)}x>), <>)
+  want hold, is-equal(test-header(<{ch(8203)} x>), <>)
+  want hold, is-equal(test-header(<{ch(5760)}{ch(8239)}q>), <>)
+  want hold, is-equal(test-header(<,x>), <>)
+  want hold, is-equal(test-header(<  {ch(8233)}>), <>)
+  want hold, is-equal(test-header(<test {ch(119070)}>), <{ch(119070)}>)
+  want hold, is-equal(test-header(<test  two>), < two>)
+  want hold, is-equal(test-header(<test \<a\>{ch(160)}>), <\<a\>{ch(160)}>)
+  want hold, is-equal(test-header(<tests x>), <>)
+  want hold, is-equal(test-header(<test x{ch(133)}>), <x{ch(133)}>)
+
+test <header-phrase answers as the JavaScript did>
+  want hold, is-equal(header-phrase(<\<a\>>), <a>)
+  want hold, is-equal(header-phrase(<\<a b\>>), <a b>)
+  want hold, is-equal(header-phrase(<\<\>>), <>)
+  want hold, is-equal(header-phrase(<\<a\>\r>), <>)
+  want hold, is-equal(header-phrase(<\<{ch(119070)}\>>), <{ch(119070)}>)
+  want hold, is-equal(header-phrase(<x>), <>)
+  want hold, is-equal(header-phrase(<\<a{ch(8232)}\>>), <>)
+  want hold, is-equal(header-phrase(<\<\<a\>\>>), <\<a\>>)
+  want hold, is-equal(header-phrase(<\<a\>b>), <>)
+  want hold, is-equal(header-phrase(< \<a\>>), <>)
+  want hold, is-equal(header-phrase(<\<a\> >), <>)
+
+test <slug-dashed answers as the JavaScript did>
+  want hold, is-equal(slug-dashed(<Hello World>), <hello-world>)
+  want hold, is-equal(slug-dashed(<  --x--  >), <x>)
+  want hold, is-equal(slug-dashed(<>), <case>)
+  want hold, is-equal(slug-dashed(<!!!>), <case>)
+  want hold, is-equal(slug-dashed(<{ch(304)}stanbul>), <i-stanbul>)
+  want hold, is-equal(slug-dashed(<{ch(8490)} ok>), <k-ok>)
+  want hold, is-equal(slug-dashed(<{ch(220)}n{ch(239)}code 2>), <n-code-2>)
+  want hold, is-equal(slug-dashed(<a{ch(119070)}b>), <a-b>)
+  want hold, is-equal(slug-dashed(<ABC_def>), <abc-def>)
+  want hold, is-equal(slug-dashed(<x {ch(304)} y>), <x-i-y>)
+  want hold, is-equal(slug-dashed(<{ch(304)}>), <i>)
+  want hold, is-equal(slug-dashed(<x {ch(8490)}>), <x-k>)
+  want hold, is-equal(slug-dashed(<a1-b2>), <a1-b2>)
+  want hold, is-equal(slug-dashed(<x \>= 0>), <x-0>)
+  want hold, is-equal(slug-dashed(<{ch(931)}{ch(913)}{ch(931)}>), <case>)
+  want hold, is-equal(slug-dashed(<{ch(64256)} ligature>), <ligature>)
+  want hold, is-equal(slug-dashed(<{ch(304)}{ch(304)}>), <i-i>)
+
+test <starts-with-digit answers as the JavaScript did>
+  want hold, is-equal(starts-with-digit(<2a>), true)
+  want hold, is-equal(starts-with-digit(<a2>), false)
+  want hold, is-equal(starts-with-digit(<>), false)
+  want hold, is-equal(starts-with-digit(<{ch(1635)}>), false)
+  want hold, is-equal(starts-with-digit(<0>), true)
+  want hold, is-equal(starts-with-digit(< 1>), false)
+  want hold, is-equal(starts-with-digit(<{ch(119070)}>), false)
+
+test <want-mode answers as the JavaScript did>
+  want hold, is-equal(want-mode(<want>), <hold>)
+  want hold, is-equal(want-mode(<want hold>), <hold>)
+  want hold, is-equal(want-mode(<want miss>), <miss>)
+  want hold, is-equal(want-mode(<want  hold , x >), <hold>)
+  want hold, is-equal(want-mode(<want hold,  a b  >), <hold>)
+  want hold, is-equal(want-mode(<wanthold>), <hold>)
+  want hold, is-equal(want-mode(<want hold{ch(160)}, x{ch(160)}>), <hold>)
+  want hold, is-equal(want-mode(<want snapshot>), <hold>)
+  want hold, is-equal(want-mode(<want maybe, x>), <hold>)
+  want hold, is-equal(want-mode(<want, x>), <hold>)
+  want hold, is-equal(want-mode(<want hold, x\r>), <hold>)
+  want hold, is-equal(want-mode(<want miss,{ch(8232)}x>), <miss>)
+  want hold, is-equal(want-mode(<want hold, x{ch(65279)}>), <hold>)
+  want hold, is-equal(want-mode(<want holdx>), <hold>)
+  want hold, is-equal(want-mode(<want hold miss>), <hold>)
+  want hold, is-equal(want-mode(<want\thold,\tx\t>), <hold>)
+  want hold, is-equal(want-mode(<want hold, {ch(119070)}>), <hold>)
+
+test <want-is-known answers as the JavaScript did>
+  want hold, is-equal(want-is-known(<want>), true)
+  want hold, is-equal(want-is-known(<want hold>), true)
+  want hold, is-equal(want-is-known(<want miss>), true)
+  want hold, is-equal(want-is-known(<want  hold , x >), true)
+  want hold, is-equal(want-is-known(<want hold,  a b  >), true)
+  want hold, is-equal(want-is-known(<wanthold>), false)
+  want hold, is-equal(want-is-known(<want hold{ch(160)}, x{ch(160)}>), true)
+  want hold, is-equal(want-is-known(<want snapshot>), false)
+  want hold, is-equal(want-is-known(<want maybe, x>), false)
+  want hold, is-equal(want-is-known(<want, x>), true)
+  want hold, is-equal(want-is-known(<want hold, x\r>), false)
+  want hold, is-equal(want-is-known(<want miss,{ch(8232)}x>), true)
+  want hold, is-equal(want-is-known(<want hold, x{ch(65279)}>), true)
+  want hold, is-equal(want-is-known(<want holdx>), false)
+  want hold, is-equal(want-is-known(<want hold miss>), false)
+  want hold, is-equal(want-is-known(<want\thold,\tx\t>), true)
+  want hold, is-equal(want-is-known(<want hold, {ch(119070)}>), true)
+
+test <want-inline answers as the JavaScript did>
+  want hold, is-equal(want-inline(<want>), <>)
+  want hold, is-equal(want-inline(<want hold>), <>)
+  want hold, is-equal(want-inline(<want miss>), <>)
+  want hold, is-equal(want-inline(<want  hold , x >), <x>)
+  want hold, is-equal(want-inline(<want hold,  a b  >), <a b>)
+  want hold, is-equal(want-inline(<wanthold>), <>)
+  want hold, is-equal(want-inline(<want hold{ch(160)}, x{ch(160)}>), <x>)
+  want hold, is-equal(want-inline(<want snapshot>), <>)
+  want hold, is-equal(want-inline(<want maybe, x>), <>)
+  want hold, is-equal(want-inline(<want, x>), <x>)
+  want hold, is-equal(want-inline(<want hold, x\r>), <>)
+  want hold, is-equal(want-inline(<want miss,{ch(8232)}x>), <x>)
+  want hold, is-equal(want-inline(<want hold, x{ch(65279)}>), <x>)
+  want hold, is-equal(want-inline(<want holdx>), <>)
+  want hold, is-equal(want-inline(<want hold miss>), <>)
+  want hold, is-equal(want-inline(<want\thold,\tx\t>), <x>)
+  want hold, is-equal(want-inline(<want hold, {ch(119070)}>), <{ch(119070)}>)
+
+test <is-snapshot-head answers as the JavaScript did>
+  want hold, is-equal(is-snapshot-head(<want snapshot>), true)
+  want hold, is-equal(is-snapshot-head(<want snapshot, v >), true)
+  want hold, is-equal(is-snapshot-head(<want snapshot,x{ch(160)}>), true)
+  want hold, is-equal(is-snapshot-head(<want snapshots>), false)
+  want hold, is-equal(is-snapshot-head(<want snapshot\r>), true)
+  want hold, is-equal(is-snapshot-head(<want snapshot , {ch(119070)}>), true)
+  want hold, is-equal(is-snapshot-head(<want  snapshot>), false)
+  want hold, is-equal(is-snapshot-head(<want snapshot,>), true)
+
+test <snapshot-inline answers as the JavaScript did>
+  want hold, is-equal(snapshot-inline(<want snapshot>), <>)
+  want hold, is-equal(snapshot-inline(<want snapshot, v >), <v>)
+  want hold, is-equal(snapshot-inline(<want snapshot,x{ch(160)}>), <x>)
+  want hold, is-equal(snapshot-inline(<want snapshots>), <>)
+  want hold, is-equal(snapshot-inline(<want snapshot\r>), <>)
+  want hold, is-equal(snapshot-inline(<want snapshot , {ch(119070)}>), <{ch(119070)}>)
+  want hold, is-equal(snapshot-inline(<want  snapshot>), <>)
+  want hold, is-equal(snapshot-inline(<want snapshot,>), <>)
+
+test <skip-literal answers as the JavaScript did>
+  want hold, is-equal(skip-literal(<  skip \<why\>>), <\<why\>>)
+  want hold, is-equal(skip-literal(<skip \<\<raw\>\>  >), <\<\<raw\>\>>)
+  want hold, is-equal(skip-literal(<  skip read x  >), <>)
+  want hold, is-equal(skip-literal(<skip>), <>)
+  want hold, is-equal(skip-literal(<skip   >), <>)
+  want hold, is-equal(skip-literal(<  skip \<a\> b>), <>)
+  want hold, is-equal(skip-literal(<\tskip{ch(160)}\<x\>{ch(12288)}>), <\<x\>>)
+  want hold, is-equal(skip-literal(<skip \<a\rb\>>), <>)
+  want hold, is-equal(skip-literal(<skip \<a\>\r>), <\<a\>>)
+  want hold, is-equal(skip-literal(<skipx>), <>)
+  want hold, is-equal(skip-literal(<skip  x  y >), <>)
+  want hold, is-equal(skip-literal(<skip {ch(119070)}>), <>)
+
+test <skip-expression answers as the JavaScript did>
+  want hold, is-equal(skip-expression(<  skip \<why\>>), <\<why\>>)
+  want hold, is-equal(skip-expression(<skip \<\<raw\>\>  >), <\<\<raw\>\>>)
+  want hold, is-equal(skip-expression(<  skip read x  >), <read x>)
+  want hold, is-equal(skip-expression(<skip>), <>)
+  want hold, is-equal(skip-expression(<skip   >), <>)
+  want hold, is-equal(skip-expression(<  skip \<a\> b>), <\<a\> b>)
+  want hold, is-equal(skip-expression(<\tskip{ch(160)}\<x\>{ch(12288)}>), <\<x\>>)
+  want hold, is-equal(skip-expression(<skip \<a\rb\>>), <>)
+  want hold, is-equal(skip-expression(<skip \<a\>\r>), <\<a\>>)
+  want hold, is-equal(skip-expression(<skipx>), <>)
+  want hold, is-equal(skip-expression(<skip  x  y >), <x  y>)
+  want hold, is-equal(skip-expression(<skip {ch(119070)}>), <{ch(119070)}>)
+
+test <walk-expression answers as the JavaScript did>
+  want hold, is-equal(walk-expression(<  walk xs>), <xs>)
+  want hold, is-equal(walk-expression(<  walk read(xs)  >), <read(xs)>)
+  want hold, is-equal(walk-expression(<walk>), <>)
+  want hold, is-equal(walk-expression(<walk  >), <>)
+  want hold, is-equal(walk-expression(<  walk a{ch(160)}>), <a>)
+  want hold, is-equal(walk-expression(<walk x\r>), <x>)
+  want hold, is-equal(walk-expression(<walk x\ry>), <>)
+  want hold, is-equal(walk-expression(<\twalk{ch(12288)}x{ch(65279)}>), <x>)
+  want hold, is-equal(walk-expression(<walking x>), <>)
+  want hold, is-equal(walk-expression(<walk {ch(119070)}>), <{ch(119070)}>)
+
+test <take-rest answers as the JavaScript did>
+  want hold, is-equal(take-rest(<  take x, like text>), <like text>)
+  want hold, is-equal(take-rest(<  take x,like list, like text >), <like list, like text>)
+  want hold, is-equal(take-rest(<  take x>), <>)
+  want hold, is-equal(take-rest(<take x , y{ch(160)}>), <y>)
+  want hold, is-equal(take-rest(<take x,>), <>)
+  want hold, is-equal(take-rest(<take x, y\r>), <y>)
+  want hold, is-equal(take-rest(<take ,y>), <>)
+  want hold, is-equal(take-rest(<take a b, c>), <>)
+  want hold, is-equal(take-rest(<take x, {ch(119070)}>), <{ch(119070)}>)
+
+test <defined-name answers as the JavaScript did>
+  want hold, is-equal(defined-name(<task foo>), <foo>)
+  want hold, is-equal(defined-name(<form bar, x>), <bar>)
+  want hold, is-equal(defined-name(<rule  q>), <q>)
+  want hold, is-equal(defined-name(<bind\tz>), <z>)
+  want hold, is-equal(defined-name(<host h,>), <h>)
+  want hold, is-equal(defined-name(<tasks x>), <>)
+  want hold, is-equal(defined-name(< task y>), <>)
+  want hold, is-equal(defined-name(<task>), <>)
+  want hold, is-equal(defined-name(<task {ch(160)}w>), <w>)
+  want hold, is-equal(defined-name(<host {ch(119070)}z>), <{ch(119070)}z>)
+
+test <found-name answers as the JavaScript did>
+  want hold, is-equal(found-name(<  find get>), <get>)
+  want hold, is-equal(found-name(<  find get, name list-get>), <list-get>)
+  want hold, is-equal(found-name(<  find a, name b, name c>), <c>)
+  want hold, is-equal(found-name(<find x>), <>)
+  want hold, is-equal(found-name(<  find  y ,  name   z  >), <z>)
+  want hold, is-equal(found-name(<  find a,name>), <a>)
+  want hold, is-equal(found-name(<  find a, name>), <a>)
+  want hold, is-equal(found-name(< find a, named b>), <a>)
+  want hold, is-equal(found-name(<{ch(160)}find q>), <q>)
+  want hold, is-equal(found-name(<  find a\r, name b>), <a>)
+
+test <carries-test-blocks answers as the JavaScript did>
+  want hold, is-equal(carries-test-blocks(<test \<a\>>), true)
+  want hold, is-equal(carries-test-blocks(<x\n  test \<b\>>), true)
+  want hold, is-equal(carries-test-blocks(<x\rtest \<c\>>), true)
+  want hold, is-equal(carries-test-blocks(<x{ch(8232)}test d>), true)
+  want hold, is-equal(carries-test-blocks(<testx>), false)
+  want hold, is-equal(carries-test-blocks(<x test y>), false)
+  want hold, is-equal(carries-test-blocks(<{ch(65279)}test \<a\>>), true)
+  want hold, is-equal(carries-test-blocks(<\n\ntest\t>), false)
+  want hold, is-equal(carries-test-blocks(< test >), true)
+  want hold, is-equal(carries-test-blocks(<x{ch(133)}test y>), false)
+  want hold, is-equal(carries-test-blocks(<x\n{ch(160)}test z>), true)
+  want hold, is-equal(carries-test-blocks(<>), false)
+
+test <is-raw-literal answers as the JavaScript did>
+  want hold, is-equal(is-raw-literal(<\<\<a\>\>>), true)
+  want hold, is-equal(is-raw-literal(<\<a\>>), false)
+  want hold, is-equal(is-raw-literal(<>), false)
+  want hold, is-equal(is-raw-literal(<\<>), false)
+
+test <rewrite-cut answers as the JavaScript did>
+  want hold, is-equal(rewrite-cut(<  abc>, 2), <abc>)
+  want hold, is-equal(rewrite-cut(<\<x\>>, 1), <x\>>)
+  want hold, is-equal(rewrite-cut(<\<\<x>, 2), <x>)
+  want hold, is-equal(rewrite-cut(<a>, 5), <>)
+  want hold, is-equal(rewrite-cut(<{ch(160)} {ch(119070)}>, 2), <{ch(119070)}>)
+
+test <phrase-seed answers as the JavaScript did>
+  want hold, is-equal(phrase-seed(<>), 7)
+  want hold, is-equal(phrase-seed(<a>), 314)
+  want hold, is-equal(phrase-seed(<hello world>), 674005064)
+  want hold, is-equal(phrase-seed(<{ch(119070)}>), 55565)
+  want hold, is-equal(phrase-seed(<a{ch(119070)}b>), 2017640)
+  want hold, is-equal(phrase-seed(<{ch(252)}>), 469)
+  want hold, is-equal(phrase-seed(<the quick brown fox jumps over the lazy dog 0123456789>), 254561812)
+  want hold, is-equal(phrase-seed(<{ch(128512)}{ch(128512)}{ch(128512)}>), 55178038)
+
+test <written-length answers as the JavaScript did>
+  want hold, is-equal(written-length(<>), 0)
+  want hold, is-equal(written-length(<abc>), 3)
+  want hold, is-equal(written-length(<{ch(119070)}>), 2)
+  want hold, is-equal(written-length(<a{ch(119070)}b{ch(128512)}>), 6)
+  want hold, is-equal(written-length(<{ch(252)}>), 1)
+
+test <clamped-column answers as the JavaScript did>
+  want hold, is-equal(clamped-column(5, 3), 3)
+  want hold, is-equal(clamped-column(-2, 3), 0)
+  want hold, is-equal(clamped-column(2, 10), 2)
+  want hold, is-equal(clamped-column(0, 0), 0)
+
+test <the joins, origin-line and line-or-empty answer as the JavaScript did>
+  want hold, is-equal(rewrite-joined(texts-of(<a>, <b>, <>)), <a\nb\n>)
+  want hold, is-equal(rewrite-joined(no-texts()), <>)
+  want hold, is-equal(comma-joined(texts-of(<a>, <b>, <>)), <a, b, >)
+  want hold, is-equal(comma-joined(no-texts()), <>)
+  want hold, is-equal(origin-line(origin-sample(), 0), 5)
+  want hold, is-equal(origin-line(origin-sample(), 2), 9)
+  want hold, is-equal(origin-line(origin-sample(), 3), 3)
+  want hold, is-equal(origin-line(origin-sample(), -1), -1)
+  want hold, is-equal(origin-line(origin-sample(), 1), 7)
+  want hold, is-equal(line-or-empty(texts-of(<a>, <b>, <>), 0), <a>)
+  want hold, is-equal(line-or-empty(texts-of(<a>, <b>, <>), 1), <b>)
+  want hold, is-equal(line-or-empty(texts-of(<a>, <b>, <>), 2), <>)
+  want hold, is-equal(line-or-empty(texts-of(<a>, <b>, <>), 3), <>)
+  want hold, is-equal(line-or-empty(texts-of(<a>, <b>, <>), -1), <>)
+
+test <taken-names holds what a file defines and finds>
+  save taken, taken-names(split-lines(<task foo\n  find get, name list-get\n  find trim\nform bar\ntest \<x\>>))
+  want hold, is-equal(taken/has(<foo>), true)
+  want hold, is-equal(taken/has(<list-get>), true)
+  want hold, is-equal(taken/has(<trim>), true)
+  want hold, is-equal(taken/has(<bar>), true)
+  want hold, is-equal(taken/has(<get>), false)
+  want hold, is-equal(taken/has(<x>), false)
+  want hold, is-equal(taken/has(<test>), false)
+  want hold, is-equal(taken/has(<task>), false)
+
+task split-lines
+  take text, like text
+  like list, like text
+
+  back split(text, <\n>)

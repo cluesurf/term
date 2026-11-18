@@ -1,0 +1,322 @@
+# JSON written with an indent is byte for byte what JavaScript's JSON.stringify(value, null, indent) writes, on every
+# backend (item term-self-host-001-1666). Every want is node's own JSON.stringify output for the same value. Held by
+# `pnpm term:base-gate`. A backslash is written `~` and a newline `¶`, and `spelled` puts them back, so no want
+# depends on how a text literal reads an escape.
+
+load @term/base/json
+  find parse
+  find make-object
+  find set-field
+  find make-array
+  find push-item
+  find from-number
+  find from-text
+  find from-boolean
+  find make-null
+
+load @term/base/json/indent
+  find indent-json
+  find stringify-indented
+
+load @term/base/text
+  find replace-all
+
+load @term/base/text/unicode
+  find rune-to-text
+
+# a text written with `~` for a backslash and `¶` for a newline
+task spelled
+  take value, like text
+  like text
+  send back
+    call replace-all
+      call replace-all
+        read value
+        text <~>
+        call rune-to-text
+          code 92
+      text <¶>
+      call rune-to-text
+        code 10
+
+# the JSON text `input` parsed and written with `indent`, or what stopped it
+task indented
+  take input, like text
+  take indent, like number
+  like text
+  fork
+    mark unsafe
+    save got
+      call stringify-indented
+        call parse
+          call spelled
+            read input
+        read indent
+    send back, read got
+  halt take
+    take problem
+    send back, text <not JSON>
+
+test <nested objects and lists take two spaces a level>
+  want hold
+    call is-equal
+      call indented
+        text <\{"a":[1,\{"b":[]\},\{\}],"c":\{"d":null,"e":true,"f":false,"g":"x"\}\}>
+        code 2
+      call spelled
+        text <\{¶  "a": [¶    1,¶    \{¶      "b": []¶    \},¶    \{\}¶  ],¶  "c": \{¶    "d": null,¶    "e": true,¶    "f": false,¶    "g": "x"¶  \}¶\}>
+
+test <an empty object and an empty list stay on one line>
+  want hold
+    call is-equal
+      call indented
+        text <[[],\{\},[[]],\{"a":\{\}\}]>
+        code 2
+      call spelled
+        text <[¶  [],¶  \{\},¶  [¶    []¶  ],¶  \{¶    "a": \{\}¶  \}¶]>
+
+test <a bare text is written alone>
+  want hold
+    call is-equal
+      call indented
+        text <"text">
+        code 2
+      call spelled
+        text <"text">
+
+test <a bare number is written alone>
+  want hold
+    call is-equal
+      call indented
+        text <42>
+        code 2
+      call spelled
+        text <42>
+
+test <an empty object alone is two braces>
+  want hold
+    call is-equal
+      call indented
+        text <\{\}>
+        code 2
+      call spelled
+        text <\{\}>
+
+test <an empty list alone is two brackets>
+  want hold
+    call is-equal
+      call indented
+        text <[]>
+        code 2
+      call spelled
+        text <[]>
+
+test <texts escape as JavaScript escapes them>
+  want hold
+    call is-equal
+      call indented
+        text <["","a~"b","back~~slash","a~/b","~b~f~n~r~t","~u0001~u001f~u001F","~u007f","é","~u00e9","𝄞","~ud834~udd1e","~u2028~u2029"]>
+        code 2
+      call spelled
+        text <[¶  "",¶  "a~"b",¶  "back~~slash",¶  "a/b",¶  "~b~f~n~r~t",¶  "~u0001~u001f~u001f",¶  "{rune-to-text(127)}",¶  "é",¶  "é",¶  "𝄞",¶  "𝄞",¶  "{rune-to-text(8232)}{rune-to-text(8233)}"¶]>
+
+test <brackets, commas and colons inside a text are text>
+  want hold
+    call is-equal
+      call indented
+        text <["\{[,:]\}","a: b, c",\{"k,:\{":"]"\}]>
+        code 2
+      call spelled
+        text <[¶  "\{[,:]\}",¶  "a: b, c",¶  \{¶    "k,:\{": "]"¶  \}¶]>
+
+test <keys escape as texts do>
+  want hold
+    call is-equal
+      call indented
+        text <\{"":3,"~n":4,"a~"b":1,"é":2\}>
+        code 2
+      call spelled
+        text <\{¶  "": 3,¶  "~n": 4,¶  "a~"b": 1,¶  "é": 2¶\}>
+
+test <whole numbers are plain up to 21 digits>
+  want hold
+    call is-equal
+      call indented
+        text <[0,-0,1,-1,100,1e15,1e16,1e20,1.2345678901234568e20]>
+        code 2
+      call spelled
+        text <[¶  0,¶  0,¶  1,¶  -1,¶  100,¶  1000000000000000,¶  10000000000000000,¶  100000000000000000000,¶  123456789012345680000¶]>
+
+test <fractions are their shortest digits>
+  want hold
+    call is-equal
+      call indented
+        text <[0.1,0.5,-2.5,123.456,4.35,0.30000000000000004,1e-6,-0.000001234]>
+        code 2
+      call spelled
+        text <[¶  0.1,¶  0.5,¶  -2.5,¶  123.456,¶  4.35,¶  0.30000000000000004,¶  0.000001,¶  -0.000001234¶]>
+
+test <a large or small number takes an exponent>
+  want hold
+    call is-equal
+      call indented
+        text <[1e21,1.5e300,1e-7,1.5e-7,-2e-10]>
+        code 2
+      call spelled
+        text <[¶  1e+21,¶  1.5e+300,¶  1e-7,¶  1.5e-7,¶  -2e-10¶]>
+
+test <the largest float takes an exponent>
+  want hold
+    call is-equal
+      call indented
+        text <1.7976931348623157e308>
+        code 2
+      call spelled
+        text <1.7976931348623157e+308>
+
+test <the smallest float takes an exponent>
+  want hold
+    call is-equal
+      call indented
+        text <5e-324>
+        code 2
+      call spelled
+        text <5e-324>
+
+test <an indent of four takes four spaces a level>
+  want hold
+    call is-equal
+      call indented
+        text <\{"a":[1,\{"b":2\}]\}>
+        code 4
+      call spelled
+        text <\{¶    "a": [¶        1,¶        \{¶            "b": 2¶        \}¶    ]¶\}>
+
+test <an indent of zero writes the compact form>
+  want hold
+    call is-equal
+      call indented
+        text <\{"a":[1,\{"b":2.5e-7\}],"c":"x"\}>
+        code 0
+      call spelled
+        text <\{"a":[1,\{"b":2.5e-7\}],"c":"x"\}>
+
+test <an indent past ten is ten>
+  want hold
+    call is-equal
+      call indented
+        text <\{"a":[1]\}>
+        code 12
+      call spelled
+        text <\{¶          "a": [¶                    1¶          ]¶\}>
+
+test <a host spelling of numbers is spelled as JavaScript spells it>
+  want hold
+    call is-equal
+      call indent-json
+        call spelled
+          text <[1.0E-7,1e-07,1.0E16,3.0,100.0,-0.0,1e21,1.5E+300]>
+        code 2
+      call spelled
+        text <[¶  1e-7,¶  1e-7,¶  10000000000000000,¶  3,¶  100,¶  0,¶  1e+21,¶  1.5e+300¶]>
+
+test <a host NaN or infinity is null>
+  want hold
+    call is-equal
+      call indent-json
+        call spelled
+          text <[NaN,Infinity,-Infinity,nan,inf,-inf]>
+        code 2
+      call spelled
+        text <[¶  null,¶  null,¶  null,¶  null,¶  null,¶  null¶]>
+
+test <a host escape is spelled as JavaScript spells it>
+  want hold
+    call is-equal
+      call indent-json
+        call spelled
+          text <\{"b":"a~/b","c":"~u00e9","f":"~ud83d~ude00","k":"~u001F","l":"~u000a","m":"~u0022~u005c"\}>
+        code 2
+      call spelled
+        text <\{¶  "b": "a/b",¶  "c": "é",¶  "f": "😀",¶  "k": "~u001f",¶  "l": "~n",¶  "m": "~"~~"¶\}>
+
+test <a lone surrogate escape stays an escape>
+  want hold
+    call is-equal
+      call indent-json
+        call spelled
+          text <["~uD800x","~udc00"]>
+        code 2
+      call spelled
+        text <[¶  "~ud800x",¶  "~udc00"¶]>
+
+test <a host spelling is spelled again in the compact form>
+  want hold
+    call is-equal
+      call indent-json
+        call spelled
+          text <\{"a":1.0E-7,"b":"~/"\}>
+        code 0
+      call spelled
+        text <\{"a":1e-7,"b":"/"\}>
+
+test <a built value is written as JavaScript writes the same value>
+  save list
+    call make-array
+  save list
+    call push-item
+      read list
+      call from-number
+        1000000000000000000000.0
+  save list
+    call push-item
+      read list
+      call from-boolean
+        true
+  save list
+    call push-item
+      read list
+      call make-null
+  save list
+    call push-item
+      read list
+      call from-text
+        text <x>
+  save value
+    call make-object
+  save value
+    call set-field
+      read value
+      text <empty>
+      call make-object
+  save value
+    call set-field
+      read value
+      text <list>
+      read list
+  save value
+    call set-field
+      read value
+      text <n>
+      call from-number
+        call add
+          0.1
+          0.2
+  save value
+    call set-field
+      read value
+      text <none>
+      call make-array
+  save value
+    call set-field
+      read value
+      text <t>
+      call from-text
+        text <say "hi">
+  want hold
+    call is-equal
+      call stringify-indented
+        read value
+        code 2
+      call spelled
+        text <\{¶  "empty": \{\},¶  "list": [¶    1e+21,¶    true,¶    null,¶    "x"¶  ],¶  "n": 0.30000000000000004,¶  "none": [],¶  "t": "say ~"hi~""¶\}>

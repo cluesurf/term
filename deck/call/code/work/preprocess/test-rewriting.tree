@@ -24,6 +24,35 @@ load @term/base/text
   find split
   find replace-all
 
+load @term/call/work/preprocess/line-reading
+  find rewrite-indent
+  find rewrite-is-blank
+  find rewrite-joined
+  find rewrite-cut
+  find statement-head
+  find test-header
+  find header-phrase
+  find slug-dashed
+  find starts-with-digit
+  find want-mode
+  find want-is-known
+  find want-inline
+  find is-snapshot-head
+  find snapshot-inline
+  find skip-literal
+  find skip-expression
+  find walk-expression
+  find take-rest
+  find line-lead
+  find is-raw-literal
+  find carries-test-blocks
+  find phrase-seed
+  find origin-line
+  find line-or-empty
+  find clamped-column
+  find written-length
+  find comma-joined
+  find taken-names
 load @term/call/work/preprocess/condition-reading
   find source-row
   find compared-values
@@ -83,129 +112,7 @@ form sampled-input
   link type, like sampled-type
   link group, like list, like number
 
-# ---- the host values Term has no word for ----
-
-bind rewrite-indent
-  take line, like text
-  like number
-  case node
-    text <($line.length - $line.trimStart().length)>
-
-bind rewrite-is-blank
-  take line, like text
-  like boolean
-  case node
-    text <($line.trim().length === 0)>
-
-bind rewrite-joined
-  take texts, like list, like text
-  like text
-  case node
-    text <$texts.join(String.fromCharCode(10))>
-
-bind rewrite-cut
-  take text, like text
-  take start, like number
-  like text
-  case node
-    text <$text.slice($start)>
-
-# the first word of a statement: up to its first space or comma
-bind statement-head
-  take line, like text
-  like text
-  case node
-    text <($line.trim().split(/[\s,]/)[0] ?? "")>
-
-# `test <rest>` at the start of a line, the empty text when it is no test header
-bind test-header
-  take line, like text
-  like text
-  case node
-    text <(/^test (.+)$/.exec($line)?.[1] ?? "")>
-
-# `<phrase>`: the phrase, the empty text when the rest is a bare slug
-bind header-phrase
-  take rest, like text
-  like text
-  case node
-    text <(/^<(.+)>$/.exec($rest)?.[1] ?? "")>
-
-# lower case, every run of what is not a letter or digit one dash, no dash at either end, `case` for nothing
-bind slug-dashed
-  take phrase, like text
-  like text
-  case node
-    text <($phrase.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "case")>
-
-bind starts-with-digit
-  take text, like text
-  like boolean
-  case node
-    text </^[0-9]/.test($text)>
-
-# a `want` line's mode, `hold` when it names none
-bind want-mode
-  take head, like text
-  like text
-  case node
-    text <(/^want(?:\s+(hold|miss))?\s*(?:,\s*(.*))?$/.exec($head)?.[1] ?? "hold")>
-
-# whether a `want` line is one the guard can read: hold, miss, or no mode. Anything else matches no head above, so its
-# condition was left empty and the test file emitted `else` with no `if`
-bind want-is-known
-  take head, like text
-  like boolean
-  case node
-    text <(/^want(?:\s+(hold|miss))?\s*(?:,\s*(.*))?$/.test($head))>
-
-# a one-line `want`'s condition after its comma, trimmed, the empty text when it has none
-bind want-inline
-  take head, like text
-  like text
-  case node
-    text <(/^want(?:\s+(hold|miss))?\s*(?:,\s*(.*))?$/.exec($head)?.[2]?.trim() ?? "")>
-
-bind is-snapshot-head
-  take head, like text
-  like boolean
-  case node
-    text </^want snapshot\s*(?:,\s*(.*))?$/.test($head)>
-
-bind snapshot-inline
-  take head, like text
-  like text
-  case node
-    text <(/^want snapshot\s*(?:,\s*(.*))?$/.exec($head)?.[1]?.trim() ?? "")>
-
-# a `skip` line's literal as written, `<...>` or `<<...>>`, the empty text when what follows is no literal
-bind skip-literal
-  take line, like text
-  like text
-  case node
-    text <<(/^\s*skip\s+(<.*>)\s*$/.exec($line)?.[1] ?? "")>>
-
-# what a `skip` line gives as its reason when that is no literal (`read x`, `x`, `reason-of(x)`), as written, the empty
-# text when the line gives nothing
-bind skip-expression
-  take line, like text
-  like text
-  case node
-    text <<(/^\s*skip\s+(.*?)\s*$/.exec($line)?.[1] ?? "")>>
-
-# a `walk <list>` line's list as written, the empty text when the walk names none
-bind walk-expression
-  take line, like text
-  like text
-  case node
-    text <<(/^\s*walk\s+(.*\S)\s*$/.exec($line)?.[1] ?? "")>>
-
-# a `take <name>, <type>` line's type as written on the line, the empty text when the type is written under it
-bind take-rest
-  take line, like text
-  like text
-  case node
-    text <<(/^\s*take\s+[^\s,]+\s*,\s*(.*\S)\s*$/.exec($line)?.[1] ?? "")>>
+# ---- the host values Term has no word for yet (items 1663 and 1664) ----
 
 # the cases of a test that have a stored snapshot at its `taken`th place, each by its own part of `<phrase> [<case>]`
 bind stored-case-labels
@@ -224,64 +131,6 @@ bind stored-case-texts
   like list, like text
   case node
     text <<[...($snapshots?.stored ?? new Map()).entries()].filter((entry) => entry[0].startsWith($label + " [") && entry[0].endsWith("]") && entry[1][$taken] !== undefined).map((entry) => entry[1][$taken])>>
-
-bind line-lead
-  take line, like text
-  like text
-  case node
-    text <$line.slice(0, $line.length - $line.trimStart().length)>
-
-bind is-raw-literal
-  take literal, like text
-  like boolean
-  case node
-    text <$literal.startsWith("\<\<")>
-
-# a name a file defines, the empty text for a line that defines none
-bind defined-name
-  take line, like text
-  like text
-  case node
-    text <(/^(?:task|form|rule|bind|host)\s+([^\s,]+)/.exec($line)?.[1] ?? "")>
-
-# a name a file finds, by its alias when it has one, the empty text for a line that finds none
-bind found-name
-  take line, like text
-  like text
-  case node
-    text <((m) =\> (m ? (m[2] ?? m[1] ?? "") : ""))(/^\s+find\s+([^\s,]+)(?:.*,\s*name\s+([^\s,]+))?/.exec($line))>
-
-bind carries-test-blocks
-  take source, like text
-  like boolean
-  case node
-    text </^\s*test /m.test($source)>
-
-bind name-set
-  like dynamic
-  case node
-    text <new Set()>
-
-bind name-set-add
-  take names, like dynamic
-  take name, like text
-  like void
-  case node
-    text <$names.add($name)>
-
-bind name-set-has
-  take names, like dynamic
-  take name, like text
-  like boolean
-  case node
-    text <$names.has($name)>
-
-# the seed a sampled test draws from, fixed by its phrase: each character's first code unit folded in
-bind phrase-seed
-  take label, like text
-  like number
-  case node
-    text <Array.from($label).reduce((seed, char) =\> (seed * 31 + char.charCodeAt(0)) % 2147483647, 7)>
 
 bind host-is-undefined
   take value, like dynamic
@@ -341,27 +190,6 @@ bind stored-snapshot
 
 # ---- placing a diagnostic back ----
 
-bind origin-line
-  take origin, like list, like number
-  take line, like dynamic
-  like number
-  case node
-    text <($origin[$line] ?? $line)>
-
-bind line-or-empty
-  take lines, like list, like text
-  take at, like dynamic
-  like text
-  case node
-    text <($lines[$at] ?? "")>
-
-bind clamped-column
-  take column, like number
-  take length, like number
-  like number
-  case node
-    text <Math.max(0, Math.min($length, $column))>
-
 bind position-line
   take position, like dynamic
   like dynamic
@@ -373,12 +201,6 @@ bind position-column
   like number
   case node
     text <$position.column>
-
-bind written-length
-  take text, like text
-  like number
-  case node
-    text <$text.length>
 
 # `{ ...span, start, end }`
 bind span-moved
@@ -541,26 +363,6 @@ task header-label
     hold
       back unescape-text(phrase)
   back replace-all(trim(rest), <->, < >)
-
-# The names a test's task must not take: what the file defines (`task`, `form`, `rule`, `bind`, `host`) and what it
-# finds. A test named `trim` beside `find trim` became `task trim` and replaced the import (guides: tests/writing,
-# proofs/claims, 2026-10-03)
-task taken-names
-  take lines, like list, like text
-  like dynamic
-
-  save taken, name-set()
-  walk lines
-    take line, like text
-    save defined, defined-name(line)
-    fork test, not(is-equal(defined, <>))
-      hold
-        name-set-add(taken, defined)
-    save found, found-name(line)
-    fork test, not(is-equal(found, <>))
-      hold
-        name-set-add(taken, found)
-  back taken
 
 # does a file carry `test <phrase>` blocks, and so need rewriting before the compiler can read it
 task carries-tests
@@ -1167,12 +969,6 @@ task sampled-test
     out/push(text)
     origin/push(at)
 
-bind comma-joined
-  take texts, like list, like text
-  like text
-  case node
-    text <$texts.join(", ")>
-
 # A line of a test block, a `skip <reason>` made a raise whose note is `skip:<reason>`, which the report reads back as
 # `want:` is read (call/code/test-report.tree, decision 022 T4), on every target. Any other line as written. A reason
 # that is no literal (a host, a variable, a call) is interpolated into the note, `halt <skip:{read x}>`, so it is a skip
@@ -1563,7 +1359,7 @@ task preprocess-tests
   save sampled, false
   save snapshotted, false
   # a file that defines or finds its own `skip` keeps the word
-  save lowers-skip, not(name-set-has(taken, <skip>))
+  save lowers-skip, not(taken/has(<skip>))
 
   save i, 0
   walk test
@@ -1582,7 +1378,7 @@ task preprocess-tests
           save label, header-label(rest)
           # a test whose name the file already uses for something else gets a task name of its own
           save slug, header-slug(rest)
-          fork test, name-set-has(taken, slug)
+          fork test, taken/has(slug)
             hold
               save slug, <{slug}-test>
           save labels/{slug}, label
