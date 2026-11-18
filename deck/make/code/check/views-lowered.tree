@@ -13,8 +13,10 @@
 # itself and is left to the lowering's own tests.
 #
 # Ported from check/views.ts (item term-self-host-001-0103), which stays as the face. The surface pass and the kernel
-# are docks of their faces, check/infer.ts `check` and check/elaborate.ts `elaborateReport`, since each reads state the
-# face holds (the overload groups, the checker switches, the kernel's judge state); the surface pass writes the checked
+# are docks of their faces, check/infer.ts `check-given` and check/elaborate.ts `elaborateReport`. The surface pass
+# takes the run's checker switches and overload groups from its caller (compile/program-types.tree, ruling 1262 (a) of
+# term/self-host/change/001-finish-self-host, item 1649), and the kernel the run's linear prover state the same way,
+# beside the judge state its face holds; the surface pass writes the checked
 # program into the list it is handed, so the kernel reads the checked program, as in the original. The runtime names the
 # lowering writes are the face's overload-bound `runtime`, handed in as its hash and listed in its order.
 
@@ -33,6 +35,12 @@ load ../compile/node
   find type
   find view-node
   find expression-type
+
+load ./checker-switches
+  find checker-switches
+
+load ./eliminate
+  find refine-state
 
 load ../compile/view-lower
   find lower-views-typed
@@ -244,13 +252,18 @@ task is-plain-type
 
 # the copy's views lowered and checked, the errors inside a component of this file. The surface pass's first, and when
 # it has none, the kernel's. A walk's item in the copy takes the type the main check found for it (`checked`, the
-# program that check annotated), so the lowered code is checked with the types the component was checked with
+# program that check annotated), so the lowered code is checked with the types the component was checked with. The
+# surface pass reads the run's checker switches and overload groups, and the kernel the run's prover state, handed in
+# (item 1649)
 task check-lowered-views
   take copy, like list, like statement
   take checked, like list, like statement
   take file, like text
   take merged, like boolean
   take runtime, like hash, like text, like text
+  take switches, like checker-switches
+  take groups, like hash, like text, like list, like text
+  take refine, like refine-state
   like list, like diagnostic
 
   save views, make list
@@ -280,7 +293,7 @@ task check-lowered-views
   save lowered, lower-views-typed(copy, bound, walk-item-types(checked, file))
 
   save surface, make list
-  walk as-diagnostics(views-infer/check(lowered, file, merged))
+  walk as-diagnostics(views-infer/check-given(lowered, file, merged, switches, groups))
     take found
     fork test, and(is-unequal(found/severity, make warning), inside-views(found, file, views))
       hold
@@ -290,7 +303,7 @@ task check-lowered-views
       back surface
 
   save kernel, make list
-  walk as-diagnostics(views-elaborate/elaborate-report(lowered, file)/diagnostics)
+  walk as-diagnostics(views-elaborate/elaborate-report(lowered, file, refine)/diagnostics)
     take found
     fork test, inside-views(found, file, views)
       hold

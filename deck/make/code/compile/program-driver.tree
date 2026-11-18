@@ -17,8 +17,10 @@
 #     state they read (the prover's memo and count, the memo of each text's hash) comes in one `driver-state` record in
 #     `driver-given` (spec.md section 4.8), and the import walk's resolver, scan and walk memo come in `compile-reading`
 #     in the shapes compile/loading.tree takes
-#   - check/overload.ts's two tables are module state the checker reads after the gate: the face's `keep-bound` writes
-#     them from what the binding made, right after the gate, as the gate's face did
+#   - check/overload.ts's two tables are module state a TypeScript caller still reads after the gate: the face's
+#     `keep-bound` writes them from what the binding made, right after the gate, as the gate's face did. The phases read
+#     none of it: the types take the run's switches and the gate's groups off the run, and the proofs the run's switches
+#     and the driver state's prover (ruling 1262 (a) of term/self-host/change/001-finish-self-host, item 1649)
 #   - what the two caches build on a miss is a case of a form now compile/cache-store.tree is Term (decision 031 section
 #     6, item 0950): `graph-job`, run by `run-graph-job`, and `mill-job`, run by `run-mill-job`. The face's closures
 #     hold one job each and hand the cache the task, since the cache takes a build as a task: `milled` hands a module
@@ -695,6 +697,8 @@ task run-program
       bind deck-of, deck-of
       bind scopes, input/scopes
       bind host-deck-of, given/host-deck-of
+      bind switches, given/switches
+      bind refine, given/state/refine
   save typed, program-types(run, types-in)
   sift typed/refused
     case some
@@ -719,6 +723,7 @@ task run-program
   save proofs-in
     make proofs-given
       bind switches, given/switches
+      bind refine, given/state/refine
   save proved, program-proofs(run, proofs-in)
   sift proved/refused
     case some

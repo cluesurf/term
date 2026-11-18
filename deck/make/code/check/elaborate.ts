@@ -9,6 +9,9 @@
 // check/effects.ts, check/unfold.ts, check/induct.ts, check/holds.ts's `isLinearGoal` and `orderFollows`), the
 // diagnostic builder, the `TERM_KERNEL_TRACE` line, and the error classes: the run goes through judge.ts's `kernel`,
 // and a `decline:` failure out of it becomes `Decline`. Before: tmp/retired/make/check/elaborate-face.ts.
+// The linear prover those modules prove through is the state the caller hands (the run's, from
+// compile/program-proofs.tree and check/views-lowered.tree, ruling 1262 (a) of
+// term/self-host/change/001-finish-self-host, item 1649), else check/refine.ts's process instance.
 
 import type {
   Diagnostic,
@@ -23,6 +26,7 @@ import { effectRows } from '@term/make/code/check/effects'
 import { isLinearGoal, orderFollows } from '@term/make/code/check/holds'
 import { checkFold, checkFoldOrder } from '@term/make/code/check/induct'
 import { unfoldDefinitions } from '@term/make/code/check/unfold'
+import type { RefineState } from '@term/make/code/check/eliminate'
 
 // thrown to abandon checking a construct the effect layer cannot represent yet (distinct from a real type error,
 // which surfaces as the kernel's TypeError). A declined function is left to the surface checker and counted, with
@@ -77,15 +81,16 @@ export function elaborate(
   return elaborateReport(program, file).diagnostics
 }
 
-// what the run asks of TypeScript, for one file
+// what the run asks of TypeScript, for one file, over the prover state handed (undefined: the process's)
 function hostFor(
   file: string,
+  refine: RefineState | undefined,
 ): Parameters<typeof report.elaborateReport>[3] {
   return {
     // best-effort: a failure means no function is treated as transparent, a sound fallback, never a compiler crash
     terminatingFunctions: (program: unknown) => {
       try {
-        return [...terminatingFunctions(program as Program)]
+        return [...terminatingFunctions(program as Program, refine)]
       } catch {
         return []
       }
@@ -113,9 +118,10 @@ function hostFor(
         inductVar,
         guards as Expression[],
       ),
-    isLinearGoal: (goal: unknown) => isLinearGoal(goal as Expression),
+    isLinearGoal: (goal: unknown) =>
+      isLinearGoal(goal as Expression, refine),
     orderFollows: (goal: unknown, facts: unknown) =>
-      orderFollows(goal as Expression, facts as Expression[]),
+      orderFollows(goal as Expression, facts as Expression[], refine),
     diagnose: (
       name: string,
       span: unknown,
@@ -145,6 +151,7 @@ function hostFor(
 export function elaborateReport(
   written: Program,
   file: string,
+  refine?: RefineState,
 ): ElaborationReport {
   try {
     return kernel(() =>
@@ -152,7 +159,7 @@ export function elaborateReport(
         judgeState(),
         written as never,
         file,
-        hostFor(file),
+        hostFor(file, refine),
       ),
     ) as unknown as ElaborationReport
   } catch (error) {

@@ -10,6 +10,11 @@
 #     compile/frames, the gate's `deck-homes`, the affine and wait checks, and check/views-lowered); two faces stay
 #     docks, each named for its module (decision 031 section 3): check/infer, whose face holds the process's infer
 #     profile, and compile/roll, whose face asks check/effects.ts for the raise sets
+#   - THE CHECKER READS ONLY WHAT THE RUN HANDS IT (ruling 1262 (a) of term/self-host/change/001-finish-self-host, item
+#     1649): check/infer.ts `check-given` takes the run's checker switches and the overload groups the gate bound
+#     (`run/overload-groups`, as `overload-table`), never check/strict.ts's or check/overload.ts's module state, and the
+#     views' copy is checked with the same two and the run's prover state, so a compile with fresh state checks as one
+#     handed the process's instances
 #   - check/views.ts `copyForViews` is a `structuredClone` of the program when this file defines a component, written
 #     here with the same clone (`types-copy-program`), so the view check gets the copy the original made. The runtime
 #     names it lowers with are the run's, as a hash (`runtime-table`)
@@ -79,6 +84,12 @@ load ./frames
 load ./program-gate
   find deck-homes
 
+load ../check/checker-switches
+  find checker-switches
+
+load ../check/eliminate
+  find refine-state
+
 load ../check/claim
   find fill-claims
 
@@ -120,6 +131,10 @@ form types-given
   link scopes, like list, like file-scope
   # the build's own deck lookup as the roll takes it (compile/roll.ts `DeckOf`), absent when the build has none
   link host-deck-of, like dynamic
+  # the run's checker switches, which the checker reads, and its linear prover state, which the views' kernel proves
+  # through
+  link switches, like checker-switches
+  link refine, like refine-state
 
 # the refusal that stops the compile, or none; and the fast roll, when the run wanted only that
 form types-answer
@@ -672,6 +687,22 @@ task runtime-table
     save table/{key}, pair/bound
   back table
 
+# THE OVERLOAD GROUPS AS THE GATE BOUND THEM, as the table the checker takes: each group's first candidate's (mangled)
+# name to every candidate's, a name met twice keeping its first place and its last members, as check/disambiguate.tree
+# `keep-overload-bound` kept them from this same list (item 1649)
+task overload-table
+  take run, like program-run
+  like hash, like text, like list, like text
+  mark private
+
+  save table, like hash, like text, like list, like text
+    make hash
+  walk run/overload-groups
+    take group
+    save key, group/name
+    save table/{key}, group/members
+  back table
+
 task program-types
   take run, like program-run
   take given, like types-given
@@ -691,7 +722,8 @@ task program-types
 
   # formal type checking: the surface pass annotates the program with types. Its warnings (an unknown type name) ride
   # with the build's other warnings; only its errors stop it
-  save found, as-diagnostics(program-types-infer/check(run/program, file, run/merged))
+  save groups, overload-table(run)
+  save found, as-diagnostics(program-types-infer/check-given(run/program, file, run/merged, given/switches, groups))
   save errors, make list
   walk found
     take one
@@ -742,7 +774,7 @@ task program-types
   sift view-copy
     case some
       link copied
-      save view-errors, check-lowered-views(copied, run/program, file, run/merged, runtime-table(run))
+      save view-errors, check-lowered-views(copied, run/program, file, run/merged, runtime-table(run), given/switches, groups, given/refine)
       fork test, is-above(view-errors/length, 0)
         hold
           back types-refusal(view-errors)

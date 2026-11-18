@@ -9,7 +9,8 @@
 // walk). Their tables are ONE `hold-state` (check/hold-state.tree), held here. The provers' records are the instances
 // check/refine.ts and check/product.ts hold, carried on the one `hold-calls` that inequality.tree builds (item 0356,
 // decision 057 rule 5). A build's owed sums are check/holding.tree, and the caller's `Tally` is hold-reach.tree's
-// `hold-tally` itself.
+// `hold-tally` itself. A caller that holds a run's linear prover state and switches hands them in (`refine`,
+// `switches`), and the walk proves through that state (item 1649).
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type {
@@ -23,6 +24,8 @@ import {
 } from '@term/make/code/check/facts'
 import type { ProgramFacts } from '@term/make/code/check/program-facts'
 import { refineState } from '@term/make/code/check/refine'
+import type { RefineState } from '@term/make/code/check/eliminate'
+import type { CheckerSwitches } from '@term/make/code/check/checker-switches'
 import {
   productProfile,
   productWork,
@@ -57,6 +60,21 @@ const CALLS = inequalityPart.holdCallsOver(
   productProfile,
 )
 
+// the calls over a prover state a caller handed: the process's own calls for the process's own state, else calls
+// made over that state, so its memo and its count of uncertified answers are the ones the walk writes (ruling 1262 (a)
+// of term/self-host/change/001-finish-self-host, item 1649)
+function callsOver(refine: RefineState | undefined): typeof CALLS {
+  if (refine === undefined || refine === refineState) {
+    return CALLS
+  }
+
+  return inequalityPart.holdCallsOver(
+    refine,
+    productWork,
+    productProfile,
+  )
+}
+
 // how many tasks' walks were answered from the memo, for the step's test (test/check/hold-memo.ts): hold-state's count
 export const holdsReplayed = {
   get tasks(): number {
@@ -66,18 +84,26 @@ export const holdsReplayed = {
 
 // whether a hold's goal lies in the decidable fragment the provers here own: the kernel proof layer (elaborate) skips
 // these, so the linear prover is the single authority for arithmetic (check/inequality.tree)
-export function isLinearGoal(expr: Expression): boolean {
-  return inequalityPart.isLinearGoal(STATE, CALLS, expr as never)
+export function isLinearGoal(
+  expr: Expression,
+  refine?: RefineState,
+): boolean {
+  return inequalityPart.isLinearGoal(
+    STATE,
+    callsOver(refine),
+    expr as never,
+  )
 }
 
 // AN ORDER FROM FACTS, for the kernel closing an induction case over its own atoms (check/elaborate.ts `orderCase`)
 export function orderFollows(
   goal: Expression,
   facts: Expression[],
+  refine?: RefineState,
 ): boolean {
   return inequalityPart.orderFollows(
     STATE,
-    CALLS,
+    callsOver(refine),
     goal as never,
     facts as never,
   )
@@ -121,6 +147,11 @@ export function checkHolds(
     // the program's facts, when the caller made them (compile/program-proofs.tree, item 0368): the four above are read
     // off them, each one the caller did not hand in
     facts?: ProgramFacts
+    // THE RUN'S STATE, when the caller holds one (compile/program-proofs.tree, item 1649): the linear prover's state the
+    // walk proves through and the checker's switches it reads. Absent, the process's instances (check/refine.ts,
+    // check/strict.ts)
+    refine?: RefineState
+    switches?: CheckerSwitches
   } = {},
 ): Diagnostic[] {
   // the facts once, and only when one of them is not handed in
@@ -133,7 +164,7 @@ export function checkHolds(
   const known =
     options.facts ?? (handed ? undefined : programFacts(program))
 
-  return holdWalk.checkHolds(STATE as never, CALLS as never, {
+  return holdWalk.checkHolds(STATE as never, callsOver(options.refine) as never, {
     program: program as never,
     file,
     originOnly: options.originOnly === true,
@@ -149,7 +180,7 @@ export function checkHolds(
     returning: flags(options.returning ?? known!.returnsFresh),
     functions: flags(functionNames(program)),
     kernelProven: [...(options.kernelProven ?? [])],
-    switches: checkerSwitches,
+    switches: options.switches ?? checkerSwitches,
   }) as never
 }
 

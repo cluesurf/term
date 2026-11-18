@@ -1,8 +1,9 @@
 # The report on node (decision 022 T5, item 0157). A program of its own, bundled apart from any test file, so what it loads
 # never reaches a test file's names: the start file hands it each test's task as the test file's bundle exports it, and
 # this calls each inside a guard and writes its entry through call/code/test-report.tree. A raise is read here, in the
-# test's own process, by the host's reflection (work/preprocess/failure-reading.tree), since a want's two values cannot
-# cross a file any other way.
+# test's own process, by the host's reflection (the raise reading below), since a want's two values cannot cross a
+# file any other way. The line a failing `want` becomes is text work, the same on every backend
+# (work/preprocess/failure-reading.tree).
 
 load @term/call/test-report
   find report-clock
@@ -15,8 +16,11 @@ load @term/call/test-report
   find report-taken
 
 load @term/call/work/preprocess/failure-reading
-  find raise-note
-  find raise-shown
+  find want-said
+  find want-failed-mark
+
+load @term/base/text
+  find starts-with
 
 # `Boolean(await loaded[name]())`
 bind call-exported
@@ -293,3 +297,333 @@ task run-tests
     call call-listed
       read loaded
       text <termSnapshotTakenValues>
+
+# ---- the raise reading ----
+#
+# What a failing test raised, read back in the test's own process. Tests here run on node, so a raise is the emitted
+# TypeScript value and is read by the host's own reflection (binds). Moved from work/preprocess/failure-reading.tree
+# (ruling 1660): its wantFailed and wantLine, with markerOf, linkOf and shown under them, answer as the original did, a
+# text or a number, else undefined.
+
+# what a raise names as its note: `raised?.note`
+bind raised-note
+  take raised, like dynamic
+  like dynamic
+  case node
+    text <$raised?.note>
+
+# what a raise carries in its link, when that is an object: `raised?.link`
+bind raised-link
+  take raised, like dynamic
+  like dynamic
+  case node
+    text <(typeof $raised?.link === "object" && $raised?.link !== null ? $raised.link : undefined)>
+
+bind link-thing
+  take link, like dynamic
+  like dynamic
+  case node
+    text <$link?.thing>
+
+bind link-left
+  take link, like dynamic
+  like dynamic
+  case node
+    text <$link.left>
+
+bind link-right
+  take link, like dynamic
+  like dynamic
+  case node
+    text <$link.right>
+
+# a link that carries both compared values: `"left" in link && "right" in link`
+bind carries-values
+  take link, like dynamic
+  like boolean
+  case node
+    text <($link !== undefined && "left" in $link && "right" in $link)>
+
+bind raised-absent
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-raised-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind is-host-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+bind as-host-text
+  take value, like dynamic
+  like text
+  case node
+    text <$value>
+
+# the line, counted from zero, a marker's digits after `want:` name, NaN when there are none
+bind marker-line
+  take marker, like text
+  take mark, like text
+  like number
+  case node
+    text <(Number(/^\d+/.exec($marker.slice($marker.indexOf($mark) + $mark.length))?.[0] ?? NaN) - 1)>
+
+# a line counted from zero: a whole number, zero or above
+bind is-counted-line
+  take number, like number
+  like boolean
+  case node
+    text <(Number.isInteger($number) && $number \>= 0)>
+
+bind host-number
+  take number, like number
+  like dynamic
+  case node
+    text <$number>
+
+# ---- the reflection `shown` reads a value by ----
+
+bind is-object-value
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "object" && $value !== null)>
+
+# a value that is no object: `void` for undefined, else as the host writes it
+bind plain-shown
+  take value, like dynamic
+  like text
+  case node
+    text <($value === undefined ? "void" : String($value))>
+
+bind is-byte-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value instanceof Uint8Array)>
+
+bind raised-byte-count
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind is-host-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind is-host-map
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value instanceof Map)>
+
+bind is-host-set
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value instanceof Set)>
+
+bind slot-count
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+# whether a list holds slot `at`: a hole is skipped by the original's map and written as nothing
+bind has-slot
+  take value, like dynamic
+  take at, like number
+  like boolean
+  case node
+    text <($at in $value)>
+
+bind slot-at
+  take value, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$value[$at]>
+
+# a map's or a set's members, in order: `[...value]`
+bind members-of
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$value]>
+
+bind record-entries
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.entries($value)>
+
+bind pair-key
+  take entry, like dynamic
+  like dynamic
+  case node
+    text <$entry[0]>
+
+bind pair-value
+  take entry, like dynamic
+  like dynamic
+  case node
+    text <$entry[1]>
+
+# a `maybe` that is none: `{ form: "none" }` and nothing else
+bind is-none-record
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value.form === "none" && Object.keys($value).length === 1)>
+
+bind joined-texts
+  take texts, like list, like text
+  take between, like text
+  like text
+  case node
+    text <$texts.join($between)>
+
+# `err instanceof Error ? err.message : String(err)`
+bind raised-message
+  take raised, like dynamic
+  like text
+  case node
+    text <($raised instanceof Error ? $raised.message : String($raised))>
+
+# The line a failing `want` names, and, for a comparison, the two values it compared:
+# `line 12 did not hold: want hold, is-equal double(0), 1, left 0, right 1`. `raised` is what the test threw. Answers
+# the text, or undefined for a raise that is no failing `want`, which is the test's own failure.
+task want-failed
+  take raised, like dynamic
+  take source, like text
+  like dynamic
+
+  save found, want-line(raised)
+  fork test, is-raised-absent(found)
+    hold
+      back raised-absent()
+  back want-said(marker-text(raised), raise-shown(raised), source)
+
+# What a raise says in a test's report (work/testing/test-running.tree reads it back, in the runner, from the file): the
+# marker of a failing `want`, else what the raise says of itself. Runs in the test's own process, so it reads the raise
+# the host holds
+task raise-note
+  take raised, like dynamic
+  like text
+
+  save marker, marker-text(raised)
+  fork test, starts-with(marker, want-failed-mark())
+    hold
+      back marker
+  back raised-message(raised)
+
+# what a comparing `want` held, as written in a report: `left 0, right 1`. The empty text for any other raise
+task raise-shown
+  take raised, like dynamic
+  like text
+
+  save link, raised-link(raised)
+  fork test, carries-values(link)
+    hold
+      back <left {shown(link-left(link), 0)}, right {shown(link-right(link), 0)}>
+  back <>
+
+# the marker a failing `want` raised, the empty text when it raised none: its `thing` when it carries the compared
+# values, else its `note`
+task marker-text
+  take raised, like dynamic
+  like text
+
+  save thing, link-thing(raised-link(raised))
+  fork test, is-host-text(thing)
+    hold
+      save text, as-host-text(thing)
+      fork test, starts-with(text, want-failed-mark())
+        hold
+          back text
+  save note, raised-note(raised)
+  fork test, is-host-text(note)
+    hold
+      back as-host-text(note)
+  back <>
+
+# the line, counted from zero, of the `want` a failing test's marker names, or undefined for any other raise. The
+# marker is the raise's `note` (`halt <want:12>`), or its `thing` when the raise carries the compared values
+task want-line
+  take raised, like dynamic
+  like dynamic
+
+  save marker, marker-text(raised)
+  fork test, not(starts-with(marker, want-failed-mark()))
+    hold
+      back raised-absent()
+  save line, marker-line(marker, want-failed-mark())
+  fork test, is-counted-line(line)
+    hold
+      back host-number(line)
+  back raised-absent()
+
+# A value as Term writes it: a text in angle brackets, a list in brackets, a hash or a record in braces, a `maybe` by
+# its case. This reads the emitted TypeScript value
+task shown
+  take value, like dynamic
+  take depth, like number
+  like text
+
+  fork test, is-host-text(value)
+    hold
+      back <\<{as-host-text(value)}\>>
+  fork test, not(is-object-value(value))
+    hold
+      back plain-shown(value)
+  fork test, is-above(depth, 3)
+    hold
+      back <...>
+  save deeper, add(depth, 1)
+  fork test, is-byte-list(value)
+    hold
+      back <bytes({raised-byte-count(value)})>
+  save texts, make list
+  fork test, is-host-list(value)
+    hold
+      save at, 0
+      walk test
+        hook test
+          is-below(at, slot-count(value))
+        hook hold
+          fork test, has-slot(value, at)
+            hold
+              texts/push(shown(slot-at(value, at), deeper))
+            miss
+              texts/push(<>)
+          save at, add(at, 1)
+      back <[{joined-texts(texts, <, >)}]>
+  fork test, is-host-map(value)
+    hold
+      walk members-of(value)
+        take entry, like dynamic
+        texts/push(<{shown(pair-key(entry), deeper)}: {shown(pair-value(entry), deeper)}>)
+      back <\{{joined-texts(texts, <, >)}\}>
+  fork test, is-host-set(value)
+    hold
+      walk members-of(value)
+        take member, like dynamic
+        texts/push(shown(member, deeper))
+      back <set[{joined-texts(texts, <, >)}]>
+  fork test, is-none-record(value)
+    hold
+      back <none>
+  walk record-entries(value)
+    take entry, like dynamic
+    texts/push(<{as-host-text(pair-key(entry))}: {shown(pair-value(entry), deeper)}>)
+  back <\{{joined-texts(texts, <, >)}\}>

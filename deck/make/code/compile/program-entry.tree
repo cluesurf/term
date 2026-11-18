@@ -14,9 +14,12 @@
 #     resolves against its file and stays inside the file's package or the root, as deck/call/code/make.ts
 #     `projectResolver` confines one. `compile-resolver-of` makes the record a project build would: its `link/`
 #     packages, a second `link/` root (the CLI's install), the stdlib and the stdlib's siblings, then the project being
-#     built, each answer remembered by projectResolver's key. Not ported yet: projectResolver's `@/` alias, its
-#     own-package fallback and the app's shadow of a face implementation, which read a manifest's declared name, and
-#     deck/call/code/manifest-read.tree is the one reader of that (item 1237's escalation)
+#     built, each answer remembered by projectResolver's key. projectResolver's three parts that read a manifest's
+#     declared name are here too (decision 155 rule 3, item 1295): the `@/` alias (the importer's own package), the
+#     own-package fallback (a package path naming the importer's package, inside that package), and the app's shadow
+#     of a face implementation (`@term/face/component/native/...` tried in the project being built first, unless the
+#     project is @term/face). Each reads the nearest `deck.tree` with the resolver's own file read and its name with
+#     @term/make/manifest-read `manifest-name`, the one reader, remembered per folder (`names`)
 #   - THE CACHED PATH (item 1237): a request carrying a `cache` (compile/cache-store.tree's record) mills each module
 #     through its mill level, scans each through its scan entries in compile/load.ts's stored shape (an absent alias
 #     `undefined`, so a scan the separate build stored is read here and the reverse), and answers through its output
@@ -27,10 +30,11 @@
 #     forwards with them, so its callers keep their resolver and one parse memo for a batch build
 #   - `milled-module` is compile.ts `milledModule`, which compile/separate.ts still calls through the face
 #   - the run's state is one `compile-state` (the driver's state, the overload bound, the checker's switches, the parse
-#     memo), fresh when the request carries none. On TypeScript three phase faces still read the process's own
-#     instances: check/infer.ts reads check/overload.ts's bound and check/strict.ts's switches, and check/holds.ts and
-#     totality.ts check/refine.ts's prover state. A caller that must agree with compile.ts hands those instances in
-#     `state`. Fresh, the checker reads an overload table this entry did not write
+#     memo), fresh when the request carries none. The phases read only what the request hands them (ruling 1262 (a),
+#     item 1649): the checker takes the state's switches and the overload groups the gate bound in this run, and the
+#     holds and termination the driver state's prover, so a fresh compile gives the overload table and the uncertified
+#     count compile.ts gives with the process's instances. compile.ts hands those instances in `state`, so its batch
+#     keeps one prover memo
 #   - a module mills to its stored form, a JSON round trip with the bigint tag, as compile.ts's `milledModule` did on
 #     every path (item 0432). Natively a value is already its stored form
 #   - `budget` is set as TERM_PROOF_BUDGET around the compile and put back after it, also when the compile raises,
@@ -160,6 +164,9 @@ load ../package-paths
   find package-rest
   find resolve-package-path
 
+load ../manifest-read
+  find manifest-name
+
 load ../package-paths-disk
   find path-exists
   find is-dir-on-disk
@@ -181,8 +188,9 @@ load ../package-paths-disk
 # THE BUILD'S RESOLVER, as a record: the package resolvers a package path is asked of, in order, the root a relative
 # load may not leave when no `deck.tree` is nearer its file, the native env each abstract load is rewritten for first
 # (none: as written), the code-root cache the package resolvers read each manifest through, and what it has answered:
-# each whole resolution by its key and each folder's package root. Nothing in them is forgotten: files do not change
-# during a compile
+# each whole resolution by its key, each folder's package root, and the name each package folder's `deck.tree`
+# declares (none: no manifest, or one that names nothing). Nothing in them is forgotten: files do not change during a
+# compile
 form compile-resolver
   link root, like text
   link packages, like list, like package-resolver
@@ -190,6 +198,7 @@ form compile-resolver
   link code-roots, like code-roots
   link answers, like hash, like text, like maybe, like module-source
   link package-roots, like hash, like text, like text
+  link names, like hash, like text, like maybe, like text
 
 # what a coverage build measures: the entry file alone, its keys relative to its folder, or a target
 form cover-choice
@@ -665,6 +674,7 @@ task compile-resolver-of
       bind code-roots, roots
       bind answers, make hash
       bind package-roots, make hash
+      bind names, make hash
 
 # a path as `path.resolve` gives it: under the working directory when it is relative
 task absolute-path
@@ -763,6 +773,35 @@ task package-root-of
   known/set(start, found)
   back found
 
+# THE NAME A FOLDER'S `deck.tree` DECLARES, read once per folder through the resolver's own file read and named by the
+# one manifest reader (make.ts `manifestNameOf`): none when the folder holds no manifest or it names nothing
+task folder-name
+  take resolver, like compile-resolver
+  take dir, like text
+  like maybe, like text
+  mark private
+
+  save known, resolver/names
+  fork test, has(known, dir)
+    hold
+      back get-or-default(known, dir, make none)
+  save manifest, join-two(dir, <deck.tree>)
+  save found, make none
+  fork test, and(path-exists(manifest), not(is-dir-on-disk(manifest)))
+    hold
+      save found, manifest-name(read-whole(manifest), manifest)
+  known/set(dir, found)
+  back found
+
+# the package NAME of a file: what its package boundary's `deck.tree` declares (make.ts `packageNameOf`)
+task package-name-of
+  take resolver, like compile-resolver
+  take file, like text
+  like maybe, like text
+  mark private
+
+  back folder-name(resolver, package-root-of(resolver, file))
+
 # a file a resolver found, canonicalized through `realpath` and read: none for a folder or a file that is not there
 task read-found
   take candidate, like text
@@ -827,13 +866,25 @@ task in-project
   like maybe, like module-source
   mark private
 
+  back in-package(resolver, safe-real(resolver/root), rest, base)
+
+# a package path's rest inside one package folder: its code root, then the folder, by the package path rule (make.ts
+# `inPackage`). The read is reported with the file it shadows
+task in-package
+  take resolver, like compile-resolver
+  take dir, like text
+  take rest, like text
+  take base, like maybe, like text
+  like maybe, like module-source
+  mark private
+
   save roots, resolver/code-roots
   save code-root-of
     task
-      take dir, like text
+      take folder, like text
       like text
-      back code-root-on-disk(roots, dir)
-  save hit, resolve-package-path(safe-real(resolver/root), rest, base, path-exists, code-root-of)
+      back code-root-on-disk(roots, folder)
+  save hit, resolve-package-path(dir, rest, base, path-exists, code-root-of)
   sift hit/file
     case some
       link file
@@ -866,11 +917,22 @@ task resolve-once
   like maybe, like module-source
   mark private
 
-  save gap, mill-key-gap(0)
-  save key, <{package-root-of(resolver, from)}{gap}{path}>
-  fork test, or(starts-with(path, <./>), starts-with(path, <../>))
+  # `@/sub/path` IS THE IMPORTER'S OWN PACKAGE: `<its declared name>/sub/path`, before the memo, so the key is the
+  # concrete path. Each member of a monorepo reads `@/` against its own nearest `deck.tree`. No name, no answer
+  save wanted, path
+  fork test, starts-with(path, <@/>)
     hold
-      save key, <{dirname-of(from)}{gap}{path}>
+      sift package-name-of(resolver, from)
+        case some
+          link own
+          save wanted, <{own}/{substring(path, 2, char-count(path))}>
+        case none
+          back make none
+  save gap, mill-key-gap(0)
+  save key, <{package-root-of(resolver, from)}{gap}{wanted}>
+  fork test, or(starts-with(wanted, <./>), starts-with(wanted, <../>))
+    hold
+      save key, <{dirname-of(from)}{gap}{wanted}>
   sift how
     case some
       link asked
@@ -881,7 +943,7 @@ task resolve-once
   fork test, has(answers, key)
     hold
       back get-or-default(answers, key, make none)
-  save found, resolve-uncached(resolver, path, from, how)
+  save found, resolve-uncached(resolver, wanted, from, how)
   answers/set(key, found)
   back found
 
@@ -928,6 +990,20 @@ task resolve-uncached
   fork test, not(named/found)
     hold
       back make none
+  # THE IMPORTER'S OWN PACKAGE, by its declared name: a package that loads itself needs no `link/` entry for itself
+  sift package-name-of(resolver, from)
+    case some
+      link own
+      fork test, is-equal(named/pkg, own)
+        hold
+          sift in-package(resolver, package-root-of(resolver, from), named/rest, base)
+            case some
+              link within
+              back make(some, within)
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
   back in-project(resolver, named/rest, base)
 
 # WHAT A LOAD NAMES, from the file it is in, with how it asks: every native candidate of the env in turn, else the path
@@ -944,7 +1020,7 @@ task resolve-in
       link env
       walk native-candidates(env, path)
         take candidate
-        sift resolve-once(resolver, candidate, from, how)
+        sift resolve-shadowed(resolver, candidate, from, how)
           case some
             link found
             back make(some, found)
@@ -952,7 +1028,47 @@ task resolve-in
             save nothing, 0
       back make none
     case none
-      back resolve-once(resolver, path, from, how)
+      back resolve-shadowed(resolver, path, from, how)
+
+# AN APP SHADOWS A FACE IMPLEMENTATION (make.ts projectResolver's `shadowed`, native-dom-0025): a load of
+# `@term/face/component/native/...` or `@term/face/code/component/native/...` with no `base` first tries the same path in
+# the project being built, by the package path rule, unless the project is @term/face itself; then the path as it is. It
+# runs per native candidate, so an app's toolkit file wins on its own rung and face's generic still serves the web
+task resolve-shadowed
+  take resolver, like compile-resolver
+  take path, like text
+  take from, like text
+  take how, like maybe, like load-how
+  like maybe, like module-source
+  mark private
+
+  save plain, true
+  sift how
+    case some
+      save plain, false
+    case none
+      save nothing, 0
+  save face-native, or(starts-with(path, <@term/face/component/native/>), starts-with(path, <@term/face/code/component/native/>))
+  fork test, and(plain, face-native)
+    hold
+      save root, safe-real(resolver/root)
+      save is-face, false
+      sift folder-name(resolver, root)
+        case some
+          link declared
+          save is-face, is-equal(declared, <@term/face>)
+        case none
+          save nothing, 0
+      fork test, and(path-exists(join-two(root, <deck.tree>)), not(is-face))
+        hold
+          save rest, substring(path, char-count(<@term/face/>), char-count(path))
+          sift in-package(resolver, root, rest, make none)
+            case some
+              link own
+              back make(some, own)
+            case none
+              save nothing, 0
+  back resolve-once(resolver, path, from, how)
 
 # ---- the state ----
 

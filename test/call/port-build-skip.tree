@@ -1,0 +1,815 @@
+note <task/port-build.ts skips a module only when a compile would write what is already there>
+
+# Ported from port-build-skip.ts by statement (item term-self-host-001-0700, term-cli-in-term-0002). On a CLONE of the
+# toolchain tree (APFS clones, so seconds and no space), never the tree itself:
+#
+#   steady: a second run with nothing changed skips every module and writes nothing
+#   --check: still catches a port output edited by hand, and one that is missing
+#   a stdlib file the ports read: every module whose trace read it compiles again, and the skip run writes exactly what
+#     a --full run from the same state writes
+#   a toolchain .tree body: the module compiles again and builds, byte-identical to --full
+#   a compiler .ts file: every module is skipped, byte-identical to --full. Since decision 036 every port compiles with
+#     stage0, so the working tree's compiler is no part of the fingerprint
+#
+# The cold run starts from the tree's own ports, which another session may have left behind its sources (an edit not
+# yet through make:line). So by default the cold check asks only that nothing fails or is skipped;
+# PORT_BUILD_SKIP_QUIET=1 also asks that it builds none, for a tree no one is editing (item term-self-host-001-0483).
+# Each edit's comparison starts both runs from the same state: the ports are put back between the skip run and the
+# --full run, since a port the skip run rewrote is part of the compiler the --full run would load.
+#
+# The whole sequence runs once, in the original's order, by the first test that asks, and each test reads one fact of
+# it: one test per `ok`. port-build itself is the subject, run as the original runs it, a child of this node through
+# tsx. About an hour on the M3: four full compiles and three skip runs of every module.
+
+load ../support/temp
+  find temp-folder
+
+load ../support/cli
+  find term-root
+
+load ../support/reading
+  find lines-of
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name path-exists
+  find move, name move-file
+
+load @term/base/file/directory
+  find list, name list-folder
+  find walk, name walk-folder
+  find exists, name folder-exists
+  find remove, name remove-folder
+
+load @term/base/file/link
+  find make, name make-link
+
+load @term/base/json
+  find parse, name json-parse
+  find get-field, name json-field
+  find array-size, name json-size
+  find array-item, name json-item
+  find as-text, name json-text
+  find as-number, name json-number
+  find object-keys, name json-keys
+
+load @term/base/environment
+  find variable
+
+load @term/base/rune
+  find rune-to-text
+
+load @term/base/pattern
+  find pattern
+  find pattern-match
+  find find-match
+  find match-group
+
+load @term/base/list
+  find contains, name list-contains
+  find sort, name list-sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+  find substring
+  find index-of
+  find char-count
+  find char-code-at
+  find split, name text-split
+  find replace, name text-replace
+
+dock load
+  load <node:fs>, name skip-fs
+  load <node:path>, name skip-path
+
+# host value: the node running this suite, which runs port-build through tsx as the original's process.execPath does
+bind skip-node
+  take seed, like number
+  like text
+  case node
+    text <process.execPath>
+
+# host value: cpSync's options for an APFS clone (fs.constants.COPYFILE_FICLONE is 2), links kept as written, and the
+# suite's own filter
+bind clone-options
+  take keep, like dynamic
+  like dynamic
+  case node
+    text <(\{ recursive: true, mode: 2, verbatimSymlinks: true, filter: $keep \})>
+
+# the probes. A stdlib module the ports load, a toolchain module to change, a compiler file. A probe that is gone fails
+# the test by name, so a move is caught rather than tested against nothing. The stdlib probe is chosen from the trace
+# (stdlib-probe below): a file some port's compile really read
+host stdlib-root, <deck/base/code>
+host port-probe, <deck/test/code/bench-report.tree>
+host compiler-probe, <deck/make/code/compile/native.ts>
+
+# the build trees the clone leaves out: outputs other than the ports, and caches
+host leave-names, make list(<node_modules>, <target>, <.build>, <.base>, <tmp>, <.git>)
+
+# a text literal of a .tree file, the first, to change
+host literal-pattern, make(pattern, <<<([A-Za-z][^<>{}\\\n]*)>>>)
+
+host summary-pattern, make(pattern, <<term port-build: (\d+) built, (\d+) unchanged(?:, (\d+) stale)?, (\d+) failed>>)
+
+# the separator of a manifest table key, `read` NUL path
+host nul, rune-to-text(0)
+
+# one port-build run: its exit code, its summary's counts (-1 where it printed none, stale 0), the modules that FAILED
+# sorted and joined by a space, the modules it skipped and built, each once, and all it printed
+form build-run
+  link code, like number
+  link built, like number
+  link unchanged, like number
+  link stale, like number
+  link failed, like number
+  link broken, like text
+  link skipped, like list, like text
+  link built-names, like list, like text
+  link out, like text
+
+# an edit's comparison: the ports the skip run and the --full run wrote differently, and the two runs
+form compared
+  link differences, like list, like text
+  link skip, like build-run
+  link full, like build-run
+
+# every port output of the clone, path (from the clone's root) to content
+form port-snapshot
+  link paths, like list, like text
+  link texts, like hash, like text, like text
+
+form skip-state
+  mark shared
+  link made, like boolean
+  link reached, like list, like text
+  link raised, like text
+  link quiet, like boolean
+  link found, like list, like text
+  link cold, like build-run
+  link broken-at-clone, like text
+  link total, like number
+  link steady, like build-run
+  link edited, like build-run
+  link missing, like build-run
+  link clean, like build-run
+  link probe, like text
+  link reading, like list, like text
+  link stdlib, like compared
+  link held-literal, like boolean
+  link toolchain, like compared
+  link compiler, like compared
+
+task no-run
+  like build-run
+
+  back make(build-run, bind(code, -1), bind(built, -1), bind(unchanged, -1), bind(stale, 0), bind(failed, -1), bind(broken, <>), bind(skipped, make list), bind(built-names, make list), bind(out, <>))
+
+task no-compare
+  like compared
+
+  back make(compared, bind(differences, make list), bind(skip, no-run()), bind(full, no-run()))
+
+host now, make(skip-state, bind(made, false), bind(reached, make list), bind(raised, <>), bind(quiet, false), bind(found, make list), bind(cold, no-run()), bind(broken-at-clone, <>), bind(total, 0), bind(steady, no-run()), bind(edited, no-run()), bind(missing, no-run()), bind(clean, no-run()), bind(probe, <>), bind(reading, make list), bind(stdlib, no-compare()), bind(held-literal, false), bind(toolchain, no-compare()), bind(compiler, no-compare()))
+
+# whether a source goes into the clone: no build tree or cache by its name, and of a package's `host/` (deck/<d>/host)
+# only `host/port/`, the ported modules the compiler is built from. The search starts past deck/<d>, so the PACKAGE
+# named host (deck/host, @term/host) is copied whole (item 0483)
+task keep-source
+  take root, like text
+  take source, like text
+  like boolean
+
+  save parts, text-split(source, </>)
+  save last-part, parts/get(subtract(parts/length, 1))
+  fork test, or(list-contains(leave-names, last-part), ends-with(last-part, <-cache>))
+    hold
+      back false
+  save at, text-split(skip-path/relative(root, source), </>)
+  save at-host, -1
+  save k, 2
+  walk test
+    hook test, and(is-below(at-host, 0), is-below(k, at/length))
+    hook hold
+      fork test, is-equal(at/get(k), <host>)
+        hold
+          save at-host, k
+      save k, add(k, 1)
+  fork test, is-below(at-host, 0)
+    hold
+      back true
+  fork test, is-equal(at/length, add(at-host, 1))
+    hold
+      back true
+  back is-equal(at/get(add(at-host, 1)), <port>)
+
+# every `"` before one or more `../` made absolute for the clone, however many levels it climbs: a path tsconfig.json
+# writes relative to the package and outside it (the @cluesurf/save mapping)
+task absolute-ups
+  take source-text, like text
+  take root, like text
+  like text
+
+  save out, <>
+  save rest, source-text
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save at, index-of(rest, <"../>)
+      fork test, is-below(at, 0)
+        hold
+          save out, <{out}{rest}>
+          save going, false
+        miss
+          save past, add(at, 1)
+          walk test
+            hook test, is-equal(substring(rest, past, add(past, 3)), <../>)
+            hook hold
+              save past, add(past, 3)
+          save up, substring(rest, add(at, 1), past)
+          save out, <{out}{substring(rest, 0, at)}"{skip-path/resolve(root, up)}/>
+          save rest, substring(rest, past, char-count(rest))
+  back out
+
+# the clone: deck/ by APFS clones through the filter, the files port-build reads beside it, the line lock and the
+# package.json that keeps its folder CommonJS (port-build refuses to run without it, item 0475, so the clone's runs lock
+# the clone, never the tree the other builds share), tsconfig.json with its climbing paths made absolute, and
+# node_modules linked
+task clone-tree
+  mark async
+  take root, like text
+  take copy, like text
+  like void
+
+  save keep
+    task
+      take source, like text
+      like boolean
+      back keep-source(root, source)
+  skip-fs/cp-sync(skip-path/join(root, <deck>), skip-path/join(copy, <deck>), clone-options(keep))
+  walk make(list, <task/port-build.ts>, <task/port-trace.ts>, <task/stage0.ts>, <task/port-shelved.ts>, <task/stage0.json>, <package.json>, <task/term/line-lock.ts>, <task/term/package.json>)
+    take one, like text
+    skip-fs/cp-sync(skip-path/join(root, one), skip-path/join(copy, one))
+  write-file(skip-path/join(copy, <tsconfig.json>), absolute-ups(read-file(skip-path/join(root, <tsconfig.json>)), root))
+  make-link(skip-path/join(root, <node_modules>), skip-path/join(copy, <node_modules>))
+
+# a number of decimal digits, -1 when it holds anything else
+task number-of
+  take part, like text
+  like number
+
+  fork test, is-equal(part, <>)
+    hold
+      back -1
+  save value, 0
+  walk text-split(part, <>)
+    take one, like text
+    save point, char-code-at(one, 0)
+    fork test, or(is-below(point, 48), is-above(point, 57))
+      hold
+        back -1
+    save value, add(multiply(value, 10), subtract(point, 48))
+  back value
+
+task group-number
+  take found, like pattern-match
+  take index, like number
+  take otherwise, like number
+  like number
+
+  sift match-group(found, index)
+    case some
+      link value
+      back number-of(value)
+    case none
+      back otherwise
+
+form build-summary
+  link found, like boolean
+  link built, like number
+  link unchanged, like number
+  link stale, like number
+  link failed, like number
+
+task summary-of
+  take line, like text
+  like build-summary
+
+  sift find-match(summary-pattern, line)
+    case some
+      link value
+      back make(build-summary, bind(found, true), bind(built, group-number(value, 1, -1)), bind(unchanged, group-number(value, 2, -1)), bind(stale, group-number(value, 3, 0)), bind(failed, group-number(value, 4, -1)))
+    case none
+      back make(build-summary, bind(found, false), bind(built, -1), bind(unchanged, -1), bind(stale, 0), bind(failed, -1))
+
+# whether a text is one or more characters with no space among them
+task one-word
+  take part, like text
+  like boolean
+
+  fork test, is-equal(part, <>)
+    hold
+      back false
+  walk text-split(part, <>)
+    take one, like text
+    save point, char-code-at(one, 0)
+    fork test, or(is-equal(point, 32), and(not(is-below(point, 9)), not(is-above(point, 13))))
+      hold
+        back false
+  back true
+
+# the word a line holds after `prefix`, the whole rest of the line, <> when the line is not that
+task word-after
+  take line, like text
+  take prefix, like text
+  like text
+
+  fork test, not(starts-with(line, prefix))
+    hold
+      back <>
+  save rest, substring(line, char-count(prefix), char-count(line))
+  fork test, one-word(rest)
+    hold
+      back rest
+  back <>
+
+# port-build run in the clone with --explain and `arguments`, read
+task port-build-run
+  mark async
+  take root, like text
+  take copy, like text
+  take arguments, like list, like text
+  like build-run
+
+  save words, make list(skip-path/join(root, <node_modules>, <tsx>, <dist>, <cli.mjs>), <task/port-build.ts>, <--explain>)
+  walk arguments
+    take one, like text
+    words/push(one)
+  save ran, run(skip-node(0), words, copy)
+  save out, ran/output
+  save summary, make(build-summary, bind(found, false), bind(built, -1), bind(unchanged, -1), bind(stale, 0), bind(failed, -1))
+  save skipped, make list
+  save built-names, make list
+  save broken, make list
+  walk lines-of(out)
+    take line, like text
+    fork test, and(not(summary/found), text-contains(line, <term port-build: >))
+      hold
+        save summary, summary-of(line)
+    save skip-word, word-after(line, <  skip  >)
+    fork test, and(is-unequal(skip-word, <>), not(list-contains(skipped, skip-word)))
+      hold
+        skipped/push(skip-word)
+    save built-word, word-after(line, <  built >)
+    fork test, is-unequal(built-word, <>)
+      hold
+        built-names/push(built-word)
+    save fail-word, word-after(line, <  FAIL  >)
+    fork test, is-unequal(fail-word, <>)
+      hold
+        broken/push(fail-word)
+  save sorted, list-sort(broken, from-texts)
+  back make(build-run, bind(code, ran/code), bind(built, summary/built), bind(unchanged, summary/unchanged), bind(stale, summary/stale), bind(failed, summary/failed), bind(broken, sorted/join(< >)), bind(skipped, skipped), bind(built-names, built-names), bind(out, out))
+
+# every port output of the clone, under each package's host/port
+task ports-of
+  mark async
+  take copy, like text
+  like port-snapshot
+
+  save snap, make(port-snapshot, bind(paths, make list), bind(texts, make hash))
+  walk list-folder(skip-path/join(copy, <deck>))
+    take pack, like text
+    save port, skip-path/join(copy, <deck>, pack, <host>, <port>)
+    fork test, folder-exists(port)
+      hold
+        walk walk-folder(port)
+          take full, like text
+          fork test, not(folder-exists(full))
+            hold
+              save at, skip-path/relative(copy, full)
+              snap/paths/push(at)
+              save snap/texts/{at}, read-file(full)
+  back snap
+
+task restore
+  mark async
+  take copy, like text
+  take snap, like port-snapshot
+  like void
+
+  walk snap/paths
+    take at, like text
+    write-file(skip-path/join(copy, at), snap/texts/{at})
+
+task differences
+  take first, like port-snapshot
+  take second, like port-snapshot
+  like list, like text
+
+  save out, make list
+  walk first/paths
+    take at, like text
+    fork test, not(second/texts/has(at))
+      hold
+        out/push(at)
+      miss
+        fork test, is-unequal(first/texts/{at}, second/texts/{at})
+          hold
+            out/push(at)
+  walk second/paths
+    take at, like text
+    fork test, not(first/texts/has(at))
+      hold
+        out/push(at)
+  back out
+
+task manifest-of
+  mark async
+  take copy, like text
+  like dynamic
+
+  back json-parse(read-file(skip-path/join(copy, <.base>, <@term>, <code>, <port-build.json>)))
+
+# the stdlib file the trace saw READ last, so the fewest modules rest on it and the rest are skipped: the edit shows
+# both halves, the readers compiled and the others not. <> when the trace read none
+task stdlib-probe
+  mark async
+  take copy, like text
+  like text
+
+  save prefix, <read{nul}{skip-path/join(copy, stdlib-root)}/>
+  save table, json-field(manifest-of(copy), <table>)
+  save last, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, json-size(table))
+    hook hold
+      save key, json-text(json-item(json-item(table, at), 0))
+      fork test, and(starts-with(key, prefix), ends-with(key, <.tree>))
+        hold
+          save last, key
+      save at, add(at, 1)
+  fork test, is-equal(last, <>)
+    hold
+      back <>
+  back skip-path/relative(copy, substring(last, 5, char-count(last)))
+
+# the modules whose recorded trace read a file, from the clone's manifest
+task readers-of
+  mark async
+  take copy, like text
+  take file, like text
+  like list, like text
+
+  save manifest, manifest-of(copy)
+  save table, json-field(manifest, <table>)
+  save key, <read{nul}{skip-path/join(copy, file)}>
+  save row, -1
+  save at, 0
+  walk test
+    hook test, and(is-below(row, 0), is-below(at, json-size(table)))
+    hook hold
+      fork test, is-equal(json-text(json-item(json-item(table, at), 0)), key)
+        hold
+          save row, at
+      save at, add(at, 1)
+  save out, make list
+  fork test, is-below(row, 0)
+    hold
+      back out
+  save modules, json-field(manifest, <modules>)
+  walk json-keys(modules)
+    take module, like text
+    save reads, json-field(json-field(modules, module), <reads>)
+    save k, 0
+    save hit, false
+    walk test
+      hook test, and(not(hit), is-below(k, json-size(reads)))
+      hook hold
+        save pair, json-item(reads, k)
+        fork test, and(not(is-below(row, json-number(json-item(pair, 0)))), is-below(row, json-number(json-item(pair, 1))))
+          hold
+            save hit, true
+        save k, add(k, 1)
+    fork test, hit
+      hold
+        out/push(module)
+  back out
+
+# an edit, already made, then a skip run and a --full run from the same state, compared byte for byte
+task compare-runs
+  mark async
+  take root, like text
+  take copy, like text
+  like compared
+
+  save none, make list
+  save before, ports-of(copy)
+  save skip, port-build-run(root, copy, none)
+  save skipped, ports-of(copy)
+  restore(copy, before)
+  save full, port-build-run(root, copy, make list(<--full>))
+  save reference, ports-of(copy)
+  back make(compared, bind(differences, differences(skipped, reference)), bind(skip, skip), bind(full, full))
+
+# a text appended to a file
+task append-to
+  mark async
+  take file, like text
+  take tail, like text
+  like void
+
+  write-file(file, <{read-file(file)}{tail}>)
+
+# the probe's first text literal changed: the module's emitted TypeScript must change with it
+task probe-changed
+  take source-text, like text
+  like text
+
+  sift find-match(literal-pattern, source-text)
+    case some
+      link value
+      save whole, value/text
+      save inner, substring(whole, 1, subtract(char-count(whole), 1))
+      back text-replace(source-text, whole, <\<{inner} probe\>>)
+    case none
+      back source-text
+
+# where the port of `port-probe` is among the outputs: deck/<d>/<p>.tree as <d>/host/port/<p>.ts
+task victim-of
+  take snap, like port-snapshot
+  like text
+
+  save rest, substring(port-probe, 5, char-count(port-probe))
+  save slash, index-of(rest, </>)
+  save pack, substring(rest, 0, slash)
+  save inner, substring(rest, add(slash, 1), subtract(char-count(rest), 5))
+  save wanted, <{pack}/host/port/{inner}.ts>
+  walk snap/paths
+    take at, like text
+    fork test, text-contains(at, wanted)
+      hold
+        back at
+  back <>
+
+# the step the sequence reached, so a test reads only what was done before a raise
+task reach
+  take step, like text
+  like void
+
+  now/reached/push(step)
+
+# host value: what a raise said, its note and thing for a Term exception, its message for a host one
+bind skip-cause
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.note ?? $cause?.message ?? $cause) + ($cause?.thing ? ": " + $cause.thing : "")>
+
+# the whole sequence, in the original's order. A step that raises ends it, as an uncaught throw ended the original, and
+# every test past it fails with what the raise said
+task skip-sequence
+  mark async
+  like void
+
+  save root, term-root()
+  # the real path: the resolver records `/private/var/...` where the temporary directory says `/var/...`. The clone sits
+  # five levels below its root
+  save clone-root, skip-fs/realpath-sync(temp-folder(<term-port-build-skip->))
+  save copy, skip-path/join(clone-root, <deck>, <term>, <deck>, <term>)
+  clone-tree(root, copy)
+  walk make(list, stdlib-root, port-probe, compiler-probe)
+    take probe, like text
+    fork test, path-exists(skip-path/join(copy, probe))
+      hold
+        now/found/push(probe)
+  reach(<probes>)
+
+  # ---- cold, then steady ----
+  save now/quiet, is-equal(variable(<PORT_BUILD_SKIP_QUIET>), <1>)
+  save none, make list
+  save now/cold, port-build-run(root, copy, none)
+  save now/broken-at-clone, now/cold/broken
+  save extra, now/cold/built
+  fork test, is-below(extra, 0)
+    hold
+      save extra, 0
+  save now/total, add(now/cold/unchanged, extra)
+  reach(<cold>)
+  save now/steady, port-build-run(root, copy, none)
+  reach(<steady>)
+
+  # ---- --check: a hand-edited port, and a missing one ----
+  save outputs, ports-of(copy)
+  save victim, victim-of(outputs)
+  save victim-path, skip-path/join(copy, victim)
+  save victim-text, outputs/texts/{victim}
+  write-file(victim-path, <{victim-text}// by hand\n>)
+  save check, make list(<--check>)
+  save now/edited, port-build-run(root, copy, check)
+  reach(<edited>)
+  move-file(victim-path, <{victim-path}.away>)
+  save now/missing, port-build-run(root, copy, check)
+  reach(<missing>)
+  move-file(<{victim-path}.away>, victim-path)
+  write-file(victim-path, victim-text)
+  save now/clean, port-build-run(root, copy, check)
+  reach(<clean>)
+
+  # ---- a stdlib file the ports read ----
+  save now/probe, stdlib-probe(copy)
+  fork test, is-unequal(now/probe, <>)
+    hold
+      save now/reading, readers-of(copy, now/probe)
+  reach(<stdlib-trace>)
+  fork test, is-unequal(now/probe, <>)
+    hold
+      append-to(skip-path/join(copy, now/probe), <\n# port-build-skip probe\n>)
+      save now/stdlib, compare-runs(root, copy)
+  reach(<stdlib>)
+
+  # ---- a toolchain .tree body ----
+  save probe-file, skip-path/join(copy, port-probe)
+  save probe-text, read-file(probe-file)
+  save changed, probe-changed(probe-text)
+  save now/held-literal, is-unequal(changed, probe-text)
+  reach(<toolchain-literal>)
+  write-file(probe-file, changed)
+  save now/toolchain, compare-runs(root, copy)
+  reach(<toolchain>)
+
+  # ---- a compiler .ts file ----
+  append-to(skip-path/join(copy, compiler-probe), <\n// port-build-skip probe\n>)
+  save now/compiler, compare-runs(root, copy)
+  reach(<compiler>)
+
+  # the clone goes whatever the verdict (temp-folder also removes it at exit)
+  remove-folder(clone-root)
+
+# the sequence, once, by the first test that asks
+task the-skip
+  mark async
+  like skip-state
+
+  fork test, now/made
+    hold
+      back now
+  save now/made, true
+  fork
+    mark unsafe
+    skip-sequence()
+  halt take
+    take cause
+    save now/raised, skip-cause(cause)
+  back now
+
+# a test of a step the sequence never reached fails with what ended it
+task reached
+  take state, like skip-state
+  take step, like text
+  like void
+
+  fork test, not(list-contains(state/reached, step))
+    hold
+      halt <the run raised before the {step} step: {state/raised}>
+
+# a later run fails exactly the modules the clone could not compile at all, never one more, so a defect of the skip
+# still shows (item 0483)
+task fails-as-cloned
+  take one, like build-run
+  take state, like skip-state
+  like boolean
+
+  back and(not(is-below(one/failed, 0)), is-equal(one/broken, state/broken-at-clone))
+
+# an edit's comparison held: the same bytes, and both runs failing only what failed as cloned
+task same-bytes
+  take one, like compared
+  take state, like skip-state
+  like boolean
+
+  back and(is-equal(one/differences/length, 0), and(fails-as-cloned(one/skip, state), fails-as-cloned(one/full, state)))
+
+test <probe deck/base/code exists>
+  save state, the-skip()
+  reached(state, <probes>)
+  want hold, list-contains(state/found, stdlib-root)
+
+test <probe deck/test/code/bench-report.tree exists>
+  save state, the-skip()
+  reached(state, <probes>)
+  want hold, list-contains(state/found, port-probe)
+
+test <probe deck/make/code/compile/native.ts exists>
+  save state, the-skip()
+  reached(state, <probes>)
+  want hold, list-contains(state/found, compiler-probe)
+
+# whether each lands on the port already there says only whether the tree was quiet when it was cloned, so the default
+# asks that nothing is skipped and holds every later run to what failed; PORT_BUILD_SKIP_QUIET=1 asks that nothing fails
+# and nothing is built too
+test <cold: every module compiles, none skipped (with PORT_BUILD_SKIP_QUIET=1 none fails, each to the port already there)>
+  save state, the-skip()
+  reached(state, <cold>)
+  save cold, state/cold
+  save quiet-holds, or(not(state/quiet), and(is-equal(cold/built, 0), is-equal(cold/failed, 0)))
+  want hold, and(not(is-below(cold/failed, 0)), and(is-equal(cold/skipped/length, 0), quiet-holds))
+
+# every module, so a cold run that had to build some (a port left stale in the tree) fails only the test above
+test <steady: all skipped, nothing built>
+  save state, the-skip()
+  reached(state, <steady>)
+  save steady, state/steady
+  want hold, and(is-equal(steady/built, 0), and(is-equal(steady/unchanged, state/total), is-equal(steady/skipped/length, state/total)))
+
+test <--check: a port edited by hand is stale>
+  save state, the-skip()
+  reached(state, <edited>)
+  want hold, and(is-equal(state/edited/code, 1), text-contains(state/edited/out, <STALE {port-probe}>))
+
+test <--check: a missing port is stale>
+  save state, the-skip()
+  reached(state, <missing>)
+  want hold, and(is-equal(state/missing/code, 1), text-contains(state/missing/out, <STALE {port-probe}>))
+
+# a module that failed as cloned fails here too, and exits 1 for it alone
+test <--check: put back, nothing stale>
+  save state, the-skip()
+  reached(state, <clean>)
+  save clean, state/clean
+  want hold, and(is-equal(clean/stale, 0), and(fails-as-cloned(clean, state), or(is-equal(clean/code, 0), is-above(clean/failed, 0))))
+
+test <stdlib: the trace saw a stdlib file read, by at least one module>
+  save state, the-skip()
+  reached(state, <stdlib-trace>)
+  want hold, and(is-unequal(state/probe, <>), is-above(state/reading/length, 0))
+
+test <stdlib edit: the skip run and the --full run write the same bytes>
+  save state, the-skip()
+  reached(state, <stdlib>)
+  fork test, is-equal(state/probe, <>)
+    hold
+      skip <the trace saw no stdlib file read>
+  want hold, same-bytes(state/stdlib, state)
+
+test <stdlib edit: no module that read it is skipped>
+  save state, the-skip()
+  reached(state, <stdlib>)
+  fork test, is-equal(state/probe, <>)
+    hold
+      skip <the trace saw no stdlib file read>
+  save wrong, make list
+  walk state/reading
+    take module, like text
+    fork test, list-contains(state/stdlib/skip/skipped, module)
+      hold
+        wrong/push(module)
+  want hold, is-equal(wrong/length, 0)
+
+test <stdlib edit: the modules that never read it are skipped>
+  save state, the-skip()
+  reached(state, <stdlib>)
+  fork test, is-equal(state/probe, <>)
+    hold
+      skip <the trace saw no stdlib file read>
+  want hold, is-equal(add(state/stdlib/skip/skipped/length, state/reading/length), state/total)
+
+test <toolchain .tree edit: the probe holds a text literal to change>
+  save state, the-skip()
+  reached(state, <toolchain-literal>)
+  want hold, state/held-literal
+
+test <toolchain .tree edit: the skip run and the --full run write the same bytes>
+  save state, the-skip()
+  reached(state, <toolchain>)
+  want hold, same-bytes(state/toolchain, state)
+
+test <toolchain .tree edit: the module is not skipped, and builds>
+  save state, the-skip()
+  reached(state, <toolchain>)
+  save port, state/toolchain/skip
+  want hold, and(not(list-contains(port/skipped, port-probe)), not(is-below(port/built, 1)))
+
+test <compiler .ts edit: the skip run and the --full run write the same bytes>
+  save state, the-skip()
+  reached(state, <compiler>)
+  want hold, same-bytes(state/compiler, state)
+
+# every port compiles with stage0, never the working tree's compiler, so a compiler .ts edit moves no fingerprint
+# (decision 036 section 3 of term/self-host/change/001-finish-self-host)
+test <compiler .ts edit: every module is skipped, stage0 compiles them (decision 036)>
+  save state, the-skip()
+  reached(state, <compiler>)
+  save compiler, state/compiler/skip
+  want hold, and(is-equal(compiler/skipped/length, state/total), is-equal(compiler/built, 0))

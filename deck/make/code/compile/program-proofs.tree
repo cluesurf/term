@@ -18,6 +18,10 @@
 #     without `seen` (the original deleted `seen` from the tally it handed)
 #   - a set the original built is a list here, each name once in the order first met; a set of spans is a hash of
 #     `<line>:<column>`
+#   - THE PROVERS READ ONLY WHAT THE RUN HANDS THEM (ruling 1262 (a) of term/self-host/change/001-finish-self-host, item
+#     1649): check/elaborate.ts, check/holds.ts and check/totality.ts take the run's linear prover state (`refine`, the
+#     driver state's), and the holds its checker switches, as arguments, never check/refine.ts's or check/strict.ts's
+#     module state, so the run's count of uncertified answers is the count of this compile's own provers
 
 load @term/base/list
   find list
@@ -40,6 +44,9 @@ load ./program-run
 
 load ../check/checker-switches
   find checker-switches
+
+load ../check/eliminate
+  find refine-state
 
 load ../check/claim
   find claim-evidence
@@ -69,9 +76,11 @@ dock load
   load <@term/make/code/check/holds>, name program-proofs-holds
   load <@term/make/code/check/totality>, name program-proofs-totality
 
-# what the proofs read that the run does not hold: the checker's switches
+# what the proofs read that the run does not hold: the checker's switches, and the linear prover's state the holds and
+# termination prove through
 form proofs-given
   link switches, like checker-switches
+  link refine, like refine-state
 
 # the refusal that stops the compile, or none
 form proofs-answer
@@ -113,11 +122,18 @@ form proofs-obligations
     like dynamic
     need false
 
+# the holds' options where the kernel refused: only the run's prover state and switches
+form holds-run-options
+  link refine, like refine-state
+  link switches, like checker-switches
+
 # the holds' options for the program as written: the tasks another pass checks, and the rules the kernel proved
 form holds-skip-options
   link skip, like list, like text
   link kernel-proven, like list, like text
   link facts, like program-facts
+  link refine, like refine-state
+  link switches, like checker-switches
 
 # the holds' options for the checker's copy: the facts are the program's as written, not the copy's
 form holds-copy-options
@@ -125,6 +141,8 @@ form holds-copy-options
   link tally, like proofs-tally
   link only, like list, like text
   link facts, like program-facts
+  link refine, like refine-state
+  link switches, like checker-switches
 
 # ---- small helpers ----
 
@@ -238,12 +256,13 @@ task once-each
 # the terminating tasks, or none when the analysis fails: a crash there must cost proofs, never pass one
 task safe-terminating
   take program, like list, like statement
+  take refine, like refine-state
   like list, like text
   mark private
 
   fork
     mark unsafe
-    save found, proofs-set-list(program-proofs-totality/terminating-functions(program))
+    save found, proofs-set-list(program-proofs-totality/terminating-functions(program, refine))
     back found
   halt take
     take problem
@@ -301,7 +320,7 @@ task program-proofs
 
   # elaboration: the now-typed surface lowered into the dependent kernel, which verifies it, and discharges the
   # non-linear `hold` clauses it can by definitional equality
-  save elaboration, as-kernel-report(program-proofs-elaborate/elaborate-report(run/program, file))
+  save elaboration, as-kernel-report(program-proofs-elaborate/elaborate-report(run/program, file, given/refine))
   save kernel-discharged, make hash
   walk elaboration/discharged
     take at
@@ -321,7 +340,7 @@ task program-proofs
   save evidence
     make claim-evidence
       bind verified, once-each(elaboration/proven)
-      bind terminating, safe-terminating(run/program)
+      bind terminating, safe-terminating(run/program, given/refine)
       bind pure, pure-names
       bind declined, declined
 
@@ -339,7 +358,11 @@ task program-proofs
         save answered/{key}, true
       save found, make list
       push-all(found, elaboration/diagnostics)
-      walk as-diagnostics(program-proofs-holds/check-holds(run/program, file))
+      save run-options
+        make holds-run-options
+          bind refine, given/refine
+          bind switches, given/switches
+      walk as-diagnostics(program-proofs-holds/check-holds(run/program, file, run-options))
         take one
         fork test, and(is-equal(one/severity, make error), not(marked-at(one, answered)))
           hold
@@ -384,6 +407,8 @@ task program-proofs
       bind skip, checked/lowered
       bind kernel-proven, kernel-proven
       bind facts, known-facts
+      bind refine, given/refine
+      bind switches, given/switches
   save hold-diagnostics, make list
   walk as-diagnostics(program-proofs-holds/check-holds(run/program, file, skip-options))
     take one
@@ -475,6 +500,8 @@ task program-proofs
       bind tally, tally
       bind only, checked/lowered
       bind facts, known-facts
+      bind refine, given/refine
+      bind switches, given/switches
   walk as-diagnostics(program-proofs-holds/check-holds(checked/program, file, copy-options))
     take one
     fork test, not(marked-at(one, kernel-discharged))
@@ -510,7 +537,7 @@ task program-proofs
   save run/hold-warnings, hold-warnings
 
   # totality: strict positivity refuses, termination warns
-  save totality, as-totality(program-proofs-totality/check-totality(run/program, file))
+  save totality, as-totality(program-proofs-totality/check-totality(run/program, file, given/refine))
   fork test, is-above(totality/errors/length, 0)
     hold
       back proofs-refusal(totality/errors)

@@ -1,290 +1,25 @@
-# What a failing test raised, read back. The preprocessor (work/preprocess/test-rewriting.tree) writes every `want`
-# into a guard that raises `want:<line>` when it does not hold, `want:<line> part <n> of <m>` for a part of an `and`,
-# and for a comparison a `want-missed` carrying the two values it compared; a sampled test appends ` sampled at
-# <input>` to the marker. `term test` reads that marker back into a line the person can act on:
+# What a failing test's `want` said, as a line the person can act on. The preprocessor
+# (work/preprocess/test-rewriting.tree) writes every `want` into a guard that raises `want:<line>` when it does not
+# hold, `want:<line> part <n> of <m>` for a part of an `and`, and for a comparison a `want-missed` carrying the two
+# values it compared; a sampled test appends ` sampled at <input>` to the marker. `term test` reads that marker back
+# into a line the person can act on:
 #
 #   line 12 did not hold: want hold, is-equal double(0), 1, left 0, right 1
 #
-# Tests run on node, so a raise is the emitted TypeScript value and is read by the host's own reflection (binds).
+# Text work alone, the same on every backend: the runner (work/testing/test-running.tree) hands in the marker and the
+# shown values the test's report wrote. The raise itself is read in the test's own process by the node report
+# (call/code/test-report-node.tree, ruling 1660).
 #
-# Ported from deck/call/code/test-preprocess.ts (term-cli-in-term-0020): wantFailed and wantLine, with markerOf,
-# linkOf and shown under them. Both answer as the original did, a text or a number, else undefined, so a caller
-# that read the original reads these unchanged.
+# Ported from deck/call/code/test-preprocess.ts (term-cli-in-term-0020): wantFailed's line, with the marker read as
+# the original's `Number(/^\d+/.exec(...))` read it.
 
 load @term/base/text
-  find starts-with
   find contains
-
-# ---- the host values Term has no word for ----
-
-# what a raise names as its note: `raised?.note`
-bind raised-note
-  take raised, like dynamic
-  like dynamic
-  case node
-    text <$raised?.note>
-
-# what a raise carries in its link, when that is an object: `raised?.link`
-bind raised-link
-  take raised, like dynamic
-  like dynamic
-  case node
-    text <(typeof $raised?.link === "object" && $raised?.link !== null ? $raised.link : undefined)>
-
-bind link-thing
-  take link, like dynamic
-  like dynamic
-  case node
-    text <$link?.thing>
-
-bind link-left
-  take link, like dynamic
-  like dynamic
-  case node
-    text <$link.left>
-
-bind link-right
-  take link, like dynamic
-  like dynamic
-  case node
-    text <$link.right>
-
-# a link that carries both compared values: `"left" in link && "right" in link`
-bind carries-values
-  take link, like dynamic
-  like boolean
-  case node
-    text <($link !== undefined && "left" in $link && "right" in $link)>
-
-bind raised-absent
-  like dynamic
-  case node
-    text <undefined>
-
-bind is-raised-absent
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value === undefined)>
-
-bind is-host-text
-  take value, like dynamic
-  like boolean
-  case node
-    text <(typeof $value === "string")>
-
-bind as-host-text
-  take value, like dynamic
-  like text
-  case node
-    text <$value>
-
-bind as-host-number
-  take value, like dynamic
-  like number
-  case node
-    text <$value>
-
-# the number the marker's leading digits spell, NaN when it has none: `Number(/^\d+/.exec(text)?.[0] ?? NaN)`
-bind leading-number
-  take text, like text
-  like number
-  case node
-    text <Number(/^\d+/.exec($text)?.[0] ?? NaN)>
-
-# a line counted from one: a whole number above zero
-bind is-counted-line
-  take number, like number
-  like boolean
-  case node
-    text <(Number.isInteger($number) && $number \> 0)>
-
-bind before-number
-  take number, like number
-  like dynamic
-  case node
-    text <($number - 1)>
-
-bind after-number
-  take number, like number
-  like text
-  case node
-    text <`$\{$number + 1\}`>
-
-# `part 2 of 3`, or the empty text
-bind part-of
-  take marker, like text
-  like text
-  case node
-    text <(/part \d+ of \d+/.exec($marker)?.[0] ?? "")>
-
-# the text after the first `search` in `value`
-bind text-after
-  take value, like text
-  take search, like text
-  like text
-  case node
-    text <$value.slice($value.indexOf($search) + $search.length)>
-
-# the source's line `line`, trimmed, or the empty text past its end
-bind source-line
-  take source, like text
-  take line, like number
-  like text
-  case node
-    text <($source.split(String.fromCharCode(10))[$line]?.trim() ?? "")>
-
-# ---- the reflection `shown` reads a value by ----
-
-bind is-object-value
-  take value, like dynamic
-  like boolean
-  case node
-    text <(typeof $value === "object" && $value !== null)>
-
-# a value that is no object: `void` for undefined, else as the host writes it
-bind plain-shown
-  take value, like dynamic
-  like text
-  case node
-    text <($value === undefined ? "void" : String($value))>
-
-bind is-byte-list
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value instanceof Uint8Array)>
-
-bind raised-byte-count
-  take value, like dynamic
-  like number
-  case node
-    text <$value.length>
-
-bind is-host-list
-  take value, like dynamic
-  like boolean
-  case node
-    text <Array.isArray($value)>
-
-bind is-host-map
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value instanceof Map)>
-
-bind is-host-set
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value instanceof Set)>
-
-bind slot-count
-  take value, like dynamic
-  like number
-  case node
-    text <$value.length>
-
-# whether a list holds slot `at`: a hole is skipped by the original's map and written as nothing
-bind has-slot
-  take value, like dynamic
-  take at, like number
-  like boolean
-  case node
-    text <($at in $value)>
-
-bind slot-at
-  take value, like dynamic
-  take at, like number
-  like dynamic
-  case node
-    text <$value[$at]>
-
-# a map's or a set's members, in order: `[...value]`
-bind members-of
-  take value, like dynamic
-  like list, like dynamic
-  case node
-    text <[...$value]>
-
-bind record-entries
-  take value, like dynamic
-  like list, like dynamic
-  case node
-    text <Object.entries($value)>
-
-bind pair-key
-  take entry, like dynamic
-  like dynamic
-  case node
-    text <$entry[0]>
-
-bind pair-value
-  take entry, like dynamic
-  like dynamic
-  case node
-    text <$entry[1]>
-
-# a `maybe` that is none: `{ form: "none" }` and nothing else
-bind is-none-record
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value.form === "none" && Object.keys($value).length === 1)>
-
-bind joined-texts
-  take texts, like list, like text
-  take between, like text
-  like text
-  case node
-    text <$texts.join($between)>
-
-# ---- the reading ----
-
-# The line a failing `want` names, and, for a comparison, the two values it compared:
-# `line 12 did not hold: want hold, is-equal double(0), 1, left 0, right 1`. `raised` is what the test threw. Answers
-# the text, or undefined for a raise that is no failing `want`, which is the test's own failure.
-task want-failed
-  take raised, like dynamic
-  take source, like text
-  like dynamic
-
-  save found, want-line(raised)
-  fork test, is-raised-absent(found)
-    hold
-      back raised-absent()
-  back want-said(marker-text(raised), raise-shown(raised), source)
-
-# What a raise says in a test's report (work/testing/test-running.tree reads it back, in the runner, from the file): the
-# marker of a failing `want`, else what the raise says of itself. Runs in the test's own process, so it reads the raise
-# the host holds
-task raise-note
-  take raised, like dynamic
-  like text
-
-  save marker, marker-text(raised)
-  fork test, starts-with(marker, want-failed-mark())
-    hold
-      back marker
-  back raised-message(raised)
-
-# what a comparing `want` held, as written in a report: `left 0, right 1`. The empty text for any other raise
-task raise-shown
-  take raised, like dynamic
-  like text
-
-  save link, raised-link(raised)
-  fork test, carries-values(link)
-    hold
-      back <left {shown(link-left(link), 0)}, right {shown(link-right(link), 0)}>
-  back <>
-
-# `err instanceof Error ? err.message : String(err)`
-bind raised-message
-  take raised, like dynamic
-  like text
-  case node
-    text <($raised instanceof Error ? $raised.message : String($raised))>
+  find index-of
+  find substring
+  find char-count
+  find split
+  find trim
 
 # The line a person acts on, from a marker and the two values shown beside it: `line 12 did not hold: want hold,
 # is-equal double(0), 1, left 0, right 1`. `source` is the file as written
@@ -294,7 +29,8 @@ task want-said
   take source, like text
   like text
 
-  save line, before-number(leading-number(text-after(marker, want-failed-mark())))
+  # the line the marker names, its digits as Number() read them: leading zeros dropped, none for no digits
+  save digits, counted-digits(leading-digits(text-after(marker, want-failed-mark())))
   # the part of an `and` that did not hold, when the `want` was one: `part 2 of 3`
   save part, part-of(marker)
   save part-said, <>
@@ -310,46 +46,11 @@ task want-said
   fork test, not(is-equal(at, <>))
     hold
       save at-said, <, at {at}>
-  save said, <line {after-number(line)} did not hold{part-said}: {source-line(source, line)}{at-said}>
+  save said, <line {line-said(digits)} did not hold{part-said}: {source-line(source, digits)}{at-said}>
   fork test, is-unequal(values, <>)
     hold
       back <{said}, {values}>
   back said
-
-# the marker a failing `want` raised, the empty text when it raised none: its `thing` when it carries the compared
-# values, else its `note`
-task marker-text
-  take raised, like dynamic
-  like text
-
-  save thing, link-thing(raised-link(raised))
-  fork test, is-host-text(thing)
-    hold
-      save text, as-host-text(thing)
-      fork test, starts-with(text, want-failed-mark())
-        hold
-          back text
-  save note, raised-note(raised)
-  fork test, is-host-text(note)
-    hold
-      back as-host-text(note)
-  back <>
-
-# the line, counted from zero, of the `want` a failing test's marker names, or undefined for any other raise. The
-# marker is the raise's `note` (`halt <want:12>`), or its `thing` when the raise carries the compared values
-task want-line
-  take raised, like dynamic
-  like dynamic
-
-  save marker, marker-text(raised)
-  fork test, not(starts-with(marker, want-failed-mark()))
-    hold
-      back raised-absent()
-  save line, leading-number(text-after(marker, want-failed-mark()))
-  fork test, is-counted-line(line)
-    hold
-      back before-number(line)
-  back raised-absent()
 
 # the marker a failing `want` raises begins with this (WANT_FAILED)
 task want-failed-mark
@@ -363,57 +64,124 @@ task sampled-at
 
   back < sampled at >
 
-# A value as Term writes it: a text in angle brackets, a list in brackets, a hash or a record in braces, a `maybe` by
-# its case. Tests run on node, so this reads the emitted TypeScript value
-task shown
-  take value, like dynamic
-  take depth, like number
-  like text
+# ---- the text work under it ----
 
-  fork test, is-host-text(value)
+# the text after the first `search` in `value`: `value.slice(value.indexOf(search) + search.length)`
+task text-after
+  take value, like text
+  take search, like text
+  like text
+  mark private
+
+  back substring(value, add(index-of(value, search), char-count(search)))
+
+# one character that is an ASCII digit, as `\d` reads one
+task is-digit
+  take one, like text
+  like boolean
+  mark private
+
+  back and(is-equal(char-count(one), 1), contains(<0123456789>, one))
+
+# where the run of digits starting at `from` ends: `from` itself when there is none
+task digits-end
+  take value, like text
+  take from, like integer
+  like integer
+  mark private
+
+  save count, char-count(value)
+  save at, from
+  walk test
+    hook test, and(is-below(at, count), is-digit(substring(value, at, add(at, 1))))
+    hook hold
+      save at, add(at, 1)
+  back at
+
+# the digits a text begins with: `/^\d+/`, the empty text for none
+task leading-digits
+  take value, like text
+  like text
+  mark private
+
+  back substring(value, 0, digits-end(value, 0))
+
+# the digits as Number() writes their value back: leading zeros dropped, `0` for all zeros, the empty text for none
+task counted-digits
+  take digits, like text
+  like text
+  mark private
+
+  save count, char-count(digits)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, subtract(count, 1)), is-equal(substring(digits, at, add(at, 1)), <0>))
+    hook hold
+      save at, add(at, 1)
+  back substring(digits, at)
+
+# the line as the original wrote it, `NaN` when the marker named none
+task line-said
+  take digits, like text
+  like text
+  mark private
+
+  fork test, is-equal(digits, <>)
     hold
-      back <\<{as-host-text(value)}\>>
-  fork test, not(is-object-value(value))
+      back <NaN>
+  back digits
+
+# the source's line `digits`, counted from one and trimmed, or the empty text past its end or for none
+task source-line
+  take source, like text
+  take digits, like text
+  like text
+  mark private
+
+  save at, 1
+  walk split(source, <\n>)
+    take line, like text
+    fork test, is-equal(<{at}>, digits)
+      hold
+        back trim(line)
+    save at, add(at, 1)
+  back <>
+
+# `part 2 of 3`, the first in the marker, or the empty text: `/part \d+ of \d+/`
+task part-of
+  take marker, like text
+  like text
+  mark private
+
+  save from, index-of(marker, <part >)
+  walk test
+    hook test, is-minimum(from, 0)
+    hook hold
+      save end, part-end(marker, from)
+      fork test, is-above(end, from)
+        hold
+          back substring(marker, from, end)
+      save from, index-of(marker, <part >, add(from, 1))
+  back <>
+
+# where `part <n> of <m>` starting at `from` ends, `from` itself when the text there is not one
+task part-end
+  take marker, like text
+  take from, like integer
+  like integer
+  mark private
+
+  save first, add(from, 5)
+  save first-end, digits-end(marker, first)
+  fork test, is-equal(first-end, first)
     hold
-      back plain-shown(value)
-  fork test, is-above(depth, 3)
+      back from
+  fork test, not(is-equal(substring(marker, first-end, add(first-end, 4)), < of >))
     hold
-      back <...>
-  save deeper, add(depth, 1)
-  fork test, is-byte-list(value)
+      back from
+  save second, add(first-end, 4)
+  save second-end, digits-end(marker, second)
+  fork test, is-equal(second-end, second)
     hold
-      back <bytes({raised-byte-count(value)})>
-  save texts, make list
-  fork test, is-host-list(value)
-    hold
-      save at, 0
-      walk test
-        hook test
-          is-below(at, slot-count(value))
-        hook hold
-          fork test, has-slot(value, at)
-            hold
-              texts/push(shown(slot-at(value, at), deeper))
-            miss
-              texts/push(<>)
-          save at, add(at, 1)
-      back <[{joined-texts(texts, <, >)}]>
-  fork test, is-host-map(value)
-    hold
-      walk members-of(value)
-        take entry, like dynamic
-        texts/push(<{shown(pair-key(entry), deeper)}: {shown(pair-value(entry), deeper)}>)
-      back <\{{joined-texts(texts, <, >)}\}>
-  fork test, is-host-set(value)
-    hold
-      walk members-of(value)
-        take member, like dynamic
-        texts/push(shown(member, deeper))
-      back <set[{joined-texts(texts, <, >)}]>
-  fork test, is-none-record(value)
-    hold
-      back <none>
-  walk record-entries(value)
-    take entry, like dynamic
-    texts/push(<{as-host-text(pair-key(entry))}: {shown(pair-value(entry), deeper)}>)
-  back <\{{joined-texts(texts, <, >)}\}>
+      back from
+  back second-end

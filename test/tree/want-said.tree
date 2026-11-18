@@ -1,0 +1,34 @@
+# The line a failing `want` becomes (work/preprocess/failure-reading.tree `want-said`), item term-self-host-001-1658.
+# Text work alone, so it answers the same on node, rust, swift and kotlin (the base gate runs this file on all four).
+# Each answer below is what the node reading answered before the port, read off its regular expressions and Number().
+
+load @term/call/work/preprocess/failure-reading
+  find want-said
+
+host said-source, <first\n  want hold, is-equal(a, 1)  \nthird\nfourth\nfifth\nsixth\nseventh>
+
+test <a marker names its line, read from the source and trimmed>
+  want hold, is-equal(want-said(<want:2>, <>, said-source), <line 2 did not hold: want hold, is-equal(a, 1)>)
+  want hold, is-equal(want-said(<want:1>, <left 0, right 1>, said-source), <line 1 did not hold: first, left 0, right 1>)
+
+test <leading zeros are dropped as Number() drops them>
+  want hold, is-equal(want-said(<want:007>, <>, said-source), <line 7 did not hold: seventh>)
+  want hold, is-equal(want-said(<want:000>, <>, said-source), <line 0 did not hold: >)
+
+test <a line past the end, line zero and no digits read as the original read them>
+  want hold, is-equal(want-said(<want:9>, <>, said-source), <line 9 did not hold: >)
+  want hold, is-equal(want-said(<want:0>, <>, said-source), <line 0 did not hold: >)
+  want hold, is-equal(want-said(<want:x>, <>, said-source), <line NaN did not hold: >)
+  want hold, is-equal(want-said(<want:>, <>, said-source), <line NaN did not hold: >)
+
+test <the part of an and is the first whole part n of m>
+  want hold, is-equal(want-said(<want:3 part 2 of 3>, <>, said-source), <line 3 did not hold, part 2 of 3: third>)
+  want hold, is-equal(want-said(<want:3 part x of 2 part 10 of 12>, <>, said-source), <line 3 did not hold, part 10 of 12: third>)
+  want hold, is-equal(want-said(<want:3 part 12 of>, <>, said-source), <line 3 did not hold: third>)
+  want hold, is-equal(want-said(<want:3 part 1 ofx 2>, <>, said-source), <line 3 did not hold: third>)
+
+test <a sampled input follows the line>
+  want hold, is-equal(want-said(<want:1 sampled at 5>, <>, said-source), <line 1 did not hold: first, at 5>)
+  want hold, is-equal(want-said(<want:4 part 1 of 2 sampled at part 9 of 9>, <left 1, right 2>, said-source), <line 4 did not hold, part 1 of 2: fourth, at part 9 of 9, left 1, right 2>)
+  want hold, is-equal(want-said(<want:5 sampled at 𝄞 and ü>, <>, said-source), <line 5 did not hold: fifth, at 𝄞 and ü>)
+  want hold, is-equal(want-said(<want:6 sampled at >, <>, said-source), <line 6 did not hold: sixth>)
