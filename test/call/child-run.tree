@@ -1,0 +1,91 @@
+note <child-run's run-captured and run-command answer on node as make.ts's runCaptured and runCommand did>
+
+# deck/call/code/work/build/child-run.tree is the subject. Item term-self-host-001-1653 moved it from node:child_process
+# to @term/base process/child, and every answer here is the one the node original gave, so the suite holds on both.
+# Small `sh` children only, nothing that opens a window.
+
+load @term/call/work/build/child-run
+  find run-captured
+  find run-command
+  find script-ask
+  find command-ask
+
+load @term/base/list
+  find list
+
+# no arguments
+task no-words
+  like list, like text
+
+  save out, make list
+  back out
+
+# two arguments
+task two-words
+  take first, like text
+  take second, like text
+  like list, like text
+
+  save out, make list
+  out/push(first)
+  out/push(second)
+  back out
+
+# what run-captured answered, as `<code>|<lines joined by commas>`
+task captured-text
+  take cmd, like text
+  take args, like list, like text
+  take cwd, like text
+  take raw, like boolean
+  like text
+  mark async
+
+  save got, run-captured(make(script-ask, bind(cmd, cmd), bind(args, args), bind(cwd, cwd), bind(raw, raw)))
+  back <{got/code}|{got/lines/join(<,>)}>
+
+# what run-captured answered for a folder that is not there: its code and how many lines
+task absent-text
+  like text
+  mark async
+
+  save got, run-captured(make(script-ask, bind(cmd, <echo>), bind(args, no-words()), bind(cwd, </term-no-such-folder-1653>), bind(raw, false)))
+  back <{got/code} {got/lines/length}>
+
+# whether run-command came back or raised
+task command-text
+  take cmd, like text
+  take args, like list, like text
+  take shell, like boolean
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    run-command(make(command-ask, bind(cmd, cmd), bind(args, args), bind(cwd, <.>), bind(shell, shell)))
+    back <ok>
+  halt take
+    take problem
+    back <raised>
+
+test <both streams come back in the order written, with the exit code>
+  want hold, is-equal captured-text(<echo a; sleep 0.3; echo b 1\>&2; sleep 0.3; echo c; exit 3>, no-words(),<.>, false), <3|a,b,c>
+
+test <the arguments join the command through the shell>
+  want hold, is-equal captured-text(<echo>, two-words(<one>, <two>), <.>, false), <0|one two>
+
+test <a last line with no newline is a line, and an empty line stays>
+  want hold, is-equal captured-text(<echo a; echo; printf z>, no-words(),<.>, false), <0|a,,z>
+
+test <an end by a signal answers 130>
+  want hold, is-equal captured-text(<kill -TERM $$>, no-words(),<.>, false), <130|>
+
+test <raw output passes through and keeps no lines>
+  want hold, is-equal captured-text(<exit 4>, no-words(),<.>, true), <4|>
+
+test <a child that cannot start answers 127 and one line>
+  want hold, is-equal absent-text(), <127 1>
+
+test <run-command comes back on 0 and raises on any other code>
+  want hold, is-equal command-text(<exit 0>, no-words(),true), <ok>
+  want hold, is-equal command-text(<exit 5>, no-words(),true), <raised>
+  want hold, is-equal command-text(</bin/sh>, two-words(<-c>, <exit 0>), false), <ok>

@@ -1,0 +1,67 @@
+note <a caught raise passes to a parameter typed exception and to a list of them, on every backend>
+
+# Ported from exception-param.ts by statement (item term-self-host-001-0654). A value typed `exception` is the carrier a
+# caught raise is (decision 085, item 0460): a caught raise passed to a task parameter typed `exception`, and lists of them
+# (a local list and a list literal) passed to one typed a list of exceptions, read the raise's form and a link prop alike on
+# TypeScript, Rust, Swift and Kotlin. Before 0460 the native backends spelled the parameter as the form's struct generic
+# over its props (rustc E0308 and E0283, swiftc and kotlinc "could not infer T"). The project is a temp folder linking
+# deck/base, with a deck.tree and the program at code/exception-param.tree, as the original's. Its backend loop is one
+# walked test, each backend a case of it. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/running
+  find backends
+  find run-text
+
+load ../support/compiling
+  find compile-choice
+
+load ../support/judging
+  find make-record
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+dock load
+  load <node:fs>, name exception-file
+  load <node:path>, name exception-path
+
+host program, <load @term/base/exception\n  find exception\n\nload @term/base/maybe\n  find maybe\n\nload @term/base/list\n  find list\n\nform wrapped\n  like exception\n    bind note, \<Wrapped\>\n    link step, like text\n\ntask boom\n  take n, like number\n  like number\n  fork test, is-above(n, 3)\n    hold\n      halt wrapped\n        bind step, \<outer\>\n  back n\n\ntask describe\n  take e, like exception\n  like text\n  back \<\{e/form\}:\{e/note\}:\{e/link/step\}\>\n\ntask count-told\n  take all, like list, like exception\n  like text\n  save forms, make list\n  walk all\n    take one\n    push(forms, one/form)\n  back \<\{all/length\}:\{join(forms, \<,\>)\}\>\n\ntask run\n  like text\n  fork\n    mark unsafe\n    save x, boom(9)\n    back \<none\>\n  halt take\n    take problem\n    save kept, make list\n    push(kept, problem)\n    back \<\{describe(problem)\}/\{count-told(kept)\}/\{count-told(make list(problem, problem))\}\>\n  back \<none\>\n>
+
+host expected, <wrapped:Wrapped:outer/1:wrapped/2:wrapped,wrapped>
+
+host root, temp-folder(<term-exception-param->)
+
+task folder
+  take path, like text
+  like text
+
+  exception-file/mkdir-sync(path, make-record(make(list, <recursive>, true)))
+  back path
+
+# the project: link/@term/base at the real deck, a deck.tree, a code folder, and an out folder for the builds
+task set-up
+  take seed, like number
+  like text
+
+  host links, folder(exception-path/join(root, <link>, <@term>))
+  folder(exception-path/join(root, <code>))
+  exception-file/symlink-sync(exception-path/join(term-root(), <deck>, <base>), exception-path/join(links, <base>))
+  exception-file/write-file-sync(exception-path/join(root, <deck.tree>), <deck @probe/exception-param\n  code \<0.0.0\>\n>)
+  back folder(exception-path/join(root, <out>))
+
+host out, set-up(0)
+
+host file, exception-path/join(root, <code>, <exception-param.tree>)
+
+test <a caught raise passes to a parameter typed exception and to a list of them>
+  take backend, like text
+    walk backends()
+  host ran, run-text(program, backend, out, <exception-param-{backend}>, make(compile-choice, bind(project, root)), file)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)

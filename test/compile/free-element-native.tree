@@ -1,0 +1,72 @@
+note <a list of a generic form's case whose type argument nothing constrains builds and runs on every backend>
+
+# Ported from free-element-native.ts by statement (item term-self-host-001-0654, the defect term-self-host-001-0522, found
+# by 0510). `push(xs, make none)` onto a list of maybes nothing else types: the element's type argument is a free
+# variable. Rust spelled it two ways in one statement, the binding `Vec<Maybe<Rc<dyn Any>>>` and the element
+# `Maybe::<()>::None`, and rustc refused the mismatch. A free type argument is `()` in a construction
+# (compile/rust-emit.tree), so the list binding spells its element's free variables `()` too. Swift had the same defect in
+# its own spelling (`Maybe<Never>` handed where `Maybe<Any>` is wanted), fixed by 0529. The two Rust text tests come
+# first, then the backend loop as one walked test, each backend a case of it. A backend whose toolchain is not installed
+# is the case's own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find index-of
+  find substring
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# a list of maybes pushed `none` twice and read for its length, a local list pushed one `none` and never read
+host program, <load @term/base/maybe\n  find maybe\n\nload @term/base/list\n  find list\n  find push\n\ntask count-absent\n  take n, like number\n  like number\n  save xs, make list\n  push(xs, make none)\n  push(xs, make maybe/none)\n  back add(xs/length, n)\n\ntask unread\n  take n, like number\n  like number\n  save ys, make list\n  push(ys, make none)\n  back n\n\ntask run\n  like text\n  send back, \<\{count-absent(1)\} \{unread(5)\}\>\n>
+
+host expected, <3 5>
+
+host any-element, make pattern, <<Vec<Maybe<std::rc::Rc<dyn std::any::Any>>>>>
+
+# the program compiled for Rust over the project at the suite's root
+task built
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <text.tree>), bind(project, <.>), bind(project-env, <rust>), bind(env, <rust>)))
+
+# the Rust body of count-absent, from its signature to its closing brace
+task count-absent-body
+  take rust, like text
+  like text
+
+  save at, index-of(rust, <fn count_absent(>)
+  save rest, substring(rust, at)
+  save end, index-of(rest, <\n\}\n>)
+  back substring(rest, 0, end)
+
+test <compiles>
+  want hold, built()/ok
+
+test <rust: the list binding names no Rc\<dyn Any\> element for a free argument>
+  host out, built()
+  want hold, out/ok
+  want hold, not(matches(any-element, count-absent-body(emit-text(out, <rust>))))
+
+test <a list of maybes pushed none builds and runs, its length read>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-free-element->)
+  host ran, run-text(program, backend, folder, <free-element>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)

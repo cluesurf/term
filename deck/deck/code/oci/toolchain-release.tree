@@ -274,7 +274,7 @@ bind payload-platforms-of
   take index, like dynamic
   like dynamic
   case node
-    text <<Object.entries($table).filter(([, ofWant]) => $index.manifests?.some(ofOne => ofOne.platform?.os === ofWant.os && ofOne.platform?.architecture === ofWant.architecture)).map(([ofName]) => ofName)>>
+    text <<Object.entries($table as Record<string, { os: string, architecture: string }>).filter(([, ofWant]) => $index.manifests?.some(ofOne => ofOne.platform?.os === ofWant.os && ofOne.platform?.architecture === ofWant.architecture)).map(([ofName]) => ofName)>>
 
 bind payload-index-answer
   take digest, like dynamic

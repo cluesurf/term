@@ -1965,13 +1965,23 @@ task emit-binary
         case none
           save nothing, 0
       save left-text, comparison-operand(left, op, field-scope, st, facts)
-      save right-text, comparison-operand(right, op, field-scope, st, facts)
+      # swiftc refuses an `await` to the right of a non-assignment operator (`x == await f()`), and takes one inside
+      # parentheses there (T-1671). The left operand still comes first, so its effect runs first, as on every backend
+      save right-text, closed-await(comparison-operand(right, op, field-scope, st, facts))
       save mark, <>
       fork test, or(is-equal(op, <&&>), is-equal(op, <||>))
         hold
           fork test, or(holds-try(left-text), holds-try(right-text))
             hold
               save mark, <try >
+          # the right of `&&` and `||` is an autoclosure, which cannot await: one that awaits is the branch of a
+          # conditional, so it runs only when the left lets it, as the operator would
+          fork test, awaits-outside-closures(right-text)
+            hold
+              fork test, is-equal(op, <&&>)
+                hold
+                  back <({mark}{left-text} ? {right-text} : false)>
+              back <({mark}{left-text} ? true : {right-text})>
         miss
           fork test, or(open-try(left-text), open-try(right-text))
             hold
@@ -2027,6 +2037,17 @@ task emit-binary
       back <({mark}{left-text} {op} {right-text})>
     miss
       back <>
+
+# an operand that begins with `await`, in parentheses, so it may stand to the right of an operator (T-1671)
+task closed-await
+  take text, like text
+  like text
+  mark private
+
+  fork test, starts-with(text, <await >)
+    hold
+      back <({text})>
+  back text
 
 task is-integer-literal
   take node, like expression

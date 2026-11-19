@@ -1,0 +1,140 @@
+note <two forms with a field-less case of one name each get their own constant and guard, tagged as their form declares>
+
+# Ported from fieldless-owner.ts by statement (item term-self-host-001-0654, decision 061, trap T-0360). Two forms that
+# each declare a field-less case of one name get a constant and guard each, keyed by their form and case, each built with
+# the tag field its own form declares. Until then the TypeScript emitter wrote one constant per case NAME, so `make blank`
+# of `piece` built `{kind: "blank"}`, the tag of the other form. A case only one form declares keeps its plain name, so no
+# other program's text moves. Emitted AND run: the emitted module is imported in this process through
+# test/support/importing (the original imported its .ts file under tsx), its tasks called and their answers read as
+# JSON. Then every backend, one walked test with each backend a case of it: the native backends emit one enum per form,
+# so a case name is scoped by its form there already, and this holds them to the same answer. The tests after the first
+# four each fail on their own when the program does not compile, where the original left them out.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/importing
+  find import-text
+  find call-export
+
+load ../support/walking
+  find json-without
+
+load ../support/judging
+  find make-record
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host source, <form inspect\n  mark tag, name kind\n  case text\n  case blank\n\nform piece\n  case blank\n  case lone\n  case chain\n    link parts, like list, like text\n\ntask first\n  like inspect\n  send back, make blank\n\ntask second\n  like piece\n  send back, make blank\n\ntask third\n  like piece\n  send back, make lone\n\ntask inspect-name\n  take i, like inspect\n  like text\n  fork case, read i\n    case text\n      send back, text \<text\>\n    case blank\n      send back, text \<inspect blank\>\n\ntask piece-name\n  take p, like piece\n  like text\n  fork case, read p\n    case blank\n      send back, text \<piece blank\>\n    case lone\n      send back, text \<lone\>\n    case chain\n      send back, text \<chain\>\n>
+
+host inspect-blank, make pattern, <<const __termVariantInspectBlank = Object\.freeze\(\{ kind: "blank" as const \}\)>>
+host piece-blank, make pattern, <<const __termVariantPieceBlank = Object\.freeze\(\{ form: "blank" as const \}\)>>
+host bare-blank, make pattern, <<__termVariantBlank\b>>
+host plain-lone, make pattern, <<const __termVariantLone = Object\.freeze\(\{ form: "lone" as const \}\)>>
+
+# every backend: each form's blank is its own value and each match finds it
+host native, <form inspect\n  mark tag, name kind\n  case text\n  case blank\n\nform piece\n  case blank\n  case lone\n\ntask inspect-name\n  take i, like inspect\n  like text\n  sift i\n    case text\n      back \<text\>\n    case blank\n      back \<inspect-blank\>\n\ntask piece-name\n  take p, like piece\n  like text\n  sift p\n    case blank\n      back \<piece-blank\>\n    case lone\n      back \<lone\>\n\ntask first\n  like inspect\n  back make blank\n\ntask second\n  like piece\n  back make blank\n\ntask third\n  like piece\n  back make lone\n\ntask run\n  like text\n  save i, first()\n  save p, second()\n  save q, third()\n  back \<\{inspect-name(i)\} \{piece-name(p)\} \{piece-name(q)\} \{i/kind\} \{p/form\}\>\n>
+
+host out, compile-text(source, make(compile-choice, bind(file, </gate/code/fieldless-owner.tree>)))
+
+# host native: an exported task of the module called with one value, its answer
+bind call-with
+  take module, like dynamic
+  take name, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$module[$name]($value)>
+
+# host native: whether two host values are the same value
+bind same-value
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+  case node
+    text <($a === $b)>
+
+# the emitted module, imported once
+form fieldless-held
+  mark shared
+  link module, like dynamic, fall void
+  link made, like boolean, fall false
+
+host held, make fieldless-held
+
+task module
+  like dynamic
+  mark async
+
+  fork test, held/made
+    hold
+      back held/module
+  save held/module, import-text(out/emitted, temp-folder(<term-fieldless-owner->), <fieldless-owner>)
+  save held/made, true
+  back held/module
+
+task json
+  take value, like dynamic
+  like text
+
+  back json-without(value, make list)
+
+test <it compiles>
+  want hold, out/ok
+
+test <the shared case has one constant per form, tagged as its form declares>
+  want hold, and(matches(inspect-blank, out/emitted), matches(piece-blank, out/emitted))
+
+test <no constant is named by the shared case alone>
+  want hold, out/ok
+  want hold, not(matches(bare-blank, out/emitted))
+
+test <a case one form declares keeps its plain name>
+  want hold, matches(plain-lone, out/emitted)
+
+test <inspect blank carries kind>
+  want hold, out/ok
+  want hold, is-equal(json(call-export(module(), <first>)), <{"kind":"blank"}>)
+
+test <piece blank carries form>
+  want hold, out/ok
+  want hold, is-equal(json(call-export(module(), <second>)), <{"form":"blank"}>)
+
+test <the two are different values>
+  want hold, out/ok
+  host m, module()
+  want hold, not(same-value(call-export(m, <first>), call-export(m, <second>)))
+
+test <each match finds its own blank>
+  want hold, out/ok
+  host m, module()
+  want hold, is-equal(call-with(m, <inspectName>, call-export(m, <first>)), <inspect blank>)
+  want hold, is-equal(call-with(m, <pieceName>, call-export(m, <second>)), <piece blank>)
+
+test <the other cases still match>
+  want hold, out/ok
+  host m, module()
+  want hold, is-equal(call-with(m, <pieceName>, call-export(m, <third>)), <lone>)
+  want hold, is-equal(call-with(m, <pieceName>, make-record(make(list, <form>, <chain>, <parts>, make list))), <chain>)
+
+test <each form's blank is its own, and each match finds it>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-fieldless-owner-native->)
+  host ran, run-text(native, backend, folder, <fieldless-owner>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <inspect-blank piece-blank lone blank blank>)

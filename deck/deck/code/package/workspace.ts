@@ -8,20 +8,20 @@ import { fromPort } from './manifest'
 
 export type Workspace = DeckManifest & { dir: string }
 
-// the folder is a `like maybe` field with `need false`, stored bare (self-host traps T002)
-type PortWorkspace = { manifest: Record<string, unknown>; dir: string }
-
 export async function findWorkspaces(input: {
   root: string
 }): Promise<Map<string, Workspace>> {
-  const found = (await refused(() =>
+  // the port's own workspace-deck, read as it types it (term-self-host-001-1679)
+  const found = await refused(() =>
     port.findWorkspaces(input.root, GRAMMARS),
-  )) as Map<string, PortWorkspace>
+  )
 
   const out = new Map<string, Workspace>()
 
   for (const [name, deck] of found) {
-    out.set(name, { ...fromPort(deck.manifest), dir: deck.dir })
+    // the folder is a `like maybe` field with `need false`, stored bare (self-host traps T002), and scan-for-decks
+    // sets it on every deck it finds. The manifest is spread into a plain record, the shape fromPort reads
+    out.set(name, { ...fromPort({ ...deck.manifest }), dir: deck.dir! })
   }
 
   return out

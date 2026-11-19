@@ -171,7 +171,7 @@ bind address-rest-is-misshapen
   take rest, like list, like text
   like boolean
   case node
-    text <<($rest.length === 0 || $rest.slice(0, -1).some(part => !part.startsWith("@")) || $rest.at(-1).startsWith("@"))>>
+    text <<($rest.length === 0 || $rest.slice(0, -1).some(part => !part.startsWith("@")) || $rest.at(-1)?.startsWith("@") === true)>>
 
 bind address-below
   take rest, like list, like text

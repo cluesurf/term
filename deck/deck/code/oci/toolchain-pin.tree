@@ -82,7 +82,7 @@ bind pin-port-hold
   take hold, like dynamic
   like code-hold
   case node
-    text <<((pinHold_) => { const pinCode_ = (pinC_) => ({ major: pinC_.major, minor: pinC_.minor, patch: pinC_.patch, prerelease: pinC_.prerelease ?? "", build: pinC_.build ?? "" }); const pinWalk_ = (pinH_) => pinH_.form === "exact" ? { form: "exact", code: pinCode_(pinH_.code) } : pinH_.form === "wild" ? { form: "wild", major: pinH_.major, minor: pinH_.minor ?? -1, patch: pinH_.patch ?? -1 } : pinH_.form === "band" ? { form: "band", base: pinCode_(pinH_.base), head: pinCode_(pinH_.head) } : { form: "test", list: pinH_.list.map(pinWalk_) }; return pinWalk_(pinHold_) })($hold)>>
+    text <<((pinHold_) => { const pinCode_ = (pinC_) => ({ major: pinC_.major, minor: pinC_.minor, patch: pinC_.patch, prerelease: pinC_.prerelease ?? "", build: pinC_.build ?? "" }); const pinWalk_ = (pinH_) => pinH_.form === "exact" ? { form: "exact" as const, code: pinCode_(pinH_.code) } : pinH_.form === "wild" ? { form: "wild" as const, major: pinH_.major, minor: pinH_.minor ?? -1, patch: pinH_.patch ?? -1 } : pinH_.form === "band" ? { form: "band" as const, base: pinCode_(pinH_.base), head: pinCode_(pinH_.head) } : { form: "test" as const, list: pinH_.list.map(pinWalk_) }; return pinWalk_(pinHold_) })($hold)>>
 
 bind pin-nothing
   like dynamic

@@ -1,0 +1,803 @@
+note <the tree/code codec on the native backends: each writes the reference codec's bytes and reads them back unchanged>
+
+# Ported from host-code-native.ts by statement (item term-self-host-001-0655). `@term/host`'s codec with its whole stdlib
+# closure (the float bits included) is compiled for Rust, Swift and Kotlin, built with the real toolchain, and run. Each
+# backend must write the reference codec's bytes (compile/host-code, the module this suite is about with compile/host,
+# docked as decision 106 allows) for the same data, decode then encode them back unchanged, refuse the native edges as
+# the TypeScript port refuses them, and read and write back the two ends of the 64-bit range (item 0299, decision 041
+# section 3). A backend whose toolchain is not installed is skipped, never failed.
+#
+# The original's loops over its inputs and its edges are walked tests, each input or edge a case: per backend one test
+# of the build, one of the five encodings, one of the five round trips, one of the ten edges, 21 cases as the original's
+# 21 oks, and the TypeScript port's own 8 first. The original compiled through a front end of its own over @term/base and
+# @term/host. Here compile-text compiles over the Term project under each env, the roots its entries, and the Rust
+# prelude is held to the emitted code as running.tree's Rust leg holds it. The integers past 2^53 the edges are made of
+# are @term/base/integer/big, so each varint is exact. HN_ONLY=rust, swift or kotlin runs one backend.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+  find file-text
+
+load ../support/running
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find truth
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find split, name text-split
+  find starts-with
+  find substring
+
+load @term/base/text/string
+  find repeat
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load @term/base/text/number
+  find parse-integer
+  find to-radix
+
+load @term/base/integer/big
+  find big-integer
+  find make-big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-divide
+  find big-remainder
+  find big-compare
+
+dock load
+  load <@term/make/code/compile/host>, name host-module
+  load <@term/make/code/compile/host-code>, name code-module
+  load <@term/make/code/compile/kotlin>, name codec-kotlin
+  load <node:os>, name codec-os
+  load <node:path>, name codec-path
+
+# host value: a text as a JSON string, the literal each backend's main spells an argument with
+bind json-of
+  take value, like text
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# host value: the bytes a text of hex digits spells
+bind bytes-of-hex
+  take hex, like text
+  like dynamic
+  case node
+    text <Uint8Array.from(Buffer.from($hex, "hex"))>
+
+# host value: bytes as hex digits
+bind hex-of
+  take bytes, like dynamic
+  like text
+  case node
+    text <Buffer.from($bytes).toString("hex")>
+
+form file-and-text
+  link file, like text
+  link text, like text
+
+# one edge each backend is held to: `call` <refusal> or <recode>, the stream as hex, what it must print, and its name
+form native-edge
+  link call, like text
+  link hex, like text
+  link want, like text
+  link name, like text
+
+# one backend built and run. `state` is <skipped>, <failed> (the compile, the build or the run) or <ran>, and `got`
+# what the program printed, split at its separators
+form codec-leg
+  link state, like text
+  link reason, like text, fall <>
+  link got
+    like list, like text
+    fall make list
+
+form codec-legs
+  mark shared
+  link held, like hash, like text, like codec-leg
+
+host codec-held, make(codec-legs, bind(held, make hash))
+
+host entry-program, <load @term/host/code/base\n  find read\n  find to-code\n  find to-code-all\n  find from-code\n  find code-defect\n\nload @term/base/exception\n  find failure\n\nload @term/base/bytes\n  find to-hex\n  find from-hex\n\n# the tree/code of a data file's text, as hex\ntask code-hex\n  take input, like text\n  like text\n  send back\n    call to-hex\n      call to-code\n        call read(read input)\n\n# decode then encode, as hex\ntask recode-hex\n  take input, like text\n  like text\n  send back\n    call to-hex\n      call to-code-all\n        call from-code\n          call from-hex(read input)\n\n# how a stream is refused: the defect's name, byte and message, or `accepted`\ntask refusal-of\n  take input, like text\n  like text\n  fork\n    mark unsafe\n    save values\n      call from-code\n        call from-hex(read input)\n    send back, text \<accepted\>\n  halt take\n    take defect\n    fork case, read defect\n      case code-defect\n        send back, text \<\{problem\} @\{at\}: \{reason\}\>\n      case failure\n        send back, text \<failure: \{note\}\>\n  send back, text \<another defect\>\n>
+
+# the data each backend encodes: the spec's worked example, every kind of literal in its shortest form, text past ASCII
+# (`1e300` is left out: @term/host's own text reader panics on it on Rust, note/project/term/host/10-code.md), and the
+# two fixtures
+host input-0, <list member\n  mesh\n    host name, \<ada\>\n    host age, 36\n    host active, true\n  mesh\n    host name, \<alan\>\n    host age, 41\n    host active, false\n>
+
+host input-1, <host a, -3.5\nhost b, true\nhost c, void\nhost f, 2.0\nhost g, 0.1\nhost h, -40\nhost i, 1099511627776\nhost k, -0.0\nhost l, \<\>\n>
+
+host input-2, <host a, \<é 世界 😀 👩‍👩‍👧\>\nhost b, \<line\\nbreak \\\<x\\\>\>\n>
+
+
+host fixture-root, <deck/host/test/fixture>
+
+host head-bytes, <d3 54 52 01>
+
+host cargo-toml, <[package]\nname = "host_code_native"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nserde_json = "1"\nregex = "1"\nbase64 = "0.22"\nhex = "0.4"\nsha2 = "0.10"\nuuid = \{ version = "1", features = ["v4"] \}\nrand = "0.8"\n>
+
+task inputs
+  like list, like text
+
+  back make list(input-0, input-1, input-2, file-text(codec-path/join(fixture-root, <basic.tree>)), file-text(codec-path/join(fixture-root, <anchors.tree>)))
+
+# the inputs by their place, <0> to <4>, the cases of the input tests
+task input-places
+  like list, like text
+
+  save out, make list
+  save at, 0
+  walk inputs()
+    take one, like text
+    out/push(<{at}>)
+    save at, add(at, 1)
+  back out
+
+task messages-of
+  take diagnostics, like dynamic
+  like text
+
+  save out, make list
+  walk diagnostics
+    take one, like dynamic
+    out/push(one/message)
+  back out/join(< | >)
+
+# the reference codec's bytes for a data file's text, as hex, else why it did not read
+task reference
+  take given, like text
+  like text
+
+  host read-out, host-module/read-data-text(make(file-and-text, bind(file, <input>), bind(text, given)))
+  fork test, not(truth(read-out/ok))
+    hold
+      back messages-of(read-out/diagnostics)
+  host expanded, host-module/expand-data(read-out/data, <input>)
+  fork test, not(truth(expanded/ok))
+    hold
+      back messages-of(expanded/diagnostics)
+  back hex-of(code-module/encode-tree(expanded/data))
+
+task wants
+  like list, like text
+
+  save out, make list
+  walk inputs()
+    take one, like text
+    out/push(reference(one))
+  back out
+
+# ---- the native edges (item term-self-host-001-0299, decision 041 section 3) ----
+
+# 2 to the power
+task big-power
+  take exponent, like number
+  like big-integer
+
+  save out, big-from-number(1)
+  save two, big-from-number(2)
+  save at, 0
+  walk test
+    hook test, is-below(at, exponent)
+    hook hold
+      save out, big-multiply(out, two)
+      save at, add(at, 1)
+  back out
+
+task hex-pair
+  take value, like number
+  like text
+
+  save digits, to-radix(value, 16)
+  fork test, is-below(digits/length, 2)
+    hold
+      back <0{digits}>
+  back digits
+
+# a varint, seven bits a byte, low first, the top bit set on every byte but the last, as hex pairs with a space between
+task leb
+  take value, like big-integer
+  like text
+
+  save zero, big-from-number(0)
+  save base, big-from-number(128)
+  save out, make list
+  save left, value
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save low-big, big-remainder(left, base)
+      save low, parse-integer(low-big/text())
+      save left, big-divide(left, base)
+      fork test, is-above(big-compare(left, zero), 0)
+        hold
+          out/push(hex-pair(add(low, 128)))
+        miss
+          out/push(hex-pair(low))
+          save going, false
+  back out/join(< >)
+
+# the number of binary digits of a positive integer
+task bit-length
+  take value, like big-integer
+  like number
+
+  save zero, big-from-number(0)
+  save two, big-from-number(2)
+  save count, 0
+  save left, value
+  walk test
+    hook test, is-above(big-compare(left, zero), 0)
+    hook hold
+      save left, big-divide(left, two)
+      save count, add(count, 1)
+  back count
+
+# one frame of `kind` holding `body`, its length a varint
+task frame
+  take kind, like text
+  take body, like text
+  like text
+
+  save bytes, make list
+  walk text-split(body, < >)
+    take piece, like text
+    fork test, is-unequal(piece, <>)
+      hold
+        bytes/push(piece)
+  back <{head-bytes} {kind} {leb(big-from-number(bytes/length))} {bytes/join(< >)}>
+
+task compact
+  take stream, like text
+  like text
+
+  save pieces, text-split(stream, < >)
+  back pieces/join(<>)
+
+# how the TypeScript port decodes a stream: its problem's name, byte and message, or <accepted>
+task port-refusal
+  take stream, like text
+  like text
+
+  host decoded, code-module/decode-tree(bytes-of-hex(compact(stream)))
+  fork test, truth(decoded/ok)
+    hold
+      back <accepted>
+  back <{decoded/problem/name} @{decoded/problem/at}: {decoded/problem/message}>
+
+# refusals whose message carries a decimal: a count past 2^53 - 1, a frame length past it, a compressed frame's declared
+# size at 2^53 and past the 64 MiB frame limit, and values nested past the depth limit of 256
+task refusal-streams
+  like list, like text
+
+  save out, make list
+  out/push(<{head-bytes} 01 0a 9c ff ff ff ff ff ff ff ff 01>)
+  out/push(<{head-bytes} 01 {repeat(<ff >, 8)}7f e0>)
+  out/push(frame(<02>, leb(big-power(53))))
+  out/push(frame(<02>, leb(big-power(27))))
+  out/push(frame(<01>, <{repeat(<81 >, 257)}e0>))
+  back out
+
+task refusal-names
+  like list, like text
+
+  back make list(<too-large>, <too-large>, <too-large>, <too-large>, <too-deep>)
+
+# integers past 64 bits: the format carries them (TypeScript reads the nearest double), a native number cannot, so each
+# native backend refuses them as `too-large` at the integer's head byte (6), naming its width in bits
+task wide-bodies
+  like list, like text
+
+  back make list(<1c ff ff ff ff ff ff ff ff ff 01>, <3c ff ff ff ff ff ff ff ff ff 01>, <1c 80 80 80 80 80 80 80 80 80 80 01>)
+
+task wide-values
+  like list, like big-integer
+
+  save out, make list
+  save one, big-from-number(1)
+  save above, big-from-number(28)
+  out/push(big-add(big-subtract(big-power(64), one), above))
+  out/push(big-add(big-add(big-subtract(big-power(64), one), above), one))
+  out/push(big-add(big-power(70), above))
+  back out
+
+# the two ends of the 64-bit range, read and written back unchanged on every native backend: 2^63 - 1, and -2^63 (major
+# 1 carries -1 - value, the same digits)
+task range-ends
+  like list, like text
+
+  save digits, leb(big-subtract(big-subtract(big-power(63), big-from-number(1)), big-from-number(28)))
+  back make list(compact(frame(<01>, <1c {digits}>)), compact(frame(<01>, <3c {digits}>)))
+
+# the calls each backend makes after the round trips, and what each must print
+task edges
+  like list, like native-edge
+
+  save out, make list
+  save streams, refusal-streams()
+  walk streams
+    take stream, like text
+    out/push(make(native-edge, bind(call, <refusal>), bind(hex, compact(stream)), bind(want, port-refusal(stream)), bind(name, <refuses {substring(stream, 12, 40)}... as the TypeScript port does>)))
+  save values, wide-values()
+  save at, 0
+  walk wide-bodies()
+    take body, like text
+    save bits, bit-length(values/{at})
+    out/push(make(native-edge, bind(call, <refusal>), bind(hex, compact(frame(<01>, body))), bind(want, <too-large @6: an integer of {bits} bits, past the 64-bit range a number holds here>), bind(name, <refuses the {bits}-bit integer {substring(body, 0, 14)}... as too-large>)))
+    save at, add(at, 1)
+  walk range-ends()
+    take hex, like text
+    out/push(make(native-edge, bind(call, <recode>), bind(hex, hex), bind(want, hex), bind(name, <reads and writes back {substring(hex, 8, 30)}..., an end of the 64-bit range>)))
+  back out
+
+task edge-names
+  like list, like text
+
+  save out, make list
+  walk edges()
+    take one, like native-edge
+    out/push(one/name)
+  back out
+
+# the place of a text in a list, -1 when it is not there
+task place-of
+  take all, like list, like text
+  take one, like text
+  like number
+
+  save at, 0
+  walk all
+    take each, like text
+    fork test, is-equal(each, one)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# the TypeScript port's refusals, each by its stream's name and the problem it is refused with
+task refusal-labels
+  like list, like text
+
+  save out, make list
+  save names, refusal-names()
+  save at, 0
+  walk refusal-streams()
+    take stream, like text
+    out/push(<{substring(stream, 12, 40)}... as {names/{at}}>)
+    save at, add(at, 1)
+  back out
+
+# each wide integer by its width and its head: two are 65 bits wide, which the original's names alone did not tell apart
+task wide-labels
+  like list, like text
+
+  save out, make list
+  save bodies, wide-bodies()
+  save at, 0
+  walk wide-values()
+    take value, like big-integer
+    out/push(<the {bit-length(value)}-bit integer {substring(bodies/{at}, 0, 14)}...>)
+    save at, add(at, 1)
+  back out
+
+# ---- the native legs ----
+
+task roots
+  like list, like text
+
+  back make list(<code-hex>, <recode-hex>, <refusal-of>)
+
+task compiled
+  take env, like text
+  like compile-outcome
+
+  back compile-text(entry-program, make(compile-choice, bind(file, <main.tree>), bind(project, <.>), bind(project-env, env), bind(env, env), bind(entries, roots())))
+
+task separator
+  like text
+
+  back rune-to-text(30)
+
+task rust-calls
+  like list, like text
+
+  save out, make list
+  walk inputs()
+    take input, like text
+    out/push(<print!("\{\}\\u\{1e\}", code_hex({json-of(input)}.to_string()).unwrap_or_else(|e| \{ eprintln!("\{\}", e); std::process::exit(1) \}));>)
+  walk wants()
+    take hex, like text
+    out/push(<print!("\{\}\\u\{1e\}", recode_hex({json-of(hex)}.to_string()).unwrap_or_else(|e| \{ eprintln!("\{\}", e); std::process::exit(1) \}));>)
+  # refusal-of catches every raise, so Rust gives it no Result
+  walk edges()
+    take edge, like native-edge
+    fork test, is-equal(edge/call, <refusal>)
+      hold
+        out/push(<print!("\{\}\\u\{1e\}", refusal_of({json-of(edge/hex)}.to_string()));>)
+      miss
+        out/push(<print!("\{\}\\u\{1e\}", recode_hex({json-of(edge/hex)}.to_string()).unwrap_or_else(|e| \{ format!("raised \{\}", e) \}));>)
+  back out
+
+task swift-calls
+  like list, like text
+
+  save out, make list
+  walk inputs()
+    take input, like text
+    out/push(<print(try! codeHex(input: {json-of(input)}), terminator: "\\u\{1e\}")>)
+  walk wants()
+    take hex, like text
+    out/push(<print(try! recodeHex(input: {json-of(hex)}), terminator: "\\u\{1e\}")>)
+  walk edges()
+    take edge, like native-edge
+    save named, <recodeHex>
+    fork test, is-equal(edge/call, <refusal>)
+      hold
+        save named, <refusalOf>
+    out/push(<do \{ print(try {named}(input: {json-of(edge/hex)}), terminator: "\\u\{1e\}") \} catch \{ print("raised \\(error)", terminator: "\\u\{1e\}") \}>)
+  back out
+
+task kotlin-calls
+  like list, like text
+
+  save out, make list
+  walk inputs()
+    take input, like text
+    out/push(<codeHex({json-of(input)})>)
+  walk wants()
+    take hex, like text
+    out/push(<recodeHex({json-of(hex)})>)
+  walk edges()
+    take edge, like native-edge
+    save named, <recodeHex>
+    fork test, is-equal(edge/call, <refusal>)
+      hold
+        save named, <refusalOf>
+    out/push(<(try \{ {named}({json-of(edge/hex)}) \} catch (e: Throwable) \{ "raised " + e \})>)
+  back out
+
+task leg-skipped
+  take reason, like text
+  like codec-leg
+
+  back make(codec-leg, bind(state, <skipped>), bind(reason, reason))
+
+task leg-failed
+  take reason, like text
+  like codec-leg
+
+  back make(codec-leg, bind(state, <failed>), bind(reason, substring(reason, 0, 2400)))
+
+task leg-ran
+  take output, like text
+  like codec-leg
+
+  back make(codec-leg, bind(state, <ran>), bind(got, text-split(output, separator())))
+
+task rust-leg
+  like codec-leg
+
+  fork test, is-equal(find-tool(<cargo>), <>)
+    hold
+      back leg-skipped(<cargo not installed>)
+  save out, compiled(<rust>)
+  fork test, not(out/ok)
+    hold
+      back leg-failed(out/messages/join(< | >))
+  save code, emit-text(out, <rust>)
+  save prelude, prelude-text(out, <rust>, code)
+  save folder, temp-folder(<term-host-code-native->)
+  save project, codec-path/join(folder, <rust>)
+  make-folder(codec-path/join(project, <src>))
+  write-file(codec-path/join(project, <Cargo.toml>), cargo-toml)
+  save calls, rust-calls()
+  save lines, calls/join(<\n>)
+  write-file(codec-path/join(project, <src>, <main.rs>), <{prelude}\n{code}\nfn main() \{\n{lines}\n\}\n>)
+  save environment, make hash
+  save name, <CARGO_TARGET_DIR>
+  save environment/{name}, codec-path/join(codec-os/tmpdir(), <term-host-native-target>)
+  save ran, run(<cargo>, make(list, <run>, <--quiet>), bind(directory, project), bind(environment, environment))
+  fork test, is-unequal(ran/code, 0)
+    hold
+      back leg-failed(<{ran/error}{ran/output}>)
+  back leg-ran(ran/output)
+
+task swift-leg
+  like codec-leg
+
+  fork test, is-equal(find-tool(<swiftc>), <>)
+    hold
+      back leg-skipped(<swiftc not installed>)
+  save out, compiled(<swift>)
+  fork test, not(out/ok)
+    hold
+      back leg-failed(out/messages/join(< | >))
+  save folder, temp-folder(<term-host-code-native->)
+  save file, codec-path/join(folder, <main.swift>)
+  save calls, swift-calls()
+  save lines, calls/join(<\n>)
+  write-file(file, <{prelude-text(out, <swift>)}\n{emit-text(out, <swift>)}\n{lines}\n>)
+  save binary, codec-path/join(folder, <main>)
+  save failed, run-tool(make list(<swiftc>, <-o>, binary, file))
+  fork test, is-unequal(failed, <>)
+    hold
+      back leg-failed(failed)
+  save ran, run(binary, make list)
+  fork test, is-unequal(ran/code, 0)
+    hold
+      back leg-failed(<{ran/error}{ran/output}>)
+  back leg-ran(ran/output)
+
+task kotlin-leg
+  like codec-leg
+
+  fork test, or(is-equal(find-tool(<kotlinc>), <>), is-equal(find-tool(<java>), <>))
+    hold
+      back leg-skipped(<kotlinc/java not installed>)
+  save out, compiled(<kotlin>)
+  fork test, not(out/ok)
+    hold
+      back leg-failed(out/messages/join(< | >))
+  save folder, temp-folder(<term-host-code-native->)
+  save file, codec-path/join(folder, <main.kt>)
+  save calls, kotlin-calls()
+  save listed, calls/join(<, >)
+  write-file(file, codec-kotlin/hoist-kotlin-imports(<{prelude-text(out, <kotlin>)}\n{emit-text(out, <kotlin>)}\nfun main() \{ for (out in listOf({listed})) \{ print(out + "\\u001e") \} \}\n>))
+  save jar, codec-path/join(folder, <main.jar>)
+  save failed, run-tool(make list(<kotlinc>, file, <-include-runtime>, <-d>, jar))
+  fork test, is-unequal(failed, <>)
+    hold
+      back leg-failed(failed)
+  save ran, run(<java>, make list(<-jar>, jar))
+  fork test, is-unequal(ran/code, 0)
+    hold
+      back leg-failed(<{ran/error}{ran/output}>)
+  back leg-ran(ran/output)
+
+task leg-made
+  take env, like text
+  like codec-leg
+
+  save only, variable(<HN_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, env))
+    hold
+      back leg-skipped(<HN_ONLY names {only}>)
+  fork test, is-equal(env, <rust>)
+    hold
+      back rust-leg()
+  fork test, is-equal(env, <swift>)
+    hold
+      back swift-leg()
+  back kotlin-leg()
+
+task leg-held
+  take env, like text
+  like boolean
+
+  back codec-held/held/has(env)
+
+task leg-at
+  take env, like text
+  like codec-leg
+
+  back codec-held/held/{env}
+
+task leg-keep
+  take env, like text
+  take made, like codec-leg
+  like void
+
+  save codec-held/held/{env}, made
+
+task leg-of
+  take env, like text
+  like codec-leg
+
+  fork test, leg-held(env)
+    hold
+      back leg-at(env)
+  save made, leg-made(env)
+  leg-keep(env, made)
+  back made
+
+# what a leg printed at a place, <> past its end
+task got-at
+  take leg, like codec-leg
+  take at, like number
+  like text
+
+  fork test, is-below(at, leg/got/length)
+    hold
+      back leg/got/{at}
+  back <>
+
+task input-encodes
+  take leg, like codec-leg
+  take place, like text
+  like boolean
+
+  save at, parse-integer(place)
+  save want, wants()
+  back is-equal(got-at(leg, at), want/{at})
+
+task input-recodes
+  take leg, like codec-leg
+  take place, like text
+  like boolean
+
+  save at, parse-integer(place)
+  save given, inputs()
+  save want, wants()
+  back is-equal(got-at(leg, add(given/length, at)), want/{at})
+
+task edge-holds
+  take leg, like codec-leg
+  take name, like text
+  like boolean
+
+  save at, place-of(edge-names(), name)
+  save given, inputs()
+  save all, edges()
+  save one, all/{at}
+  back is-equal(got-at(leg, add(multiply(given/length, 2), at)), one/want)
+
+# ---- the TypeScript port: it refuses each stream as named, so the native comparison holds the intended refusal ----
+
+test <typescript: refuses each stream as named>
+  take label, like text
+    walk refusal-labels()
+  save at, place-of(refusal-labels(), label)
+  save streams, refusal-streams()
+  save names, refusal-names()
+  save stream, streams/{at}
+  save name, names/{at}
+  want hold, starts-with(port-refusal(stream), <{name} @>)
+
+# and reads every wide integer (the nearest double), which is why a native refusal of one is the model's limit
+test <typescript: reads each wide integer>
+  take label, like text
+    walk wide-labels()
+  save at, place-of(wide-labels(), label)
+  save bodies, wide-bodies()
+  save body, bodies/{at}
+  want hold, is-equal(port-refusal(frame(<01>, body)), <accepted>)
+
+# rust
+
+test <rust: the codec builds>
+  host leg, leg-of(<rust>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/state, <ran>)
+
+test <rust: each input encodes to the reference's bytes>
+  take place, like text
+    walk input-places()
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, input-encodes(leg, place)
+
+test <rust: each input decodes and encodes back unchanged>
+  take place, like text
+    walk input-places()
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, input-recodes(leg, place)
+
+test <rust: each edge as the TypeScript port has it>
+  take name, like text
+    walk edge-names()
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, edge-holds(leg, name)
+
+# swift
+
+test <swift: the codec builds>
+  host leg, leg-of(<swift>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/state, <ran>)
+
+test <swift: each input encodes to the reference's bytes>
+  take place, like text
+    walk input-places()
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, input-encodes(leg, place)
+
+test <swift: each input decodes and encodes back unchanged>
+  take place, like text
+    walk input-places()
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, input-recodes(leg, place)
+
+test <swift: each edge as the TypeScript port has it>
+  take name, like text
+    walk edge-names()
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, edge-holds(leg, name)
+
+# kotlin
+
+test <kotlin: the codec builds>
+  host leg, leg-of(<kotlin>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/state, <ran>)
+
+test <kotlin: each input encodes to the reference's bytes>
+  take place, like text
+    walk input-places()
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, input-encodes(leg, place)
+
+test <kotlin: each input decodes and encodes back unchanged>
+  take place, like text
+    walk input-places()
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, input-recodes(leg, place)
+
+test <kotlin: each edge as the TypeScript port has it>
+  take name, like text
+    walk edge-names()
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, edge-holds(leg, name)

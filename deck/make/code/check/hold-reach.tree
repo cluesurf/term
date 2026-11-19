@@ -266,14 +266,16 @@ task impure-in
       back walk/local/has(name)
   back calls-impure(parts, is-pure, is-function, is-local)
 
-# a call as the original's `{ ...call, args: [] }`: the callee alone judged
+# a call as the original's `{ ...call, args: [] }`: the callee alone judged. The arguments are cleared on the call
+# form only, so the record stays an expression (term-self-host-001-1683, TS2345: a spread over the whole union gave
+# every form an args field)
 bind without-arguments
   take call, like expression
   like expression
   case node
-    text <(\{ ...$call, args: [] \})>
+    text <<((heldCall_) => heldCall_.form === "call" ? { ...heldCall_, args: [] } : heldCall_)($call)>>
   case browser
-    text <(\{ ...$call, args: [] \})>
+    text <<((heldCall_) => heldCall_.form === "call" ? { ...heldCall_, args: [] } : heldCall_)($call)>>
   case rust
     text <$call>
   case swift

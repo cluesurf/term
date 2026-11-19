@@ -1,0 +1,270 @@
+note <digest-sha256-text on every backend and the browser: each vector's fast path and the Term reference print its digest>
+
+# Ported from digest-text-native.ts by statement (item term-self-host-001-0654, decision 080). One program runs the FIPS
+# 180-4 vectors (the empty message, "abc", the 448-bit two-block message, one million "a") plus U+00E9, U+1D11E and a
+# lone surrogate through the env's synchronous fast path AND the Term reference (native/shared/cryptography/sha256), and
+# both must print the vector's digest. TypeScript runs under the node env (node:crypto), Rust (sha2), Swift (CryptoKit)
+# and Kotlin (MessageDigest) natively, and the BROWSER leg compiles the same program under the browser env, whose fast path
+# IS the reference, and runs it under node (it reaches no browser API) through typescript-answer.
+#
+# A lone surrogate is a UTF-16 unit, so only TypeScript and Kotlin can hold one: there it must encode as U+FFFD. On Rust
+# and Swift `rune-to-text(55296)` is the empty text (no scalar), and the case reads "ab", which the program says.
+#
+# The original's judge, per backend, is three tests here: one answer per vector, then one walked test of the fast paths
+# and one of the references, each vector a case of it by its name, 17 per backend as the original's 17 oks. Each backend
+# runs once, the first test that asks for it. A backend whose toolchain is not installed is each test's own skip. Where
+# a run fails, each of its three tests fails, where the original counted one failure.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find prelude-text
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+  find trim
+  find starts-with
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host program, <load @term/base/native/shared/cryptography/sha256\n  find calculate-sha256-text\n\nload @term/base/cryptography/digest\n  find digest-sha256-text\n\nload @term/base/text/string\n  find repeat\n\nload @term/base/text/unicode\n  find rune-to-text\n\nload @term/base/text\n  find char-count\n\nload @term/base/list\n  find join\n\ntask both\n  take value, like text\n  like text\n  save fast, call(digest-sha256-text, read(value))\n  save reference, call(calculate-sha256-text, read(value))\n  send back, text \<\{fast\} \{reference\} \{char-count(value)\}\>\n\ntask run\n  like text\n  save lines, make list\n  call lines/push(call(both, text \<\>))\n  call lines/push(call(both, text \<abc\>))\n  call lines/push(call(both, text \<abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\>))\n  call lines/push(call(both, repeat(\<a\>, 1000000)))\n  call lines/push(call(both, rune-to-text(233)))\n  call lines/push(call(both, rune-to-text(119070)))\n  call lines/push(call(both, text \<a\{rune-to-text(65533)\}b\>))\n  call lines/push(call(both, text \<a\{rune-to-text(55296)\}b\>))\n  send back, call(join, read(lines), text \<;\>)\n>
+
+host fffd, <05087813392efc16fe8ff448920c6328e53af865df39419436659d9ffda90f7b>
+host ab, <fb8e20fc2e4c3f248c60c39bd652f3c1347298bb977b8b4d5903b85055620603>
+
+# the vectors by name, in the program's order, and each one's digest
+host names, make list(<empty>, <abc>, <two-blocks>, <million-a>, <e-acute>, <g-clef>, <replacement>, <lone-surrogate>)
+
+host digests
+  make hash
+    save empty, <e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855>
+    save abc, <ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad>
+    save two-blocks, <248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1>
+    save million-a, <cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0>
+    save e-acute, <4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c>
+    save g-clef, <e419efd3d6046adf7662b0daadab65047e8014a523316d7ccc8710de694aa9b6>
+    save replacement, fffd
+    save lone-surrogate, fffd
+
+host crypto-call, make pattern, <<createHash|crypto\.subtle>>
+
+host browser-main, <Promise.resolve(run()).then((said) =\> process.stdout.write(String(said)))>
+
+# every run made in this process, by its backend: each runs once, in the first test that asks for it
+form digest-runs
+  mark shared
+  link held, like hash, like text, like ran-program
+
+host runs, make(digest-runs, bind(held, make hash))
+
+# the program compiled under the browser env over the project, its fast path asserted apart
+task browser-built
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <digest-text-browser.tree>), bind(project, <.>), bind(project-env, <browser>), bind(env, <browser>)))
+
+# the browser leg run under node with the browser's prelude, as a ran program
+task browser-ran
+  like ran-program
+
+  host out, browser-built()
+  fork test, not(out/ok)
+    hold
+      back make(ran-program, bind(state, <failed>), bind(stage, <compile>), bind(reason, out/messages/join(< | >)))
+  host folder, temp-folder(<term-digest-text-browser->)
+  host said, typescript-answer(out, browser-main, folder, <digest-text-browser>, prelude-text(out, <browser>, out/emitted))
+  fork test, starts-with(said, <exit >)
+    hold
+      back make(ran-program, bind(state, <failed>), bind(stage, <run>), bind(reason, said))
+  back make(ran-program, bind(state, <ran>), bind(output, said))
+
+# the program on `backend` (or <browser>), once
+task ran-on
+  take backend, like text
+  like ran-program
+
+  fork test, runs/held/has(backend)
+    hold
+      back runs/held/{backend}
+  save made, make(ran-program, bind(state, <skipped>))
+  fork test, is-equal(backend, <browser>)
+    hold
+      save made, browser-ran()
+    miss
+      save made, run-text(program, backend, temp-folder(<term-digest-text->), <digest-text>)
+  save runs/held/{backend}, made
+  back made
+
+# the answer's line for a vector by its name: its fast digest, its reference digest and its character count
+task line-of
+  take backend, like text
+  take name, like text
+  like list, like text
+
+  save lines, text-split(trim(ran-on(backend)/output), <;>)
+  save at, 0
+  walk names
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        fork test, is-below(at, lines/length)
+          hold
+            back text-split(lines/{at}, < >)
+        back make list
+    save at, add(at, 1)
+  back make list
+
+# the digest a vector must print on this backend: Rust and Swift hold no lone surrogate, so the text is "ab", two
+# characters, and that is what both paths digest
+task wanted
+  take parts, like list, like text
+  take name, like text
+  like text
+
+  fork test, and(is-equal(name, <lone-surrogate>), and(is-above(parts/length, 2), is-equal(parts/2, <2>)))
+    hold
+      back ab
+  back digests/{name}
+
+# part `at` of a vector's line, <> when the line is short
+task part-of
+  take parts, like list, like text
+  take at, like number
+  like text
+
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+# whether the vector's fast (0) or reference (1) digest is the one it must print
+task digest-holds
+  take backend, like text
+  take name, like text
+  take at, like number
+  like boolean
+
+  save parts, line-of(backend, name)
+  back is-equal(part-of(parts, at), wanted(parts, name))
+
+test <rust: one answer per vector>
+  host ran, ran-on(<rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(text-split(trim(ran/output), <;>)/length, names/length)
+
+test <rust: fast path>
+  take name, like text
+    walk names
+  fork test, is-equal(ran-on(<rust>)/state, <skipped>)
+    hold
+      skip ran-on(<rust>)/reason
+  want hold, digest-holds(<rust>, name, 0)
+
+test <rust: Term reference>
+  take name, like text
+    walk names
+  fork test, is-equal(ran-on(<rust>)/state, <skipped>)
+    hold
+      skip ran-on(<rust>)/reason
+  want hold, digest-holds(<rust>, name, 1)
+
+test <swift: one answer per vector>
+  host ran, ran-on(<swift>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(text-split(trim(ran/output), <;>)/length, names/length)
+
+test <swift: fast path>
+  take name, like text
+    walk names
+  fork test, is-equal(ran-on(<swift>)/state, <skipped>)
+    hold
+      skip ran-on(<swift>)/reason
+  want hold, digest-holds(<swift>, name, 0)
+
+test <swift: Term reference>
+  take name, like text
+    walk names
+  fork test, is-equal(ran-on(<swift>)/state, <skipped>)
+    hold
+      skip ran-on(<swift>)/reason
+  want hold, digest-holds(<swift>, name, 1)
+
+test <kotlin: one answer per vector>
+  host ran, ran-on(<kotlin>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(text-split(trim(ran/output), <;>)/length, names/length)
+
+test <kotlin: fast path>
+  take name, like text
+    walk names
+  fork test, is-equal(ran-on(<kotlin>)/state, <skipped>)
+    hold
+      skip ran-on(<kotlin>)/reason
+  want hold, digest-holds(<kotlin>, name, 0)
+
+test <kotlin: Term reference>
+  take name, like text
+    walk names
+  fork test, is-equal(ran-on(<kotlin>)/state, <skipped>)
+    hold
+      skip ran-on(<kotlin>)/reason
+  want hold, digest-holds(<kotlin>, name, 1)
+
+test <typescript: one answer per vector>
+  host ran, ran-on(<typescript>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(text-split(trim(ran/output), <;>)/length, names/length)
+
+test <typescript: fast path>
+  take name, like text
+    walk names
+  want hold, digest-holds(<typescript>, name, 0)
+
+test <typescript: Term reference>
+  take name, like text
+    walk names
+  want hold, digest-holds(<typescript>, name, 1)
+
+test <browser: the fast path is the Term reference (no crypto runtime call for it)>
+  host out, browser-built()
+  want hold, out/ok
+  want hold, not(matches(crypto-call, out/emitted))
+
+test <browser: one answer per vector>
+  host ran, ran-on(<browser>)
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(text-split(trim(ran/output), <;>)/length, names/length)
+
+test <browser: fast path>
+  take name, like text
+    walk names
+  want hold, digest-holds(<browser>, name, 0)
+
+test <browser: Term reference>
+  take name, like text
+    walk names
+  want hold, digest-holds(<browser>, name, 1)

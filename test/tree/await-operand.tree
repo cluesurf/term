@@ -1,0 +1,149 @@
+note <A call to an asynchronous task on the right of an operator is awaited after the left operand ran>
+
+# Item 1678 (T-1671). A call to an asynchronous task stands on the right of an operator (`is-equal`, `is-below`,
+# `add`, `and`, `or`) as it stands anywhere else: awaited with nothing written, after the left operand ran, and under
+# `and` and `or` only when the left lets it run. Each call writes its word at the end of a log, so the log is the
+# order the calls ran in. swiftc refuses `x == await f()`: Swift writes the awaited operand in parentheses, and the
+# right of `&&` and `||` (an autoclosure, which cannot await) as the branch of a conditional (swift-emit.tree
+# emit-binary). TypeScript, Rust and Kotlin await in place. Held by `pnpm term:base-gate`.
+
+# the word, after it is written at the end of the log
+task logged
+  mark async
+  take log, like list, like text
+  take word, like text
+  like text
+  call log/push
+    read word
+  send back, read word
+
+# the number, after its digits are written at the end of the log
+task counted
+  mark async
+  take log, like list, like text
+  take size, like integer
+  like integer
+  call log/push
+    text <{{size}}>
+  send back, read size
+
+# the flag as given, known only when the program runs, so no `and` or `or` over it is folded away
+task given
+  mark async
+  take flag, like boolean
+  like boolean
+  send back, read flag
+
+test <an awaited call on the right of is-equal is compared after the left operand ran>
+  save log
+    make list
+  save word, text <left>
+  save same
+    call is-equal
+      call logged
+        read log
+        text <left>
+      call logged
+        read log
+        text <right>
+  save plain
+    call is-equal
+      read word
+      call logged
+        read log
+        text <left>
+  want hold
+    call and
+      call and
+        call not
+          read same
+        read plain
+      call is-equal
+        call log/join
+          text <,>
+        text <left,right,left>
+
+test <an awaited call on the right of is-below and add is a number like any other>
+  save log
+    make list
+  save below
+    call is-below
+      call counted
+        read log
+        code 1
+      call counted
+        read log
+        code 2
+  save sum
+    call add
+      code 40
+      call counted
+        read log
+        code 2
+  want hold
+    call and
+      call and
+        read below
+        call is-equal
+          read sum
+          code 42
+      call is-equal
+        call log/join
+          text <,>
+        text <1,2,2>
+
+test <an awaited call on the right of and and or runs only when the left lets it>
+  save log
+    make list
+  save yes
+    call given
+      true
+  save no
+    call given
+      false
+  save both
+    call and
+      read yes
+      call is-equal
+        call logged
+          read log
+          text <and-ran>
+        text <and-ran>
+  save skipped
+    call and
+      read no
+      call is-equal
+        call logged
+          read log
+          text <and-skipped>
+        text <and-skipped>
+  save either
+    call or
+      read no
+      call is-equal
+        call logged
+          read log
+          text <or-ran>
+        text <or-ran>
+  save held
+    call or
+      read yes
+      call is-equal
+        call logged
+          read log
+          text <or-skipped>
+        text <or-skipped>
+  want hold
+    call and
+      call and
+        call and
+          read both
+          call not
+            read skipped
+        call and
+          read either
+          read held
+      call is-equal
+        call log/join
+          text <,>
+        text <and-ran,or-ran>

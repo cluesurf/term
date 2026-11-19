@@ -1,0 +1,454 @@
+note <a raise is caught on the native backends as on TypeScript, its fields whole, and an uncaught one ends the program>
+
+# Ported from guard-native.ts by statement (item term-self-host-001-0655), one test per `ok` in its order: swift, kotlin,
+# rust (note/project/term/hive/11-native-exceptions.md). A program with a guarded call and an unguarded one is compiled
+# against the stdlib for each backend, built by the real toolchain and run. The guarded path returns the handler's
+# answer with the exception's fields whole. The unguarded raise, reached when the program is given an argument, ends it
+# with a non-zero exit and the exception's form and note on stderr. Kotlin also answers a division and a remainder by
+# zero with the `defect` TypeScript raises.
+#
+# The original compiled through a front end of its own (parse, mill, bind, check, simplify over the program's roots).
+# Here compile-text compiles it over the stdlib under each env, as withNativeEnv(env, stdlibResolver()) asked, the roots
+# its entries. Each leg's main is written in the backend's own words as the original wrote it, and each leg is built
+# once, by the first test that asks. A leg whose toolchain is missing skips each of its tests, where the original
+# printed one skip line, and a leg that did not build skips the tests after its build test, which fails. GN_ONLY=swift,
+# kotlin or rust runs one.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+
+load ../support/running
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/kotlin>, name guard-kotlin
+  load <node:os>, name guard-os
+  load <node:path>, name guard-path
+
+# a guarded lookup and an unguarded one, over an exception with a prop of its own
+host program, <load @term/base/code/exception\n  find absence\n\nform user-absence\n  like absence\n    bind note, \<No such user\>\n    link key, like text\n\ntask find-user\n  take key, like text\n  like text\n  fork test\n    hook test\n      call is-equal\n        read key\n        text \<a\>\n    hook hold\n      send back, text \<alice\>\n    hook miss\n      halt user-absence\n        bind thing, text \<user\>\n        bind key, read key\n\ntask lookup\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    save found\n      call find-user\n        read key\n    send back\n      read found\n  halt take\n    take problem\n    send back\n      text \<caught \{\{problem/form\}\}: \{\{problem/note\}\}\>\n\ntask unguarded\n  take key, like text\n  like text\n  send back\n    call find-user\n      read key\n\ntask describe\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    send back\n      call find-user\n        read key\n  halt take\n    take problem\n    fork case, read problem\n      case user-absence\n        send back, text \<no user \{\{key\}\}: \{\{note\}\}\>\n\n# an INTERPOLATED text raises `failure` like a plain one. It was a `template` node every emitter's throw case\n# missed: Rust handed back a String where the carrier goes (test/compile/halt-text.ts holds TypeScript)\ntask need-key\n  take key, like text\n  like text\n  halt \<no such key \{\{key\}\}\>\n\ntask checked\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    send back\n      call need-key\n        read key\n  halt take\n    take problem\n    send back\n      text \<caught \{\{problem/form\}\}: \{\{problem/note\}\}\>\n\n# a raise from INSIDE an arm that binds the caught exception's `time`. The raise stamps its own time through the\n# stdlib's `exception-time` (`call now`, the clock module), which was inlined into the arm as `time.now()`, where\n# `time` is the caught number on Swift and Kotlin, and the file did not build (2026-10-04)\ntask translate\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    send back\n      call find-user\n        read key\n  halt take\n    take problem\n    fork case, read problem\n      case user-absence\n        fork test\n          hook test\n            call is-above\n              read time\n              code 0\n          hook hold\n            halt absence\n              bind thing, text \<translated \{\{key\}\}\>\n        send back, text \<no time\>\n\ntask translated\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    send back\n      call translate\n        read key\n  halt take\n    take problem\n    fork case, read problem\n      case absence\n        send back, read thing\n      hook miss\n        send back, text \<another exception\>\n\n# a division and a remainder by zero, guarded. TypeScript and Kotlin raise the `defect` the guard catches. Swift traps\n# and Rust panics, which no guard reaches (decisions-2026-10.md D15), so those two build this and do not run it\ntask share\n  take total, like number\n  take parts, like number\n  like text\n  fork\n    mark unsafe\n    save got\n      call divide\n        read total\n        read parts\n    send back, text \<\{got\}\>\n  halt take\n    take problem\n    send back, text \<caught \{problem/form\}\>\n\ntask rest\n  take total, like number\n  take parts, like number\n  like text\n  fork\n    mark unsafe\n    save got\n      call modulo\n        read total\n        read parts\n    send back, text \<\{got\}\>\n  halt take\n    take problem\n    send back, text \<caught \{problem/form\}\>\n>
+
+# the answers every backend must give: the happy path, the caught raise with its fields, the uncaught raise
+host want-found, <alice>
+
+host want-caught, <caught user-absence: No such user>
+
+host want-cased, <no user zed: No such user>
+
+host want-text, <caught failure: no such key q>
+
+host want-translated, <translated zed>
+
+# each leg's main, as the original wrote it: the five guarded calls, and the unguarded one when given an argument
+host swift-main, <print(lookup(key: "a"))\nprint(lookup(key: "b"))\nprint(describe(key: "zed"))\nprint(checked(key: "q"))\nprint(translated(key: "zed"))\nif CommandLine.arguments.count \> 1 \{ print(try! unguarded(key: "z")) \}\n>
+
+host kotlin-main, <fun main(args: Array\<String\>) \{ println(lookup("a")); println(lookup("b")); println(describe("zed")); println(checked("q")); println(translated("zed")); println(share(6, 3)); println(share(6, 0)); println(rest(7, 0)); if (args.isNotEmpty()) \{ println(unguarded("z")) \} \}\n>
+
+host rust-main, <fn main() \{ println!("\{\}", lookup("a".to_string())); println!("\{\}", lookup("b".to_string())); println!("\{\}", describe("zed".to_string())); println!("\{\}", checked("q".to_string())); println!("\{\}", translated("zed".to_string())); if std::env::args().count() \> 1 \{ match unguarded("z".to_string()) \{ Ok(v) =\> println!("\{\}", v), Err(e) =\> \{ eprintln!("\{\}", e); std::process::exit(1) \} \} \} \}\n>
+
+# the stdlib's exception module docks crates (uuid for the occurrence code, base64 for its tone shape), so the Rust
+# leg builds as a cargo package, sharing the roundtrip's target dir so the crates build once per machine
+host cargo-toml, <[package]\nname = "term-guard-native"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nregex = "1"\nsha2 = "0.10"\nmd-5 = "0.10"\nhmac = "0.12"\nbase64 = "0.22"\nhex = "0.4"\nuuid = \{ version = "1", features = ["v4"] \}\nrand = "0.8"\nchrono = "0.4"\nserde_json = "1"\nunicode-normalization = "0.1"\nunicode-segmentation = "1"\n>
+
+# one backend built and run. `state` is <skipped>, <failed> (the compile or the build) or <ran>. `lines` is what the
+# program printed run plainly, `raised-code` and `raised-error` its exit and stderr run with an argument
+form guard-leg
+  link state, like text
+  link reason, like text, fall <>
+  link lines
+    like list, like text
+    fall make list
+  link raised-code, like number, fall 0
+  link raised-error, like text, fall <>
+
+# every leg made in this process, by its backend: a leg is built once, by the first test that asks
+form guard-legs
+  mark shared
+  link held, like hash, like text, like guard-leg
+
+host guard-held, make(guard-legs, bind(held, make hash))
+
+# the program's roots, the original's simplify roots
+task roots
+  like list, like text
+
+  back make list(<lookup>, <unguarded>, <describe>, <checked>, <translated>, <share>, <rest>)
+
+task compiled
+  take env, like text
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <main.tree>), bind(stdlib, env), bind(env, env), bind(entries, roots())))
+
+task leg-skipped
+  take reason, like text
+  like guard-leg
+
+  back make(guard-leg, bind(state, <skipped>), bind(reason, reason))
+
+task leg-failed
+  take reason, like text
+  like guard-leg
+
+  back make(guard-leg, bind(state, <failed>), bind(reason, reason))
+
+task leg-ran
+  take plain, like run-result
+  take raised, like run-result
+  like guard-leg
+
+  back make(guard-leg, bind(state, <ran>), bind(lines, text-split(plain/output, <\n>)), bind(raised-code, raised/code), bind(raised-error, raised/error))
+
+task swift-leg
+  like guard-leg
+
+  fork test, is-equal(find-tool(<swiftc>), <>)
+    hold
+      back leg-skipped(<swiftc not installed>)
+  save out, compiled(<swift>)
+  fork test, not(out/ok)
+    hold
+      back leg-failed(out/messages/join(< | >))
+  save folder, temp-folder(<term-guard-native->)
+  save main, guard-path/join(folder, <main.swift>)
+  write-file(main, <{prelude-text(out, <swift>)}\n{emit-text(out, <swift>)}\n{swift-main}>)
+  save binary, guard-path/join(folder, <swift-main>)
+  save failed, run-tool(make list(<swiftc>, <-o>, binary, main))
+  fork test, is-unequal(failed, <>)
+    hold
+      back leg-failed(failed)
+  back leg-ran(run(binary, make list), run(binary, make list(<raise>)))
+
+task kotlin-leg
+  like guard-leg
+
+  fork test, or(is-equal(find-tool(<kotlinc>), <>), is-equal(find-tool(<java>), <>))
+    hold
+      back leg-skipped(<kotlinc/java not installed>)
+  save out, compiled(<kotlin>)
+  fork test, not(out/ok)
+    hold
+      back leg-failed(out/messages/join(< | >))
+  save folder, temp-folder(<term-guard-native->)
+  save file, guard-path/join(folder, <main.kt>)
+  write-file(file, guard-kotlin/hoist-kotlin-imports(<{prelude-text(out, <kotlin>)}\n{emit-text(out, <kotlin>)}\n{kotlin-main}>))
+  save jar, guard-path/join(folder, <main.jar>)
+  save failed, run-tool(make list(<kotlinc>, file, <-include-runtime>, <-d>, jar))
+  fork test, is-unequal(failed, <>)
+    hold
+      back leg-failed(failed)
+  back leg-ran(run(<java>, make list(<-jar>, jar)), run(<java>, make list(<-jar>, jar, <raise>)))
+
+task rust-leg
+  like guard-leg
+
+  fork test, is-equal(find-tool(<cargo>), <>)
+    hold
+      back leg-skipped(<cargo not installed>)
+  save out, compiled(<rust>)
+  fork test, not(out/ok)
+    hold
+      back leg-failed(out/messages/join(< | >))
+  save folder, temp-folder(<term-guard-native->)
+  save project, guard-path/join(folder, <rust>)
+  make-folder(guard-path/join(project, <src>))
+  write-file(guard-path/join(project, <Cargo.toml>), cargo-toml)
+  write-file(guard-path/join(project, <src>, <main.rs>), <{prelude-text(out, <rust>)}\n{emit-text(out, <rust>)}\n{rust-main}>)
+  save target, guard-path/join(guard-os/tmpdir(), <seed-rust-runtime>, <target>)
+  save environment, make hash
+  save name, <CARGO_TARGET_DIR>
+  save environment/{name}, target
+  save failed, run-tool(make(list, <cargo>, <build>, <--quiet>), project, environment)
+  fork test, is-unequal(failed, <>)
+    hold
+      back leg-failed(failed)
+  save binary, guard-path/join(target, <debug>, <term-guard-native>)
+  back leg-ran(run(binary, make list), run(binary, make list(<raise>)))
+
+task leg-made
+  take env, like text
+  like guard-leg
+
+  save only, variable(<GN_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, env))
+    hold
+      back leg-skipped(<GN_ONLY names {only}>)
+  fork test, is-equal(env, <swift>)
+    hold
+      back swift-leg()
+  fork test, is-equal(env, <kotlin>)
+    hold
+      back kotlin-leg()
+  back rust-leg()
+
+task leg-held
+  take env, like text
+  like boolean
+
+  back guard-held/held/has(env)
+
+task leg-at
+  take env, like text
+  like guard-leg
+
+  back guard-held/held/{env}
+
+task leg-keep
+  take env, like text
+  take made, like guard-leg
+  like void
+
+  save guard-held/held/{env}, made
+
+# the leg of a backend, made once
+task leg-of
+  take env, like text
+  like guard-leg
+
+  fork test, leg-held(env)
+    hold
+      back leg-at(env)
+  save made, leg-made(env)
+  leg-keep(env, made)
+  back made
+
+# a printed line of a leg that ran, <> past its end
+task line-of
+  take leg, like guard-leg
+  take at, like number
+  like text
+
+  fork test, is-below(at, leg/lines/length)
+    hold
+      back leg/lines/{at}
+  back <>
+
+# the uncaught raise's stderr names the exception's form and note
+task names-raise
+  take leg, like guard-leg
+  like boolean
+
+  back and(text-contains(leg/raised-error, <user-absence>), text-contains(leg/raised-error, <No such user>))
+
+# swift
+
+test <swift: the guard program builds>
+  host leg, leg-of(<swift>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/state, <ran>)
+
+test <swift: the happy path returns>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 0), want-found)
+
+test <swift: the raise reaches the handler with its form and note>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 1), want-caught)
+
+test <swift: a fork case over the caught value binds the form's prop>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 2), want-cased)
+
+test <swift: an interpolated text raises failure with the text as its note>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 3), want-text)
+
+test <swift: an arm that binds the caught time raises another exception>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 4), want-translated)
+
+test <swift: an uncaught raise ends the program>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-unequal(leg/raised-code, 0)
+
+test <swift: the uncaught raise names its form and note>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, names-raise(leg)
+
+# kotlin
+
+test <kotlin: the guard program builds>
+  host leg, leg-of(<kotlin>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/state, <ran>)
+
+test <kotlin: the happy path returns>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 0), want-found)
+
+test <kotlin: the raise reaches the handler with its form and note>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 1), want-caught)
+
+test <kotlin: a fork case over the caught value binds the form's prop>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 2), want-cased)
+
+test <kotlin: an interpolated text raises failure with the text as its note>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 3), want-text)
+
+test <kotlin: an arm that binds the caught time raises another exception>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 4), want-translated)
+
+test <kotlin: an uncaught raise ends the program>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-unequal(leg/raised-code, 0)
+
+test <kotlin: the uncaught raise names its form and note>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, names-raise(leg)
+
+# the JVM's own ArithmeticException reached the guard as `failure`, where TypeScript raises `defect`
+test <kotlin: a division by a nonzero divisor answers>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 5), <2>)
+
+test <kotlin: a division by zero raises the defect TypeScript raises>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 6), <caught defect>)
+
+test <kotlin: a remainder by zero raises the same defect>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 7), <caught defect>)
+
+# rust
+
+test <rust: the guard program builds>
+  host leg, leg-of(<rust>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/state, <ran>)
+
+test <rust: the happy path returns>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 0), want-found)
+
+test <rust: the raise reaches the handler with its form and note>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 1), want-caught)
+
+test <rust: a fork case over the caught value binds the form's prop>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 2), want-cased)
+
+test <rust: an interpolated text raises failure with the text as its note>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 3), want-text)
+
+test <rust: an arm that binds the caught time raises another exception>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(line-of(leg, 4), want-translated)
+
+test <rust: an uncaught raise ends the program>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-unequal(leg/raised-code, 0)
+
+test <rust: the uncaught raise names its form and note>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, names-raise(leg)
