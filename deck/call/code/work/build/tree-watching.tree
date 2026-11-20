@@ -17,12 +17,22 @@ load @term/base/list
 
 load @term/base/text
   find ends-with
+  # `text.includes(part)`, by UTF-16 unit
+  find contains, name text-includes
 
 load @term/base/task
   find handle
 
 load @term/base/clock
   find sleep
+
+# the epoch milliseconds now, `Date.now()`
+load @term/base/time
+  find now, name now-ms
+
+# host/roll.json's text, as JSON.stringify(value, null, 2) writes it
+load @term/base/json/indent
+  find stringify-indented
 
 load @term/base/path
   find join, name path-join
@@ -81,9 +91,6 @@ load @term/call/work/output/printer-input
 load @term/call/work/item/event
   find tally
 
-dock load
-  load <global:global>, name host-global
-
 # a watch's one pump and how it is stopped
 form watch-state
   mark shared
@@ -122,35 +129,20 @@ form run-item
   link facts, like list, like text
   link quote, like list, like text
 
-# the epoch milliseconds now, `Date.now()`
-bind now-ms
-  like number
-  case node
-    text <Date.now()>
-
-# `text.includes(part)`, by UTF-16 unit
-bind text-includes
-  take text, like text
-  take part, like text
-  like boolean
-  case node
-    text <$text.includes($part)>
-
-# a change handed to the watcher's caller, and awaited when it answers a promise
-bind hand-change
-  take handler, like dynamic
-  take name, like text
-  like void
-  case node
-    text <(await $handler($name))>
-
 # Watch every `.tree` file under `root`, recursively, and call `on-change` with the changed file's name, debounced, so
-# a burst of saves triggers one call. While a call that answered a promise is in flight a further change is coalesced
-# into the next (no overlapping builds). `ignore` names path segments to skip (generated and dependency folders),
-# `host/` when left out. Answers a handle whose `close()` stops the watch, at once: the pump runs on its own
+# a burst of saves triggers one call. The call is awaited, and while it runs a further change is coalesced into the
+# next (no overlapping builds). `on-change` is kept for the pump's loop, so it may raise anything, and the pump guards
+# each call and reports a raise as a failed item, and the watch goes on (decision 096). `ignore` names path segments to
+# skip (generated and dependency folders), `host/` when left out. Answers a handle whose `close()` stops the watch, at
+# once: the pump runs on its own
 task watch-tree-files
   take root, like text
-  take on-change, like dynamic
+  take on-change
+    like task
+      mark async
+      take name, like text
+      like void
+      halt exception
   take ignore-given, like dynamic, fall void
   like watch-stop
 
@@ -185,7 +177,11 @@ task watch-tree-files
 task pump
   take state, like watch-state
   take root, like text
-  take on-change, like dynamic
+  take on-change
+    like task
+      mark async
+      take name, like text
+      like void
   take ignore, like list, like text
   mark async
   mark private
@@ -242,7 +238,12 @@ task pump
                   save ask, tick next-change(eye)
                   sleep(1)
                   save more, not(alive(ask))
-      hand-change(on-change, name)
+      fork
+        mark unsafe
+        on-change(name)
+      halt take
+        take problem
+        report-raised(name, problem/note)
       save after, not(alive(ask))
       walk test
         hook test, after
@@ -257,6 +258,16 @@ task pump
           save ask, tick next-change(eye)
           sleep(1)
           save after, not(alive(ask))
+
+# a change whose build or script run raised, said as a failed item with the raise's note (decision 096 rule 3)
+task report-raised
+  take changed, like text
+  take note, like text
+  mark private
+
+  save message, make list
+  message/push(note)
+  report(make(roll-said-item, bind(glyph, <failed>), bind(verb, <watch>), bind(subject, changed), bind(message, message)))
 
 task ignore-or-host
   take given, like dynamic
@@ -342,6 +353,7 @@ task watch-project
     task
       take name, like text
       like void
+      mark async
       build-changed(root, cache, graph, merged, name)
 
 # one build of a watch, its problems before its `build` item
@@ -403,7 +415,7 @@ task write-watch-roll
     mark unsafe
     save rolled, project-roll(root, rolls)
     save roll-path, path-join(path-join(root, <host>), <roll.json>)
-    save text, <{host-global/JSON/stringify(rolled/roll, void, 2)}\n>
+    save text, <{stringify-indented(rolled/roll, 2)}\n>
     fork test, is-unequal(held-text(roll-path), text)
       hold
         make-directory(path-directory(roll-path))
@@ -411,7 +423,7 @@ task write-watch-roll
   halt take
     take problem
     save message, make list
-    message/push(text-of-problem(problem))
+    message/push(problem/note)
     report(make(roll-said-item, bind(glyph, <warning>), bind(verb, <write>), bind(subject, <host/roll.json was not written>), bind(message, message)))
 
 # host/roll.json removed, when there is one: a clean build that fails or finds no file writes none
@@ -430,11 +442,6 @@ form roll-said-item
   link subject, like text
   link message, like list, like text
 
-bind text-of-problem
-  take problem, like dynamic
-  like text
-  case node
-    text <($problem instanceof Error ? $problem.message : String($problem))>
 
 # Watch and run the project's own build script (`pnpm run make`) on each change: a project with a custom build is built
 # by it, not by the built-in .tree to host compile
@@ -452,6 +459,7 @@ task watch-script
     task
       take name, like text
       like void
+      mark async
       run-script(root, name)
 
 # one run of the script, its output quoted under its `run` item: in full when it failed or under --verbose

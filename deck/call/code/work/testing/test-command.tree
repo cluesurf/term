@@ -1156,8 +1156,10 @@ task run-seed-tests
   # native backend), runs every file again. The run never closes until ctrl-c
   report(make(item-ask, bind(glyph, round-glyph(first)), bind(verb, <test>), bind(subject, <every file>), bind(counts, totals-counts(first))))
   host-process/once(<SIGINT>, stop-watching)
+  # the watcher hands the changed file's name, which a round does not read: it lists the files again
   save on-change
     task
+      take name, like text
       like void
       mark async
       watch-round(context)
