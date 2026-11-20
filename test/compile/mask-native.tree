@@ -1,0 +1,221 @@
+note <a mask's task is called through a suit and directly on every backend, a default is given, and its product is checked>
+
+# Ported from mask-native.ts by statement (item term-self-host-001-0656), one test per `ok` in its order (guides:
+# types/masks, 2026-10-05). `suit` wears a mask for a form declared elsewhere, and a call through it was `"measure" is
+# not defined`: the instance was kept and its bodies dropped. A task with a body inside a `mask` is a DEFAULT a form may
+# leave out (check/mask-defaults.ts), and calling one was not defined either. And a mask's task answers the type its mask
+# declares, so `multiply(measure(x), 2)` over a `need` is an integer product, checked like any other.
+#
+# Each backend loop of the original is a walked test, each backend a case whose missing toolchain is its own skip. The
+# second loop's three asserts are three walked tests (within, plain, past), in that order, where the original
+# interleaved them per backend. Programs resolve over the project at the suite's root, as projectResolver(cwd, env).
+# MASK_ONLY=typescript, rust, swift or kotlin runs one, as in the original.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find list
+
+# `box` wears `measurer` from a `suit`, written apart from the form. `scorer` has a default `bonus`: `player` leaves it
+# out and gets `score + 1`, `team` writes its own. `total` calls `bonus` through the mask, and `run` calls it on a player
+# directly
+host program, <mask measurer\n  task measure\n    take self\n\n    like number\n\nform box\n  link side, like number\n\nsuit box\n  wear measurer\n    task measure\n      take self\n\n      like number\n\n      back multiply(self/side, 4)\n\ntask twice\n  head t, need measurer\n  take x, like t\n\n  like number\n\n  back multiply(measure(x), 2)\n\nmask scorer\n  task score\n    take self\n\n    like number\n\n  task bonus\n    take self\n\n    like number\n\n    back add(score(self), 1)\n\nform player\n  link points, like number\n  wear scorer\n    task score\n      take self\n\n      like number\n\n      back self/points\n\nform team\n  link wins, like number\n  wear scorer\n    task score\n      take self\n\n      like number\n\n      back multiply(self/wins, 3)\n\n    task bonus\n      take self\n\n      like number\n\n      back 100\n\ntask total\n  head t, need scorer\n  take x, like t\n\n  like number\n\n  back multiply(bonus(x), 2)\n\ntask run\n  like text\n\n  save b, make box, bind side, 3\n  save ada, make player, bind points, 7\n  save reds, make team, bind wins, 2\n  back \<\{twice(b)\} \{measure(b)\} \{total(ada)\} \{total(reds)\} \{bonus(ada)\}\>\n>
+
+# box: 12 measured, 24 twice; ada: bonus 8 by the default, 16 doubled; reds: its own bonus 100, 200 doubled
+host expected, <24 12 16 200 8>
+
+# the product of a mask's task, checked. `twice`'s argument is a parameter here, so nothing bounds it
+host range, <mask measurer\n  task measure\n    take self\n\n    like number\n\ntask twice\n  head t, need measurer\n  take x, like t\n\n  like number\n\n  back multiply(measure(x), 2)\n>
+
+# a mask task's declared parameter types hold at a call through the mask
+host wrong, <mask sizer\n  task scale\n    take self\n    take by, like number\n\n    like number\n\ntask grow\n  head t, need sizer\n  take x, like t\n\n  like number\n\n  back scale(x, \<two\>)\n>
+
+host dir, temp-folder(<term-mask->)
+
+# the product of a mask's task, RUN past i64 on each native backend (term-compiler-0019, gap 113). `side` is 2^62, which
+# fits an i64, so `measure` alone answers it; `twice` doubles it through the mask to 2^63, and the program stops with
+# excess there, as a plain multiply does. On TypeScript 2^62 is already past 2^53 where `side` is made, so the stop comes
+# before the mask, and it is the same stop
+task past
+  take body, like text
+  like text
+
+  back <mask measurer\n  task measure\n    take self\n\n    like number\n\nform box\n  link side, like number\n\nsuit box\n  wear measurer\n    task measure\n      take self\n\n      like number\n\n      back self/side\n\ntask twice\n  head t, need measurer\n  take x, like t\n\n  like number\n\n  back multiply(measure(x), 2)\n\ntask plain\n  take n, like number\n\n  like number\n\n  # two statements, so the simplifier keeps the task and swiftc cannot fold the product at the call\n  save doubled, multiply(n, 2)\n  back doubled\n\ntask run\n  like text\n\n  save big, multiply(2147483648, 2147483648)\n  save b, make box, bind side, big\n  back \<\{{body}\}\>\n>
+
+# whether MASK_ONLY leaves this backend in
+task wanted
+  take one, like text
+  like boolean
+
+  save only, variable(<MASK_ONLY>)
+  back or(is-equal(only, <>), is-equal(only, one))
+
+# the native backends, where 2^62 fits an i64
+task native-backends
+  like list, like text
+
+  back make list(<rust>, <swift>, <kotlin>)
+
+# the compile of a fixture under node over the project at the suite's root, as the original's TypeScript block did
+task on-node
+  take text, like text
+  take name, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, <{dir}/{name}>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+
+# the text from the first place `mark` starts, <> when it is not there
+task from-mark
+  take whole, like text
+  take mark, like text
+  like text
+
+  save at, index-of(whole, mark)
+  fork test, is-below(at, 0)
+    hold
+      back <>
+  back substring(whole, at)
+
+# THE STOP IS THE SAME ON ALL FOUR (D15, term-stdlib-parity-0015): the process ends with an exit code, not a signal, and
+# says excess on stderr. A run that ended with no stop, by a signal, or with another stop fails here
+task stops-with-excess
+  take ran, like ran-program
+  like boolean
+
+  fork test, or(is-unequal(ran/state, <failed>), is-unequal(ran/stage, <run>))
+    hold
+      back false
+  back and(matches(make(pattern, <<^exit [1-9][0-9]*: >>), ran/reason), text-contains(ran/reason, <excess>))
+
+test <a suit is called through its mask and directly, a default is given to the form that leaves it out, and a form's own task wins>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MASK_ONLY leaves {backend} out>
+  host ran, run-text(program, backend, dir, <masks>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+test <TypeScript: a mask task times two is a checked integer product>
+  fork test, not(wanted(<typescript>))
+    hold
+      skip <MASK_ONLY leaves typescript out>
+  host built, on-node(range, <range.tree>)
+  want hold, built/ok
+  save twice, from-mark(built/emitted, <function twice>)
+  want hold, or(text-contains(twice, <__termIntStop>), text-contains(twice, <__termInt(>))
+
+test <Rust: the same product is checked_mul>
+  fork test, not(wanted(<typescript>))
+    hold
+      skip <MASK_ONLY leaves typescript out>
+  host built, on-node(range, <range.tree>)
+  fork test, not(built/ok)
+    hold
+      skip <the range program did not compile, as the TypeScript test says>
+  save rust, from-mark(emit-text(built, <rust>), <fn twice>)
+  want hold, text-contains(rust, <checked_mul>)
+
+# since D15 the checked product is the prelude's termMultiply, which wraps Math.multiplyExact and turns its
+# ArithmeticException into a TermStop
+test <Kotlin: the same product is termMultiply, Math.multiplyExact as a stop>
+  fork test, not(wanted(<typescript>))
+    hold
+      skip <MASK_ONLY leaves typescript out>
+  host built, on-node(range, <range.tree>)
+  fork test, not(built/ok)
+    hold
+      skip <the range program did not compile, as the TypeScript test says>
+  save kotlin, emit-text(built, <kotlin>)
+  want hold, text-contains(from-mark(kotlin, <fun \<T : Measurer\> twice>), <termMultiply(>)
+  want hold, text-contains(kotlin, <fun termMultiply(a: Long, b: Long): Long = try \{ Math.multiplyExact(a, b) \} catch (e: ArithmeticException) \{ throw TermStop(>)
+
+test <a text passed where the mask declares a number is refused>
+  fork test, not(wanted(<typescript>))
+    hold
+      skip <MASK_ONLY leaves typescript out>
+  host refused, on-node(wrong, <wrong.tree>)
+  want hold, not(refused/ok)
+  want hold, any-holding(refused/messages, <expected number, found text>)
+
+# 2^62 fits the i64 of every native backend. TypeScript's integers end at 2^53 (note/project/term/stdlib/semantics.md),
+# so there `big` itself stops, with the same excess, before the mask is reached
+test <a mask task answers 2^62 unchanged>
+  take backend, like text
+    walk native-backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MASK_ONLY leaves {backend} out>
+  host within, run-text(past(<measure(b)>), backend, dir, <mask-within>)
+  fork test, is-equal(within/state, <skipped>)
+    hold
+      skip within/reason
+  want hold, is-equal(within/state, <ran>)
+  want hold, is-equal(within/output, <4611686018427387904>)
+
+# the plain product of the same value, beside it
+test <a plain multiply to 2^63 stops with excess>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MASK_ONLY leaves {backend} out>
+  host plain, run-text(past(<plain(big)>), backend, dir, <mask-plain>)
+  fork test, is-equal(plain/state, <skipped>)
+    hold
+      skip plain/reason
+  want hold, stops-with-excess(plain)
+
+# the product through the mask, which must stop exactly as the plain one does
+test <twice through the mask, 2^63, stops with excess as the plain multiply does>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MASK_ONLY leaves {backend} out>
+  host through, run-text(past(<twice(b)>), backend, dir, <mask-past>)
+  fork test, is-equal(through/state, <skipped>)
+    hold
+      skip through/reason
+  want hold, stops-with-excess(through)
+
+# a message of the list holds the word
+task any-holding
+  take said, like list, like text
+  take word, like text
+  like boolean
+
+  walk said
+    take message, like text
+    fork test, text-contains(message, word)
+      hold
+        back true
+  back false

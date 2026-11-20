@@ -1,0 +1,191 @@
+note <a made exception record anywhere but under a halt is refused as made-exception on every backend>
+
+# Ported from made-exception.ts by statement (item term-self-host-001-0656), one test per `ok` (decision 087 of
+# note/project/term/self-host/change/001-finish-self-host, item term-self-host-001-0474). An exception value is a raised
+# occurrence: `host`, `form`, `code`, `time` and `link` are filled only at a raise, so a made record of the form read
+# `made/form` and `made/link/step` as text that was never filled, and passing one where `exception` is expected failed
+# as the misleading "expected exception, found wrapped". The two repros of item 0460 (a parameter and a list item, then
+# a field and a list) are refused by name on all four backends, and the written-right shape (`halt wrapped` with its
+# `bind step`, caught by a guard and passed on) still builds and runs on all four.
+#
+# The original looped over the backends, and inside over the three refused programs with two asserts each. Here each
+# (program, assert) pair is one walked test over the backends, each backend a case, then the run: 6 walked tests and
+# one more, each of 4 cases, so the count is the original's 28 in another order. The project is a temp folder linking
+# deck/base, with a deck.tree and the programs under code/, as the original's. MADE_ONLY=typescript, rust, swift or
+# kotlin runs one backend.
+
+load ../support/running
+  find backends
+  find run-text
+  find backend-env
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/judging
+  find make-record
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/list
+  find list
+
+dock load
+  load <node:fs>, name made-file
+  load <node:path>, name made-path
+
+host head, <load @term/base/exception\n  find exception\n\nload @term/base/maybe\n  find maybe\n\nload @term/base/list\n  find list\n  find join\n\nform wrapped\n  like exception\n    bind note, \<Wrapped\>\n    link step, like text\n\n>
+
+# item 0460's q2: a made record passed to a parameter typed exception, and as a list item
+host as-parameter, <{head}task describe\n  take e, like exception\n  like text\n  back \<\{e/form\}:\{e/note\}:\{e/link/step\}\>\n\ntask count-told\n  take all, like list, like exception\n  like text\n  save forms, make list\n  walk all\n    take one\n    push(forms, one/form)\n  back \<\{all/length\}:\{join(forms, \<,\>)\}\>\n\ntask run\n  like text\n  save made\n    make wrapped\n      bind step, \<made\>\n  back \<\{describe(made)\}/\{count-told(make list(made, made))\}\>\n>
+
+# item 0460's q3: a made record put in a field typed exception and pushed to a list
+host as-field, <{head}form holder\n  link one, like exception\n  link all, like list, like exception\n\ntask run\n  like text\n  save made\n    make wrapped\n      bind link\n        make wrapped-link\n          bind step, \<made\>\n  save all, make list\n  push(all, made)\n  save h\n    make holder\n      bind one, made\n      bind all, all\n  back \<\{made/form\}:\{h/one/form\}:\{all/length\}\>\n>
+
+# the same made record read only by itself: no place typed exception, so before 0474 it built, and its form and link
+# read nothing
+host read-alone, <{head}task run\n  like text\n  save made\n    make wrapped\n      bind step, \<made\>\n  back \<\{made/form\}:\{made/link/step\}\>\n>
+
+# the written-right shape: raised with halt, caught by a guard, passed on
+host raised, <{head}task boom\n  take n, like number\n  like number\n  fork test, is-above(n, 3)\n    hold\n      halt wrapped\n        bind step, \<outer\>\n  back n\n\ntask describe\n  take e, like exception\n  like text\n  back \<\{e/form\}:\{e/note\}:\{e/link/step\}\>\n\ntask count-told\n  take all, like list, like exception\n  like text\n  save forms, make list\n  walk all\n    take one\n    push(forms, one/form)\n  back \<\{all/length\}:\{join(forms, \<,\>)\}\>\n\ntask run\n  like text\n  fork\n    mark unsafe\n    save x, boom(9)\n    back \<none\>\n  halt take\n    take problem\n    save kept, make list\n    push(kept, problem)\n    back \<\{describe(problem)\}/\{count-told(kept)\}/\{count-told(make list(problem, problem))\}\>\n  back \<none\>\n>
+
+host expected, <wrapped:Wrapped:outer/1:wrapped/2:wrapped,wrapped>
+
+host root, temp-folder(<term-made-exception->)
+
+task folder
+  take path, like text
+  like text
+
+  made-file/mkdir-sync(path, make-record(make(list, <recursive>, true)))
+  back path
+
+# the project: link/@term/base at the real deck, a deck.tree, a code folder, and an out folder for the builds
+task set-up
+  take seed, like number
+  like text
+
+  host links, folder(made-path/join(root, <link>, <@term>))
+  folder(made-path/join(root, <code>))
+  made-file/symlink-sync(made-path/join(term-root(), <deck>, <base>), made-path/join(links, <base>))
+  made-file/write-file-sync(made-path/join(root, <deck.tree>), <deck @probe/made-exception\n  code \<0.0.0\>\n>)
+  back folder(made-path/join(root, <out>))
+
+host out, set-up(0)
+
+# whether MADE_ONLY leaves this backend in
+task wanted
+  take one, like text
+  like boolean
+
+  save only, variable(<MADE_ONLY>)
+  back or(is-equal(only, <>), is-equal(only, one))
+
+# a refused program compiled lean over the project for a backend, as projectResolver(root, env) with leanOf true
+task compiled
+  take program, like text
+  take backend, like text
+  like compile-outcome
+
+  save env, backend-env(backend)
+  back compile-text(program, make(compile-choice, bind(file, made-path/join(root, <code>, <made-exception.tree>)), bind(lean, true), bind(project, root), bind(project-env, env), bind(env, env)))
+
+# refused, with a made-exception that names the form and the right shape
+task refused-as-made
+  take out, like compile-outcome
+  like boolean
+
+  fork test, out/ok
+    hold
+      back false
+  walk out/notes
+    take note
+    fork test, and(is-equal(note/name, <made-exception>), and(text-contains(note/message, <"wrapped">), text-contains(note/message, <`halt wrapped`>)))
+      hold
+        back true
+  back false
+
+# no diagnostic says the old type-mismatch
+task says-no-mismatch
+  take out, like compile-outcome
+  like boolean
+
+  walk out/messages
+    take message, like text
+    fork test, text-contains(message, <found wrapped>)
+      hold
+        back false
+  back true
+
+test <a made exception record used as a parameter and a list item is refused as made-exception>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MADE_ONLY leaves {backend} out>
+  want hold, refused-as-made(compiled(as-parameter, backend))
+
+test <a parameter and a list item: the old type-mismatch is not what is said>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MADE_ONLY leaves {backend} out>
+  want hold, says-no-mismatch(compiled(as-parameter, backend))
+
+test <a made exception record used as a field and a list is refused as made-exception>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MADE_ONLY leaves {backend} out>
+  want hold, refused-as-made(compiled(as-field, backend))
+
+test <a field and a list: the old type-mismatch is not what is said>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MADE_ONLY leaves {backend} out>
+  want hold, says-no-mismatch(compiled(as-field, backend))
+
+test <a made exception record used as a read of its own fields is refused as made-exception>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MADE_ONLY leaves {backend} out>
+  want hold, refused-as-made(compiled(read-alone, backend))
+
+test <a read of its own fields: the old type-mismatch is not what is said>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MADE_ONLY leaves {backend} out>
+  want hold, says-no-mismatch(compiled(read-alone, backend))
+
+test <halt wrapped with its bind step, caught and passed on, builds and runs>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <MADE_ONLY leaves {backend} out>
+  host ran, run-text(raised, backend, out, <made-exception-{backend}>, make(compile-choice, bind(project, root)), made-path/join(root, <code>, <raised.tree>))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)

@@ -1,0 +1,119 @@
+note <a host value is checked where the program gives it a type, on every backend, and a field off an opaque handle is refused>
+
+# Ported from host-value.ts by statement (item term-self-host-001-0656), one test per `ok` in its order. A call into a
+# `dock load` module returns the host's own value, which the checker cannot see into, so until 2026-10-05 `save count /
+# like number / path/join(...)` compiled on TypeScript and `count` held a text all the way to whatever used it. Now the
+# binding checks the value it is given (`__termHost` in compile/typescript.ts) and raises `data-mismatch` there, where
+# the type was written. The native backends type a host call statically, so the compiler of each refuses the same
+# program instead, and a host value they cannot type (the boxed dynamic) is checked at the binding as on TypeScript (the
+# walked test). A field read off an opaque `dock type` handle is refused at the checker (check/infer.ts).
+#
+# Each program runs through run-text over the project at the suite's root, its second link root that same root, as
+# projectResolver(ROOT, env, ROOT) asked. The first three tests each run the typed program in a folder of their own,
+# where the original ran it once, and the third reads the TypeScript run-text wrote there. The backend loop is one
+# walked test, each backend a case whose missing toolchain is its own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find file-text
+  find project-path
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+
+dock load
+  load <node:path>, name value-path
+
+# a host value given the type it has, then one given a type it does not have, caught by its form
+host program, <dock load\n  load \<node:path\>, name path\n\ntask run\n  like text\n  save joined\n    like text\n    path/join(\<code\>, \<boot.tree\>)\n  save answer, \<none\>\n  fork\n    mark unsafe\n    save count\n      like number\n      path/join(\<a\>, \<b\>)\n    save answer, \<\{count\}\>\n  halt take\n    take problem\n    save answer, \<\{problem/form\}: \{problem/link/reason\}\>\n  back \<\{joined\} \{answer\}\>\n>
+
+# a host value given no type
+host plain, <dock load\n  load \<node:path\>, name path\n\ntask run\n  like text\n  save joined, path/join(\<code\>, \<boot.tree\>)\n  back joined\n>
+
+# a field read off an opaque handle
+host handle, <dock type\n  load \<any\>, name url-handle\n\nbind parse-url, take href, like text\n  like url-handle\n  case node\n    \<new URL($href)\>\n  case browser\n    \<new URL($href)\>\n  case rust\n    \<std::rc::Rc::new(url::Url::parse(&$href).unwrap()) as std::rc::Rc\<dyn std::any::Any\>\>\n  case swift\n    load \<Foundation\>\n    \<URLComponents(string: $href)!\>\n  case kotlin\n    \<java.net.URI($href)\>\n\ntask run\n  like text\n  save url, parse-url(\<https://term.surf/guides\>)\n  back url/host\n>
+
+# THE SAME CHECK ON EVERY BACKEND. A host value Rust, Swift or Kotlin cannot type statically is the boxed dynamic, and
+# bound with a primitive `like` it is checked where it is bound, as on TypeScript: `a/b` held as a number raised nothing
+# on Swift and Kotlin until 2026-10-22, and printed as one
+host dynamic-host, <bind read-host\n  like dynamic\n  case node\n    \<"a/b"\>\n  case browser\n    \<"a/b"\>\n  case rust\n    \<std::rc::Rc::new("a/b".to_string()) as std::rc::Rc\<dyn std::any::Any\>\>\n  case swift\n    \<("a/b" as Any)\>\n  case kotlin\n    \<("a/b" as Any)\>\n\ntask run\n  like text\n  save path\n    like text\n    read-host()\n  save answer, \<none\>\n  fork\n    mark unsafe\n    save count\n      like number\n      read-host()\n    save answer, \<\{count\}\>\n  halt take\n    take problem\n    save answer, \<\{problem/form\}: \{problem/note\}\>\n  back \<\{path\} \{answer\}\>\n>
+
+host bound-check, <__termHost(path.join("a", "b"), "number", "count")>
+
+host dynamic-said, <a/b data-mismatch: Data does not fit the shape>
+
+# the project at the suite's root, its second link root that same root
+task over-root
+  like compile-choice
+
+  back make(compile-choice, bind(project, <.>), bind(project-link, project-path(<.>, <.>)))
+
+# what a run printed, else its state and why
+task said-of
+  take ran, like ran-program
+  like text
+
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state}: {ran/reason}>
+
+# the typed program run on TypeScript in a folder of its own, answering the folder
+task typed-folder
+  like text
+
+  save folder, temp-folder(<host-value->)
+  run-text(program, <typescript>, folder, <host>, over-root())
+  back folder
+
+task typed-said
+  like text
+
+  save folder, temp-folder(<host-value->)
+  back said-of(run-text(program, <typescript>, folder, <host>, over-root()))
+
+test <a host value of the declared type passes through>
+  want hold, starts-with(typed-said(), <code/boot.tree >)
+
+test <a host value of another type raises data-mismatch at the binding>
+  want hold, ends-with(typed-said(), <data-mismatch: is a text where a number belongs>)
+
+test <the check is written on the binding>
+  save emitted, file-text(value-path/join(typed-folder(), <host-typescript.ts>))
+  want hold, text-contains(emitted, bound-check)
+
+test <a host value given no type is left alone>
+  save loose, temp-folder(<host-value->)
+  run-text(plain, <typescript>, loose, <host>, over-root())
+  save untyped, file-text(value-path/join(loose, <host-typescript.ts>))
+  want hold, not(text-contains(untyped, <__termHost(>))
+
+test <a field read off an opaque handle is refused>
+  save out, compile-text(handle, make(compile-choice, bind(file, project-path(<.>, <tmp/host-handle.tree>)), bind(project, <.>), bind(project-env, <node>), bind(project-link, project-path(<.>, <.>))))
+  save refused, <BUILT>
+  fork test, not(out/ok)
+    hold
+      save refused, out/messages/join(< | >)
+  want hold, text-contains(refused, <"host" is read off a `url-handle`>)
+
+test <a host value of the declared type passes, and one of another type raises data-mismatch>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<host-value-native->)
+  host ran, run-text(dynamic-host, backend, folder, <dynamic>, over-root())
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(said-of(ran), dynamic-said)

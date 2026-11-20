@@ -201,7 +201,7 @@ bind roll-add
 
 bind roll-done
   take merger, like dynamic
-  like dynamic
+  like merged-roll
   case node
     text <$merger.done()>
 
@@ -266,9 +266,20 @@ form source-file
   link file, like text
   link text, like text
 
+# the merged roll (compile/roll.ts `Roll`, `makeRollMerger().done()`): an open record of the roll's kinds, each a list of
+# open entries. Every roll a build writes has these six (rolling.tree). A kind a deck declares is a key of its own,
+# which the record keeps as the merger made it, so the roll writes and prints as it did
+form merged-roll
+  link deck, like list, like dynamic
+  link exception, like list, like dynamic
+  link task, like list, like dynamic
+  link dock, like list, like dynamic
+  link tell, like list, like dynamic
+  link kind, like list, like dynamic
+
 # what the roll pass answers: the merged roll, the files that did not build, and their problems
 form project-roll-answer
-  link roll, like dynamic
+  link roll, like merged-roll
   link failed, like list, like text
   link problems, like list, like problem-entry
 

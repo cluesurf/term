@@ -278,12 +278,17 @@ form unit-job
   # a unit a rule-stating unit reaches: its job also answers it under proof, the key with bodies (decision 093)
   link under-proof, like boolean
 
-form oom-result
+# one job's answer, by its unit's first file: the worker's `SeparateResult` (compile/separate.ts), or an out-of-memory
+# unit's failure made here (no rolls, its one diagnostic). `rolls`, each unit's [label, roll] pair, is read only when
+# `ok` is true, and `diagnostics` only when it is false (separate-build.tree reads the answer as the host value it is)
+form units-result
+  mark shared
   link ok, like boolean
-  link diagnostics, like list, like heap-diagnostic
+  link rolls, like list, like dynamic
+  link diagnostics, like list, like dynamic
 
 form units-answer
-  link results, like hash, like text, like dynamic
+  link results, like hash, like text, like units-result
   link jobs, like number
   link workers, like number
   link failures, like list, like text
@@ -306,7 +311,7 @@ form unit-run
   link graph-size, like number
   link plan, like dynamic
   link ready, like list, like text
-  link results, like hash, like text, like dynamic
+  link results, like hash, like text, like units-result
   link failures, like list, like text
   link out-of-memory, like dynamic
   link workers, like list, like dynamic
@@ -409,9 +414,12 @@ task listen-units
             hold
               save one, units-file-or-worker(held)
               units-set-add(run/out-of-memory, one)
-              save diagnostics, make list
+              save diagnostics, like list, like dynamic
+                make list
               diagnostics/push(out-of-memory-diagnostic(one, run/heap))
-              save run/results/{one}, make(oom-result, bind(ok, false), bind(diagnostics, diagnostics))
+              save rolls, like list, like dynamic
+                make list
+              save run/results/{one}, make(units-result, bind(ok, false), bind(rolls, rolls), bind(diagnostics, diagnostics))
           save replacement, spawn-unit-worker(run)
           run/workers/push(replacement)
           save run/alive, add(run/alive, 1)
@@ -750,7 +758,7 @@ bind units-entry-answer
   take fresh, like dynamic
   take rolls, like dynamic
   take shim, like dynamic
-  like dynamic
+  like units-result
   case node
     text <(\{ ...$result, modules: $fresh, rolls: $rolls, exports: [], shim: $shim \})>
 
@@ -764,7 +772,7 @@ bind units-built-count
 # it, and the units built outside the project (only a stored answer that does not read back is built, as the build does)
 form units-probed
   link missed, like dynamic
-  link results, like hash, like text, like dynamic
+  link results, like hash, like text, like units-result
   link built, like number
 
 # what the probe keeps across its jobs: the modules and rolls an answer carried already, as one worker keeps them

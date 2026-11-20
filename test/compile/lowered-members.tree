@@ -1,0 +1,130 @@
+note <one table of what a native list and map answer: a lowered member, else the Term method, else refused before emit>
+
+# Ported from lowered-members.ts by statement (item term-self-host-001-0656), one test per `ok` in its order
+# (compile/lowered-members.ts, note/project/term/backends-complete.md step 5). A member call on a list or a hash is a
+# member every emitter lowers, else the Term form's method of that name, else refused on Rust, Swift and Kotlin before
+# emit (check/lowered.ts), where it is the host's own on TypeScript.
+#
+# Before 2026-10-05 the checker's own list said `reverse`, `find`, `sort`, `forEach`, `entries`, `keys`, `values` and a
+# map's `clear` and `entries` were answered natively, and no native emitter lowered them: `walk list, call
+# items/reverse` failed in rustc, swiftc and kotlinc, and reversed `items` IN PLACE on TypeScript, where the Term method
+# copies. A map's `clear` and `entries` were the host's own, unlike their Term definitions.
+#
+# The program runs on each backend through run-text, one walked test, each backend a case whose missing toolchain is its
+# own skip. The refusals need only the checker: compile-text over the project at the suite's root under each env.
+# LOWERED_ONLY=typescript, rust, swift or kotlin runs one, as in the original.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/running
+  find backends
+  find run-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+
+# a walk over the list `reverse` answers, which must leave `items` as it was; a map's `entries` and `clear`, which are
+# Term methods; and a map's `size` read after the clear
+host program, <load @term/base/list\n  find list\n\nload @term/base/hash\n  find hash\n\ntask run\n  like text\n  save items\n    make list\n      code 3\n      code 1\n      code 2\n  save order\n    make list\n  walk list, call items/reverse\n    hook next\n      take site, name item\n      call order/push\n        read item\n  save counts\n    make hash\n      save a, code 1\n      save b, code 2\n  save pairs, call counts/entries\n  save before, read pairs/length\n  call counts/clear\n  send back, text \<\{order/0\}\{order/1\}\{order/2\} \{items/0\} \{before\} \{counts/size\}\>\n>
+
+host expected, <213 3 2 0>
+
+host sorted-program, <task run\n  like number\n  save items\n    make list\n      code 3\n      code 1\n  call items/sort\n  send back, read items/0\n>
+
+host each-program, <task run\n  like number\n  save counts\n    make hash\n      save a, code 1\n  save total, code 0\n  call counts/for-each\n    task\n      take value, like number\n      save total, add(read(total), read(value))\n  send back, read total\n>
+
+# whether LOWERED_ONLY leaves this backend or env in
+task wanted
+  take one, like text
+  like boolean
+
+  save only, variable(<LOWERED_ONLY>)
+  back or(is-equal(only, <>), is-equal(only, one))
+
+# the refusal messages of a program compiled over the project under `env`, each with its hint, none when it builds
+task diagnostics
+  take text, like text
+  take env, like text
+  like list, like text
+
+  save out, compile-text(text, make(compile-choice, bind(file, <refused-{env}.tree>), bind(project, <.>), bind(project-env, env), bind(env, env)))
+  save said, make(list, <>)
+  said/pop()
+  fork test, out/ok
+    hold
+      back said
+  walk out/notes
+    take note
+    said/push(<{note/message} {note/hint}>)
+  back said
+
+# a message of the list holds both words
+task any-holding-both
+  take said, like list, like text
+  take one, like text
+  take two, like text
+  like boolean
+
+  walk said
+    take message, like text
+    fork test, and(text-contains(message, one), text-contains(message, two))
+      hold
+        back true
+  back false
+
+task any-holding
+  take said, like list, like text
+  take word, like text
+  like boolean
+
+  walk said
+    take message, like text
+    fork test, text-contains(message, word)
+      hold
+        back true
+  back false
+
+test <a walk over items/reverse copies, a map's entries and clear are its Term methods>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <LOWERED_ONLY leaves {backend} out>
+  host folder, temp-folder(<term-lowered->)
+  host ran, run-text(program, backend, folder, <lowered>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+test <a list's host-only method is refused, naming it, the backend and what a list answers>
+  take env, like text
+    walk make list(<rust>, <swift>, <kotlin>)
+  fork test, not(wanted(env))
+    hold
+      skip <LOWERED_ONLY leaves {env} out>
+  want hold, any-holding-both(diagnostics(sorted-program, env), <`sort` is not a method of a list on {env}>, <index-of>)
+
+test <a map's host-only method is refused the same way>
+  take env, like text
+    walk make list(<rust>, <swift>, <kotlin>)
+  fork test, not(wanted(env))
+    hold
+      skip <LOWERED_ONLY leaves {env} out>
+  want hold, any-holding(diagnostics(each-program, env), <`for-each` is not a method of a hash on {env}>)
+
+test <typescript: the host method is the host's own, and builds>
+  fork test, not(wanted(<typescript>))
+    hold
+      skip <LOWERED_ONLY leaves typescript out>
+  want hold, is-equal(diagnostics(sorted-program, <node>)/length, 0)

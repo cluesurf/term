@@ -1,0 +1,231 @@
+note <Kotlin's integer list, TermLongs, held against java.util.ArrayList operation for operation>
+
+# Ported from kotlin-longs.ts by statement (item term-self-host-001-0656), one test per `check()` of its Kotlin program,
+# in its order (codegen-performance F5). `TermLongs`, one LongArray behind a `MutableList<Long>`, runs one seeded
+# sequence of 20,000 operations beside `java.util.ArrayList`: every result agrees, every refusal is the same exception
+# class, and the two lists are equal, hash alike and read alike after every step. Then the two factories, `addAll` from a
+# TermLongs (the arraycopy path) and from a view, an iterator a write invalidates, sort, a sub-list, and equality both ways
+# with an ArrayList.
+#
+# The Kotlin program is the original's, written after the subject's KOTLIN_LONGS, built by kotlinc and run once, by the
+# first test that asks. Where the original's check() judged a value in Kotlin, the program prints the value as
+# `<key>=<value>` and the test judges it here: a list by its text, an outcome by its words, two sides by equality. A key
+# the program never printed reads <not printed>, and a build that failed reads its reason, so each such test fails alone.
+# With kotlinc or java missing each test skips, where the original printed one skip line.
+
+load ../support/running
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find split, name text-split
+  find starts-with, name text-starts-with
+  find replace, name text-replace
+
+dock load
+  load <@term/make/code/compile/kotlin>, name longs-kotlin
+  load <node:path>, name longs-path
+
+# host value: the subject's Kotlin runtime text, a constant of the module that Term names no other way
+bind longs-runtime
+  take subject, like dynamic
+  like text
+  case node
+    text <String($subject.KOTLIN_LONGS)>
+
+# the original's program after KOTLIN_LONGS: its `outcome` and its `main`, each check() now a show() of the values it judged
+host longs-main, <\n\nfun \<T\> outcome(body: () -\> T): String = try \{ "ok " + body() \} catch (e: Exception) \{ "throw " + e.javaClass.simpleName \}\n\nfun show(key: String, value: Any?) = println(key + "=" + value)\n\nfun main() \{\n    // 1. one seeded sequence on both\n    val random = java.util.Random(20261002)\n    val ours = mutableLongListOf()\n    val theirs: MutableList\<Long\> = java.util.ArrayList()\n    var differ = ""\n    for (step in 0 until 20000) \{\n        // an index a little past either end, so the refusals are exercised as often as the writes\n        val at = random.nextInt(ours.size + 3) - 1\n        val value = random.nextLong() shr random.nextInt(64)\n        val op = random.nextInt(9)\n        // drawn once, so both lists are cleared together\n        val wipe = op == 8 && random.nextInt(50) == 0\n        val a = when (op) \{\n            0, 1 -\> outcome \{ ours.add(value) \}\n            2 -\> outcome \{ ours.add(at, value) \}\n            3 -\> outcome \{ ours[at] \}\n            4 -\> outcome \{ ours.set(at, value) \}\n            5 -\> outcome \{ ours.removeAt(at) \}\n            6 -\> outcome \{ ours.indexOf(value) \}\n            7 -\> outcome \{ ours.addAll(listOf(value, value + 1)) \}\n            else -\> outcome \{ if (wipe) ours.clear() else ours.size \}\n        \}\n        val b = when (op) \{\n            0, 1 -\> outcome \{ theirs.add(value) \}\n            2 -\> outcome \{ theirs.add(at, value) \}\n            3 -\> outcome \{ theirs[at] \}\n            4 -\> outcome \{ theirs.set(at, value) \}\n            5 -\> outcome \{ theirs.removeAt(at) \}\n            6 -\> outcome \{ theirs.indexOf(value) \}\n            7 -\> outcome \{ theirs.addAll(listOf(value, value + 1)) \}\n            else -\> outcome \{ if (wipe) theirs.clear() else theirs.size \}\n        \}\n        if (a != b || ours != theirs || ours.hashCode() != theirs.hashCode()) \{\n            differ = "step " + step + " op " + op + " at " + at + ": " + a + " against " + b\n            break\n        \}\n    \}\n    show("seeded", differ)\n\n    // 2. the factories and the arraycopy path\n    val made = mutableLongListOf(3L, -1L, Long.MAX_VALUE, Long.MIN_VALUE)\n    show("made", made)\n    val copied = mutableLongListOf(made)\n    copied.add(9L)\n    show("made-after-copy", made)\n    show("copied", copied)\n    val grown = mutableLongListOf()\n    for (i in 0 until 1000) grown.addAll(made)\n    show("grown", "" + grown.size + " " + grown[3999] + " " + grown[2])\n    val fromView = mutableLongListOf(made.asReversed())\n    show("from-view", fromView)\n    val self = mutableLongListOf(1L, 2L)\n    self.addAll(self)\n    show("self-added", self)\n\n    // 3. the List contract\n    val walked = mutableLongListOf(1L, 2L, 3L)\n    show("walked-write", outcome \{ for (x in walked) if (x == 1L) walked.add(4L) \})\n    val sorted = mutableLongListOf(5L, -2L, 9L, 0L)\n    sorted.sort()\n    show("sorted", sorted)\n    val window = mutableLongListOf(1L, 2L, 3L, 4L, 5L)\n    window.subList(1, 3).clear()\n    show("window", window)\n    val plain: MutableList\<Long\> = java.util.ArrayList(listOf(7L, 8L))\n    show("ours-equals-plain", mutableLongListOf(7L, 8L) == plain)\n    show("plain-equals-ours", plain == mutableLongListOf(7L, 8L))\n    show("hash-ours", mutableLongListOf(7L, 8L).hashCode())\n    show("hash-plain", plain.hashCode())\n    show("found-by", hashMapOf\<List\<Long\>, String\>(plain to "found")[mutableLongListOf(7L, 8L)])\n    show("text-ours", mutableLongListOf(7L, 8L).toString())\n    show("text-plain", plain.toString())\n    show("past-end-ours", outcome \{ mutableLongListOf(1L)[1] \})\n    show("past-end-plain", outcome \{ java.util.ArrayList(listOf(1L))[1] \})\n    show("pop-last", outcome \{ mutableLongListOf(1L, 2L).run \{ removeAt(lastIndex) \} \})\n    show("pop-empty-ours", outcome \{ mutableLongListOf().run \{ removeAt(lastIndex) \} \})\n    show("pop-empty-plain", outcome \{ java.util.ArrayList\<Long\>().run \{ removeAt(lastIndex) \} \})\n\}\n>
+
+# the program built and run. `state` is <skipped>, <failed> (the build) or <ran>, `lines` what it printed
+form longs-run
+  link state, like text
+  link reason, like text, fall <>
+  link lines
+    like list, like text
+    fall make list
+
+form longs-held
+  mark shared
+  link made, like boolean
+  link run, like longs-run
+
+host longs-now, make(longs-held, bind(made, false), bind(run, make(longs-run, bind(state, <skipped>))))
+
+task longs-made
+  like longs-run
+
+  fork test, or(is-equal(find-tool(<kotlinc>), <>), is-equal(find-tool(<java>), <>))
+    hold
+      back make(longs-run, bind(state, <skipped>), bind(reason, <kotlinc is not installed>))
+  save folder, temp-folder(<kotlin-longs->)
+  save file, longs-path/join(folder, <longs.kt>)
+  save jar, longs-path/join(folder, <longs.jar>)
+  write-file(file, <{longs-runtime(longs-kotlin)}{longs-main}>)
+  save failed, run-tool(make list(<kotlinc>, file, <-include-runtime>, <-d>, jar))
+  fork test, is-unequal(failed, <>)
+    hold
+      back make(longs-run, bind(state, <failed>), bind(reason, failed))
+  save ran, run(<java>, make list(<-jar>, jar))
+  back make(longs-run, bind(state, <ran>), bind(lines, text-split(ran/output, <\n>)))
+
+# the run, made once
+task longs-ran
+  like longs-run
+
+  fork test, not(longs-now/made)
+    hold
+      save longs-now/run, longs-made()
+      save longs-now/made, true
+  back longs-now/run
+
+# the value the program printed under a key: its `<key>=<value>` line without the key, <not printed> when no line has
+# it, and the build's reason when the build failed
+task shown
+  take run, like longs-run
+  take key, like text
+  like text
+
+  fork test, is-unequal(run/state, <ran>)
+    hold
+      back <not run: {run/reason}>
+  walk run/lines
+    take line, like text
+    fork test, text-starts-with(line, <{key}=>)
+      hold
+        back text-replace(line, <{key}=>, <>)
+  back <not printed>
+
+# two keys the program printed, at one value: the original's two sides of an `==`
+task agree
+  take run, like longs-run
+  take one, like text
+  take other, like text
+  like boolean
+
+  save left, shown(run, one)
+  back and(is-equal(run/state, <ran>), and(is-unequal(left, <not printed>), is-equal(left, shown(run, other))))
+
+test <20,000 seeded operations agree with ArrayList>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <seeded>), <>)
+
+test <the vararg factory holds its items in order>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <made>), <[3, -1, 9223372036854775807, -9223372036854775808]>)
+
+test <the copy factory copies, never aliases>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <made-after-copy>), <[3, -1, 9223372036854775807, -9223372036854775808]>)
+  want hold, is-equal(shown(ran, <copied>), <[3, -1, 9223372036854775807, -9223372036854775808, 9]>)
+
+test <addAll from a TermLongs grows past its capacity>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <grown>), <4000 -9223372036854775808 9223372036854775807>)
+
+test <addAll from a view>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <from-view>), <[-9223372036854775808, 9223372036854775807, -1, 3]>)
+
+test <addAll of itself doubles it>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <self-added>), <[1, 2, 1, 2]>)
+
+test <an iterator a write invalidates fails fast>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <walked-write>), <throw ConcurrentModificationException>)
+
+test <sort>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <sorted>), <[-2, 0, 5, 9]>)
+
+test <a sub-list writes through>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <window>), <[1, 4, 5]>)
+
+test <equal to an ArrayList both ways>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <ours-equals-plain>), <true>)
+  want hold, is-equal(shown(ran, <plain-equals-ours>), <true>)
+
+test <the same hash as an ArrayList>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, agree(ran, <hash-ours>, <hash-plain>)
+
+test <a hash key equal to an ArrayList finds it>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <found-by>), <found>)
+
+test <toString as an ArrayList>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, agree(ran, <text-ours>, <text-plain>)
+
+test <a read past the end is ArrayList's refusal>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, agree(ran, <past-end-ours>, <past-end-plain>)
+
+test <a pop of the last>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <pop-last>), <ok 2>)
+
+test <a pop of an empty list is ArrayList's refusal>
+  host ran, longs-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, agree(ran, <pop-empty-ours>, <pop-empty-plain>)

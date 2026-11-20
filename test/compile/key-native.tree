@@ -1,0 +1,140 @@
+note <a float key has one NaN and -0.0 is 0.0, and a float value compares by IEEE, on every backend>
+
+# Ported from key-native.ts by statement (item term-self-host-001-0656), one test per case in its order, each walked
+# over the backends, so a case on a backend is one `ok` of the original. A KEY has one NaN and `-0.0` is `0.0`
+# (TypeScript's `__termKeyText`), and a VALUE compares by IEEE, NaN unequal to itself and the two zeros equal
+# (`__termEqual`). Rust keys through `TermHash` (compile/rust.ts), Swift through `TermKeyBox` / `TermKeyed` in the map
+# runtime (compile/swift.ts), Kotlin through `termKey` at a map access and a float-holding record's own `equals`, with
+# `is-equal` over one as `termEqual` (compile/kotlin.ts, the `key` helper). Each program prints one line, and every
+# backend must print what is written here, which is what TypeScript prints. A backend whose toolchain is not installed
+# is the case's own skip. KEY_ONLY=typescript, rust, swift or kotlin runs one, as in the original.
+
+load ../support/running
+  find backends
+  find run-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+host nan-key-program, <load @term/base/float\n  find square-root\n\nload @term/base/hash\n  find hash\n  find size\n  find get-or-default\n\ntask run\n  like text\n  save nan, square-root(-1.0)\n  save keys, make hash\n  set keys, nan, 1\n  set keys, nan, 2\n  save zero, 0.0\n  save negative, multiply(zero, -1.0)\n  set keys, zero, 3\n  set keys, negative, 4\n  send back, \<size \{size(keys)\}, nan \{get-or-default(keys, nan, 0)\}, zero \{get-or-default(keys, zero, 0)\}\>\n>
+
+host nan-record-key-program, <load @term/base/float\n  find square-root\n\nload @term/base/hash\n  find hash\n  find size\n  find get-or-default\n\nform point\n  link x, like float\n\ntask run\n  like text\n  save nan, square-root(-1.0)\n  save keys, make hash\n  set keys, make(point, bind(x, nan)), 1\n  set keys, make(point, bind(x, nan)), 2\n  set keys, make(point, bind(x, 0.0)), 3\n  set keys, make(point, bind(x, multiply(0.0, -1.0))), 4\n  send back, \<size \{size(keys)\}, nan \{get-or-default(keys, make(point, bind(x, nan)), 0)\}, zero \{get-or-default(keys, make(point, bind(x, 0.0)), 0)\}\>\n>
+
+host list-record-key-program, <load @term/base/hash\n  find hash\n  find size\n\nload @term/base/list\n  find list\n\nform path\n  link parts, like list, like text\n\ntask run\n  like text\n  save keys, make hash\n  set keys, make(path, bind(parts, make(list, \<a\>, \<b\>))), 1\n  set keys, make(path, bind(parts, make(list, \<a\>, \<b\>))), 2\n  send back, \<size \{size(keys)\}\>\n>
+
+host hash-record-key-program, <load @term/base/hash\n  find hash\n  find size\n  find set\n\nform tally\n  link counts, like hash, like text, like number\n\ntask make-tally\n  take n, like number\n  like tally\n  save counts, make hash\n  set counts, \<a\>, n\n  back make(tally, bind(counts, counts))\n\ntask run\n  like text\n  save keys, make hash\n  set keys, make-tally(1), 1\n  set keys, make-tally(1), 2\n  set keys, make-tally(2), 3\n  send back, \<size \{size(keys)\}\>\n>
+
+host nan-field-program, <load @term/base/float\n  find square-root\n\nform point\n  link x, like float\n\ntask run\n  like text\n  save nan, square-root(-1.0)\n  save a, make(point, bind(x, nan))\n  save b, make(point, bind(x, nan))\n  save p, make(point, bind(x, 0.0))\n  save q, make(point, bind(x, multiply(0.0, -1.0)))\n  send back, \<same nan \{is-equal(a, b)\}, signed zero \{is-equal(p, q)\}, nan itself \{is-equal(nan, nan)\}\>\n>
+
+host nan-case-program, <load @term/base/float\n  find square-root\n\nform shape\n  case circle\n    link radius, like float\n  case dot\n\ntask run\n  like text\n  save nan, square-root(-1.0)\n  save a, make(circle, bind(radius, nan))\n  save b, make(circle, bind(radius, nan))\n  save p, make(circle, bind(radius, 0.0))\n  save q, make(circle, bind(radius, multiply(0.0, -1.0)))\n  send back, \<same nan \{is-equal(a, b)\}, signed zero \{is-equal(p, q)\}\>\n>
+
+host float-list-equal-program, <load @term/base/float\n  find square-root\n\nload @term/base/list\n  find list\n\ntask run\n  like text\n  save nan, square-root(-1.0)\n  save a, make list, nan, 1.0\n  save b, make list, nan, 1.0\n  save p, make list, 0.0\n  save q, make list, multiply(0.0, -1.0)\n  send back, \<same nan \{is-equal(a, b)\}, signed zero \{is-equal(p, q)\}\>\n>
+
+# whether KEY_ONLY leaves this backend in
+task wanted
+  take one, like text
+  like boolean
+
+  save only, variable(<KEY_ONLY>)
+  back or(is-equal(only, <>), is-equal(only, one))
+
+test <a NaN key set twice is one entry and is found again, and -0.0 overwrites 0.0 (nan-key)>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <KEY_ONLY leaves {backend} out>
+  host folder, temp-folder(<term-key-native->)
+  host ran, run-text(nan-key-program, backend, folder, <nan-key>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <size 2, nan 2, zero 4>)
+
+test <a record key holding NaN is one entry and is found again, and a record holding -0.0 is the one holding 0.0 (nan-record-key)>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <KEY_ONLY leaves {backend} out>
+  host folder, temp-folder(<term-key-native->)
+  host ran, run-text(nan-record-key-program, backend, folder, <nan-record-key>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <size 2, nan 2, zero 4>)
+
+test <a record key holding a list is one entry for two equal lists (list-record-key)>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <KEY_ONLY leaves {backend} out>
+  host folder, temp-folder(<term-key-native->)
+  host ran, run-text(list-record-key-program, backend, folder, <list-record-key>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <size 1>)
+
+test <a record key holding a hash is one entry for two equal hashes, and another for a different one (hash-record-key)>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <KEY_ONLY leaves {backend} out>
+  host folder, temp-folder(<term-key-native->)
+  host ran, run-text(hash-record-key-program, backend, folder, <hash-record-key>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <size 2>)
+
+test <is-equal on two records holding NaN is false, and on records holding 0.0 and -0.0 is true (nan-field)>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <KEY_ONLY leaves {backend} out>
+  host folder, temp-folder(<term-key-native->)
+  host ran, run-text(nan-field-program, backend, folder, <nan-field>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <same nan false, signed zero true, nan itself false>)
+
+test <the same, for a case of a form with cases (nan-case)>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <KEY_ONLY leaves {backend} out>
+  host folder, temp-folder(<term-key-native->)
+  host ran, run-text(nan-case-program, backend, folder, <nan-case>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <same nan false, signed zero true>)
+
+test <the same, for two lists of floats (float-list-equal)>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <KEY_ONLY leaves {backend} out>
+  host folder, temp-folder(<term-key-native->)
+  host ran, run-text(float-list-equal-program, backend, folder, <float-list-equal>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <same nan false, signed zero true>)

@@ -1,0 +1,122 @@
+note <a named loop: a named halt or turn next inside a nested loop leaves or continues that loop, on every backend>
+
+# Ported from loop-name-native.ts by statement (item term-self-host-001-0656), one test per `ok` in its order. `walk
+# ..., name outer` names a loop, and `halt, name outer` / `turn next, name outer` inside a loop nested in it leave or
+# continue THAT loop rather than the innermost one. Every backend writes the name as its own loop label (`outer:` on
+# TypeScript and Swift, `'outer:` on Rust, `outer@` on Kotlin). A counted walk steps its counter before a named `turn
+# next` reaches it from inside a nested loop, or it would count the same row forever.
+#
+# The program runs on each backend through run-text, one walked test, each backend a case whose missing toolchain is its
+# own skip. The refusals need only the checker: compile-text over the project at the suite's root under node, held to
+# LOOP_ONLY unset or typescript as in the original. LOOP_ONLY=typescript, rust, swift or kotlin runs one.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/running
+  find backends
+  find run-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+
+# four loops that each need a name: a search that stops both loops at the first pair, a row skipped from inside the
+# walk over its columns (a counted walk, so the counter must step), a list walk continued from inside a `walk test`,
+# and a named loop whose unnamed `halt` still leaves only the innermost one
+host program, <load @term/base/list\n  find list\n\ntask first-pair\n  take xs, like list, like number\n  take target, like number\n  like text\n  save found, \<none\>\n  save tries, 0\n  walk xs, name outer\n    take a\n    walk xs\n      take b\n      save tries, add(tries, 1)\n      fork test, is-equal add(a, b), target\n        hold\n          save found, \<\{a\}+\{b\} after \{tries\}\>\n          halt, name outer\n  back found\n\ntask lower-triangle\n  take n, like number\n  like number\n  save total, 0\n  save done, 0\n  walk size, name rows\n    bind head, n\n    hook next\n      take site, name r\n      walk size\n        bind head, n\n        hook next\n          take site, name c\n          fork test, is-above c, r\n            hold\n              turn next, name rows\n          save total, add(total, 1)\n      save done, add(done, 1)\n  back add(multiply(total, 10), done)\n\ntask skip-words\n  take words, like list, like text\n  like number\n  save kept, 0\n  walk words, name each\n    take word\n    save at, 0\n    walk test\n      hook test, is-below at, 3\n      hold\n        save at, add(at, 1)\n        fork test, is-equal word, \<skip\>\n          hold\n            turn next, name each\n    save kept, add(kept, 1)\n  back kept\n\ntask inner-only\n  like number\n  save count, 0\n  walk make(list, 1, 2, 3), name outer\n    take a\n    walk make(list, 1, 2, 3)\n      take b\n      fork test, is-above b, 1\n        hold\n          halt\n      save count, add(count, 1)\n  back count\n\ntask grid-search\n  like text\n  save grid, make list, make(list, 3, 8), make(list, 5, 42), make(list, 42, 1)\n  save found, \<none\>\n  walk grid, name rows\n    take row\n    take r\n    walk row\n      take cell\n      take c\n      fork test, is-equal cell, 42\n        hold\n          save found, \<\{r\}:\{c\}\>\n          halt, name rows\n  back found\n\ntask run\n  like text\n  save pair, first-pair(make(list, 1, 4, 6, 9), 10)\n  save rows, lower-triangle(4)\n  save kept, skip-words(make(list, \<a\>, \<skip\>, \<b\>, \<skip\>))\n  save inner, inner-only()\n  send back, \<\{pair\} \{rows\} \{kept\} \{inner\} \{grid-search()\}\>\n>
+
+# 1+9 is found on the fourth try and nothing after it runs; rows 0..3 keep 1+2+3+4 cells, and only the last row's
+# column walk runs to its end, every other row continued from inside it (an unnamed `turn next` would give 104); two
+# words are kept; the unnamed halt leaves only the inner walk, so each of three outer turns counts one; the grid
+# search stops at the first 42, row 1 column 1, where an unnamed halt would go on to row 2 column 0
+host expected, <1+9 after 4 101 2 3 1:1>
+
+host nowhere-program, <load @term/base/list\n  find list\n\ntask run\n  like number\n  walk make(list, 1), name outer\n    take a\n    halt, name inner\n  back 0\n>
+
+host turned-program, <load @term/base/list\n  find list\n\ntask run\n  like number\n  walk make(list, 1)\n    take a\n    turn next, name outer\n  back 0\n>
+
+host twice-program, <load @term/base/list\n  find list\n\ntask run\n  like number\n  walk make(list, 1), name outer\n    take a\n    walk make(list, 1), name outer\n      take b\n      halt, name outer\n  back 0\n>
+
+host outside-program, <task run\n  like number\n  turn next, name outer\n  back 0\n>
+
+# whether LOOP_ONLY leaves this backend in
+task wanted
+  take one, like text
+  like boolean
+
+  save only, variable(<LOOP_ONLY>)
+  back or(is-equal(only, <>), is-equal(only, one))
+
+# the refusal messages of a program compiled over the project under node, none when it builds
+task refused
+  take text, like text
+  like list, like text
+
+  save out, compile-text(text, make(compile-choice, bind(file, <refused.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  save said, make(list, <>)
+  said/pop()
+  fork test, out/ok
+    hold
+      back said
+  walk out/notes
+    take note
+    said/push(note/message)
+  back said
+
+task any-holding
+  take said, like list, like text
+  take word, like text
+  like boolean
+
+  walk said
+    take message, like text
+    fork test, text-contains(message, word)
+      hold
+        back true
+  back false
+
+test <a named halt leaves both loops, a named turn next continues the outer walk (a counted one stepping its counter, and from inside a walk test), and an unnamed halt leaves the inner one>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <LOOP_ONLY leaves {backend} out>
+  host folder, temp-folder(<term-loop-name->)
+  host ran, run-text(program, backend, folder, <loops>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+test <a halt naming no loop around it is refused, naming the loops that are>
+  fork test, not(wanted(<typescript>))
+    hold
+      skip <LOOP_ONLY leaves typescript out>
+  want hold, any-holding(refused(nowhere-program), <`halt, name inner` names no loop around it (the loops around it are named outer)>)
+
+test <a turn next naming no loop around it is refused, saying none has a name>
+  fork test, not(wanted(<typescript>))
+    hold
+      skip <LOOP_ONLY leaves typescript out>
+  want hold, any-holding(refused(turned-program), <`turn next, name outer` names no loop around it, and none around it has a name>)
+
+test <a loop named like the loop around it is refused>
+  fork test, not(wanted(<typescript>))
+    hold
+      skip <LOOP_ONLY leaves typescript out>
+  want hold, any-holding(refused(twice-program), <is named "outer" too>)
+
+test <a named turn next outside any loop is refused as outside a loop>
+  fork test, not(wanted(<typescript>))
+    hold
+      skip <LOOP_ONLY leaves typescript out>
+  want hold, any-holding(refused(outside-program), <only valid inside a loop>)

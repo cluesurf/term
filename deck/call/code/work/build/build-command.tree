@@ -115,6 +115,7 @@ load ./child-run
 load ../workers/unit-pool
   find compile-units-parallel
   find units-answer
+  find units-result
 
 load ../workers/file-pool
   find compile-project-parallel
@@ -123,6 +124,8 @@ load ../workers/file-pool
 
 load ../roll/roll-making
   find project-roll
+  find roll-pair-label
+  find roll-pair-roll
 
 load @term/call/work/output/printer
   find count
@@ -254,12 +257,24 @@ form snapshot-probe
   link dirty, like hash, like text, like boolean
   link known, like hash, like text, like list, like text
 
-# each unit's roll a pool answered, as one map: the rolls of every result that built
-bind pool-rolls
-  take results, like dynamic
-  like dynamic
-  case node
-    text <new Map([...$results.values()].flatMap((one) =\> (one.ok ? one.rolls : [])))>
+# each unit's roll a pool answered, as one map by its label: the rolls of every result that built, in the pool's order
+# (a label answered twice keeps its first place and its last roll, as `new Map(pairs)` does). It is the map
+# roll-making.tree `project-roll` reads
+task pool-rolls
+  take results, like hash, like text, like units-result
+  like hash, like text, like dynamic
+  mark private
+
+  save rolls, make hash
+  walk results/keys()
+    take file
+    save one, results/get(file)
+    fork test, one/ok
+      hold
+        walk one/rolls
+          take pair
+          save rolls/{roll-pair-label(pair)}, roll-pair-roll(pair)
+  back rolls
 
 # a caught value's message, or the value as text
 task message-of

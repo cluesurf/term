@@ -1,0 +1,445 @@
+note <one Term program means one thing on every backend, each fixture held to one answer on TypeScript, Rust, Swift and Kotlin>
+
+# Ported from meaning-native.ts by statement (item term-self-host-001-0656), one walked case per `ok` in its order of
+# backends (note/project/term/optimize/meaning.md). Each fixture under meaning-native/ (and `order`, made here from its
+# keys) is compiled against the stdlib for a backend, built by the real toolchain and run, and what its `compute` task
+# printed must be the fixture's one answer. Every native program runs TWICE, because a per-process hash seed is exactly
+# what one run cannot see: `order` once walked a hash in a different order on every run of the same binary.
+#
+# The original compiled through a front end of its own (parse, mill, bind by import, extend, check, simplify over the
+# file's tasks). Here compile-text compiles it over the stdlib under each env, as withNativeEnv(env, stdlibResolver())
+# asked, `compute` its entry. Each leg's main is written in the backend's own words as the original wrote it, and each
+# fixture is built once per backend, by the first case that asks. A backend's tests are one walked test per run: the
+# TypeScript one, then for each native backend its first runs and then its second runs, each fixture a case. A missing
+# toolchain skips each case, where the original printed one skip line per backend, and a fixture that did not build fails
+# both its runs, where the original printed one FAIL. MN_ONLY=rust (or swift, kotlin, typescript) runs one backend, and
+# MN_CASE=slot one fixture.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+  find file-text
+
+load ../support/running
+  find run-tool
+  find native-flags
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+dock load
+  load <@term/make/code/compile/kotlin>, name meaning-kotlin
+  load <node:path>, name meaning-path
+
+# a fixture and the one answer every backend must print
+form meaning-case
+  link label, like text
+  link want, like text
+
+# a fixture built for one backend. `state` is <built>, <failed> (the compile or the build) or <skipped>, and `command` the
+# program and its arguments that run it
+form meaning-leg
+  link state, like text
+  link reason, like text, fall <>
+  link command
+    like list, like text
+    fall make list
+
+# every leg made in this process, by `<backend>/<label>`
+form meaning-legs
+  mark shared
+  link held, like hash, like text, like meaning-leg
+
+host meaning-held, make(meaning-legs, bind(held, make hash))
+
+# 20 keys out of sorted order. `fig` is deleted and set again, so it moves to the end, and `pear` is set a second time,
+# so it keeps its place: the two rules of insertion order a hash table forgets
+task order-keys
+  like list, like text
+
+  back make list(<pear>, <apple>, <zebra>, <mango>, <kiwi>, <banana>, <quince>, <fig>, <yam>, <cherry>, <lime>, <date>, <olive>, <grape>, <nut>, <elder>, <hops>, <jujube>, <ugli>, <tomato>)
+
+# a hash walked in insertion order, after each key is set, `fig` removed and set again and `pear` set again
+task order-program
+  like text
+
+  save sets, <>
+  save at, 0
+  walk order-keys()
+    take key, like text
+    save sets, <{sets}  call set\n    read m\n    text \<{key}\>\n    code {at}\n>
+    save at, add(at, 1)
+  back <load @term/base/code/hash\n  find hash\n\ntask compute\n  like text\n  save m\n    make hash\n{sets}  call remove\n    read m\n    text \<fig\>\n  call set\n    read m\n    text \<fig\>\n    code 99\n  call set\n    read m\n    text \<pear\>\n    code 98\n  host names\n    call keys\n      read m\n  save out, text \<\>\n  walk list, read names\n    hook next\n      take site, name key\n      save out, text \<\{\{out\}\}\{\{key\}\} \>\n  send back, read out\n>
+
+# the keys in their order, `fig` last
+task order-want
+  like text
+
+  save parts, make list
+  walk order-keys()
+    take key, like text
+    fork test, is-unequal(key, <fig>)
+      hold
+        parts/push(key)
+  parts/push(<fig>)
+  back parts/join(< >)
+
+# the fixtures in the original's order, each with its answer
+task cases
+  like list, like meaning-case
+
+  save all, make list
+  all/push(make(meaning-case, bind(label, <order>), bind(want, order-want())))
+  # a `mark shared` value is compared, and keyed, by identity on every backend, alone and as a record's field
+  all/push(make(meaning-case, bind(label, <equality>), bind(want, <equal-fields=true different-fields=false same-name=true lines-equal=true lists-equal=true lists-differ=false variants-equal=true variants-differ=false empties-equal=true shared-by-identity=false shared-self=true key-c-found=false size=1 value-by-equal-key=2 holders-same=true holders-other=false shared-key-same=true shared-key-other=false>)))
+  all/push(make(meaning-case, bind(label, <count>), bind(want, <counts=3,0,1,3 tally-5=3 keys=3 within=true outside=false filled=3 read-in=7 read-out=0>)))
+  all/push(make(meaning-case, bind(label, <count-twins>), bind(want, <agree=80 disagree=0>)))
+  all/push(make(meaning-case, bind(label, <text>), bind(want, <length=5 at=😀 code=128512 past=[] y=2 later=4 last=4 middle=😀y parts=5 trimmed=[a😀] padded=ab😀>)))
+  all/push(make(meaning-case, bind(label, <lists>), bind(want, <d0=8 d3=4 b0=4 b1=7 both=6 r0=2 popped=2 left=3 quotient=-3>)))
+  all/push(make(meaning-case, bind(label, <swap>), bind(want, <flip=4,0,5 same=2 shared=5,4 kept=3 k=1,3 rotate=1,1,5>)))
+  all/push(make(meaning-case, bind(label, <closures>), bind(want, <literal=7 captured=21 held=81 named=18 seen=4,3 summed=14>)))
+  all/push(make(meaning-case, bind(label, <lend>), bind(want, <after=4 self-read=2 shared=9 sum=117 fresh=14 owned=100,2,10101,6>)))
+  all/push(make(meaning-case, bind(label, <borrow>), bind(want, <small=4 big=25 labels=b.c widest=25 again=25 bumped=6 each=33>)))
+  all/push(make(meaning-case, bind(label, <boxes>), bind(want, <sum=15 first=1>)))
+  all/push(make(meaning-case, bind(label, <alias>), bind(want, <same=1,3 apart=0,1>)))
+  all/push(make(meaning-case, bind(label, <place>), bind(want, <p0=107,10 p1=5,35 p2=3,73 old=6 pin=1>)))
+  all/push(make(meaning-case, bind(label, <records>), bind(want, <inside=6 twice=6 caller=5 alias=7 deep=99 outer=5 list=4 kept=3>)))
+  all/push(make(meaning-case, bind(label, <append>), bind(want, <01234|012 aaaa|zw hi! 012|34>)))
+  all/push(make(meaning-case, bind(label, <ascii>), bind(want, <6:abcdef:bcd::-1:98:3:-1:0:6:5:-1 6:aéçdef:éçd::-1:233:3:-1:0:6:5:1>)))
+  all/push(make(meaning-case, bind(label, <cursor>), bind(want, <6:757073106:çb😀€éa::-1:aé/aé€.é€/é€😀.€😀/€😀b.😀b/😀bç.bç/bç.ç/ç. 5:214865557:nialp::-1:pl/pla.la/lai.ai/ain.in/in.n/n. 6:757073106>)))
+  all/push(make(meaning-case, bind(label, <update>), bind(want, <a=20,b=14,r=14,c=12,d=12, a=16,é=16,😀=13, 2.75:1.25>)))
+  all/push(make(meaning-case, bind(label, <reuse>), bind(want, <2:-36,-4;-34,-3;-5,-1>)))
+  all/push(make(meaning-case, bind(label, <tail>), bind(want, <5000050000:21:4004>)))
+  all/push(make(meaning-case, bind(label, <slot>), bind(want, <31:refused:empty:put:got0:.|.|12345.>)))
+  all/push(make(meaning-case, bind(label, <owned>), bind(want, <12292:4:0:2>)))
+  all/push(make(meaning-case, bind(label, <nested>), bind(want, <35:3:z:3>)))
+  all/push(make(meaning-case, bind(label, <grow>), bind(want, <15:ab>)))
+  all/push(make(meaning-case, bind(label, <record-list>), bind(want, <64:2:7:8:48:9>)))
+  all/push(make(meaning-case, bind(label, <kept>), bind(want, <3:2:3:1>)))
+  all/push(make(meaning-case, bind(label, <path-guard>), bind(want, <1144:1863:1794>)))
+  all/push(make(meaning-case, bind(label, <variant-array>), bind(want, <3:1404:1:same:0:106:same:3009>)))
+  all/push(make(meaning-case, bind(label, <case-name>), bind(want, <73:11:9>)))
+  all/push(make(meaning-case, bind(label, <inline>), bind(want, <7:11:10:-1:9:refused:-1:4:3:5>)))
+  all/push(make(meaning-case, bind(label, <payload>), bind(want, <66:1:66:3:30:-1:1234.:1.|32.|.>)))
+  all/push(make(meaning-case, bind(label, <text-keys>), bind(want, <3:2:-1:true:true:false:7:3:12>)))
+  all/push(make(meaning-case, bind(label, <raise-spare>), bind(want, <moved:clash:empty:empty:.|1.|3.>)))
+  all/push(make(meaning-case, bind(label, <generic-bind>), bind(want, <a:10:2:1:2:1:x:6:five>)))
+  back all
+
+task labels
+  like list, like text
+
+  save names, make list
+  walk cases()
+    take one, like meaning-case
+    names/push(one/label)
+  back names
+
+task want-of
+  take label, like text
+  like text
+
+  walk cases()
+    take one, like meaning-case
+    fork test, is-equal(one/label, label)
+      hold
+        back one/want
+  back <>
+
+# the program of a fixture
+task program-of
+  take label, like text
+  like text
+
+  fork test, is-equal(label, <order>)
+    hold
+      back order-program()
+  back file-text(<test/compile/meaning-native/{label}.tree>)
+
+# why MN_ONLY or MN_CASE leaves this backend or fixture out, <> when they leave it in
+task left-out
+  take backend, like text
+  take label, like text
+  like text
+
+  save only, variable(<MN_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back <MN_ONLY names {only}>
+  save one, variable(<MN_CASE>)
+  fork test, and(is-unequal(one, <>), is-unequal(one, label))
+    hold
+      back <MN_CASE names {one}>
+  back <>
+
+# the toolchain a backend needs, those missing joined, <> when every one is there
+task missing-tools
+  take backend, like text
+  like text
+
+  save tools, make list
+  fork test, is-equal(backend, <rust>)
+    hold
+      save tools, make list(<rustc>)
+  fork test, is-equal(backend, <swift>)
+    hold
+      save tools, make list(<swiftc>)
+  fork test, is-equal(backend, <kotlin>)
+    hold
+      save tools, make list(<kotlinc>, <java>)
+  save missing, make list
+  walk tools
+    take tool, like text
+    fork test, is-equal(find-tool(tool), <>)
+      hold
+        missing/push(tool)
+  back missing/join(<, >)
+
+task leg-failed
+  take reason, like text
+  like meaning-leg
+
+  back make(meaning-leg, bind(state, <failed>), bind(reason, reason))
+
+# a build's errors, else the program built, run by `command`
+task leg-built
+  take failed, like text
+  take command, like list, like text
+  like meaning-leg
+
+  fork test, is-unequal(failed, <>)
+    hold
+      back leg-failed(failed)
+  back make(meaning-leg, bind(state, <built>), bind(command, command))
+
+# a fixture compiled, written and built for a backend, as the original's run() did
+task leg-made
+  take backend, like text
+  take label, like text
+  like meaning-leg
+
+  save missing, missing-tools(backend)
+  fork test, is-unequal(missing, <>)
+    hold
+      back make(meaning-leg, bind(state, <skipped>), bind(reason, <{missing} not installed>))
+  save env, backend
+  fork test, is-equal(backend, <typescript>)
+    hold
+      save env, <node>
+  save out, compile-text(program-of(label), make(compile-choice, bind(file, <main.tree>), bind(stdlib, env), bind(env, env), bind(entry, <compute>)))
+  fork test, not(out/ok)
+    hold
+      back leg-failed(out/messages/join(< | >))
+  save folder, temp-folder(<meaning-native->)
+  save stem, meaning-path/join(folder, label)
+  fork test, is-equal(backend, <typescript>)
+    hold
+      write-file(<{stem}.ts>, <{prelude-text(out, <node>)}\n{emit-text(out, <typescript>)}\nprocess.stdout.write(String(compute()))\n>)
+      back make(meaning-leg, bind(state, <built>), bind(command, make list(<npx>, <tsx>, <{stem}.ts>)))
+  fork test, is-equal(backend, <rust>)
+    hold
+      save emitted, emit-text(out, <rust>)
+      # an entry that may raise answers a `Result`, and a raise that escapes it is the program's failure
+      save answer, <compute()>
+      fork test, text-contains(emitted, <fn compute() -\> std::result::Result\<>)
+        hold
+          save answer, <match compute() \{ Ok(v) =\> v, Err(e) =\> panic!("\{\}", e.note) \}>
+      write-file(<{stem}.rs>, <{prelude-text(out, <rust>)}\n{emitted}\nfn main() \{ print!("\{\}", {answer}); \}\n>)
+      save binary, <{stem}-rs>
+      back leg-built(run-tool(make list(<rustc>, <-A>, <warnings>, <-O>, <{stem}.rs>, <-o>, binary)), make list(binary))
+  fork test, is-equal(backend, <swift>)
+    hold
+      save emitted, emit-text(out, <swift>)
+      save answer, <compute()>
+      fork test, text-contains(emitted, <func compute() throws>)
+        hold
+          save answer, <try! compute()>
+      write-file(<{stem}.swift>, <{prelude-text(out, <swift>)}\n{emitted}\nprint({answer}, terminator: "")\n>)
+      save binary, <{stem}-swift>
+      save swiftc, make list(<swiftc>)
+      walk native-flags(<swift>)
+        take flag, like text
+        swiftc/push(flag)
+      swiftc/push(<-o>)
+      swiftc/push(binary)
+      swiftc/push(<{stem}.swift>)
+      back leg-built(run-tool(swiftc), make list(binary))
+  save jar, <{stem}.jar>
+  write-file(<{stem}.kt>, meaning-kotlin/hoist-kotlin-imports(<{prelude-text(out, <kotlin>)}\n{emit-text(out, <kotlin>)}\nfun main() \{ print(compute()) \}\n>))
+  save kotlinc, make list(<kotlinc>, <{stem}.kt>)
+  walk native-flags(<kotlin>)
+    take flag, like text
+    kotlinc/push(flag)
+  kotlinc/push(<-include-runtime>)
+  kotlinc/push(<-d>)
+  kotlinc/push(jar)
+  back leg-built(run-tool(kotlinc), make list(<java>, <-jar>, jar))
+
+task leg-held
+  take key, like text
+  like boolean
+
+  back meaning-held/held/has(key)
+
+task leg-at
+  take key, like text
+  like meaning-leg
+
+  back meaning-held/held/{key}
+
+task leg-keep
+  take key, like text
+  take made, like meaning-leg
+  like void
+
+  save meaning-held/held/{key}, made
+
+# the leg of a fixture on a backend, made once
+task leg-of
+  take backend, like text
+  take label, like text
+  like meaning-leg
+
+  save key, <{backend}/{label}>
+  fork test, leg-held(key)
+    hold
+      back leg-at(key)
+  save made, leg-made(backend, label)
+  leg-keep(key, made)
+  back made
+
+# what a built leg printed, trimmed, or why it did not run
+task printed
+  take leg, like meaning-leg
+  like text
+
+  save rest, make list
+  save at, 0
+  walk leg/command
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        rest/push(part)
+    save at, add(at, 1)
+  save result, run(leg/command/0, rest)
+  fork test, is-unequal(result/code, 0)
+    hold
+      back <run failed, exit {result/code}: {result/error}>
+  back trim(result/output)
+
+test <typescript>
+  take label, like text
+    walk labels()
+  save out, left-out(<typescript>, label)
+  fork test, is-unequal(out, <>)
+    hold
+      skip out
+  host leg, leg-of(<typescript>, label)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, is-equal(printed(leg), want-of(label))
+
+test <rust: first run>
+  take label, like text
+    walk labels()
+  save out, left-out(<rust>, label)
+  fork test, is-unequal(out, <>)
+    hold
+      skip out
+  host leg, leg-of(<rust>, label)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, is-equal(printed(leg), want-of(label))
+
+test <rust: second run>
+  take label, like text
+    walk labels()
+  save out, left-out(<rust>, label)
+  fork test, is-unequal(out, <>)
+    hold
+      skip out
+  host leg, leg-of(<rust>, label)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, is-equal(printed(leg), want-of(label))
+
+test <swift: first run>
+  take label, like text
+    walk labels()
+  save out, left-out(<swift>, label)
+  fork test, is-unequal(out, <>)
+    hold
+      skip out
+  host leg, leg-of(<swift>, label)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, is-equal(printed(leg), want-of(label))
+
+test <swift: second run>
+  take label, like text
+    walk labels()
+  save out, left-out(<swift>, label)
+  fork test, is-unequal(out, <>)
+    hold
+      skip out
+  host leg, leg-of(<swift>, label)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, is-equal(printed(leg), want-of(label))
+
+test <kotlin: first run>
+  take label, like text
+    walk labels()
+  save out, left-out(<kotlin>, label)
+  fork test, is-unequal(out, <>)
+    hold
+      skip out
+  host leg, leg-of(<kotlin>, label)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, is-equal(printed(leg), want-of(label))
+
+test <kotlin: second run>
+  take label, like text
+    walk labels()
+  save out, left-out(<kotlin>, label)
+  fork test, is-unequal(out, <>)
+    hold
+      skip out
+  host leg, leg-of(<kotlin>, label)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, is-equal(printed(leg), want-of(label))

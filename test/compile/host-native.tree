@@ -1,0 +1,676 @@
+note <the @term/host package built for Rust, Swift and Kotlin gives the long form of each fixture back, and fills a form>
+
+# Ported from host-native.ts by statement (item term-self-host-001-0656), one test per `ok` in its order: rust, swift,
+# kotlin. The package entry and its whole stdlib closure are compiled for each native backend, built with the real
+# toolchain, and run on the fixtures. Each backend must give the long form of the basic and anchors fixtures byte for
+# byte, from the long and the compact spelling, and fill a form from data and melt it back, with a nested form, a list,
+# an optional field, and a value that does not fit raising data-mismatch, which a guard catches.
+#
+# The original compiled through a front end of its own (parse, mill, bind, check, simplify over the program's roots) and
+# a resolver of its own that answered @term/base and @term/host by the package path rule. Here compile-text compiles it
+# over the project at the suite's root under the backend's native env, whose stdlib and sibling packages answer both
+# packages by that same rule, the roots its entries. The long form an anchors input must give back is the compiler's
+# own writer (compile/host, docked as the subject's oracle). Each leg's main is written in the backend's own words as
+# the original wrote it, and each leg is built once, by the first test that asks. Rust builds with `cargo build`, then
+# runs the binary, where the original ran `cargo run`. A leg whose toolchain is missing skips each of its tests, where
+# the original printed one skip line, and a leg that did not build skips the tests after its build test, which fails,
+# where the original printed nothing more. HN_ONLY=rust, swift or kotlin runs one. HN_INPUT and HN_INPUTS, which tried
+# other inputs by hand, are left out.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+  find file-text
+
+load ../support/running
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/json
+  find stringify, name json-text
+  find parse, name json-parse
+
+dock load
+  load <@term/make/code/compile/host>, name host-data
+  load <@term/make/code/compile/kotlin>, name host-kotlin
+  load <node:os>, name host-os
+  load <node:path>, name host-path
+
+host entry-program, <load @term/host/code/base\n  find read\n  find write\n\ntask round-long\n  take input, like text\n  like text\n  send back\n    call write(call read(read input))\n>
+
+# a form filled from data and melted back, with a nested form, a list, an optional field and a decimal
+host fill-program, <load @term/host/code/base\n  find data\n  find read\n  find write\n\nform limit\n  link burst, like number\n  link rate, like float\n\nform service\n  link name, like text\n  link retry-after, like number\n  link secure, like boolean\n  link region, like text\n    need false\n  link limit, like limit\n  link tags\n    like list\n      like text\n\ntask fill-round\n  take input, like text\n  like text\n  save loaded\n    call fill\n      call read(read input)\n      like service\n  send back\n    call write\n      call melt\n        read loaded\n        like service\n\ntask fill-burst\n  take input, like text\n  like number\n  save loaded\n    call fill\n      call read(read input)\n      like service\n  send back, read loaded/limit/burst\n\n# a value that does not fit RAISES data-mismatch, which a guard catches by its form. It stopped the program on\n# every native backend: a panic on Rust, a fatalError on Swift, a SeedError read as a failure on Kotlin\ntask fill-caught\n  take input, like text\n  like text\n  fork\n    mark unsafe\n    save loaded\n      call fill\n        call read(read input)\n        like service\n    send back, read loaded/name\n  halt take\n    take problem\n    send back, read problem/form\n>
+
+host fill-good, <host name, \<api\>\nhost retry-after, 3\nhost secure, true\nhost limit\n  host burst, 10\n  host rate, 2.5\nlist tags\n  \<a\>, \<b\>\n>
+
+host fill-region, <host name, \<api\>\nhost retry-after, 3\nhost secure, true\nhost limit\n  host burst, 10\n  host rate, 2.5\nlist tags\n  \<a\>, \<b\>\nhost region, \<eu\>\n>
+
+# the melt writes fields in the form's declared order, so `region` comes back before `limit`
+host fill-region-back, <host name, \<api\>\nhost retry-after, 3\nhost secure, true\nhost region, \<eu\>\nhost limit\n  host burst, 10\n  host rate, 2.5\nlist tags\n  \<a\>, \<b\>\n>
+
+# no `retry-after`, which the form needs
+host fill-missing, <host name, \<api\>\nhost secure, true\nhost limit\n  host burst, 10\n  host rate, 2.5\nlist tags\n  \<a\>, \<b\>\n>
+
+host fixture-folder, <deck/host/test/fixture>
+
+host cargo-head, <[package]\nname = ">
+
+host cargo-tail, <"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nserde_json = "1"\nregex = "1"\nbase64 = "0.22"\nhex = "0.4"\nsha2 = "0.10"\nuuid = \{ version = "1", features = ["v4"] \}\nrand = "0.8"\n>
+
+# what a source file the data dialect reads is
+form data-input
+  link file, like text
+  link text, like text
+
+# one backend built and run. `state` is <skipped>, <failed> (the compile, the build or the run of the package) or
+# <ran>, `rounds` what each round-trip gave. `fill-state` is the same for the fill program, `fills` what it gave
+form native-leg
+  link state, like text
+  link reason, like text, fall <>
+  link rounds
+    like list, like text
+    fall make list
+  link fill-state, like text, fall <>
+  link fill-reason, like text, fall <>
+  link fills
+    like list, like text
+    fall make list
+
+# a program built and run, or why not
+form native-run
+  link state, like text
+  link reason, like text, fall <>
+  link outputs
+    like list, like text
+    fall make list
+
+# every leg made in this process, by its backend
+form native-legs
+  mark shared
+  link held, like hash, like text, like native-leg
+
+host native-held, make(native-legs, bind(held, make hash))
+
+# the record separator between one program's outputs
+task separator
+  like text
+
+  save mark
+    like text
+    json-parse(<"\\u001e">)
+  back mark
+
+task fixture
+  take name, like text
+  like text
+
+  back file-text(host-path/join(fixture-folder, name))
+
+# the messages of a host result's diagnostics, joined
+task diagnostic-words
+  take result, like dynamic
+  like text
+
+  save words, make list
+  walk result/diagnostics
+    take one, like dynamic
+    save message
+      like text
+      one/message
+    words/push(message)
+  back words/join(< | >)
+
+# the long form the compiler's writer gives a data text, or its diagnostics
+task oracle
+  take text, like text
+  like text
+
+  save got, host-data/read-data-text(make(data-input, bind(file, <input>), bind(text, text)))
+  save fine
+    like boolean
+    got/ok
+  fork test, not(fine)
+    hold
+      back diagnostic-words(got)
+  save expanded, host-data/expand-data(got/data, <input>)
+  save done
+    like boolean
+    expanded/ok
+  fork test, not(done)
+    hold
+      back diagnostic-words(expanded)
+  save long
+    like text
+    host-data/write-long(expanded/data)
+  back long
+
+# each case's input, and the long form it must give back. `read` expands the anchors, so the long form back is the
+# expanded one the compiler's writer gives
+task inputs
+  like list, like text
+
+  back make list(fixture(<basic.tree>), fixture(<basic.line>), fixture(<anchors.tree>), fixture(<anchors.line>))
+
+task wants
+  like list, like text
+
+  save anchors, oracle(fixture(<anchors.tree>))
+  back make list(fixture(<basic.tree>), fixture(<basic.tree>), anchors, anchors)
+
+# the inputs as string literals, joined by a comma
+task input-literals
+  like text
+
+  save quoted, make list
+  walk inputs()
+    take input, like text
+    quoted/push(json-text(input))
+  back quoted/join(<, >)
+
+task quote
+  take text, like text
+  like text
+
+  back json-text(text)
+
+task compiled
+  take program, like text
+  take env, like text
+  take roots, like list, like text
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <main.tree>), bind(project, <.>), bind(stdlib, env), bind(project-env, env), bind(env, env), bind(entries, roots)))
+
+task fill-roots
+  like list, like text
+
+  back make list(<fill-round>, <fill-burst>, <fill-caught>)
+
+task run-failed
+  take reason, like text
+  like native-run
+
+  back make(native-run, bind(state, <failed>), bind(reason, reason))
+
+# a program's run: its outputs split by the separator when it exits 0, else why not
+task run-of
+  take result, like run-result
+  like native-run
+
+  fork test, is-unequal(result/code, 0)
+    hold
+      back run-failed(<exit {result/code}: {result/error}>)
+  back make(native-run, bind(state, <ran>), bind(outputs, text-split(result/output, separator())))
+
+task leg-skipped
+  take reason, like text
+  like native-leg
+
+  back make(native-leg, bind(state, <skipped>), bind(reason, reason))
+
+task leg-of-runs
+  take round, like native-run
+  take fill, like native-run
+  like native-leg
+
+  back make(native-leg, bind(state, round/state), bind(reason, round/reason), bind(rounds, round/outputs), bind(fill-state, fill/state), bind(fill-reason, fill/reason), bind(fills, fill/outputs))
+
+# the cargo target folder persists across runs, so the package's crates build once on a machine
+task cargo-environment
+  like hash, like text, like text
+
+  save environment, make hash
+  save name, <CARGO_TARGET_DIR>
+  save environment/{name}, host-path/join(host-os/tmpdir(), <term-host-native-target>)
+  back environment
+
+# one Rust package written, built by cargo and run
+task rust-run
+  take out, like compile-outcome
+  take folder, like text
+  take package, like text
+  take main, like text
+  like native-run
+
+  fork test, not(out/ok)
+    hold
+      back run-failed(out/messages/join(< | >))
+  save project, host-path/join(folder, package)
+  make-folder(host-path/join(project, <src>))
+  write-file(host-path/join(project, <Cargo.toml>), <{cargo-head}{package}{cargo-tail}>)
+  save code, emit-text(out, <rust>)
+  write-file(host-path/join(project, <src>, <main.rs>), <{prelude-text(out, <rust>, code)}\n{code}{main}>)
+  save environment, cargo-environment()
+  save failed, run-tool(make(list, <cargo>, <build>, <--quiet>), project, environment)
+  fork test, is-unequal(failed, <>)
+    hold
+      back run-failed(failed)
+  save target, environment/CARGO_TARGET_DIR
+  back run-of(run(host-path/join(target, <debug>, package), make list))
+
+# a Rust call that ends the program on a raise, its message after `word`
+task rust-call
+  take name, like text
+  take input, like text
+  take word, like text
+  like text
+
+  back <{name}({quote(input)}.to_string()).unwrap_or_else(|e| \{ eprintln!("{word}\{\}", e); std::process::exit(1) \})>
+
+task rust-leg
+  like native-leg
+
+  fork test, is-equal(find-tool(<cargo>), <>)
+    hold
+      back leg-skipped(<cargo not installed>)
+  save folder, temp-folder(<term-host-native->)
+  save round-main, <\nfn main() \{\n  let inputs: Vec\<&str\> = vec![{input-literals()}];\n  for input in inputs \{ print!("\{\}\\u\{1e\}", round_long(input.to_string()).unwrap_or_else(|e| \{ eprintln!("\{\}", e); std::process::exit(1) \})); \}\n\}\n>
+  save round, rust-run(compiled(entry-program, <rust>, make list(<round-long>)), folder, <host_native>, round-main)
+  fork test, is-unequal(round/state, <ran>)
+    hold
+      back leg-of-runs(round, run-failed(<>))
+  save fill-main, <\nfn main() \{ print!("\{\}\\u\{1e\}\{\}\\u\{1e\}\{\}\\u\{1e\}\{\}\\u\{1e\}\{\}", {rust-call(<fill_round>, fill-good, <>)}, {rust-call(<fill_round>, fill-region, <>)}, {rust-call(<fill_burst>, fill-good, <>)}, {rust-call(<fill_caught>, fill-good, <>)}, {rust-call(<fill_caught>, fill-missing, <uncaught >)}); \}\n>
+  save fill, rust-run(compiled(fill-program, <rust>, fill-roots()), folder, <host_fill>, fill-main)
+  back leg-of-runs(round, fill)
+
+# one Swift file written, built by swiftc and run
+task swift-run
+  take out, like compile-outcome
+  take folder, like text
+  take name, like text
+  take main, like text
+  like native-run
+
+  fork test, not(out/ok)
+    hold
+      back run-failed(out/messages/join(< | >))
+  save file, host-path/join(folder, <{name}.swift>)
+  write-file(file, <{prelude-text(out, <swift>)}\n{emit-text(out, <swift>)}\n{main}>)
+  save binary, host-path/join(folder, name)
+  save failed, run-tool(make list(<swiftc>, <-o>, binary, file))
+  fork test, is-unequal(failed, <>)
+    hold
+      back run-failed(failed)
+  back run-of(run(binary, make list))
+
+# a Swift line printing one fill call, then `ending`
+task swift-print
+  take name, like text
+  take input, like text
+  take ending, like text
+  like text
+
+  back <print(try! {name}(input: {quote(input)}), terminator: "{ending}")\n>
+
+task swift-leg
+  like native-leg
+
+  fork test, is-equal(find-tool(<swiftc>), <>)
+    hold
+      back leg-skipped(<swiftc not installed>)
+  save folder, temp-folder(<term-host-native->)
+  save round-main, <for input in [{input-literals()}] \{ print(try! roundLong(input: input), terminator: "\\u\{1e\}") \}\n>
+  save round, swift-run(compiled(entry-program, <swift>, make list(<round-long>)), folder, <main>, round-main)
+  fork test, is-unequal(round/state, <ran>)
+    hold
+      back leg-of-runs(round, run-failed(<>))
+  save mark, <\\u\{1e\}>
+  save fill-main, <{swift-print(<fillRound>, fill-good, mark)}{swift-print(<fillRound>, fill-region, mark)}{swift-print(<fillBurst>, fill-good, mark)}{swift-print(<fillCaught>, fill-good, mark)}{swift-print(<fillCaught>, fill-missing, <>)}>
+  save fill, swift-run(compiled(fill-program, <swift>, fill-roots()), folder, <fill>, fill-main)
+  back leg-of-runs(round, fill)
+
+# one Kotlin file written, built by kotlinc into a jar and run by java
+task kotlin-run
+  take out, like compile-outcome
+  take folder, like text
+  take name, like text
+  take main, like text
+  like native-run
+
+  fork test, not(out/ok)
+    hold
+      back run-failed(out/messages/join(< | >))
+  save file, host-path/join(folder, <{name}.kt>)
+  write-file(file, host-kotlin/hoist-kotlin-imports(<{prelude-text(out, <kotlin>)}\n{emit-text(out, <kotlin>)}\n{main}>))
+  save jar, host-path/join(folder, <{name}.jar>)
+  save failed, run-tool(make list(<kotlinc>, file, <-include-runtime>, <-d>, jar))
+  fork test, is-unequal(failed, <>)
+    hold
+      back run-failed(failed)
+  back run-of(run(<java>, make list(<-jar>, jar)))
+
+task kotlin-leg
+  like native-leg
+
+  fork test, or(is-equal(find-tool(<kotlinc>), <>), is-equal(find-tool(<java>), <>))
+    hold
+      back leg-skipped(<kotlinc/java not installed>)
+  save folder, temp-folder(<term-host-native->)
+  save round-main, <fun main() \{ for (input in listOf({input-literals()})) \{ print(roundLong(input) + "\\u001e") \} \}\n>
+  save round, kotlin-run(compiled(entry-program, <kotlin>, make list(<round-long>)), folder, <main>, round-main)
+  fork test, is-unequal(round/state, <ran>)
+    hold
+      back leg-of-runs(round, run-failed(<>))
+  save mark, <"\\u001e">
+  save fill-main, <fun main() \{ print(fillRound({quote(fill-good)}) + {mark} + fillRound({quote(fill-region)}) + {mark} + fillBurst({quote(fill-good)}) + {mark} + fillCaught({quote(fill-good)}) + {mark} + fillCaught({quote(fill-missing)})) \}\n>
+  save fill, kotlin-run(compiled(fill-program, <kotlin>, fill-roots()), folder, <fill>, fill-main)
+  back leg-of-runs(round, fill)
+
+task leg-made
+  take env, like text
+  like native-leg
+
+  save only, variable(<HN_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, env))
+    hold
+      back leg-skipped(<HN_ONLY names {only}>)
+  fork test, is-equal(env, <rust>)
+    hold
+      back rust-leg()
+  fork test, is-equal(env, <swift>)
+    hold
+      back swift-leg()
+  back kotlin-leg()
+
+task leg-held
+  take env, like text
+  like boolean
+
+  back native-held/held/has(env)
+
+task leg-at
+  take env, like text
+  like native-leg
+
+  back native-held/held/{env}
+
+task leg-keep
+  take env, like text
+  take made, like native-leg
+  like void
+
+  save native-held/held/{env}, made
+
+# the leg of a backend, made once
+task leg-of
+  take env, like text
+  like native-leg
+
+  fork test, leg-held(env)
+    hold
+      back leg-at(env)
+  save made, leg-made(env)
+  leg-keep(env, made)
+  back made
+
+# an output of a list, <> past its end
+task part-of
+  take parts, like list, like text
+  take at, like number
+  like text
+
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+# rust
+
+test <rust: the package builds>
+  host leg, leg-of(<rust>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(<{leg/state}{leg/reason}>, <ran>)
+
+test <rust: basic long round-trips>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 0), part-of(wants(), 0))
+
+test <rust: basic compact round-trips>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 1), part-of(wants(), 1))
+
+test <rust: anchors long round-trips>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 2), part-of(wants(), 2))
+
+test <rust: anchors compact round-trips>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 3), part-of(wants(), 3))
+
+test <rust: fill and melt with a form build>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the rust leg did not run: {leg/state}>
+  want hold, is-equal(leg/fill-state, <ran>)
+
+test <rust: fill into a form melts back to the data>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the rust fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 0), fill-good)
+
+test <rust: an optional field present is kept>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the rust fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 1), fill-region-back)
+
+test <rust: a nested form is filled>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the rust fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 2), <10>)
+
+test <rust: a fill that fits runs the guarded body>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the rust fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 3), <api>)
+
+test <rust: a value that does not fit raises data-mismatch, and the guard catches it>
+  host leg, leg-of(<rust>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the rust fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 4), <data-mismatch>)
+
+# swift
+
+test <swift: the package builds>
+  host leg, leg-of(<swift>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(<{leg/state}{leg/reason}>, <ran>)
+
+test <swift: basic long round-trips>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 0), part-of(wants(), 0))
+
+test <swift: basic compact round-trips>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 1), part-of(wants(), 1))
+
+test <swift: anchors long round-trips>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 2), part-of(wants(), 2))
+
+test <swift: anchors compact round-trips>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 3), part-of(wants(), 3))
+
+test <swift: fill and melt with a form build>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the swift leg did not run: {leg/state}>
+  want hold, is-equal(leg/fill-state, <ran>)
+
+test <swift: fill into a form melts back to the data>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the swift fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 0), fill-good)
+
+test <swift: an optional field present is kept>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the swift fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 1), fill-region-back)
+
+test <swift: a nested form is filled>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the swift fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 2), <10>)
+
+test <swift: a fill that fits runs the guarded body>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the swift fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 3), <api>)
+
+test <swift: a value that does not fit raises data-mismatch, and the guard catches it>
+  host leg, leg-of(<swift>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the swift fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 4), <data-mismatch>)
+
+# kotlin
+
+test <kotlin: the package builds>
+  host leg, leg-of(<kotlin>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(<{leg/state}{leg/reason}>, <ran>)
+
+test <kotlin: basic long round-trips>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 0), part-of(wants(), 0))
+
+test <kotlin: basic compact round-trips>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 1), part-of(wants(), 1))
+
+test <kotlin: anchors long round-trips>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 2), part-of(wants(), 2))
+
+test <kotlin: anchors compact round-trips>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(part-of(leg/rounds, 3), part-of(wants(), 3))
+
+test <kotlin: fill and melt with a form build>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/state, <ran>)
+    hold
+      skip <the kotlin leg did not run: {leg/state}>
+  want hold, is-equal(leg/fill-state, <ran>)
+
+test <kotlin: fill into a form melts back to the data>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the kotlin fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 0), fill-good)
+
+test <kotlin: an optional field present is kept>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the kotlin fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 1), fill-region-back)
+
+test <kotlin: a nested form is filled>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the kotlin fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 2), <10>)
+
+test <kotlin: a fill that fits runs the guarded body>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the kotlin fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 3), <api>)
+
+test <kotlin: a value that does not fit raises data-mismatch, and the guard catches it>
+  host leg, leg-of(<kotlin>)
+  fork test, is-unequal(leg/fill-state, <ran>)
+    hold
+      skip <the kotlin fill did not run: {leg/state} {leg/fill-state}>
+  want hold, is-equal(part-of(leg/fills, 4), <data-mismatch>)

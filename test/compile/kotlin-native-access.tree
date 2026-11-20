@@ -1,0 +1,180 @@
+note <a Kotlin program prints nothing a node, rust or swift build does not: native access is granted twice>
+
+# Ported from kotlin-native-access.ts by statement (item term-self-host-001-0656), one test per `ok` in its order (item
+# term-self-host-001-0220). The process runner spawns through java.lang.foreign, and JDK 24 and newer print a
+# restricted-method warning on stderr unless native access is granted. native-build.ts grants it twice:
+# `--enable-native-access=ALL-UNNAMED` on the command it answers, and `Enable-Native-Access: ALL-UNNAMED` in the jar's
+# manifest, so a jar handed out and run with a plain `java -jar` is quiet too.
+#
+# Cases, on a Kotlin program that calls process/run:
+#   command    the command buildNative answers prints the run's answer and nothing on stderr
+#   plain      `java -jar <jar>` with no flag prints the same and nothing on stderr (the manifest attribute)
+#   manifest   the jar's manifest holds the attribute
+#   control    the same classes run with no manifest read and no flag (`java -cp`) DO warn on JDK 24 and newer, so a
+#              silent run above is the grant at work and not a program that never reaches the runner
+#
+# native-build is the module this suite is about, so it is docked directly (decision 106). The program is compiled and
+# built once, by the first test that asks. Where the original exited (no toolchain, a refused compile, a failed build)
+# each later test skips. The control test's name says "JDK 24 and newer", where the original named the version found.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find prelude-text
+
+load ../support/judging
+  find make-record
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find contains, name text-contains
+  find to-lower-case
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/call/code/native-build>, name access-build
+  load <node:path>, name access-path
+
+host program, <load @term/base/process/run\n  find run, name run-command\n\nload @term/base/list\n  find list\n\ntask run\n  mark async\n  like text\n  save empty, make list\n  save probe, run-command(\<true\>, empty)\n  back \<ran \{probe/code\}\>\n>
+
+host answer, <ran 0>
+
+# the program, compiled and built. `state` is <skipped> (a tool missing), <refused> (the compile), <unbuilt> (the
+# build) or <built>, `command` what buildNative answers to run it, `artifact` its jar
+form access-leg
+  link state, like text
+  link reason, like text, fall <>
+  link command
+    like list, like text
+    fall make list
+  link artifact, like text, fall <>
+
+form access-held
+  mark shared
+  link made, like boolean
+  link leg, like access-leg
+
+host held, make(access-held, bind(made, false), bind(leg, make(access-leg, bind(state, <skipped>))))
+
+# what a finished command printed and said on stderr
+form access-run
+  link out, like text
+  link err, like text
+
+task leg-made
+  like access-leg
+
+  fork test, or(is-equal(find-tool(<kotlinc>), <>), or(is-equal(find-tool(<java>), <>), is-equal(find-tool(<jar>), <>)))
+    hold
+      back make(access-leg, bind(state, <skipped>), bind(reason, <kotlinc, java or jar not installed>))
+  save dir, temp-folder(<term-kotlin-native-access->)
+  save file, access-path/join(dir, <access.tree>)
+  save out, compile-text(program, make(compile-choice, bind(file, file), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  fork test, not(out/ok)
+    hold
+      back make(access-leg, bind(state, <refused>), bind(reason, out/messages/join(< | >)))
+  save kotlin, emit-text(out, <kotlin>)
+  save source, <{prelude-text(out, <kotlin>, kotlin)}\n{kotlin}>
+  host built, access-build/build-native(make-record(make(list, <source>, source, <target>, <kotlin>, <folder>, dir, <name>, <access>)))
+  fork test, not(built/ok)
+    hold
+      back make(access-leg, bind(state, <unbuilt>), bind(reason, built/reason))
+  save command, make list
+  walk built/command
+    take part, like text
+    command/push(part)
+  back make(access-leg, bind(state, <built>), bind(command, command), bind(artifact, built/artifact))
+
+# the leg, made once
+task leg
+  like access-leg
+
+  fork test, not(held/made)
+    hold
+      save held/leg, leg-made()
+      save held/made, true
+  back held/leg
+
+# run a command to its end: what it printed and said on stderr
+task read-run
+  take command, like list, like text
+  like access-run
+
+  save rest, make list
+  save at, 0
+  walk command
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        rest/push(part)
+    save at, add(at, 1)
+  save ran, run(command/0, rest)
+  back make(access-run, bind(out, ran/output), bind(err, ran/error))
+
+test <the program compiles for Kotlin>
+  host made, leg()
+  fork test, is-equal(made/state, <skipped>)
+    hold
+      skip made/reason
+  want hold, is-unequal(made/state, <refused>)
+
+test <the program builds>
+  host made, leg()
+  fork test, or(is-equal(made/state, <skipped>), is-equal(made/state, <refused>))
+    hold
+      skip <the program did not reach its build: {made/state}>
+  want hold, is-equal(made/state, <built>)
+
+test <command: prints the answer and nothing on stderr>
+  host made, leg()
+  fork test, is-unequal(made/state, <built>)
+    hold
+      skip <the program was not built: {made/state}>
+  host ran, read-run(made/command)
+  want hold, is-equal(ran/out, answer)
+  want hold, is-equal(ran/err, <>)
+
+test <plain java -jar: prints the answer and nothing on stderr>
+  host made, leg()
+  fork test, is-unequal(made/state, <built>)
+    hold
+      skip <the program was not built: {made/state}>
+  host ran, read-run(make list(<java>, <-jar>, made/artifact))
+  want hold, is-equal(ran/out, answer)
+  want hold, is-equal(ran/err, <>)
+
+test <manifest: holds Enable-Native-Access>
+  host made, leg()
+  fork test, is-unequal(made/state, <built>)
+    hold
+      skip <the program was not built: {made/state}>
+  host manifest, read-run(make list(<unzip>, <-p>, made/artifact, <META-INF/MANIFEST.MF>))
+  want hold, text-contains(manifest/out, <Enable-Native-Access: ALL-UNNAMED>)
+
+test <control: without the grant JDK 24 and newer warns>
+  host made, leg()
+  fork test, is-unequal(made/state, <built>)
+    hold
+      skip <the program was not built: {made/state}>
+  host version, read-run(make list(<java>, <-version>))
+  fork test, not(matches(make(pattern, <<version "(2[4-9]|[3-9][0-9]|[1-9][0-9][0-9])>>), version/err))
+    hold
+      skip <control: the JDK is below 24 and prints no restricted-method warning>
+  host control, read-run(make list(<java>, <-cp>, made/artifact, <AccessKt>))
+  save said, to-lower-case(control/err)
+  want hold, or(text-contains(said, <restricted method>), text-contains(said, <native access>))
