@@ -1,0 +1,349 @@
+note <a mill change rebuilds the output: touching a mill file moves the mill and the output versions, and the output misses>
+
+# Ported from cache-mill-scope.ts by statement (item term-self-host-001-0653), one test per `ok` in its order, the loop
+# over its literal list of mill files written out one test per file and check. Item 0343: the output kind's version must
+# move whenever the mill kind's does, or an output entry built by the old mill is served. compile.ts reaches the mill only
+# through ports: unit-mill.tree docks compile/mill.ts, and minting.tree docks the baked code-role grammar
+# (compile/mill-grammar.tree's port), so the scope walk must follow an emitted port's dock imports. compile/cache-scope,
+# compile/cache and call/cache-store are the subject (decision 106).
+#
+# For each mill file the suite touches it (its mtime only, put back after: the version is a stat of each scoped file),
+# asks a fresh process for every kind's version, and checks that mill and output both moved. Then it builds a program
+# under the old versions twice (a miss, then a hit) and once under the new ones, which must miss output and answer the
+# same. The fresh process is node with tsx's loader at the Term root importing call/cache-store, where the original ran
+# itself again with `--versions`: a version is held once a process, so it cannot be read again here. Each file is touched
+# once, by its first test, and its other three tests read what that touch found. It touches compiler files: run it alone.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/running
+  find running-node
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/make/compile/cache-scope
+  find cache-scope
+
+load @term/base/process/run
+  find run
+
+load @term/base/json
+  find parse, name parse-json
+  find object-keys
+  find field-text
+
+load @term/base/clock
+  find now, name clock-now
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/list
+  find contains
+
+load @term/base/float
+  find round-down
+
+dock load
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <node:fs>, name mill-fs
+  load <node:path>, name mill-path
+
+bind new-cache
+  take module, like dynamic
+  take store, like dynamic
+  take label, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache($store, $label)>
+
+# mill files a compile reaches only through a port's dock: the grammar text, the mill face, the mill engine's port
+host mill-files, make list(<deck/make/code/compile/mill-grammar.tree>, <deck/make/host/port/code/compile/mill-grammar.ts>, <deck/make/code/compile/mill.ts>, <deck/make/code/compile/mill-run.ts>, <deck/make/host/port/code/compile/mill-running.ts>)
+
+host source, <\ntask double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n>
+
+# the fresh process: every kind's version, as JSON
+host versions-script, <const m = await import('@term/call/code/cache-store'); process.stdout.write(JSON.stringify(m.compilerVersions()))>
+
+# a build under one set of versions: its cache, and the program's text, <> when it did not compile
+form mill-build
+  link ok, like boolean
+  link text, like text
+  link misses, like number
+  link hits, like number
+
+# what touching one file found
+form mill-touch
+  link mill-moved, like boolean
+  link output-moved, like boolean
+  link misses, like number
+  link same, like boolean
+
+# the versions and builds made once, by the first test that asks, and each file's touch by its file
+form mill-state
+  mark shared
+  link done, like boolean
+  link main, like text
+  link local, like text
+  link shared, like text
+  link before, like hash, like text, like text
+  link first, like mill-build
+  link again, like mill-build
+  link mtimes, like hash, like text, like float
+  link touched, like hash, like text, like mill-touch
+
+host state, make(mill-state, bind(done, false), bind(main, <>), bind(local, <>), bind(shared, <>), bind(before, make hash), bind(first, make(mill-build, bind(ok, false), bind(text, <>), bind(misses, 0), bind(hits, 0))), bind(again, make(mill-build, bind(ok, false), bind(text, <>), bind(misses, 0), bind(hits, 0))), bind(mtimes, make hash), bind(touched, make hash))
+
+# every kind's version, asked of a fresh process
+task versions-now
+  like hash, like text, like text
+  mark async
+
+  host ran, run(running-node(0), make(list, <--import>, <tsx>, <--input-type=module>, <-e>, versions-script), bind(directory, <.>))
+  fork test, is-unequal(ran/code, 0)
+    hold
+      halt <versions child failed: {ran/error}>
+  host read, parse-json(ran/output)
+  save out, like hash, like text, like text
+    make hash
+  walk object-keys(read)
+    take kind, like text
+    save out/{kind}, field-text(read, kind)
+  back out
+
+# a kind's version of a set, <> for a kind it lacks
+task version-of
+  take versions, like hash, like text, like text
+  take kind, like text
+  like text
+
+  fork test, versions/has(kind)
+    hold
+      back versions/{kind}
+  back <>
+
+# the program built under these versions, a fresh cache over the local and the shared folders
+task build
+  take versions, like hash, like text, like text
+  like mill-build
+
+  save for-kind
+    task
+      take kind, like text
+      like text
+      back version-of(versions, kind)
+  host cache, new-cache(cache-module, cache-store/shared-cache-store(state/local, state/shared, for-kind), for-kind)
+  host out, compile-text(source, make(compile-choice, bind(file, state/main), bind(cache, cache)))
+  save text, <>
+  fork test, out/ok
+    hold
+      save text, out/emitted
+  back make(mill-build, bind(ok, out/ok), bind(text, text), bind(misses, cache/misses), bind(hits, add(cache/hits, cache/disk-hits)))
+
+# a file's mtime as the version reads it, whole milliseconds
+task mtime-of
+  take file, like text
+  like float
+
+  back round-down(mill-fs/stat-sync(mill-path/join(<.>, file))/mtime-ms)
+
+# the work folder, the mtimes before, the versions before, and the program built twice under them
+task started
+  like mill-state
+  mark async
+
+  fork test, state/done
+    hold
+      back state
+  save state/done, true
+  host work, temp-folder(<term-cache-mill-scope->)
+  save state/main, mill-path/join(work, <main.tree>)
+  write-file(state/main, source)
+  save state/local, mill-path/join(work, <local>)
+  save state/shared, mill-path/join(work, <shared>)
+  mill-fs/mkdir-sync(state/local, make(mill-folder-ask, bind(recursive, true)))
+  mill-fs/mkdir-sync(state/shared, make(mill-folder-ask, bind(recursive, true)))
+  walk mill-files
+    take file, like text
+    save state/mtimes/{file}, mtime-of(file)
+  save state/before, versions-now()
+  save state/first, build(state/before)
+  save state/again, build(state/before)
+  back state
+
+form mill-folder-ask
+  link recursive, like boolean
+
+# one file touched, the versions read and the program built under them, and its mtime put back, whatever happened
+task touched
+  take file, like text
+  like mill-touch
+  mark async
+
+  host at, started()
+  fork test, at/touched/has(file)
+    hold
+      back at/touched/{file}
+  host full, mill-path/join(<.>, file)
+  host stat, mill-fs/stat-sync(full)
+  save found, make(mill-touch, bind(mill-moved, false), bind(output-moved, false), bind(misses, 0), bind(same, false))
+  fork
+    mark unsafe
+    save found, touch-and-read(full, stat)
+  halt take
+    take cause
+    save found, make(mill-touch, bind(mill-moved, false), bind(output-moved, false), bind(misses, 0), bind(same, false))
+  # never stat/mtime: that Date is mtimeMs ROUNDED to the millisecond, and the version reads its floor, so a file last
+  # written at a fraction of .5 or more (a port just rebuilt) came back one millisecond later and every version moved
+  # (item 0527). The middle of its own millisecond floors the same through utimes' seconds-as-a-double
+  mill-fs/utimes-sync(full, stat/atime, divide(add(round-down(stat/mtime-ms), 0.5), 1000.0))
+  save at/touched/{file}, found
+  back found
+
+# one second past the latest of now and the old mtime, so the stat must differ, then the versions and the build
+task touch-and-read
+  take full, like text
+  take stat, like dynamic
+  like mill-touch
+  mark async
+
+  host was, state/before
+  host later, add(max-of(clock-now(), stat/mtime-ms), 1000)
+  mill-fs/utimes-sync(full, stat/atime, divide(later, 1000.0))
+  host now, versions-now()
+  host rebuilt, build(now)
+  back make(mill-touch, bind(mill-moved, is-unequal(version-of(now, <mill>), version-of(was, <mill>))), bind(output-moved, is-unequal(version-of(now, <output>), version-of(was, <output>))), bind(misses, rebuilt/misses), bind(same, is-equal(rebuilt/text, state/first/text)))
+
+task max-of
+  take a, like number
+  take b, like number
+  like number
+
+  fork test, is-above(a, b)
+    hold
+      back a
+  back b
+
+# the files of a kind's scope, empty for a kind it lacks
+task scope-of
+  take kind, like text
+  like list, like text
+
+  host scope, cache-scope()
+  save out, make list
+  fork test, scope/has(kind)
+    hold
+      walk scope/get(kind)
+        take file, like text
+        out/push(file)
+  back out
+
+test <every mill-scope file is in the output scope>
+  host output, scope-of(<output>)
+  save escaped, make list
+  walk scope-of(<mill>)
+    take file, like text
+    fork test, not(contains(output, file))
+      hold
+        escaped/push(file)
+  want hold, is-equal(escaped/length, 0)
+
+test <deck/make/code/compile/mill-grammar.tree is in the mill scope>
+  want hold, contains(scope-of(<mill>), <deck/make/code/compile/mill-grammar.tree>)
+
+test <deck/make/host/port/code/compile/mill-grammar.ts is in the mill scope>
+  want hold, contains(scope-of(<mill>), <deck/make/host/port/code/compile/mill-grammar.ts>)
+
+test <deck/make/code/compile/mill.ts is in the mill scope>
+  want hold, contains(scope-of(<mill>), <deck/make/code/compile/mill.ts>)
+
+test <deck/make/code/compile/mill-run.ts is in the mill scope>
+  want hold, contains(scope-of(<mill>), <deck/make/code/compile/mill-run.ts>)
+
+test <deck/make/host/port/code/compile/mill-running.ts is in the mill scope>
+  want hold, contains(scope-of(<mill>), <deck/make/host/port/code/compile/mill-running.ts>)
+
+test <the program compiles>
+  host at, started()
+  want hold, at/first/ok
+
+test <an unchanged compiler hits>
+  host at, started()
+  want hold, is-equal(at/again/misses, 0)
+  want hold, is-above(at/again/hits, 0)
+
+test <touching deck/make/code/compile/mill-grammar.tree moves the mill version>
+  want hold, touched(<deck/make/code/compile/mill-grammar.tree>)/mill-moved
+
+test <touching deck/make/code/compile/mill-grammar.tree moves the output version>
+  want hold, touched(<deck/make/code/compile/mill-grammar.tree>)/output-moved
+
+test <touching deck/make/code/compile/mill-grammar.tree rebuilds the output>
+  want hold, is-above(touched(<deck/make/code/compile/mill-grammar.tree>)/misses, 0)
+
+test <touching deck/make/code/compile/mill-grammar.tree builds the same answer>
+  want hold, touched(<deck/make/code/compile/mill-grammar.tree>)/same
+
+test <touching deck/make/host/port/code/compile/mill-grammar.ts moves the mill version>
+  want hold, touched(<deck/make/host/port/code/compile/mill-grammar.ts>)/mill-moved
+
+test <touching deck/make/host/port/code/compile/mill-grammar.ts moves the output version>
+  want hold, touched(<deck/make/host/port/code/compile/mill-grammar.ts>)/output-moved
+
+test <touching deck/make/host/port/code/compile/mill-grammar.ts rebuilds the output>
+  want hold, is-above(touched(<deck/make/host/port/code/compile/mill-grammar.ts>)/misses, 0)
+
+test <touching deck/make/host/port/code/compile/mill-grammar.ts builds the same answer>
+  want hold, touched(<deck/make/host/port/code/compile/mill-grammar.ts>)/same
+
+test <touching deck/make/code/compile/mill.ts moves the mill version>
+  want hold, touched(<deck/make/code/compile/mill.ts>)/mill-moved
+
+test <touching deck/make/code/compile/mill.ts moves the output version>
+  want hold, touched(<deck/make/code/compile/mill.ts>)/output-moved
+
+test <touching deck/make/code/compile/mill.ts rebuilds the output>
+  want hold, is-above(touched(<deck/make/code/compile/mill.ts>)/misses, 0)
+
+test <touching deck/make/code/compile/mill.ts builds the same answer>
+  want hold, touched(<deck/make/code/compile/mill.ts>)/same
+
+test <touching deck/make/code/compile/mill-run.ts moves the mill version>
+  want hold, touched(<deck/make/code/compile/mill-run.ts>)/mill-moved
+
+test <touching deck/make/code/compile/mill-run.ts moves the output version>
+  want hold, touched(<deck/make/code/compile/mill-run.ts>)/output-moved
+
+test <touching deck/make/code/compile/mill-run.ts rebuilds the output>
+  want hold, is-above(touched(<deck/make/code/compile/mill-run.ts>)/misses, 0)
+
+test <touching deck/make/code/compile/mill-run.ts builds the same answer>
+  want hold, touched(<deck/make/code/compile/mill-run.ts>)/same
+
+test <touching deck/make/host/port/code/compile/mill-running.ts moves the mill version>
+  want hold, touched(<deck/make/host/port/code/compile/mill-running.ts>)/mill-moved
+
+test <touching deck/make/host/port/code/compile/mill-running.ts moves the output version>
+  want hold, touched(<deck/make/host/port/code/compile/mill-running.ts>)/output-moved
+
+test <touching deck/make/host/port/code/compile/mill-running.ts rebuilds the output>
+  want hold, is-above(touched(<deck/make/host/port/code/compile/mill-running.ts>)/misses, 0)
+
+test <touching deck/make/host/port/code/compile/mill-running.ts builds the same answer>
+  want hold, touched(<deck/make/host/port/code/compile/mill-running.ts>)/same
+
+# the files themselves, not the versions: another session's edit to any scoped file moves a version too
+test <every touched mtime is restored>
+  host at, started()
+  save moved, make list
+  walk mill-files
+    take file, like text
+    fork test, is-unequal(mtime-of(file), at/mtimes/{file})
+      hold
+        moved/push(file)
+  want hold, is-equal(moved/length, 0)

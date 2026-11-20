@@ -61,6 +61,9 @@ load ../bundle/unit-writing
 load ../preprocess/test-rewriting
   find preprocess-tests
   find readable
+  find snapshot-ask
+  find rewrite-options
+  find no-snapshots
 
 load ../preprocess/failure-reading
   find want-said
@@ -166,10 +169,7 @@ form listed-tests
 
 # ---- what `term test` (test-command.tree) hands a file's run ----
 
-form snapshot-ask
-  link stored, like hash, like text, like list, like text
-  link update, like boolean
-
+# a file's snapshots are work/preprocess/test-rewriting.tree's `snapshot-ask`
 form run-ask
   link file, like text
   link source, like text
@@ -383,7 +383,7 @@ task text-at
 task tests-of
   take file, like text
   take source, like text
-  take options, like dynamic
+  take options, like rewrite-options
   like listed-tests
 
   save made, preprocess-tests(source, options)
@@ -899,7 +899,8 @@ task run-test-file
   save source, host-text(input/source)
   # expand `test <phrase>` blocks into top-level tasks; a file with none passes through unchanged. `heads`: each test
   # task's 0-based line in the file as written
-  save made, preprocess-tests(source, make-preprocess-options(input/snapshots))
+  save options, run-options(input/snapshots)
+  save made, preprocess-tests(source, options)
   save rewritten, host-text(made/text)
   save names, make list
   # what `--case` asks of each enumerated test's cases: its phrase when the test itself does not answer it, so the
@@ -928,7 +929,7 @@ task run-test-file
       # the real file path is the entry, so `@/...` local-package aliases resolve against this file's deck.tree
       save result, compile-module/compile(entry, make(compile-ask, bind(resolve, input/resolve), bind(role-of, input/role-of), bind(lean-of, input/lean-of)))
   # named for itself, never `readable`: a local named like a task the file imports shadows the call (traps.md)
-  save as-read, readable(source, input/snapshots)
+  save as-read, readable(source, options/snapshots)
   fork test, not(is-truthy(result/ok))
     hold
       save diagnostics, as-written(result/diagnostics, file, as-read/place)
@@ -1170,12 +1171,13 @@ bind want-marker-line
   case node
     text <Number(/^want:(\d+)/.exec($marker)?.[1] ?? 0)>
 
-# `{ snapshots }`: what the preprocessor takes
-form preprocess-options
-  link snapshots, like dynamic
-
-task make-preprocess-options
+# what the preprocessor takes for one run: the file's snapshots, none stored when the caller handed none (the dev
+# harness, call/code/test-run.ts)
+task run-options
   take snapshots, like dynamic
-  like preprocess-options
+  like rewrite-options
 
-  back make(preprocess-options, bind(snapshots, snapshots))
+  fork test, is-nothing(snapshots)
+    hold
+      back make(rewrite-options, bind(plain-wants, false), bind(snapshots, no-snapshots()))
+  back make(rewrite-options, bind(plain-wants, false), bind(snapshots, snapshots))

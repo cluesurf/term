@@ -27,6 +27,7 @@ load @term/base/maybe
 load @term/call/work/preprocess/test-rewriting
   find readable
   find readable-text
+  find no-snapshots
 
 load @term/make/compile/feed-compile
   find feed-rule
@@ -135,7 +136,7 @@ task buildable
     case none
       save nothing, 0
   # no snapshots: the build compiles the file as the preprocessor rewrites it with none (readable(source) in make.ts)
-  save unit, readable(source, void)
+  save unit, readable(source, no-snapshots())
   save text, unit-text(unit)
   back make(readable, bind(text, text), bind(generated, false), bind(unit, unit))
 

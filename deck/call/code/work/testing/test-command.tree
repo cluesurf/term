@@ -53,8 +53,11 @@ load ./test-running
   find tests-of
   find case-matches
   find run-ask
-  find snapshot-ask
   find listed-test
+
+load ../preprocess/test-rewriting
+  find snapshot-ask
+  find rewrite-options
 
 load ./native-testing
   find run-native-test-file
@@ -188,13 +191,6 @@ form case-place
   link column, like number
 
 # ---- what the test runners are handed ----
-
-form plain-tests-ask
-  link plain-wants, like boolean
-  link snapshots, like snapshot-ask
-
-form tests-ask
-  link snapshots, like snapshot-ask
 
 form test-units
   link root, like text
@@ -868,12 +864,7 @@ task run-file
       save stored, kept
   save snapshots, make(snapshot-ask, bind(stored, stored), bind(update, context/update))
   # what the preprocessor is handed: a native run writes every `want` as the plain marker
-  save listing, nothing()
-  fork test, is-unequal(context/native, <>)
-    hold
-      save listing, make(plain-tests-ask, bind(plain-wants, true), bind(snapshots, snapshots))
-    miss
-      save listing, make(tests-ask, bind(snapshots, snapshots))
+  save listing, make(rewrite-options, bind(plain-wants, is-unequal(context/native, <>)), bind(snapshots, snapshots))
   save listed, tests-of(file, source, listing)
   save chosen, make list
   walk listed/tests

@@ -12,18 +12,13 @@ load @term/base/text
 
 load @term/call/work/preprocess/test-rewriting
   find preprocess-tests
-
-bind no-options
-  take seed, like number
-  like dynamic
-  case node
-    text <undefined>
+  find no-rewrite-options
 
 task rewritten
   take source, like text
   like text
 
-  back preprocess-tests(source, no-options(0))/text
+  back preprocess-tests(source, no-rewrite-options())/text
 
 task builds
   take text, like text

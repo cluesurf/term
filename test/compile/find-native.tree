@@ -1,0 +1,647 @@
+note <the find construct types into the one iTerm2 session with a title, and find-none or find-many type nothing>
+
+# Ported from find-native.ts by statement (item term-self-host-001-1701, ruling term-self-host-001-1691), one test per
+# `ok` in its order (note/project/term/find, item 0008, mac section). A Term program that mounts `find pane / have
+# title, <server> / run <line>` into the `iterm` tool (find/tool/iterm, driver find/driver/mac.js, JXA over `osascript`)
+# types into the iTerm2 session with that title, and raises `find-none` or `find-many` having typed nothing. The program
+# is deck/base/test/find/iterm.tree, run by the `term` under test (run-self). Held here by reading each session's
+# contents back from iTerm2: the one session with the title received the exact text, with quotes, an apostrophe, a
+# semicolon and a variable as the same characters; find-none and find-many typed nothing; no other session was typed
+# into.
+#
+# It touches only what it makes: one new iTerm2 window, its four sessions titled `term-find-0008-<random>-...`, closed
+# at the end. A session the person already has is never read, typed into or closed. The commands typed are `echo`s.
+# Consent is macOS Automation for iTerm2, for the process running the test. Without it, or without iTerm2, each driver
+# test skips with what to allow.
+#
+# THE DRIVER RUNS ONLY WHEN TERM_ITERM_DRIVER IS 1 (ruling 1691, the user's rule: no agent runs Term's iTerm or
+# AppleScript driver tests). No agent, queue check or term:test gives it that value, so the eight driver tests skip with
+# the reason `driver-skip` names, before a single Apple event. `jxa`, the one task that runs osascript, reads the variable
+# again through `jxa-refusal` and raises without it, so a driver test that lost its gate fails and still sends nothing.
+# Only a person, in their own shell, runs the driver. The first test holds both gates without calling osascript.
+#
+# The cleanup line is printed, never counted, as the original printed it. The original's random base-36 mark is a
+# random six-digit number here.
+
+load ../support/cli
+  find term-root
+  find term-line
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find lines-of
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run
+
+load @term/base/environment
+  find variable
+
+load @term/base/machine
+  find read-platform
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/json
+  find parse, name json-parse
+  find field-text
+  find field-number
+  find array-size
+  find array-item
+
+load @term/base/random
+  find integer, name random-integer
+
+load @term/base/console
+  find log, name console-log
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with, name text-starts-with
+  find ends-with, name text-ends-with
+  find trim, name text-trim
+  find trim-end, name text-trim-end
+  find split, name text-split
+
+# host value: a raised exception's words, as the original's String(cause)
+bind text-of
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause)>
+
+host iterm-app, </Applications/iTerm.app>
+
+host driver-reason, <opens a real iTerm2 window, so it runs only with TERM_ITERM_DRIVER=1>
+
+host refusal-reason, <jxa refused: TERM_ITERM_DRIVER is not 1, so no Apple event is sent>
+
+# the one JXA helper, the original's fixture text, its arguments by argv so no text of ours is ever spliced into script
+# source
+host helper, <\nfunction sessionsOf(app, windowId) \{\n  var out = []\n  var tabs = app.windows.byId(windowId).tabs()\n  for (var t = 0; t \< tabs.length; t++) \{\n    var all = tabs[t].sessions\n    var ids = all.id()\n    var names = all.name()\n    for (var s = 0; s \< ids.length; s++) out.push(\{ id: ids[s], name: names[s] \})\n  \}\n  return out\n\}\n\nfunction run(argv) \{\n  var app = Application('iTerm2')\n  var op = argv[0]\n  if (op === 'create') \{\n    var titles = argv.slice(1)\n    var window = null\n    for (var at = 0; at \< titles.length; at++) \{\n      var command = '/bin/sh -c "printf \\\\"\\\\\\\\033]0;' + titles[at] + '\\\\\\\\007\\\\"; exec /bin/sh"'\n      if (window === null) window = app.createWindowWithDefaultProfile(\{ command: command \})\n      else window.createTabWithDefaultProfile(\{ command: command \})\n    \}\n    return JSON.stringify(\{ window: window.id() \})\n  \}\n  if (op === 'sessions') return JSON.stringify(sessionsOf(app, Number(argv[1])))\n  if (op === 'count') return String(app.windows().length)\n  if (op === 'contents') \{\n    var tabs = app.windows.byId(Number(argv[1])).tabs()\n    for (var t = 0; t \< tabs.length; t++) \{\n      var live = tabs[t].sessions()\n      for (var s = 0; s \< live.length; s++) if (live[s].id() === argv[2]) return live[s].text()\n    \}\n    return ''\n  \}\n  if (op === 'left') \{\n    try \{\n      var held = app.windows.byId(Number(argv[1])).tabs()\n      var count = 0\n      for (var u = 0; u \< held.length; u++) count += (held[u].sessions() || []).length\n      return String(count)\n    \} catch (gone) \{\n      return '0'\n    \}\n  \}\n  if (op === 'exit') \{\n    // every session object first: closing one changes the tabs under the walk\n    var every = []\n    var left = app.windows.byId(Number(argv[1])).tabs()\n    for (var q = 0; q \< left.length; q++) \{\n      var live = left[q].sessions()\n      for (var r = 0; r \< live.length; r++) every.push(live[r])\n    \}\n    for (var v = 0; v \< every.length; v++) \{\n      try \{\n        every[v].write(\{ text: 'exit' \})\n      \} catch (gone) \{\}\n    \}\n    return 'exit'\n  \}\n  if (op === 'close') \{\n    app.windows.byId(Number(argv[1])).close()\n    return 'closed'\n  \}\n  if (op === 'windows') return app.windows().map(function (w) \{ return w.id() \}).join(',')\n  return ''\n\}\n>
+
+# one iTerm2 session: its id and its title as iTerm2 shows it (the shell's title and the running job)
+form find-session
+  link id, like text
+  link name, like text
+
+# the one driver run of this process. `state` is <ran>, <skipped> or <failed>, `reason` why it did not run. `first` is
+# the sessions once all four were in, `exit` and `verdict` the Term test of the program, `server-text` the server
+# session's contents once its output was in, `quiet` the contents of the other three
+form find-run
+  link state, like text
+  link reason, like text, fall <>
+  link token, like text, fall <>
+  link first
+    like list, like find-session
+    fall make list
+  link exit, like number, fall 1
+  link verdict, like text, fall <>
+  link server-text, like text, fall <>
+  link quiet
+    like list, like text
+    fall make list
+  link home, like text, fall </>
+
+# the run, made once by the first driver test that asks, and the helper's path, written once
+form find-held
+  mark shared
+  link runs, like hash, like text, like find-run
+  link path, like text, fall <>
+
+host find-now, make(find-held, bind(runs, make hash))
+
+# THE OUTER GATE: why every driver test skips, <> when the person asked for the driver
+task driver-skip
+  like text
+
+  fork test, is-equal(variable(<TERM_ITERM_DRIVER>), <1>)
+    hold
+      back <>
+  back driver-reason
+
+# THE INNER GATE, read again by jxa itself: <> when the person asked for the driver
+task jxa-refusal
+  like text
+
+  fork test, is-unequal(variable(<TERM_ITERM_DRIVER>), <1>)
+    hold
+      back refusal-reason
+  back <>
+
+# the helper's file, written on the first call
+task helper-path
+  like text
+  mark async
+
+  fork test, is-unequal(find-now/path, <>)
+    hold
+      back find-now/path
+  save folder, temp-folder(<term-find-native->)
+  save path, <{folder}/find-native-iterm.js>
+  write-file(path, helper)
+  save find-now/path, path
+  back path
+
+# the helper run by osascript, its output trimmed. It raises without the variable, before anything else, and when
+# osascript exits other than 0
+task jxa
+  take argument-list, like list, like text
+  like text
+  mark async
+
+  save refusal, jxa-refusal()
+  fork test, is-unequal(refusal, <>)
+    hold
+      halt <{refusal}>
+  save words, make(list, <-l>, <JavaScript>, helper-path())
+  walk argument-list
+    take one, like text
+    words/push(one)
+  save ran, run(<osascript>, words, bind(limit, 60000))
+  fork test, is-unequal(ran/code, 0)
+    hold
+      halt <osascript exit {ran/code}: {ran/error}>
+  back text-trim(ran/output)
+
+# jxa, or `fallback` when it raises: for the cleanup, where a window may be gone while asking
+task jxa-or
+  take argument-list, like list, like text
+  take fallback, like text
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    back jxa(argument-list)
+  halt take
+    take cause
+    back fallback
+
+task run-skipped
+  take reason, like text
+  like find-run
+
+  back make(find-run, bind(state, <skipped>), bind(reason, reason))
+
+task run-failed
+  take token, like text
+  take reason, like text
+  like find-run
+
+  back make(find-run, bind(state, <failed>), bind(token, token), bind(reason, reason))
+
+# the sessions of the test window, as the helper lists them
+task sessions-of
+  take window, like text
+  like list, like find-session
+  mark async
+
+  save parsed, json-parse(jxa(make(list, <sessions>, window)))
+  save found, make(list, make(find-session, bind(id, <>), bind(name, <>)))
+  found/pop()
+  back sessions-from(parsed, 0, found)
+
+# the sessions of a parsed helper list from `at` on, added to `found`
+task sessions-from
+  take parsed, like dynamic
+  take at, like number
+  take found, like list, like find-session
+  like list, like find-session
+
+  fork test, not(is-below(at, array-size(parsed)))
+    hold
+      back found
+  save one, array-item(parsed, at)
+  found/push(make(find-session, bind(id, field-text(one, <id>)), bind(name, field-text(one, <name>))))
+  back sessions-from(parsed, add(at, 1), found)
+
+# four sessions, every title starting with the token
+task all-made
+  take found, like list, like find-session
+  take token, like text
+  like boolean
+
+  fork test, is-unequal(found/length, 4)
+    hold
+      back false
+  walk found
+    take one, like find-session
+    fork test, not(text-starts-with(one/name, token))
+      hold
+        back false
+  back true
+
+# each session's title is what its shell printed (iTerm2 adds the job name): asked until all four are in, at most
+# `tries` times
+task sessions-polled
+  take window, like text
+  take token, like text
+  take tries, like number
+  like list, like find-session
+  mark async
+
+  save found, sessions-of(window)
+  fork test, or(all-made(found, token), is-below(tries, 2))
+    hold
+      back found
+  back sessions-polled(window, token, subtract(tries, 1))
+
+# the sessions whose title starts with the prefix, in order
+task all-named
+  take found, like list, like find-session
+  take prefix, like text
+  like list, like find-session
+
+  save named, make(list, make(find-session, bind(id, <>), bind(name, <>)))
+  named/pop()
+  walk found
+    take one, like find-session
+    fork test, text-starts-with(one/name, prefix)
+      hold
+        named/push(one)
+  back named
+
+# one session each of server and other, two of dup
+task layout-holds
+  take found, like list, like find-session
+  take token, like text
+  like boolean
+
+  back and(and(is-equal(all-named(found, <{token}-server>)/length, 1), is-equal(all-named(found, <{token}-other>)/length, 1)), is-equal(all-named(found, <{token}-dup>)/length, 2))
+
+task contents-of
+  take window, like text
+  take session, like find-session
+  like text
+  mark async
+
+  back jxa(make(list, <contents>, window, session/id))
+
+# a session's contents, asked until they hold the needle, at most `tries` times
+task waited
+  take window, like text
+  take session, like find-session
+  take needle, like text
+  take tries, like number
+  like text
+  mark async
+
+  save text, contents-of(window, session)
+  fork test, or(text-contains(text, needle), is-below(tries, 2))
+    hold
+      back text
+  back waited(window, session, needle, subtract(tries, 1))
+
+task home-of
+  like text
+
+  save home, variable(<HOME>)
+  fork test, is-equal(home, <>)
+    hold
+      back </>
+  back home
+
+# the test window made, its id, <> when the helper could not make it
+task window-made
+  take token, like text
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    save made, json-parse(jxa(make(list, <create>, <{token}-server>, <{token}-other>, <{token}-dup>, <{token}-dup>)))
+    back <{field-number(made, <window>)}>
+  halt take
+    take cause
+    back <>
+
+# the original's try block: the sessions, the program typed in, and every session read back
+task read-sessions
+  take window, like text
+  take token, like text
+  like find-run
+  mark async
+
+  save first, sessions-polled(window, token, 60)
+  # the shells are up when their prompt is in the contents
+  walk first
+    take one, like find-session
+    waited(window, one, <$>, 60)
+  # the names once more, as late as possible: iTerm2 appends the running job to a title, and it changes when one does
+  save last, sessions-of(window)
+  fork test, not(layout-holds(last, token))
+    hold
+      back make(find-run, bind(state, <failed>), bind(token, token), bind(first, first), bind(reason, <the sessions changed before the program ran: {last/length} of them>))
+  save server, all-named(last, <{token}-server>)/0
+  save other, all-named(last, <{token}-other>)/0
+  save dup, all-named(last, <{token}-dup>)
+  save environment
+    make hash
+      save <TERM_FIND_ITERM_SERVER>, server/name
+      save <TERM_FIND_ITERM_OTHER>, other/name
+      save <TERM_FIND_ITERM_DUP>, dup/0/name
+      save <TERM_FIND_ITERM_ABSENT>, <{token}-absent>
+  save ran, run-self(make(list, <test>, <find/iterm>), <{term-root()}/deck/base>, 540000, environment)
+  # what each session holds now: asked until the shell has printed the output of what was typed
+  save server-text, waited(window, server, <\nterm-find-0008-awk a'b>, 60)
+  save quiet, make(list, contents-of(window, other))
+  walk dup
+    take one, like find-session
+    quiet/push(contents-of(window, one))
+  back make(find-run, bind(state, <ran>), bind(token, token), bind(first, first), bind(exit, ran/code), bind(verdict, <{ran/output}{ran/error}>), bind(server-text, server-text), bind(quiet, quiet), bind(home, home-of()))
+
+task read-guarded
+  take window, like text
+  take token, like text
+  like find-run
+  mark async
+
+  fork
+    mark unsafe
+    back read-sessions(window, token)
+  halt take
+    take cause
+    back run-failed(token, text-of(cause))
+
+# the window ids of a helper list but ours, as a list
+task others-of
+  take listed, like text
+  take window, like text
+  like list, like text
+
+  save kept, make(list, <>)
+  kept/pop()
+  walk text-split(listed, <,>)
+    take id, like text
+    fork test, and(is-unequal(id, window), is-unequal(id, <>))
+      hold
+        kept/push(id)
+  back kept
+
+# two lists of window ids hold the same ids, in any order
+task same-ids
+  take one, like list, like text
+  take two, like list, like text
+  like boolean
+
+  fork test, is-unequal(one/length, two/length)
+    hold
+      back false
+  walk one
+    take id, like text
+    fork test, not(two/contains(id))
+      hold
+        back false
+  back true
+
+# the shells are asked to exit, which closes the tabs and then the window without a confirmation, asked again until
+# none is left. The cleanup is reported, never counted: on a loaded Mac iTerm2 leaves the empty shell of an exited
+# window listed, and that is iTerm2's, not the find construct's
+task cleanup
+  take window, like text
+  take before, like text
+  like void
+  mark async
+
+  jxa-or(make(list, <exit>, window), <gone>)
+  save left, left-after(window, 30)
+  save after, others-of(jxa-or(make(list, <windows>), <>), window)
+  fork test, and(is-equal(left, <0>), same-ids(after, others-of(before, window)))
+    hold
+      console-log(<ok    the window this test opened holds no session, and the others are as they were>)
+    miss
+      console-log(<WARN  cleanup: {left} sessions of the test window are left, windows {before} -\> {jxa-or(make(list, <windows>), <>)}; exit them by hand>)
+
+# the sessions left in the test window, asking them to exit again while some are, at most `tries` times
+task left-after
+  take window, like text
+  take tries, like number
+  like text
+  mark async
+
+  save left, jxa-or(make(list, <left>, window), <0>)
+  fork test, or(is-equal(left, <0>), is-below(tries, 1))
+    hold
+      back left
+  # iTerm2 sometimes drops the first `exit`: ask again of what is left
+  jxa-or(make(list, <exit>, window), <gone>)
+  back left-after(window, subtract(tries, 1))
+
+# the whole run, behind both gates: the person's machine and consent first, as the original checked them
+task run-made
+  like find-run
+  mark async
+
+  save skipping, driver-skip()
+  fork test, is-unequal(skipping, <>)
+    hold
+      back run-skipped(skipping)
+  fork test, is-unequal(read-platform(), <darwin>)
+    hold
+      back run-skipped(<this is not a Mac>)
+  fork test, not(file-exists(iterm-app))
+    hold
+      back run-skipped(<iTerm2 is not installed at {iterm-app}>)
+  save line, term-line()
+  fork test, not(file-exists(line))
+    hold
+      back run-skipped(<the CLI is not built ({line}): pnpm run make:line>)
+  save consent, consent-skip()
+  fork test, is-unequal(consent, <>)
+    hold
+      back run-skipped(consent)
+  save token, <term-find-0008-{random-integer(100000, 999999)}>
+  save before, jxa(make(list, <windows>))
+  save window, window-made(token)
+  fork test, is-equal(window, <>)
+    hold
+      back run-failed(token, <the test window was not made>)
+  save made, read-guarded(window, token)
+  cleanup(window, before)
+  back made
+
+# consent: the cheapest Apple event to iTerm2. <> when it answers, else the skip reason
+task consent-skip
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    jxa(make(list, <count>))
+    back <>
+  halt take
+    take cause
+    save said, text-of(cause)
+    fork test, or(text-contains(said, <-1743>), text-contains(said, <Not authorized>))
+      hold
+        back <Automation for iTerm2 is not allowed. Open System Settings \> Privacy & Security \> Automation, and under the app that runs this test (Terminal, iTerm2 or Claude) switch on iTerm2. Then run it again.>
+    back <iTerm2 did not answer: {said}>
+
+# the run of this process, made once
+task run-of
+  like find-run
+  mark async
+
+  save key, <run>
+  fork test, find-now/runs/has(key)
+    hold
+      back find-now/runs/{key}
+  save made, run-made()
+  save find-now/runs/{key}, made
+  back made
+
+# the server session's lines, each without its trailing blanks
+task server-lines
+  take run, like find-run
+  like list, like text
+
+  save lines, make(list, <>)
+  lines/pop()
+  walk lines-of(run/server-text)
+    take line, like text
+    lines/push(text-trim-end(line))
+  back lines
+
+task any-ending
+  take lines, like list, like text
+  take suffix, like text
+  like boolean
+
+  walk lines
+    take line, like text
+    fork test, text-ends-with(line, suffix)
+      hold
+        back true
+  back false
+
+# none of the other sessions holds a word of what was typed
+task quiet-untyped
+  take run, like find-run
+  like boolean
+
+  walk run/quiet
+    take text, like text
+    fork test, or(or(text-contains(text, <term-find-0008-ok>), text-contains(text, <term-find-0008-awk>)), text-contains(text, <echo >))
+      hold
+        back false
+  back true
+
+# every session's contents, the server's first
+task everything-of
+  take run, like find-run
+  like text
+
+  save all, run/server-text
+  walk run/quiet
+    take text, like text
+    save all, <{all}\n{text}>
+  back all
+
+test <without TERM_ITERM_DRIVER=1 the driver tests skip with the named reason, and jxa refuses before osascript>
+  fork test, is-equal(variable(<TERM_ITERM_DRIVER>), <1>)
+    hold
+      skip <TERM_ITERM_DRIVER is 1: the person runs the driver>
+  want hold, is-equal(driver-skip(), driver-reason)
+  want hold, is-equal(jxa-refusal(), refusal-reason)
+
+test <the test window holds four sessions with the made-up titles>
+  save why, driver-skip()
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save run, run-of()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip run/reason
+  want hold, all-made(run/first, run/token)
+
+test <one session each of server and other, two of dup>
+  save why, driver-skip()
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save run, run-of()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip run/reason
+  want hold, layout-holds(run/first, run/token)
+
+test <the Term test of the program passes: 4 tests, 4 passed>
+  save why, driver-skip()
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save run, run-of()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip run/reason
+  want hold, is-equal(run/reason, <>)
+  want hold, and(and(is-equal(run/exit, 0), text-contains(run/verdict, <4 tests>)), and(text-contains(run/verdict, <4 passed>), not(text-contains(run/verdict, <failed>))))
+
+test <the server session shows the typed line and its output>
+  save why, driver-skip()
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save run, run-of()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip run/reason
+  want hold, is-equal(run/reason, <>)
+  want hold, and(any-ending(server-lines(run), <echo term-find-0008-ok>), server-lines(run)/contains(<term-find-0008-ok>))
+
+test <the awkward line arrived exactly: echo term-find-0008-awk "a'b" ; echo $HOME>
+  save why, driver-skip()
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save run, run-of()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip run/reason
+  want hold, is-equal(run/reason, <>)
+  want hold, any-ending(server-lines(run), <echo term-find-0008-awk "a'b" ; echo $HOME>)
+
+test <its output is the quoted text and the person's home>
+  save why, driver-skip()
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save run, run-of()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip run/reason
+  want hold, is-equal(run/reason, <>)
+  want hold, and(server-lines(run)/contains(<term-find-0008-awk a'b>), server-lines(run)/contains(run/home))
+
+test <none of the other sessions was typed into>
+  save why, driver-skip()
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save run, run-of()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip run/reason
+  want hold, is-equal(run/reason, <>)
+  want hold, quiet-untyped(run)
+
+test <find-none and find-many typed nothing anywhere>
+  save why, driver-skip()
+  fork test, is-unequal(why, <>)
+    hold
+      skip why
+  save run, run-of()
+  fork test, is-equal(run/state, <skipped>)
+    hold
+      skip run/reason
+  want hold, is-equal(run/reason, <>)
+  want hold, and(not(text-contains(everything-of(run), <term-find-0008-none>)), not(text-contains(everything-of(run), <term-find-0008-many>)))

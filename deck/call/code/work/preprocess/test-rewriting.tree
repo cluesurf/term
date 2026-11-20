@@ -23,6 +23,19 @@ load @term/base/text
   find trim
   find split
   find replace-all
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+
+load @term/base/hash
+  find hash
+  find has
+  find keys
+  find get-or-default
+
+load @term/base/maybe
+  find maybe
 
 load @term/call/work/preprocess/line-reading
   find rewrite-indent
@@ -63,6 +76,9 @@ load @term/call/work/preprocess/condition-reading
 
 load @term/deck/package/tree-reading
   find read-tree
+  find tree-reading
+  find tree-form
+  find form-of
 
 # a text as a data literal writes it
 load @term/make/compile/host-data
@@ -112,81 +128,146 @@ form sampled-input
   link type, like sampled-type
   link group, like list, like number
 
-# ---- the host values Term has no word for yet (items 1663 and 1664) ----
+# ---- the options and the snapshots (item 1663) ----
+
+# a test file's stored snapshots, each test's phrase to the texts its `want snapshot`s hold in the order taken, and
+# whether this run records what each one sees (`term test --commit`) instead of holding it to them
+form snapshot-ask
+  link stored, like hash, like text, like list, like text
+  link update, like boolean
+
+# what the preprocessor takes. `plain-wants`: every `want` raises the plain marker, never the two values it compared
+form rewrite-options
+  link plain-wants, like boolean
+  link snapshots, like snapshot-ask
+
+# no snapshot stored, and none recorded
+task no-snapshots
+  like snapshot-ask
+
+  back make(snapshot-ask, bind(stored, make hash), bind(update, false))
+
+# the options of a file rewritten with none of its own: the values compared, no snapshot stored
+task no-rewrite-options
+  like rewrite-options
+
+  back make(rewrite-options, bind(plain-wants, false), bind(snapshots, no-snapshots()))
+
+# the texts stored for one key, none when the key has none
+task stored-texts
+  take stored, like hash, like text, like list, like text
+  take key, like text
+  like list, like text
+
+  save none-stored, make list
+  fork test, has(stored, key)
+    hold
+      back get-or-default(stored, key, none-stored)
+  back none-stored
+
+# the stored text of the `taken`th `want snapshot` of the test `label`, `none` when nothing is stored there
+task stored-snapshot
+  take snapshots, like snapshot-ask
+  take label, like text
+  take taken, like number
+  like maybe, like text
+
+  save texts, stored-texts(snapshots/stored, label)
+  fork test, is-below(taken, texts/length)
+    hold
+      save stored-text, get(texts, taken)
+      back make(some, stored-text)
+  back make none
+
+# the keys of the cases of the test `label` with a stored snapshot at its `taken`th place, each `<phrase> [<case>]`, in
+# the order the store holds them
+task stored-case-keys
+  take snapshots, like snapshot-ask
+  take label, like text
+  take taken, like number
+  like list, like text
+
+  save stored, snapshots/stored
+  save lead, <{label} [>
+  save out, make list
+  walk keys(stored)
+    take key, like text
+    fork test, and(starts-with(key, lead), ends-with(key, <]>))
+      hold
+        save texts, stored-texts(stored, key)
+        fork test, is-below(taken, texts/length)
+          hold
+            out/push(key)
+  back out
 
 # the cases of a test that have a stored snapshot at its `taken`th place, each by its own part of `<phrase> [<case>]`
-bind stored-case-labels
-  take snapshots, like dynamic
+task stored-case-labels
+  take snapshots, like snapshot-ask
   take label, like text
   take taken, like number
   like list, like text
-  case node
-    text <<[...($snapshots?.stored ?? new Map()).entries()].filter((entry) => entry[0].startsWith($label + " [") && entry[0].endsWith("]") && entry[1][$taken] !== undefined).map((entry) => entry[0].slice($label.length + 2, -1))>>
+
+  save cut, add(char-count(label), 2)
+  save out, make list
+  walk stored-case-keys(snapshots, label, taken)
+    take key, like text
+    out/push(substring(key, cut, subtract(char-count(key), 1)))
+  back out
 
 # and the stored text of each, in the same order
-bind stored-case-texts
-  take snapshots, like dynamic
+task stored-case-texts
+  take snapshots, like snapshot-ask
   take label, like text
   take taken, like number
   like list, like text
-  case node
-    text <<[...($snapshots?.stored ?? new Map()).entries()].filter((entry) => entry[0].startsWith($label + " [") && entry[0].endsWith("]") && entry[1][$taken] !== undefined).map((entry) => entry[1][$taken])>>
 
-bind host-is-undefined
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value === undefined)>
+  save out, make list
+  walk stored-case-keys(snapshots, label, taken)
+    take key, like text
+    out/push(get(stored-texts(snapshots/stored, key), taken))
+  back out
 
-bind host-as-text
-  take value, like dynamic
+# ---- a `take` line as @term/deck's tree-reading reads it (item 1663) ----
+
+# the first form of a reading, `none` when it failed or read none
+task taken-form-of
+  take read, like tree-reading
+  like maybe, like tree-form
+
+  fork test, and(read/ok, is-above(read/forms/length, 0))
+    hold
+      save first-form, get(read/forms, 0)
+      back make(some, first-form)
+  back make none
+
+# the first bare word of a form, `none` when it has none
+task first-term-of
+  take form, like tree-form
+  like maybe, like text
+
+  fork test, is-above(form/terms/length, 0)
+    hold
+      save first-term, get(form/terms, 0)
+      back make(some, first-term)
+  back make none
+
+# the name a `take` line gives its input, `value` when it gives none
+task taken-name
+  take taken, like maybe, like tree-form
   like text
-  case node
-    text <$value>
 
-bind form-first-term
-  take form, like dynamic
-  like dynamic
-  case node
-    text <$form?.terms[0]>
-
-bind form-like-child
-  take form, like dynamic
-  like dynamic
-  case node
-    text <$form?.forms.find((child) =\> child.head === "like")>
-
-bind data-read-form
-  take read, like dynamic
-  like dynamic
-  case node
-    text <($read.ok ? $read.forms[0] : undefined)>
-
-bind options-plain-wants
-  take options, like dynamic
-  like boolean
-  case node
-    text <($options === undefined ? false : $options.plainWants === true)>
-
-bind options-snapshots
-  take options, like dynamic
-  like dynamic
-  case node
-    text <($options === undefined ? undefined : $options.snapshots)>
-
-bind snapshots-updating
-  take snapshots, like dynamic
-  like boolean
-  case node
-    text <Boolean($snapshots?.update)>
-
-bind stored-snapshot
-  take snapshots, like dynamic
-  take label, like text
-  take taken, like number
-  like dynamic
-  case node
-    text <$snapshots?.stored.get($label)?.[$taken]>
+  sift taken
+    case some
+      link taken-line
+      save word, first-term-of(taken-line)
+      sift word
+        case some
+          link written-name
+          back written-name
+        case none
+          back <value>
+    case none
+      back <value>
 
 # ---- placing a diagnostic back ----
 
@@ -631,7 +712,7 @@ task snapshot-want
   take numbers, like list, like number
   take label, like text
   take taken, like number
-  take snapshots, like dynamic
+  take snapshots, like snapshot-ask
   take plain, like boolean
   like want-written
 
@@ -664,19 +745,23 @@ task snapshot-want
               lines/push(<  {text}>)
           from/push(numbers/{at})
           save at, add(at, 1)
-  fork test, snapshots-updating(snapshots)
+  fork test, snapshots/update
     hold
       lines/push(<  term-snapshot-take(\<{escape-text(label)}\>, {name})>)
       from/push(line)
       back make(want-written, bind(lines, lines), bind(from, from))
   save stored, stored-snapshot(snapshots, label, taken)
-  fork test, host-is-undefined(stored)
-    hold
+  save stored-text, <>
+  sift stored
+    case some
+      link found-text
+      save stored-text, found-text
+    case none
       lines/push(<  halt \<no snapshot is stored for line {shown-line}: term test --commit writes it\>>)
       from/push(line)
       back make(want-written, bind(lines, lines), bind(from, from))
   save held-group, make list
-  held-group/push(<want hold, is-equal {name}, \<{escape-text(host-as-text(stored))}\>>)
+  held-group/push(<want hold, is-equal {name}, \<{escape-text(stored-text)}\>>)
   save held-numbers, make list
   held-numbers/push(line)
   save held, guard(held-group, held-numbers, plain, 0, 0)
@@ -696,16 +781,25 @@ task make-sampled-type
 
   back make(sampled-type, bind(kind, kind), bind(item, make list), bind(written, <>))
 
-# the type a `take` samples as: a scalar by its word, a list by what it holds
-task sampled-type-of
-  take like-form, like dynamic
+task refused-type
+  take written, like text
   like sampled-type
 
-  save word, form-first-term(like-form)
-  fork test, host-is-undefined(word)
-    hold
-      back make(sampled-type, bind(kind, <refused>), bind(item, make list), bind(written, <no type>))
-  save written, host-as-text(word)
+  back make(sampled-type, bind(kind, <refused>), bind(item, make list), bind(written, written))
+
+# the type a `like` form samples as: a scalar by its word, a list by what it holds
+task sampled-type-of
+  take like-form, like tree-form
+  like sampled-type
+
+  save word, first-term-of(like-form)
+  save written, <>
+  sift word
+    case some
+      link found-word
+      save written, found-word
+    case none
+      back refused-type(<no type>)
   fork test, or(is-equal(written, <number>), is-equal(written, <integer>))
     hold
       back make-sampled-type(<number>)
@@ -714,14 +808,34 @@ task sampled-type-of
       back make-sampled-type(written)
   fork test, is-equal(written, <list>)
     hold
-      save child, form-like-child(like-form)
-      fork test, host-is-undefined(child)
-        hold
-          back make(sampled-type, bind(kind, <refused>), bind(item, make list), bind(written, <list of no stated type>))
-      save items, make list
-      items/push(sampled-type-of(child))
-      back make(sampled-type, bind(kind, <list>), bind(item, items), bind(written, <>))
-  back make(sampled-type, bind(kind, <refused>), bind(item, make list), bind(written, written))
+      save child, form-of(like-form, <like>)
+      sift child
+        case some
+          link item-form
+          save items, make list
+          items/push(sampled-type-of(item-form))
+          back make(sampled-type, bind(kind, <list>), bind(item, items), bind(written, <>))
+        case none
+          back refused-type(<list of no stated type>)
+  back refused-type(written)
+
+# the type a `take` line samples as, by its `like`
+task taken-type
+  take taken, like maybe, like tree-form
+  like sampled-type
+
+  sift taken
+    case some
+      link taken-line
+      save like-form, form-of(taken-line, <like>)
+      sift like-form
+        case some
+          link found-form
+          back sampled-type-of(found-form)
+        case none
+          back refused-type(<no type>)
+    case none
+      back refused-type(<no type>)
 
 # whether a type, or one it holds, is refused
 task is-refused-type
@@ -851,13 +965,9 @@ task sampled-test
           take n, like number
           texts/push(rewrite-cut(lines/{n}, 2))
         save read, read-tree(<take.tree>, rewrite-joined(texts))
-        save taken-form, data-read-form(read)
-        save named, form-first-term(taken-form)
-        save name, <value>
-        fork test, not(host-is-undefined(named))
-          hold
-            save name, host-as-text(named)
-        save type, sampled-type-of(form-like-child(taken-form))
+        save taken-form, taken-form-of(read)
+        save name, taken-name(taken-form)
+        save type, taken-type(taken-form)
         inputs/push(make(sampled-input, bind(name, name), bind(type, type), bind(group, group)))
 
   # a type no sample is drawn for is the test's own failure, said when it runs
@@ -1060,7 +1170,7 @@ task enumerated-test
   take lines, like list, like text
   take groups, like list, like list, like number
   take walked, like number
-  take snapshots, like dynamic
+  take snapshots, like snapshot-ask
   take plain, like boolean
   like cases-written
 
@@ -1259,7 +1369,7 @@ task case-snapshot-want
   take numbers, like list, like number
   take label, like text
   take taken, like number
-  take snapshots, like dynamic
+  take snapshots, like snapshot-ask
   take plain, like boolean
   like want-written
 
@@ -1292,7 +1402,7 @@ task case-snapshot-want
           from/push(numbers/{at})
           save at, add(at, 1)
   save escaped, escape-text(label)
-  fork test, snapshots-updating(snapshots)
+  fork test, snapshots/update
     hold
       lines/push(<  term-snapshot-take(\<{escaped} [\{term-case-label\}]\>, {name})>)
       from/push(line)
@@ -1338,15 +1448,15 @@ task case-snapshot-want
 # ---- the file ----
 
 # `plain-wants`: every `want` raises the plain marker, never the two values it compared. A native backend's report
-# reads a raise's `note` and cannot read the values a `want-missed` carries (call/code/test-native.ts). `options` is
-# the original's `{ plainWants?, snapshots? }`, left out for none
+# reads a raise's `note` and cannot read the values a `want-missed` carries (call/code/test-native.ts). A caller with
+# no options of its own hands in `no-rewrite-options()`
 task preprocess-tests
   take source, like text
-  take options, like dynamic
+  take options, like rewrite-options
   like preprocessed
 
-  save plain, options-plain-wants(options)
-  save snapshots, options-snapshots(options)
+  save plain, options/plain-wants
+  save snapshots, options/snapshots
   save lines, split(source, <\n>)
   save out, make list
   save origin, make list
@@ -1493,7 +1603,7 @@ task preprocess-tests
   save placed, make list
   fork test, snapshotted
     hold
-      walk snapshot-prelude(snapshots-updating(snapshots))
+      walk snapshot-prelude(snapshots/update)
         take text, like text
         text-lines/push(text)
         placed/push(0)
@@ -1554,7 +1664,7 @@ task placed-span
 # actually compiled
 task readable
   take source, like text
-  take snapshots, like dynamic
+  take snapshots, like snapshot-ask
   like readable-text
 
   fork test, not(carries-tests(source))
@@ -1565,7 +1675,7 @@ task readable
           like placed-diagnostic
           back make(placed-diagnostic, bind(diagnostic, diagnostic), bind(text, source))
       back make(readable-text, bind(text, source), bind(place, as-written))
-  save rewritten, preprocess-tests(source, snapshots-option(snapshots))
+  save rewritten, preprocess-tests(source, make(rewrite-options, bind(plain-wants, false), bind(snapshots, snapshots)))
   save from-lines, split(source, <\n>)
   save to-lines, split(rewritten/text, <\n>)
   save origin, rewritten/origin
@@ -1580,10 +1690,3 @@ task readable
         markers/push(with-span(marker, placed-span(span-of(marker), origin, from-lines, to-lines)))
       back make(placed-diagnostic, bind(diagnostic, with-span-markers(diagnostic, span, markers)), bind(text, source))
   back make(readable-text, bind(text, rewritten/text), bind(place, place))
-
-# `{ snapshots }`: the options `readable` hands the rewrite
-bind snapshots-option
-  take snapshots, like dynamic
-  like dynamic
-  case node
-    text <(\{ snapshots: $snapshots \})>

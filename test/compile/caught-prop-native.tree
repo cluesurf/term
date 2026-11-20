@@ -1,0 +1,224 @@
+note <a prop read off a caught value, problem/link/actual, on every backend>
+
+# Ported from caught-prop-native.ts by statement (item term-self-host-001-0653). The carrier's `link` is the record of
+# whichever exception was raised, which TypeScript reads as an object and the native backends hold boxed (`Rc<dyn Any>`
+# on Rust, `Any?` on Swift and Kotlin). Each native emitter reads the prop out of every exception form whose link has it,
+# matching the raised record the carrier keeps in `base` (`caught-prop` in compile/rust-emit.tree, swift-emit.tree,
+# kotlin-emit.tree). Until 2026-10-22 it compiled on TypeScript alone (gaps 65, 168).
+#
+# First the three native emitters write deck/site/code/http/tell.tree, the module the read by a run-time name was found
+# in, one test a backend as the original's loop over a literal list. Then each case of the original's table is a test of
+# its own, in its order, walking the backends, each backend a case of it, as the original's inner loop. A backend whose
+# toolchain is not installed is the case's own skip. The original's CAUGHT_ONLY is left out, as hash-text-key.tree left
+# its KEY_ONLY, and its `gap` field, which no case set, with it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find file-text
+
+load ../support/running
+  find backends
+  find run-text
+
+load ../support/judging
+  find make-record
+
+load @term/base/test/temp
+  find temp-folder
+
+dock load
+  load <@term/make/code/compile/rust>, name caught-rust
+  load <@term/make/code/compile/swift>, name caught-swift
+  load <@term/make/code/compile/kotlin>, name caught-kotlin
+
+# the read in the module it was found in: every native emitter writes http/tell.tree. No toolchain builds it here, since
+# its closure's host bindings do not build alone
+host tell, <deck/site/code/http/tell.tree>
+
+# a read by a name known only at run time (http/tell.tree `expose`) threw out of the Rust, Swift and Kotlin emitters, `no
+# exception the program raises has a prop ""`, since the static table took the empty name (item 0781). `seen` keeps the
+# loose answer alive, since a read inlined into a text says nothing of its box
+host seen, <task seen\n  take value, like unknown\n  like text\n  sift value\n    case text\n      back \<t:\{value\}\>\n    case number\n      back \<n:\{value\}\>\n    miss\n      back \<other\>\n>
+
+host keyed-head, <load @term/base/exception\n  find excess\n  find timeout\n\n>
+
+host keyed-tail, <\ntask check\n  take n, like number\n  like number\n  fork test, is-above(n, 3)\n    hold\n      halt excess\n        bind thing, text \<big\>\n        bind limit, code 3\n        bind actual, read n\n  halt timeout\n    bind thing, text \<late\>\n    bind waited, code 5\n\ntask keyed\n  take n, like number\n  take key, like text\n  like text\n  save answer, \<none\>\n  fork\n    mark unsafe\n    save got, check(n)\n  halt take\n    take problem\n    save answer, seen(problem/link/\{key\})\n  back answer\n>
+
+# a form the program declares, whose prop has two words: TypeScript stores it camel-cased (`whereFrom`) and reads the key
+# by its written name, `where-from`, through `__termLinkKey` (compiler decision 015, item 0788)
+host lost-head, <load @term/base/exception\n  find exception\n\nform lost-thing\n  like exception\n    bind note, \<lost\>\n    link where-from, like text\n\n>
+
+host lost-tail, <\ntask lose\n  like number\n  halt lost-thing\n    bind where-from, \<a.b\>\n\ntask keyed\n  take key, like text\n  like text\n  save answer, \<none\>\n  fork\n    mark unsafe\n    save got, lose()\n  halt take\n    take problem\n    save answer, seen(problem/link/\{key\})\n  back answer\n>
+
+host prop-program, <load @term/base/exception\n  find excess\n\ntask check\n  take n, like number\n  like number\n  fork test, is-above(n, 3)\n    hold\n      halt excess\n        bind thing, text \<n\>\n        bind limit, code 3\n        bind actual, read n\n  back n\n\ntask run\n  like text\n  save answer, \<none\>\n  fork\n    mark unsafe\n    save got, check(9)\n  halt take\n    take problem\n    save answer, \<\{problem/form\} \{problem/link/actual\} \{problem/link/thing\}\>\n  back answer\n>
+
+host two-forms-program, <load @term/base/exception\n  find excess\n  find timeout\n\ntask check\n  take n, like number\n  like number\n  fork test, is-above(n, 3)\n    hold\n      halt timeout\n        bind thing, text \<late\>\n        bind waited, code 5\n  halt excess\n    bind thing, text \<big\>\n    bind limit, code 3\n    bind actual, read n\n\ntask run\n  like text\n  save answer, \<none\>\n  fork\n    mark unsafe\n    save got, check(9)\n  halt take\n    take problem\n    save answer, \<\{problem/form\} \{problem/link/thing\}\>\n  back answer\n>
+
+host by-key-run, <\ntask run\n  like text\n  back \<\{keyed(9, \<thing\>)\} \{keyed(9, \<actual\>)\} \{keyed(9, \<nothing-here\>)\}\>\n>
+
+host by-key-two-forms-run, <\ntask run\n  like text\n  back \<\{keyed(9, \<thing\>)\} \{keyed(1, \<thing\>)\}\>\n>
+
+host by-key-kebab-run, <\ntask run\n  like text\n  back keyed(\<where-from\>)\n>
+
+host by-key-written-only-run, <\ntask run\n  like text\n  back \<\{keyed(\<whereFrom\>)\} \{keyed(\<constructor\>)\} \{keyed(\<toString\>)\} \{keyed(\<nowhere\>)\} \{keyed(\<where-from\>)\}\>\n>
+
+host json-head, <load @term/base/json\n  find make-object\n  find set-field\n  find stringify\n\n>
+
+host kebab-json-run, <\ntask body-of\n  take keys, like list, like text\n  like text\n  save answer, \<none\>\n  fork\n    mark unsafe\n    save got, lose()\n  halt take\n    take problem\n    save body, make-object()\n    walk keys\n      take prop\n      save body, set-field(body, prop, problem/link/\{prop\})\n    save answer, stringify(body)\n  back answer\n\ntask run\n  like text\n  back body-of(make list(\<where-from\>, \<nowhere\>, \<constructor\>))\n>
+
+host into-json-program, <load @term/base/exception\n  find excess\n  find exception\n\nload @term/base/json\n  find make-object\n  find set-field\n  find stringify\n\ntask raises\n  like number\n  halt excess\n    bind thing, text \<big\>\n    bind limit, code 3\n    bind actual, code 9\n\ntask body-of\n  take e, like exception\n  like text\n  save body, make-object()\n  walk make list(\<actual\>, \<thing\>)\n    take prop\n    save body, set-field(body, prop, e/link/\{prop\})\n  back stringify(body)\n\ntask run\n  like text\n  save answer, \<none\>\n  fork\n    mark unsafe\n    save got, raises()\n  halt take\n    take problem\n    save answer, body-of(problem)\n  back answer\n>
+
+# the message of a host exception, the emitter's throw
+bind caught-message
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+# the length of what one native emitter wrote of a library program, as one unit a module
+task emitted-length
+  take out, like compile-outcome
+  take backend, like text
+  like number
+
+  host units, make-record(make(list, <units>, true))
+  fork test, is-equal(backend, <rust>)
+    hold
+      back caught-rust/emit-rust(out/program, units)/length
+  fork test, is-equal(backend, <swift>)
+    hold
+      back caught-swift/emit-swift(out/program, units)/length
+  back caught-kotlin/emit-kotlin(out/program, units)/length
+
+# <> when the backend's emitter wrote tell.tree, else why not: the compile's first message, or what the emitter threw
+task tell-refusal
+  take backend, like text
+  like text
+
+  host out, compile-text(file-text(tell), make(compile-choice, bind(file, tell), bind(project, <deck/site>), bind(project-env, backend), bind(project-role, true), bind(project-lean, true), bind(project-deck, true), bind(env, backend), bind(library, true)))
+  fork test, not(out/ok)
+    hold
+      back <refused: {out/messages/0}>
+  save length, 0
+  save threw, <>
+  fork
+    mark unsafe
+    save length, emitted-length(out, backend)
+  halt take
+    take cause
+    save threw, <threw: {caught-message(cause)}>
+  fork test, is-unequal(threw, <>)
+    hold
+      back threw
+  fork test, is-below(length, 1)
+    hold
+      back <emitted nothing>
+  back <>
+
+# one case's program run on a backend, or the skip its toolchain gives: <> when it printed `want`, else what it did
+task ran-wrong
+  take program, like text
+  take backend, like text
+  take name, like text
+  take want, like text
+  like text
+
+  host folder, temp-folder(<term-caught-prop->)
+  host ran, run-text(program, backend, folder, name)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back <skipped>
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      back <{ran/stage}: {ran/reason}>
+  fork test, is-unequal(ran/output, want)
+    hold
+      back <got {ran/output}>
+  back <>
+
+test <rust: deck/site/code/http/tell.tree emits (emitter throw is a failure, decision 013)>
+  want hold, is-equal(tell-refusal(<rust>), <>)
+
+test <swift: deck/site/code/http/tell.tree emits (emitter throw is a failure, decision 013)>
+  want hold, is-equal(tell-refusal(<swift>), <>)
+
+test <kotlin: deck/site/code/http/tell.tree emits (emitter throw is a failure, decision 013)>
+  want hold, is-equal(tell-refusal(<kotlin>), <>)
+
+test <a number prop and a text prop read off a caught excess (prop)>
+  take backend, like text
+    walk backends()
+  host said, ran-wrong(prop-program, backend, <prop>, <excess 9 n>)
+  fork test, is-equal(said, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(said, <>)
+
+test <a prop two exception forms share is read off whichever was raised (two-forms)>
+  take backend, like text
+    walk backends()
+  host said, ran-wrong(two-forms-program, backend, <two-forms>, <timeout late>)
+  fork test, is-equal(said, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(said, <>)
+
+test <a prop named at run time, its type the form raised, and a name no form has (by-key)>
+  take backend, like text
+    walk backends()
+  host said, ran-wrong(<{keyed-head}{seen}{keyed-tail}{by-key-run}>, backend, <by-key>, <t:big n:9 other>)
+  fork test, is-equal(said, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(said, <>)
+
+test <one key read off whichever of two forms was raised (by-key-two-forms)>
+  take backend, like text
+    walk backends()
+  host said, ran-wrong(<{keyed-head}{seen}{keyed-tail}{by-key-two-forms-run}>, backend, <by-key-two-forms>, <t:big t:late>)
+  fork test, is-equal(said, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(said, <>)
+
+test <a prop whose name is two words, of a form the program declares (by-key-kebab)>
+  take backend, like text
+    walk backends()
+  host said, ran-wrong(<{lost-head}{seen}{lost-tail}{by-key-kebab-run}>, backend, <by-key-kebab>, <t:a.b>)
+  fork test, is-equal(said, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(said, <>)
+
+# compiler decision 015 rules 1 and 2: only the written name hits. The stored spelling, an inherited name and a name no
+# form has read absent on all four (item 0788)
+test <a key that is the stored spelling, an inherited name, or no prop at all, reads absent (by-key-written-only)>
+  take backend, like text
+    walk backends()
+  host said, ran-wrong(<{lost-head}{seen}{lost-tail}{by-key-written-only-run}>, backend, <by-key-written-only>, <other other other other t:a.b>)
+  fork test, is-equal(said, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(said, <>)
+
+# compiler decision 015 rule 3: an absent prop goes into set-field as null on all four (item 0788), one body, so the keys
+# stay in the order they were set on all four (item 0939: Rust sorted them, Kotlin wrote an absent prop as kotlin.Unit)
+test <a two-word prop, a missing one and an inherited one, by name into a JSON body (by-key-kebab-into-json)>
+  take backend, like text
+    walk backends()
+  host said, ran-wrong(<{json-head}{lost-head}{seen}{lost-tail}{kebab-json-run}>, backend, <by-key-kebab-into-json>, <\{"where-from":"a.b","nowhere":null,"constructor":null\}>)
+  fork test, is-equal(said, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(said, <>)
+
+test <the read http/tell.tree writes: a prop by its name into a JSON body (by-key-into-json)>
+  take backend, like text
+    walk backends()
+  host said, ran-wrong(into-json-program, backend, <by-key-into-json>, <\{"actual":9,"thing":"big"\}>)
+  fork test, is-equal(said, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(said, <>)

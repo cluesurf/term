@@ -6,12 +6,7 @@ note <a test title is unescaped as an ordinary literal is, so an escaped angle i
 
 load @term/call/work/preprocess/test-rewriting
   find preprocess-tests
-
-bind no-options
-  take seed, like number
-  like dynamic
-  case node
-    text <undefined>
+  find no-rewrite-options
 
 # the label `term test` prints for the test whose task is `slug`
 task label-of
@@ -19,7 +14,7 @@ task label-of
   take slug, like text
   like text
 
-  save labels, preprocess-tests(source, no-options(0))/labels
+  save labels, preprocess-tests(source, no-rewrite-options())/labels
   back labels/{slug}
 
 host above, <test \<x \\\>= 0\>\n  want hold, true\n>

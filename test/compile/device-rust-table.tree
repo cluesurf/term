@@ -1,0 +1,639 @@
+note <the device modules on Linux and Windows: a Rust host or unavailable, as the guide's table says, and one program calling each>
+
+# Ported from device-rust-table.ts by statement (item term-self-host-001-0653), term-device-layer-0001. Every device
+# module either has a Rust host, or answers `unavailable` from its fallback, and the guide's table (the device guide's "On
+# Linux and Windows", held as test/fixture/device-table.json) says which, one row a module.
+#
+# Two halves. The TABLE: every device module the cask carries has a row, a row reads `unavailable` on all three platforms
+# exactly when site/code/view/native/rust/<module>.tree does not exist, and every tool a hosted row names in backticks is
+# one its runtime (runtime/native-<module>.rs) calls. The RUN: one Rust program calls every module once on this machine:
+# each module with no Rust host answers `unavailable`, and each with one answers from the platform. The notification and
+# the file picker reach `osascript` (on Linux `notify-send` and `zenity`), which a stand-in on the PATH answers, so no
+# banner or dialog ever comes up on the screen of whoever is at the machine. The stand-in records what it was asked, and
+# that record is the witness: the title and the body, the dialog's kind, and the picked file's copy holding the fixture's
+# bytes. The person's clipboard is kept and put back. Without rustc the run's tests skip.
+#
+# The original's loop over the modules asserted one row check for a module with no host and two for one with a host. Here
+# each check is one walked test over the modules it holds for, each module a case: the same checks, grouped by check
+# rather than by module. The device list is cask-generate's own `list-device-modules`, the original's DEVICE_MODULES. The
+# stand-in PATH goes to the build and the run as their environment, where the original set it on its own process. The
+# original's guard (the stand-ins first on the path) printed a FAIL only when it failed: here a failed guard stops the
+# run, and the run's first test says why. The program runs once, from the first test that asks, as device-rust.tree's.
+
+load ../support/running
+  find run-text
+
+load ../support/compiling
+  find compile-choice
+  find file-text
+
+load ../support/reading
+  find lines-of
+
+load ../support/temp
+  find temp-folder
+
+load @term/call/work/cask-generate/kinds
+  find list-device-modules
+
+load @term/deck/package/tree-reading
+  find read-tree
+
+load @term/base/process/run
+  find run
+  find run-with-input
+
+load @term/base/json
+  find parse, name parse-json
+  find object-keys
+  find get-field
+  find array-size
+  find array-item
+  find as-text
+
+load @term/base/list
+  find push
+  find sort
+  find contains
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-match
+  find match-group
+  find pattern-match
+
+load @term/base/maybe
+  find some
+  find none
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+  find trim
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+dock load
+  load <global:process>, name device-process
+  load <node:fs>, name device-fs
+
+host on-mac, is-equal(device-process/platform, <darwin>)
+
+host view, <deck/site/code/view>
+
+# the guide's table, held here as a snapshot: the guide is written outside this repository, and the check that holds the
+# snapshot equal to it runs where the guide is
+host table, <test/fixture/device-table.json>
+
+# one call a module: the module's tasks the program finds, and the lines that call them, each answering text
+form device-call
+  link finds, like list, like text
+  link call, like list, like text
+
+# one call a module, answering text, each harmless where it is answered: nothing is written but the clipboard (kept and put
+# back), and the calls that would reach a person (a banner, a dialog) reach the stand-in. `{work}` is the program's own
+host calls
+  make hash
+    save <permission>, make(device-call, bind(finds, make list(<permission-status>)), bind(call, make list(<call permission-status>, <  text \<camera\>>)))
+    save <camera>, make(device-call, bind(finds, make list(<take-photo>)), bind(call, make list(<call take-photo>)))
+    save <microphone>, make(device-call, bind(finds, make list(<record-audio>)), bind(call, make list(<call record-audio>, <  code 1>)))
+    save <audio>, make(device-call, bind(finds, make list(<audio-length>)), bind(call, make list(<call audio-length>, <  text \<\{work\}/none.wav\>>)))
+    save <download>, make(device-call, bind(finds, make list(<download-file>)), bind(call, make list(<call download-file>, <  text \<https://example.invalid/term\>>, <  text \<\{work\}/download\>>)))
+    save <files>, make(device-call, bind(finds, make list(<pick-file>)), bind(call, make list(<call pick-file>, <  text \<json\>>)))
+    save <contacts>, make(device-call, bind(finds, make list(<find-contacts>)), bind(call, make list(<call find-contacts>, <  text \<term\>>)))
+    save <calendar>, make(device-call, bind(finds, make list(<find-events>)), bind(call, make list(<call find-events>, <  text \<2031-01-01T00:00:00Z\>>, <  text \<2031-01-02T00:00:00Z\>>)))
+    save <photos>, make(device-call, bind(finds, make list(<find-photos>)), bind(call, make list(<call find-photos>, <  code 1>)))
+    save <torch>, make(device-call, bind(finds, make list(<torch-state>)), bind(call, make list(<call torch-state>)))
+    save <location>, make(device-call, bind(finds, make list(<current-position>)), bind(call, make list(<call current-position>)))
+    save <clipboard>, make(device-call, bind(finds, make list(<write-clipboard>)), bind(call, make list(<call write-clipboard>, <  text \<term-rust-table-{device-process/pid}\>>)))
+    save <vibration>, make(device-call, bind(finds, make list(<vibrate>)), bind(call, make list(<call vibrate>, <  text \<light\>>)))
+    save <notification>, make(device-call, bind(finds, make list(<show-notification>)), bind(call, make list(<call show-notification>, <  text \<Term table\>>, <  text \<Every module once\>>)))
+    save <open>, make(device-call, bind(finds, make list(<open-address>)), bind(call, make list(<call open-address>, <  text \<term-no-handler://nothing\>>)))
+    save <battery>, make(device-call, bind(finds, make list(<battery-status>)), bind(call, make list(<call battery-status>)))
+    save <network>, make(device-call, bind(finds, make list(<network-status>)), bind(call, make list(<call network-status>)))
+    save <motion>, make(device-call, bind(finds, make list(<read-motion>)), bind(call, make list(<call read-motion>)))
+    save <secret>, make(device-call, bind(finds, make list(<save-secret>)), bind(call, make list(<call save-secret>, <  text \<term-rust-table\>>, <  text \<kept\>>)))
+    save <biometric>, make(device-call, bind(finds, make list(<biometric-kind>)), bind(call, make list(<call biometric-kind>)))
+
+# the stand-in for every tool that would put something in front of a person: it writes each argument on a line of its
+# own, then a line `--`, and answers a file dialog with the fixture's path
+host shim, <#!/bin/sh\nfor argument in "$@"; do printf '%s\\n' "$argument" \>\> "$TERM_TABLE_ASKED"; done\nprintf -- '--\\n' \>\> "$TERM_TABLE_ASKED"\ncase "$*" in *"choose file"*|*--file-selection*|*--getopenfilename*) printf '%s\\n' "$TERM_TABLE_PICK" ;; esac\nexit 0\n>
+
+# what the run left: whether it ran (or why not), each module's answer by name, the stand-in's record, and the fixture
+form table-run
+  mark shared
+  link done, like boolean
+  link state, like text
+  link reason, like text
+  link answers, like hash, like text, like text
+  link asked, like text
+  link fixture, like text
+  link fixture-text, like text
+
+host now, make(table-run, bind(done, false), bind(state, <>), bind(reason, <>), bind(answers, make hash), bind(asked, <>), bind(fixture, <>), bind(fixture-text, <\{"picked": {device-process/pid}\}\n>))
+
+# the device modules, in code point order
+task modules
+  like list, like text
+
+  back sort(list-device-modules(), from-texts)
+
+task hosted
+  take module, like text
+  like boolean
+
+  back file-exists(<{view}/native/rust/{module}.tree>)
+
+# one row of the guide's table: the Linux, Windows and macOS cells
+form device-row
+  link cells, like list, like text
+
+# the guide's rows by module
+task rows
+  like hash, like text, like device-row
+
+  host read, parse-json(file-text(table))
+  save out, like hash, like text, like device-row
+    make hash
+  walk object-keys(read)
+    take module, like text
+    save out/{module}, make(device-row, bind(cells, cells-from(get-field(read, module), 0, make list)))
+  back out
+
+# the texts of a JSON array from `at` on, pushed onto `out`
+task cells-from
+  take cells, like dynamic
+  take at, like number
+  take out, like list, like text
+  like list, like text
+
+  fork test, not(is-below(at, array-size(cells)))
+    hold
+      back out
+  out/push(as-text(array-item(cells, at)))
+  back cells-from(cells, add(at, 1), out)
+
+# the public tasks a contract declares, so a row may name them without the runtime calling them: each top-level
+# `task <name>` form, read through the parser (note/project/term/one-parser.md)
+task tasks-of
+  take module, like text
+  like list, like text
+
+  host file, <{view}/{module}.tree>
+  host read, read-tree(file, read-file(file))
+  save out, make list
+  fork test, not(read/ok)
+    hold
+      back out
+  walk read/forms
+    take form
+    fork test, and(is-equal(form/head, <task>), is-equal(form/terms/length, 1))
+      hold
+        out/push(form/terms/0)
+  back out
+
+# every cell is `unavailable` in backticks
+task all-unavailable
+  take cells, like list, like text
+  like boolean
+
+  walk cells
+    take cell, like text
+    fork test, is-unequal(cell, <`unavailable`>)
+      hold
+        back false
+  back true
+
+# no cell is `unavailable` in backticks
+task none-unavailable
+  take cells, like list, like text
+  like boolean
+
+  walk cells
+    take cell, like text
+    fork test, is-equal(cell, <`unavailable`>)
+      hold
+        back false
+  back true
+
+# the tools a hosted row names in backticks that are not the module's own words, and that its runtime does not call,
+# joined by a comma: <> when the runtime calls every one
+task tools-missing
+  take module, like text
+  like text
+
+  host runtime, read-file(<{view}/native/rust/runtime/native-{module}.rs>)
+  host own, tasks-of(module)
+  host quoted, make pattern, <<`([^`]+)`>>
+  save missing, make list
+  host held, rows()
+  host row, held/{module}
+  walk row/cells
+    take cell, like text
+    walk find-matches(quoted, cell)
+      take one, like pattern-match
+      host found, group-text(one)
+      fork test, and(is-unequal(found, <unavailable>), not(contains(own, found)))
+        hold
+          fork test, not(runtime-calls(runtime, found))
+            hold
+              missing/push(found)
+  back missing/join(<, >)
+
+# a match's first group, the empty text when it took no part
+task group-text
+  take found, like pattern-match
+  like text
+
+  sift match-group(found, 1)
+    case some
+      link value
+      back value
+    case none
+      back <>
+
+# every word of a named tool is somewhere in the runtime
+task runtime-calls
+  take runtime, like text
+  take tool, like text
+  like boolean
+
+  walk text-split(tool, < >)
+    take word, like text
+    fork test, and(is-unequal(word, <>), not(text-contains(runtime, word)))
+      hold
+        back false
+  back true
+
+# the device program: every module loaded, each called once, the answers joined by `|`
+task program-of
+  take work, like text
+  like text
+
+  save lines, make list
+  walk modules()
+    take module, like text
+    lines/push(<load @term/site/view/{module}>)
+    walk calls/{module}/finds
+      take one, like text
+      lines/push(<  find {one}>)
+    lines/push(<>)
+  lines/push(<load @term/base/list>)
+  lines/push(<  find push>)
+  lines/push(<>)
+  lines/push(<load @term/base/text/util>)
+  lines/push(<  find join>)
+  lines/push(<>)
+  lines/push(<task run>)
+  lines/push(<  like text>)
+  lines/push(<  save work, text \<{work}\>>)
+  lines/push(<  save answers>)
+  lines/push(<    make list>)
+  walk modules()
+    take module, like text
+    lines/push(<  save answer-{module}>)
+    walk calls/{module}/call
+      take line, like text
+      lines/push(<    {line}>)
+    lines/push(<  call push>)
+    lines/push(<    bind list, read answers>)
+    lines/push(<    bind item, read answer-{module}>)
+  lines/push(<  send back>)
+  lines/push(<    call join>)
+  lines/push(<      read answers>)
+  lines/push(<      text \<|\>>)
+  lines/push(<>)
+  back lines/join(<\n>)
+
+# the pasteboard's text on a Mac, the empty text elsewhere
+task pasteboard
+  like text
+  mark async
+
+  fork test, not(on-mac)
+    hold
+      back <>
+  back run(<pbpaste>, make(list))/output
+
+# each line of `command -v` under the stand-in path starts in the stand-ins' folder
+task stand-ins-first
+  take found, like text
+  take shims, like text
+  like boolean
+
+  walk lines-of(found)
+    take line, like text
+    fork test, and(is-unequal(line, <>), not(starts-with(line, shims)))
+      hold
+        back false
+  back true
+
+# the program built and run once, under the stand-ins, the clipboard kept before and put back after, whatever the run did
+task the-run
+  like table-run
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save now/done, true
+  save work, temp-folder(<device-rust-table->)
+  save shims, <{work}/shims>
+  save record, <{work}/asked.txt>
+  save now/fixture, <{work}/chosen.json>
+  make-folder(shims)
+  write-file(now/fixture, now/fixture-text)
+  walk make list(<osascript>, <notify-send>, <zenity>, <kdialog>)
+    take tool, like text
+    write-file(<{shims}/{tool}>, shim)
+    device-fs/chmod-sync(<{shims}/{tool}>, 493)
+  save path, <{shims}:{device-process/env/PATH}>
+  save environment, like hash, like text, like text
+    make hash
+      save <PATH>, path
+      save <TERM_TABLE_ASKED>, record
+      save <TERM_TABLE_PICK>, now/fixture
+  # the guard: the stand-in must be what the program finds, or a real banner could come up
+  save reached, run(<sh>, make(list, <-c>, <command -v osascript notify-send zenity>), bind(environment, environment))
+  fork test, not(stand-ins-first(reached/output, shims))
+    hold
+      save now/state, <failed>
+      save now/reason, <the stand-ins are not first on the path: {reached/output}>
+      back now
+  save kept, pasteboard()
+  fork
+    mark unsafe
+    save ran, run-text(program-of(work), <rust>, work, <table>, make(compile-choice, bind(project, <.>), bind(project-link, <.>)), <>, environment)
+    save now/state, ran/state
+    save now/reason, <{ran/stage}: {ran/reason}>
+    fork test, is-equal(ran/state, <ran>)
+      hold
+        save parts, text-split(trim(ran/output), <|>)
+        save at, 0
+        walk modules()
+          take module, like text
+          fork test, is-below(at, parts/length)
+            hold
+              save now/answers/{module}, parts/{at}
+            miss
+              save now/answers/{module}, <>
+          save at, add(at, 1)
+        fork test, file-exists(record)
+          hold
+            save now/asked, read-file(record)
+  halt take
+    take cause
+    save now/state, <failed>
+    save now/reason, <the run raised>
+  fork test, on-mac
+    hold
+      run-with-input(<pbcopy>, make(list), kept)
+  back now
+
+# the answer a module gave, <> when it gave none
+task answer-of
+  take ran, like table-run
+  take module, like text
+  like text
+
+  fork test, ran/answers/has(module)
+    hold
+      back ran/answers/{module}
+  back <>
+
+# the stand-in's calls, each the lines of one asking
+task calls-asked
+  take ran, like table-run
+  like list, like text
+
+  save out, make list
+  walk text-split(ran/asked, <--\n>)
+    take one, like text
+    fork test, is-unequal(one, <>)
+      hold
+        out/push(one)
+  back out
+
+# the platform tool was asked with the title and the body
+task notification-asked
+  take ran, like table-run
+  like boolean
+
+  host shown, make pattern, <<display notification>>
+  walk calls-asked(ran)
+    take one, like text
+    fork test, and(and(text-contains(one, <Term table\n>), text-contains(one, <Every module once\n>)), or(matches(shown, one), contains(lines-of(one), <Term table>)))
+      hold
+        back true
+  back false
+
+# the dialog was asked for json
+task json-asked
+  take ran, like table-run
+  like boolean
+
+  host kind, make pattern, <<public\.json|\*\.json>>
+  walk calls-asked(ran)
+    take one, like text
+    fork test, matches(kind, one)
+      hold
+        back true
+  back false
+
+# the path the file picker answered, <> when its answer is not `file <path>`
+task picked-of
+  take ran, like table-run
+  like text
+
+  sift find-match(make(pattern, <<^file (.+)$>>), answer-of(ran, <files>))
+    case some
+      link value
+      back group-text(value)
+    case none
+      back <>
+
+# ---- the table ----
+
+test <the guide has a row for every device module>
+  host held, rows()
+  want hold, all-in(modules(), held)
+
+test <and a row for nothing else>
+  host every, modules()
+  save stray, make list
+  walk object-keys(parse-json(file-text(table)))
+    take module, like text
+    fork test, not(contains(every, module))
+      hold
+        stray/push(module)
+  want hold, is-equal(stray/length, 0)
+
+# every module has a row
+task all-in
+  take every, like list, like text
+  take held, like hash, like text, like device-row
+  like boolean
+
+  walk every
+    take module, like text
+    fork test, not(held/has(module))
+      hold
+        back false
+  back true
+
+# the modules with no Rust host, and those with one
+task unhosted
+  like list, like text
+
+  save out, make list
+  walk modules()
+    take module, like text
+    fork test, not(hosted(module))
+      hold
+        out/push(module)
+  back out
+
+task with-host
+  like list, like text
+
+  save out, make list
+  walk modules()
+    take module, like text
+    fork test, hosted(module)
+      hold
+        out/push(module)
+  back out
+
+test <no Rust host, and the row says unavailable on all three>
+  take module, like text
+    walk unhosted()
+  host held, rows()
+  fork test, not(held/has(module))
+    hold
+      skip <no row: the first test says so>
+  host row, held/{module}
+  want hold, all-unavailable(row/cells)
+
+test <a Rust host, and no cell says unavailable>
+  take module, like text
+    walk with-host()
+  host held, rows()
+  fork test, not(held/has(module))
+    hold
+      skip <no row: the first test says so>
+  host row, held/{module}
+  want hold, none-unavailable(row/cells)
+
+test <every tool its row names is in native-module.rs>
+  take module, like text
+    walk with-host()
+  host held, rows()
+  fork test, not(held/has(module))
+    hold
+      skip <no row: the first test says so>
+  want hold, is-equal(tools-missing(module), <>)
+
+# ---- the run ----
+
+test <the run calls every device module>
+  save missing, make list
+  walk modules()
+    take module, like text
+    fork test, not(calls/has(module))
+      hold
+        missing/push(module)
+  want hold, is-equal(missing/length, 0)
+
+test <the program calling every module builds and runs on Rust>
+  save ran, the-run()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <{ran/reason}>
+  want hold, is-equal(ran/state, <ran>)
+
+test <no Rust host, answers unavailable>
+  take module, like text
+    walk unhosted()
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, is-equal(answer-of(ran, module), <unavailable>)
+
+test <clipboard: written>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, is-equal(answer-of(ran, <clipboard>), <written>)
+
+test <battery: in the closed set>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, matches(make(pattern, <<^(\d\.\d\d (charging|full|unplugged|unknown)|unavailable)$>>), answer-of(ran, <battery>))
+
+test <network: online>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, starts-with(answer-of(ran, <network>), <online >)
+
+test <open: an address nothing handles is unavailable>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, is-equal(answer-of(ran, <open>), <unavailable>)
+
+test <notification: shown>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, is-equal(answer-of(ran, <notification>), <shown>)
+
+test <and the platform tool was asked with the title and the body>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, notification-asked(ran)
+
+test <files: the choice answered as a copy>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  host picked, picked-of(ran)
+  want hold, and(and(is-unequal(picked, <>), is-unequal(picked, ran/fixture)), ends-with(picked, </chosen.json>))
+
+test <and the copy holds the chosen file>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  host picked, picked-of(ran)
+  want hold, and(is-unequal(picked, <>), file-exists(picked))
+  want hold, is-equal(read-file(picked), ran/fixture-text)
+
+test <and the dialog was asked for json>
+  save ran, the-run()
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the device program did not run: {ran/reason}>
+  want hold, json-asked(ran)
