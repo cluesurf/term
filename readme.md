@@ -24,7 +24,8 @@
 ## Introduction
 
 **Term** (**T**yped **E**xpressions for **R**eliable **M**odels) is a programming framework built on a simple, indentation-based
-syntax (the [tree](https://github.com/cluesurf/tree) format). You write
+syntax (the [tree](https://github.com/cluesurf/tree) format, **T**extual
+**R**epresentation for **E**xtensible **E**xpressions). You write
 the logic once, and one source compiles to idiomatic Rust, TypeScript,
 Kotlin, and Swift, so the same program runs in the browser, on Node, on
 native servers, and on iOS and Android. It is dependently typed with a
