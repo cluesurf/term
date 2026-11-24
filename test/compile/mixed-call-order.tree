@@ -1,0 +1,276 @@
+note <a call mixing arguments in parentheses with argument lines under it takes them in written order>
+
+# Ported from mixed-call-order.ts by statement (item term-self-host-001-0657), one test per `ok` in its order (decision
+# 042 Open, item 0303). The parenthesized arguments come first, then each line below in order. The mill orders a call's
+# arguments by each capture's `at` and, inside the callee's parentheses, its `within` (compile/mill-running.tree,
+# compile/minting-values.tree `at-or`).
+#
+# Two legs: the mill's own answer (compile/mint-bridge.ts `millByGrammar`) for every shape, and the program run on
+# TypeScript, Rust, Swift and Kotlin. The parser, the template and scope expansions and the mill are the suite's subject
+# and docked (decision 106), as the original ran them. Where a shape does not parse, its names test fails too, where the
+# original wrote no names line. Each backend's run is made once, by its first test: a backend whose toolchain is missing
+# skips both its tests, and one that did not run skips its order test, where the original printed one skip line or none.
+# MIXED_ONLY=typescript|rust|swift|kotlin runs one backend.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/walking
+  find nodes-of
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/list
+  find push
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/template>, name template-module
+  load <@term/make/code/compile/scope>, name scope-module
+  load <@term/make/code/compile/mint-bridge>, name mint-bridge
+
+form file-and-text
+  link file, like text
+  link text, like text
+
+# host value: the role and the grammar the mill is given, none: it reads its own baked grammar
+bind no-value
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+# host value: the name of a call's callee, <> when it has none
+bind callee-name
+  take call, like dynamic
+  like text
+  case node
+    text <String($call.callee?.name ?? "")>
+
+# host value: an argument as the original labels it, its name, else its value, else its form
+bind label-of
+  take arg, like dynamic
+  like text
+  case node
+    text <String($arg.name ?? $arg.value ?? $arg.form)>
+
+# host value: the names a call's arguments carry, a positional one empty, joined by a comma
+bind names-of
+  take call, like dynamic
+  like text
+  case node
+    text <($call?.names ?? []).join(",")>
+
+# the shapes, each a call to `f`
+host shape-0, <task main\n  take a, like number\n  take b, like number\n  send back\n    call f(read(a), read(b), code(7))\n      code 9\n>
+
+host shape-1, <task main\n  take a, like number\n  take b, like number\n  send back\n    call f(read(a), read(b), code(7), code(8))\n      code 9\n>
+
+host shape-2, <task main\n  take a, like number\n  take b, like number\n  send back\n    call f(read(a), read(b))\n      read b\n      read a\n>
+
+host shape-3, <task main\n  take a, like number\n  take b, like number\n  send back\n    call f(read(a), read(b))\n      bind x, code 1\n      bind y, code 2\n>
+
+host shape-4, <task main\n  take a, like number\n  take b, like number\n  send back\n    call f(read(a), read(b), read(a))\n      bind x, code 1\n>
+
+host shape-5, <task main\n  take a, like number\n  send back\n    call f(read(a), code(7))\n      code 9\n      bind x, code 1\n      code 3\n>
+
+host shape-6, <task main\n  take a, like number\n  tick f(read(a), code(7))\n    code 9\n>
+
+host shape-7, <task main\n  take a, like number\n  take b, like number\n  back\n    call f(a, b, 7)\n      9\n      b\n>
+
+host shape-8, <task main\n  take a, like number\n  send back\n    call f(read(a), code(7), code(9))\n>
+
+host shape-9, <task main\n  take a, like number\n  send back\n    call f\n      read a\n      bind x, code 1\n      code 9\n>
+
+# the first call to `f` the mill made of a shape, void when the shape does not parse, does not mill or holds none
+task first-call
+  take text, like text
+  take file, like text
+  take lean, like boolean
+  like dynamic
+
+  host parsed, parser-tree/parse(make(file-and-text, bind(file, file), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      back void
+  host expanded, scope-module/expand-scopes(template-module/expand-templates(parsed/tree), file)
+  host milled, mint-bridge/mill-by-grammar(expanded/tree, file, no-value(0), no-value(0), lean)
+  fork test, not(milled/ok)
+    hold
+      back void
+  walk nodes-of(milled/program, <call>)
+    take one, like dynamic
+    fork test, is-equal(callee-name(one), <f>)
+      hold
+        back one
+  back void
+
+# the arguments of the first call to `f`, as written, joined by a space: <> when there is no call
+task args-of
+  take text, like text
+  take file, like text
+  take lean, like boolean
+  like text
+
+  host call, first-call(text, file, lean)
+  fork test, is-equal(call, void)
+    hold
+      back <>
+  save labels, make list
+  walk call/args
+    take arg, like dynamic
+    labels/push(label-of(arg))
+  back join(labels, < >)
+
+task call-names
+  take text, like text
+  take file, like text
+  like text
+
+  host call, first-call(text, file, false)
+  fork test, is-equal(call, void)
+    hold
+      back <>
+  back names-of(call)
+
+test <mill: three in parentheses, one line: arguments in written order>
+  want hold, is-equal(args-of(shape-0, </gen/mixed-0.tree>, false), <a b 7 9>)
+
+test <mill: four in parentheses, one line: arguments in written order>
+  want hold, is-equal(args-of(shape-1, </gen/mixed-1.tree>, false), <a b 7 8 9>)
+
+test <mill: two in parentheses, two lines: arguments in written order>
+  want hold, is-equal(args-of(shape-2, </gen/mixed-2.tree>, false), <a b b a>)
+
+test <mill: two in parentheses, two bind lines: arguments in written order>
+  want hold, is-equal(args-of(shape-3, </gen/mixed-3.tree>, false), <a b 1 2>)
+
+test <mill: two in parentheses, two bind lines: names beside their arguments>
+  want hold, is-equal(call-names(shape-3, </gen/mixed-3.tree>), <,,x,y>)
+
+test <mill: three in parentheses, a bind line: arguments in written order>
+  want hold, is-equal(args-of(shape-4, </gen/mixed-5.tree>, false), <a b a 1>)
+
+test <mill: three in parentheses, a bind line: names beside their arguments>
+  want hold, is-equal(call-names(shape-4, </gen/mixed-5.tree>), <,,,x>)
+
+test <mill: a line, a bind line and a line: arguments in written order>
+  want hold, is-equal(args-of(shape-5, </gen/mixed-7.tree>, false), <a 7 9 1 3>)
+
+test <mill: a line, a bind line and a line: names beside their arguments>
+  want hold, is-equal(call-names(shape-5, </gen/mixed-7.tree>), <,,,x,>)
+
+test <mill: tick with parentheses and a line: arguments in written order>
+  want hold, is-equal(args-of(shape-6, </gen/mixed-9.tree>, false), <a 7 9>)
+
+test <mill: lean: parentheses and lines: arguments in written order>
+  want hold, is-equal(args-of(shape-7, </gen/mixed-10.tree>, true), <a b 7 9 b>)
+
+test <mill: only parentheses (unchanged): arguments in written order>
+  want hold, is-equal(args-of(shape-8, </gen/mixed-11.tree>, false), <a 7 9>)
+
+test <mill: only lines (unchanged): arguments in written order>
+  want hold, is-equal(args-of(shape-9, </gen/mixed-12.tree>, false), <a 1 9>)
+
+test <mill: only lines (unchanged): names beside their arguments>
+  want hold, is-equal(call-names(shape-9, </gen/mixed-12.tree>), <,x,>)
+
+# ---- the program, on every backend ----
+
+host program, <task five\n  take a, like number\n  take b, like number\n  take c, like number\n  take d, like number\n  take e, like number\n  like text\n  send back, text \<\{a\} \{b\} \{c\} \{d\} \{e\}\>\n\ntask four\n  take a, like number\n  take b, like number\n  take c, like number\n  take d, like number\n  like number\n  send back, call subtract(read(c), read(d))\n\ntask named\n  take a, like number\n  take b, like number\n  take y, like number\n  like text\n  send back, text \<\{a\} \{b\} \{y\}\>\n\ntask run\n  like text\n  save all\n    call five(code(1), code(2), code(7), code(8))\n      code 9\n  save difference\n    call four(code(1), code(2), code(7))\n      code 9\n  save lines\n    call five(code(1))\n      code 2\n      code 3\n      code 4\n      code 5\n  save by-name\n    call named(code(1))\n      bind y, code 5\n      code 2\n  send back, text \<\{all\}|\{difference\}|\{lines\}|\{by-name\}\>\n>
+
+host wanted, <1 2 7 8 9|-2|1 2 3 4 5|1 2 5>
+
+host out, temp-folder(<term-mixed-call-order->)
+
+form mixed-runs
+  mark shared
+  link held, like hash, like text, like ran-program
+
+host kept, make(mixed-runs, bind(held, make hash))
+
+task ran-made
+  take backend, like text
+  like ran-program
+
+  save only, variable(<MIXED_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back make(ran-program, bind(state, <skipped>), bind(reason, <MIXED_ONLY names {only}>))
+  back run-text(program, backend, out, <mixed>)
+
+# the program run on a backend, made once
+task ran-of
+  take backend, like text
+  like ran-program
+
+  fork test, kept/held/has(backend)
+    hold
+      back kept/held/{backend}
+  save made, ran-made(backend)
+  save kept/held/{backend}, made
+  back made
+
+test <typescript: compiles, builds and runs>
+  host ran, ran-of(<typescript>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+
+test <typescript: every mixed call takes its arguments in written order>
+  host ran, ran-of(<typescript>)
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the typescript program did not run: {ran/state}>
+  want hold, is-equal(ran/output, wanted)
+
+test <rust: compiles, builds and runs>
+  host ran, ran-of(<rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+
+test <rust: every mixed call takes its arguments in written order>
+  host ran, ran-of(<rust>)
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the rust program did not run: {ran/state}>
+  want hold, is-equal(ran/output, wanted)
+
+test <swift: compiles, builds and runs>
+  host ran, ran-of(<swift>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+
+test <swift: every mixed call takes its arguments in written order>
+  host ran, ran-of(<swift>)
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the swift program did not run: {ran/state}>
+  want hold, is-equal(ran/output, wanted)
+
+test <kotlin: compiles, builds and runs>
+  host ran, ran-of(<kotlin>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+
+test <kotlin: every mixed call takes its arguments in written order>
+  host ran, ran-of(<kotlin>)
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      skip <the kotlin program did not run: {ran/state}>
+  want hold, is-equal(ran/output, wanted)

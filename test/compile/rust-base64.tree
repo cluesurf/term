@@ -1,0 +1,340 @@
+note <The Rust runtime's base64, held against the RFC 4648 vectors both ways>
+
+# Ported from rust-base64.ts by statement (item term-self-host-001-0658), one test per `check()` of its Rust program, in
+# its order. The Rust runtime's base64 is written with the standard library rather than the base64 crate, so a program
+# builds with a bare rustc (deck/base/code/native/rust/runtime/octets.rs and base64.rs). Both are held against the RFC
+# 4648 section 10 test vectors in both directions, every byte value round trips, and malformed input decodes to nothing,
+# as the crate's `unwrap_or_default` did.
+#
+# The program is the two runtime files and a main, built by rustc and run once, by the first test that asks. Where the
+# original's check() judged a value in Rust, the main prints the value as `<key><tab><value>` and the test judges it
+# here: the vectors live in this file, handed to the program as its arguments (`e:<plain>` to encode, `d:<coded>` to
+# decode). A decoded byte list is printed as its UTF-8 text, or <not utf-8>, and the round trip as Rust's `{:?}` of the
+# decoded bytes. A key the program never printed reads <not printed>, and a build that failed reads its reason, so each
+# such test fails alone. With rustc missing each test skips, where the original printed one skip line.
+
+load ../support/compiling
+  find file-text
+
+load ../support/running
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find split, name text-split
+  find starts-with, name text-starts-with
+  find replace, name text-replace
+
+dock load
+  load <node:path>, name base64-path
+
+host runtime, <deck/base/code/native/rust/runtime>
+
+# the original's main after the two runtime files, each check() now a show() of the value it judged
+host base64-main, <\nfn show(key: String, value: String) \{ println!("\{\}\\t\{\}", key, value) \}\n\nfn text_of(bytes: Vec\<u8\>) -\> String \{ match String::from_utf8(bytes) \{ Ok(text) =\> text, Err(_) =\> "\<not utf-8\>".to_string() \} \}\n\nfn main() \{\n    for arg in std::env::args().skip(1) \{\n        if let Some(plain) = arg.strip_prefix("e:") \{\n            show(format!("bytes-encode:\{\}", plain), octets::to_base64(plain.as_bytes().to_vec()));\n            show(format!("text-encode:\{\}", plain), base64::encode(plain.to_string()));\n        \} else if let Some(coded) = arg.strip_prefix("d:") \{\n            show(format!("bytes-decode:\{\}", coded), text_of(octets::from_base64(coded.to_string())));\n            show(format!("text-decode:\{\}", coded), base64::decode(coded.to_string()));\n        \}\n    \}\n    let all: Vec\<u8\> = (0..=255u8).collect();\n    show("round-trip".to_string(), format!("\{:?\}", octets::from_base64(octets::to_base64(all))));\n\}\n>
+
+# the program's arguments: every RFC 4648 section 10 vector both ways, and the two malformed inputs
+host vector-arguments, make list(<e:>, <d:>, <e:f>, <d:Zg==>, <e:fo>, <d:Zm8=>, <e:foo>, <d:Zm9v>, <e:foob>, <d:Zm9vYg==>, <e:fooba>, <d:Zm9vYmE=>, <e:foobar>, <d:Zm9vYmFy>, <d:Zm9v!>, <d:@@@@>)
+
+# the program built and run. `state` is <skipped>, <failed> (the build) or <ran>, `lines` what it printed
+form base64-run
+  link state, like text
+  link reason, like text, fall <>
+  link lines
+    like list, like text
+    fall make list
+
+form base64-held
+  mark shared
+  link made, like boolean
+  link run, like base64-run
+
+host base64-now, make(base64-held, bind(made, false), bind(run, make(base64-run, bind(state, <skipped>))))
+
+task base64-made
+  like base64-run
+
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      back make(base64-run, bind(state, <skipped>), bind(reason, <rustc not installed>))
+  save folder, temp-folder(<term-rust-base64->)
+  save file, base64-path/join(folder, <base64.rs>)
+  save binary, base64-path/join(folder, <base64>)
+  save octets, file-text(<{runtime}/octets.rs>)
+  save codec, file-text(<{runtime}/base64.rs>)
+  write-file(file, <{octets}\n{codec}\n{base64-main}>)
+  save failed, run-tool(make list(<rustc>, <--edition>, <2021>, <-A>, <warnings>, <-o>, binary, file))
+  fork test, is-unequal(failed, <>)
+    hold
+      back make(base64-run, bind(state, <failed>), bind(reason, failed))
+  save ran, run(binary, vector-arguments)
+  back make(base64-run, bind(state, <ran>), bind(lines, text-split(ran/output, <\n>)))
+
+# the run, made once
+task base64-ran
+  like base64-run
+
+  fork test, not(base64-now/made)
+    hold
+      save base64-now/run, base64-made()
+      save base64-now/made, true
+  back base64-now/run
+
+# the value the program printed under a key: its `<key><tab><value>` line without the key, <not printed> when no line has
+# it, and the build's reason when the build failed
+task shown
+  take run, like base64-run
+  take key, like text
+  like text
+
+  fork test, is-unequal(run/state, <ran>)
+    hold
+      back <not run: {run/reason}>
+  walk run/lines
+    take line, like text
+    fork test, text-starts-with(line, <{key}\t>)
+      hold
+        back text-replace(line, <{key}\t>, <>)
+  back <not printed>
+
+# Rust's `{:?}` of the bytes from `at` to 255, after the ones `done` already holds
+task byte-list
+  take at, like number
+  take done, like text
+  like text
+
+  fork test, is-above(at, 255)
+    hold
+      back <[{done}]>
+  fork test, is-equal(at, 0)
+    hold
+      back byte-list(1, <0>)
+  back byte-list(add(at, 1), <{done}, {at}>)
+
+test <bytes encode ''>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-encode:>), <>)
+
+test <bytes decode ''>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-decode:>), <>)
+
+test <text encode ''>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-encode:>), <>)
+
+test <text decode ''>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-decode:>), <>)
+
+test <bytes encode 'f'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-encode:f>), <Zg==>)
+
+test <bytes decode 'Zg=='>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-decode:Zg==>), <f>)
+
+test <text encode 'f'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-encode:f>), <Zg==>)
+
+test <text decode 'Zg=='>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-decode:Zg==>), <f>)
+
+test <bytes encode 'fo'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-encode:fo>), <Zm8=>)
+
+test <bytes decode 'Zm8='>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-decode:Zm8=>), <fo>)
+
+test <text encode 'fo'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-encode:fo>), <Zm8=>)
+
+test <text decode 'Zm8='>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-decode:Zm8=>), <fo>)
+
+test <bytes encode 'foo'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-encode:foo>), <Zm9v>)
+
+test <bytes decode 'Zm9v'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-decode:Zm9v>), <foo>)
+
+test <text encode 'foo'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-encode:foo>), <Zm9v>)
+
+test <text decode 'Zm9v'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-decode:Zm9v>), <foo>)
+
+test <bytes encode 'foob'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-encode:foob>), <Zm9vYg==>)
+
+test <bytes decode 'Zm9vYg=='>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-decode:Zm9vYg==>), <foob>)
+
+test <text encode 'foob'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-encode:foob>), <Zm9vYg==>)
+
+test <text decode 'Zm9vYg=='>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-decode:Zm9vYg==>), <foob>)
+
+test <bytes encode 'fooba'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-encode:fooba>), <Zm9vYmE=>)
+
+test <bytes decode 'Zm9vYmE='>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-decode:Zm9vYmE=>), <fooba>)
+
+test <text encode 'fooba'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-encode:fooba>), <Zm9vYmE=>)
+
+test <text decode 'Zm9vYmE='>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-decode:Zm9vYmE=>), <fooba>)
+
+test <bytes encode 'foobar'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-encode:foobar>), <Zm9vYmFy>)
+
+test <bytes decode 'Zm9vYmFy'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-decode:Zm9vYmFy>), <foobar>)
+
+test <text encode 'foobar'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-encode:foobar>), <Zm9vYmFy>)
+
+test <text decode 'Zm9vYmFy'>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-decode:Zm9vYmFy>), <foobar>)
+
+test <malformed bytes decode to nothing>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <bytes-decode:Zm9v!>), <>)
+
+test <malformed text decodes to nothing>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <text-decode:@@@@>), <>)
+
+test <every byte value round trips>
+  host ran, base64-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(shown(ran, <round-trip>), byte-list(0, <>))

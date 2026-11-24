@@ -80,6 +80,13 @@ load @term/deck/package/tree-reading
   find tree-form
   find form-of
 
+# the compiler's diagnostic, placed back on the lines the person wrote
+load @term/make/parser/diagnostic
+  find position
+  find span
+  find marker, name diagnostic-marker
+  find diagnostic
+
 # a text as a data literal writes it
 load @term/make/compile/host-data
   find escape-text
@@ -108,12 +115,8 @@ form readable-text
   link text, like text
   link place, like dynamic
 
-form placed-point
-  link line, like number
-  link column, like number
-
 form placed-diagnostic
-  link diagnostic, like dynamic
+  link diagnostic, like diagnostic
   link text, like text
 
 # the type a sampled `take` samples as: `number`, `text`, `boolean`, a `list` of its one item, or `refused` with what
@@ -271,67 +274,62 @@ task taken-name
 
 # ---- placing a diagnostic back ----
 
-bind position-line
-  take position, like dynamic
-  like dynamic
-  case node
-    text <$position.line>
+# Each copy below is the compiler's form (parser/diagnostic.tree) made again with one part moved. A field the form
+# leaves out (`need false`) is set only when the original holds it, so a field the compiler left out stays out
+# (item 1664)
 
-bind position-column
-  take position, like dynamic
-  like number
-  case node
-    text <$position.column>
+# a span from `start` to `end`, in the file the original names
+task span-moved
+  take span, like span
+  take start, like position
+  take end, like position
+  like span
 
-# `{ ...span, start, end }`
-bind span-moved
-  take span, like dynamic
-  take start, like placed-point
-  take end, like placed-point
-  like dynamic
-  case node
-    text <(\{ ...$span, start: $start, end: $end \})>
+  save moved, make(span, bind(start, start), bind(end, end))
+  sift span/file
+    case some
+      link file
+      save moved/file, make(some, file)
+    case none
+      save nothing, 0
+  back moved
 
-bind span-start
-  take span, like dynamic
-  like dynamic
-  case node
-    text <$span.start>
+# a marker at another span, its label kept
+task with-span
+  take marker, like diagnostic-marker
+  take span, like span
+  like diagnostic-marker
 
-bind span-end
-  take span, like dynamic
-  like dynamic
-  case node
-    text <$span.end>
+  save moved, make(diagnostic-marker, bind(span, span))
+  fork test, is-unequal(marker/label, <>)
+    hold
+      save moved/label, marker/label
+  back moved
 
-bind span-of
-  take value, like dynamic
-  like dynamic
-  case node
-    text <$value.span>
+# a diagnostic at another span, with its markers moved, everything else kept
+task with-span-markers
+  take diagnostic, like diagnostic
+  take span, like span
+  take markers, like list, like diagnostic-marker
+  like diagnostic
 
-bind markers-of
-  take diagnostic, like dynamic
-  like list, like dynamic
-  case node
-    text <$diagnostic.markers>
-
-# `{ ...marker, span }`
-bind with-span
-  take value, like dynamic
-  take span, like dynamic
-  like dynamic
-  case node
-    text <(\{ ...$value, span: $span \})>
-
-# `{ ...diagnostic, span, markers }`
-bind with-span-markers
-  take value, like dynamic
-  take span, like dynamic
-  take markers, like list, like dynamic
-  like dynamic
-  case node
-    text <(\{ ...$value, span: $span, markers: $markers \})>
+  save moved, make(diagnostic, bind(code, diagnostic/code), bind(name, diagnostic/name), bind(message, diagnostic/message), bind(file, diagnostic/file), bind(span, span), bind(markers, markers), bind(severity, diagnostic/severity))
+  sift diagnostic/rule
+    case some
+      link rule
+      save moved/rule, make(some, rule)
+    case none
+      save nothing, 0
+  fork test, is-unequal(diagnostic/hint, <>)
+    hold
+      save moved/hint, diagnostic/hint
+  sift diagnostic/fixes
+    case some
+      link fixes
+      save moved/fixes, make(some, fixes)
+    case none
+      save nothing, 0
+  back moved
 
 # ---- the preludes ----
 
@@ -1631,31 +1629,31 @@ task preprocess-tests
 # text, perhaps at another indent, so a column moves by the difference; a line the rewrite made up (a guard, `send
 # back, true`) points at the start of the line it came from
 task placed-position
-  take position, like dynamic
+  take position, like position
   take origin, like list, like number
   take from-lines, like list, like text
   take to-lines, like list, like text
-  like placed-point
+  like position
 
-  save at, position-line(position)
+  save at, position/line
   save line, origin-line(origin, at)
   save written, line-or-empty(from-lines, line)
   save compiled, line-or-empty(to-lines, at)
   save column, rewrite-indent(written)
   fork test, is-equal(trim(compiled), trim(written))
     hold
-      save column, subtract(add(position-column(position), rewrite-indent(written)), rewrite-indent(compiled))
-  back make(placed-point, bind(line, line), bind(column, clamped-column(column, written-length(written))))
+      save column, subtract(add(position/column, rewrite-indent(written)), rewrite-indent(compiled))
+  back make(position, bind(line, line), bind(column, clamped-column(column, written-length(written))))
 
 task placed-span
-  take span, like dynamic
+  take span, like span
   take origin, like list, like number
   take from-lines, like list, like text
   take to-lines, like list, like text
-  like dynamic
+  like span
 
-  save start, placed-position(span-start(span), origin, from-lines, to-lines)
-  save end, placed-position(span-end(span), origin, from-lines, to-lines)
+  save start, placed-position(span/start, origin, from-lines, to-lines)
+  save end, placed-position(span/end, origin, from-lines, to-lines)
   back span-moved(span, start, end)
 
 # One file as the compiler reads it: a file of `test` blocks rewritten, any other as written. `place` moves a
@@ -1671,7 +1669,7 @@ task readable
     hold
       save as-written
         task
-          take diagnostic, like dynamic
+          take diagnostic, like diagnostic
           like placed-diagnostic
           back make(placed-diagnostic, bind(diagnostic, diagnostic), bind(text, source))
       back make(readable-text, bind(text, source), bind(place, as-written))
@@ -1681,12 +1679,12 @@ task readable
   save origin, rewritten/origin
   save place
     task
-      take diagnostic, like dynamic
+      take diagnostic, like diagnostic
       like placed-diagnostic
-      save span, placed-span(span-of(diagnostic), origin, from-lines, to-lines)
+      save span, placed-span(diagnostic/span, origin, from-lines, to-lines)
       save markers, make list
-      walk markers-of(diagnostic)
-        take marker, like dynamic
-        markers/push(with-span(marker, placed-span(span-of(marker), origin, from-lines, to-lines)))
+      walk diagnostic/markers
+        take one-marker, like diagnostic-marker
+        markers/push(with-span(one-marker, placed-span(one-marker/span, origin, from-lines, to-lines)))
       back make(placed-diagnostic, bind(diagnostic, with-span-markers(diagnostic, span, markers)), bind(text, source))
   back make(readable-text, bind(text, rewritten/text), bind(place, place))

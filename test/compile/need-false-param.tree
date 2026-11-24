@@ -1,0 +1,154 @@
+note <a trailing need-false parameter with no fall is its type's empty value in the body, on every backend>
+
+# Ported from need-false-param.ts by statement (item term-self-host-001-0657), one test per `ok` in its order (decision
+# 074, item 0398). Until 2026-10-29 the TypeScript emitter wrote such a parameter `p?: T`, so tsc typed a read of it
+# `T | undefined` and refused handing it on to a task that requires a `T` (TS2345). It now writes `p: T = <empty>`
+# wherever the type has an empty value, and keeps `p?: T` where it has none (a `maybe`), since `undefined` is a maybe's
+# none on TypeScript.
+#
+# The program compiles over the working directory's project on node, as the original's projectResolver(cwd, 'node').
+# Each signature is read off the emitted text as the original's pattern read it: the text after `function <name>(` up
+# to the last `): ` on that line. The original's patterns are plain texts and one choice of two, held here by contains.
+# The original ran tsc --strict over the emitted module through the compiler API: here the typescript package's own tsc
+# runs over it as a file in a temp folder, with the same options, and the test counts its TS2345, TS18048 and TS2322
+# errors in that file. Where the program does not build, each of its four tests fails, where the original wrote one
+# failing line.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/running
+  find run-text
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/text
+  find index-of
+  find last-index-of
+  find substring
+  find split, name text-split
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <node:path>, name params-path
+
+host program, <load @term/base/list\n  find list\n\nload @term/base/maybe\n  find maybe\n\ntask count-table\n  take table\n    like hash\n      like text\n      like number\n  like number\n  save n, 0\n  walk table/keys()\n    take k\n    save n, add(n, table/get(k))\n  back n\n\ntask count-items\n  take items\n    like list\n      like text\n  like number\n  back items/length\n\ntask text-size\n  take label, like text\n  like number\n  back label/length\n\ntask with-table\n  take base, like number\n  take table\n    like hash\n      like text\n      like number\n    need false\n  like number\n  back add(base, count-table(table))\n\ntask with-items\n  take base, like number\n  take items\n    like list\n      like text\n    need false\n  like number\n  back add(base, count-items(items))\n\ntask with-label\n  take base, like number\n  take label\n    like text\n    need false\n  like number\n  back add(base, text-size(label))\n\ntask run\n  like text\n  save table, make hash\n  table/set(\<a\>, 2)\n  send back, \<\{with-table(1)\} \{with-table(1, table)\} \{with-items(1)\} \{with-items(1, make(list, \<x\>, \<y\>))\} \{with-label(1)\} \{with-label(1, \<abc\>)\}\>\n>
+
+# A maybe has no empty value on TypeScript, so its parameter keeps `?`. Only its signature is held here: a left-out
+# maybe parameter reaches the body as undefined and its sift reads `.form` off it, a defect of its own (logged by
+# term-self-host-001-0398, filed as its own item), not this one's.
+host maybe-program, <load @term/base/maybe\n  find maybe\n\ntask with-maybe\n  take base, like number\n  take extra\n    like maybe\n      like number\n    need false\n  like number\n  sift extra\n    case some\n      link given\n      back add(base, given)\n    case none\n      back base\n>
+
+host dir, temp-folder(<term-need-false-param->)
+
+host built, compile-text(program, make(compile-choice, bind(file, params-path/join(dir, <params.tree>)), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+
+# the parameters of `function <name>(` in the emitted text, up to the last `): ` on its line, <(no name)> when none
+task signature
+  take emitted, like text
+  take name, like text
+  like text
+
+  save head, <function {name}(>
+  save at, index-of(emitted, head)
+  fork test, is-below(at, 0)
+    hold
+      back <(no {name})>
+  save from, add(at, head/length)
+  save ends, index-of(emitted, <\n>, from)
+  fork test, is-below(ends, 0)
+    hold
+      save ends, emitted/length
+  save line, substring(emitted, from, ends)
+  save close, last-index-of(line, <): >)
+  fork test, is-below(close, 0)
+    hold
+      back <(no {name})>
+  back substring(line, 0, close)
+
+# the errors tsc --strict gives the emitted module that a read of `T | undefined` would raise, one line each
+task undefined-arguments
+  take emitted, like text
+  like list, like text
+
+  save file, params-path/join(dir, <params.ts>)
+  write-file(file, emitted)
+  save tsc, params-path/join(term-root(), <node_modules>, <typescript>, <bin>, <tsc>)
+  save said, run(<node>, make(list, tsc, <--strict>, <--noEmit>, <--target>, <ES2022>, <--module>, <ESNext>, <--skipLibCheck>, <--lib>, <es2022>, <--pretty>, <false>, <params.ts>), bind(directory, dir))
+  save found, make list
+  walk text-split(<{said/output}\n{said/error}>, <\n>)
+    take line, like text
+    fork test, and(text-contains(line, <params.ts(>), or(text-contains(line, <error TS2345>), or(text-contains(line, <error TS18048>), text-contains(line, <error TS2322>))))
+      hold
+        found/push(line)
+  back found
+
+test <a need-false hash is written with its empty value>
+  want hold, built/ok
+  want hold, text-contains(signature(built/emitted, <withTable>), <table: Map\<string, number\> = new Map()>)
+
+test <a need-false list is written with its empty value>
+  host items, signature(built/emitted, <withItems>)
+  want hold, built/ok
+  want hold, or(text-contains(items, <items: Array\<string\> = []>), text-contains(items, <items: string[] = []>))
+
+test <a need-false text is written with its empty value>
+  want hold, built/ok
+  want hold, text-contains(signature(built/emitted, <withLabel>), <label: string = "">)
+
+# tsc --strict over the emitted module: no read of a need-false parameter is `T | undefined`
+test <tsc --strict refuses no read of a need-false parameter>
+  want hold, built/ok
+  want hold, file-exists(params-path/join(term-root(), <node_modules>, <typescript>, <bin>, <tsc>))
+  want hold, is-equal(join(undefined-arguments(built/emitted), < | >), <>)
+
+# the parameters of `function withMaybe(` up to the first `)`, or the refusal's messages
+task maybe-signature
+  take outcome, like compile-outcome
+  like text
+
+  fork test, not(outcome/ok)
+    hold
+      back join(outcome/messages, < | >)
+  save emitted, outcome/emitted
+  save head, <function withMaybe(>
+  save at, index-of(emitted, head)
+  fork test, is-below(at, 0)
+    hold
+      back <(no withMaybe)>
+  save from, add(at, head/length)
+  save close, index-of(emitted, <)>, from)
+  fork test, is-below(close, 0)
+    hold
+      back <(no withMaybe)>
+  back substring(emitted, from, close)
+
+test <a need-false maybe keeps `?`, having no empty value>
+  host maybe, compile-text(maybe-program, make(compile-choice, bind(file, params-path/join(dir, <maybe.tree>)), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(library, true)))
+  host held, maybe-signature(maybe)
+  want hold, text-contains(held, <extra?: >)
+  want hold, not(text-contains(held, <=>))
+
+test <typescript: each parameter runs left out and given>
+  host ran, run-text(program, <typescript>, dir, <params>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1 3 1 3 1 4>)

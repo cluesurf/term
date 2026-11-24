@@ -1,0 +1,133 @@
+note <the fill and melt walkers and the program hold a list in one shape, the exception codec too>
+
+# Ported from melt-list-shape.ts by statement (item term-self-host-001-0657), one test per `ok` in its order (traps
+# T-0421, item 0440). Rust decides each list's shape over the program (the shared `Rc<RefCell<Vec>>`, or the plain `Vec`
+# a field or a list of lists that owns its lists gets) before the walkers exist, and every walker reads and builds each
+# list shared. A `fill` or `melt` call keeps every list shared, and the exception codec, which writes the same walkers
+# with no such call, now does too (compile/rust-program.tree).
+#
+# The fill and melt cases melt a value, fill it back and print what they read. The codec case raises a form with list
+# props, melts it through the codec, fills it, raises it again and reads it in a handler. On TypeScript and Rust. The
+# project is a temp folder linking deck/base and deck/host, with a deck.tree, a code folder and an out folder for the
+# builds, as the original's. A backend whose toolchain is missing is the test's own skip. MELT_SHAPE_ONLY=rust runs one
+# backend.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/compiling
+  find compile-choice
+
+load ../support/judging
+  find make-record
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+dock load
+  load <node:fs>, name shape-file
+  load <node:path>, name shape-path
+
+host fresh-program, <load @term/host/code/base\n  find data\n\nload @term/base/maybe\n  find maybe\n\nload @term/base/list\n  find list\n\nform point\n  link x, like number\n  link tag, like text\n\nform shape\n  link name, like text\n  link tags, like list, like text\n  link grid, like list, like list, like number\n  link points, like list, like point\n  link scale, like float\n  link open, like boolean\n  link note\n    like maybe, like text\n    need false\n  link payload, like data\n\nform inner\n  link names, like list, like text\n\ntask show\n  take value, like shape\n  like text\n  save parts, make list\n  push(parts, value/name)\n  walk value/tags\n    take t\n    push(parts, t)\n  walk value/grid\n    take row\n    save cells, make list\n    walk row\n      take cell\n      push(cells, \<\{cell\}\>)\n    push(parts, join(cells, \<.\>))\n  walk value/points\n    take p\n    push(parts, \<\{p/x\}:\{p/tag\}\>)\n  push(parts, \<\{value/scale\}\>)\n  push(parts, \<\{value/open\}\>)\n  sift value/note\n    case some\n      link written\n      push(parts, \<some:\{written\}\>)\n    case none\n      push(parts, \<none\>)\n  save back-in\n    call fill\n      read value/payload\n      like inner\n  walk back-in/names\n    take n\n    push(parts, n)\n  back join(parts, \<,\>)\n\ntask run\n  like text\n  save tags, make list\n  push(tags, \<a\>)\n  push(tags, \<b\>)\n  save grid, make list\n  save row1, make list\n  push(row1, 1)\n  push(row1, 2)\n  push(grid, row1)\n  save row2, make list\n  push(row2, 3)\n  push(grid, row2)\n  save points, make list\n  save p1\n    make point\n      bind x, 4\n      bind tag, \<p\>\n  push(points, p1)\n  save p2\n    make point\n      bind x, 5\n      bind tag, \<q\>\n  push(points, p2)\n  save names, make list\n  push(names, \<u\>)\n  push(names, \<v\>)\n  save carried\n    make inner\n      bind names, names\n  save payload\n    call melt\n      read carried\n      like inner\n  save given\n    make shape\n      bind name, \<box\>\n      bind tags, tags\n      bind grid, grid\n      bind points, points\n      bind scale, 1.5\n      bind open, true\n      bind note, make(some, \<hi\>)\n      bind payload, payload\n  save melted\n    call melt\n      read given\n      like shape\n  save filled\n    call fill\n      read melted\n      like shape\n  back show(filled)\n>
+
+host fresh-want, <box,a,b,1.2,3,4:p,5:q,1.5,true,some:hi,u,v>
+
+host empty-program, <load @term/host/code/base\n  find data\n\nload @term/base/maybe\n  find maybe\n\nload @term/base/list\n  find list\n\nform point\n  link x, like number\n  link tag, like text\n\nform shape\n  link name, like text\n  link tags, like list, like text\n  link grid, like list, like list, like number\n  link points, like list, like point\n  link scale, like float\n  link open, like boolean\n  link note\n    like maybe, like text\n    need false\n  link payload, like data\n\nform inner\n  link names, like list, like text\n\ntask show\n  take value, like shape\n  like text\n  save parts, make list\n  push(parts, value/name)\n  walk value/tags\n    take t\n    push(parts, t)\n  walk value/grid\n    take row\n    save cells, make list\n    walk row\n      take cell\n      push(cells, \<\{cell\}\>)\n    push(parts, join(cells, \<.\>))\n  walk value/points\n    take p\n    push(parts, \<\{p/x\}:\{p/tag\}\>)\n  push(parts, \<\{value/scale\}\>)\n  push(parts, \<\{value/open\}\>)\n  sift value/note\n    case some\n      link written\n      push(parts, \<some:\{written\}\>)\n    case none\n      push(parts, \<none\>)\n  save back-in\n    call fill\n      read value/payload\n      like inner\n  walk back-in/names\n    take n\n    push(parts, n)\n  back join(parts, \<,\>)\n\ntask run\n  like text\n  save carried\n    make inner\n      bind names, make list\n  save payload\n    call melt\n      read carried\n      like inner\n  save given\n    make shape\n      bind name, \<nil\>\n      bind tags, make list\n      bind grid, make list\n      bind points, make list\n      bind scale, 2.5\n      bind open, false\n      bind note, make none\n      bind payload, payload\n  save melted\n    call melt\n      read given\n      like shape\n  save filled\n    call fill\n      read melted\n      like shape\n  back show(filled)\n>
+
+host empty-want, <nil,2.5,false,none>
+
+host codec-program, <load @term/base/exception\n  find exception\n\nload @term/base/maybe\n  find maybe\n\nload @term/host/code/base\n  find data\n\nload @term/base/list\n  find list\n  find get\n\nform over-limit\n  like exception\n    bind note, \<Over the limit\>\n    link labels, like list, like text\n    link grid, like list, like list, like number\n\nbind melt-raise\n  take raised, like exception\n  like data\n  case node\n    text \<__termMeltRaise($raised)\>\n  case rust\n    text \<term_melt_raise(&$raised)\>\n  case browser\n    text \<0\>\n  case swift\n    text \<0\>\n  case kotlin\n    text \<0\>\n\nbind reraise\n  take given, like data\n  like number\n  case node\n    text \<(() =\\\> \\\{ throw __termFillRaise($given) \\\})()\>\n  case rust\n    text \<\\\{ return std::result::Result::Err(match term_fill_raise($given) \\\{ Ok(e) =\\\> e, Err(e) =\\\> e \\\}); \\\}\>\n  case browser\n    text \<0\>\n  case swift\n    text \<0\>\n  case kotlin\n    text \<0\>\n\ntask spin\n  take xs, like list, like number\n  like number\n  walk xs, mark parallel\n    take x\n    save y, check(x)\n  back 0\n\ntask check\n  take n, like number\n  like number\n  fork test, is-above(n, 3)\n    hold\n      save labels, make list\n      push(labels, \<a\>)\n      push(labels, \<b\>)\n      save grid, make list\n      save row, make list\n      push(row, n)\n      push(row, 7)\n      push(grid, row)\n      halt over-limit\n        bind labels, labels\n        bind grid, grid\n  back n\n\ntask total\n  like number\n  save rows, make list\n  save one, make list\n  push(one, 1)\n  push(one, 2)\n  push(rows, one)\n  save sum, 0\n  walk rows\n    take r\n    walk r\n      take c\n      save sum, add(sum, c)\n  back sum\n\ntask crossed\n  take given, like data\n  take n, like number\n  like number\n  fork test, is-below(n, 0)\n    hold\n      halt over-limit\n        bind labels, make list\n        bind grid, make list\n  save z, reraise(given)\n  back z\n\ntask run\n  like text\n  save out, make list\n  push(out, \<\{total()\}\>)\n  fork\n    mark unsafe\n    save a, check(9)\n  halt take\n    take problem\n    save given, melt-raise(problem)\n    fork\n      mark unsafe\n      save b, crossed(given, 1)\n    halt take\n      take back-in\n      sift back-in\n        case over-limit\n          push(out, join(labels, \<+\>))\n          walk grid\n            take r\n            walk r\n              take c\n              push(out, \<\{c\}\>)\n        miss\n          push(out, \<other:\{back-in/form\}\>)\n  back join(out, \<,\>)\n>
+
+host codec-want, <3,a+b,9,7>
+
+host root, temp-folder(<term-melt-shape->)
+
+task folder
+  take path, like text
+  like text
+
+  shape-file/mkdir-sync(path, make-record(make(list, <recursive>, true)))
+  back path
+
+# the project: link/@term/base and link/@term/host at the real decks, a deck.tree, a code folder, and an out folder for
+# the builds
+task set-up
+  take seed, like number
+  like text
+
+  host links, folder(shape-path/join(root, <link>, <@term>))
+  folder(shape-path/join(root, <code>))
+  shape-file/symlink-sync(shape-path/join(term-root(), <deck>, <base>), shape-path/join(links, <base>))
+  shape-file/symlink-sync(shape-path/join(term-root(), <deck>, <host>), shape-path/join(links, <host>))
+  shape-file/write-file-sync(shape-path/join(root, <deck.tree>), <deck @probe/melt-shape\n  code \<0.0.0\>\n>)
+  back folder(shape-path/join(root, <out>))
+
+host out, set-up(0)
+
+# a case's program run on a backend, under the case's name
+task ran-on
+  take program, like text
+  take name, like text
+  take backend, like text
+  like ran-program
+
+  save only, variable(<MELT_SHAPE_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back make(ran-program, bind(state, <skipped>), bind(reason, <MELT_SHAPE_ONLY names {only}>))
+  back run-text(program, backend, out, name, make(compile-choice, bind(project, root)))
+
+test <typescript: a form built fresh, its lists pushed to: melt, then fill, reads the same (fresh)>
+  host ran, ran-on(fresh-program, <fresh>, <typescript>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, fresh-want)
+
+test <rust: a form built fresh, its lists pushed to: melt, then fill, reads the same (fresh)>
+  host ran, ran-on(fresh-program, <fresh>, <rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, fresh-want)
+
+test <typescript: empty lists and a none maybe round-trip (empty)>
+  host ran, ran-on(empty-program, <empty>, <typescript>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, empty-want)
+
+test <rust: empty lists and a none maybe round-trip (empty)>
+  host ran, ran-on(empty-program, <empty>, <rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, empty-want)
+
+test <typescript: the exception codec, with no fill or melt call: a raise with list props crosses and is caught again (codec)>
+  host ran, ran-on(codec-program, <codec>, <typescript>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, codec-want)
+
+test <rust: the exception codec, with no fill or melt call: a raise with list props crosses and is caught again (codec)>
+  host ran, ran-on(codec-program, <codec>, <rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, codec-want)

@@ -1,0 +1,683 @@
+note <a native program cut one file per module builds and answers what the one file answers, and a body edit rewrites one file>
+
+# Ported from native-units.ts by statement (item term-self-host-001-0657), one test per `ok` in its order
+# (compile/unit-split.ts, emit-target.ts `emitTargetUnits`, note/project/term/incremental-best-in-class.md, step 15). A
+# project of three modules is compiled for rust, swift and kotlin, then emitted as one file and as a file per module beside
+# a shared one. Held: the split has one file per module, the shared file holds no module's statement, no mark is left in
+# any file, a body edit to one module rewrites that module's file and no other, and the split program builds and answers
+# exactly what the one file answers on rustc, swiftc and kotlinc (each skipped when absent). Then the same for a program
+# of many standard library modules.
+#
+# The subject, compile/emit-target, is docked as the original imported it. The project is compiled through compile-text
+# over the project at its temp root under the target's env, as projectResolver(root, target) asked. The edit and its
+# restore happen inside one task, made once, which reads every target before and after, as the original did. The wide
+# program is written to a root of its own, where the original overwrote the first root's entry, so no test depends on the
+# order another ran in. A test whose compile was refused fails each of its three tests, where the original printed one
+# FAIL `<target>: the program compiles`, and a build that failed fails the answer test under its own name, where the
+# original printed `both forms build`. A missing toolchain skips each of its tests, where the original printed one skip
+# line for the answers and nothing for the wide program.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find replace-matches
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/json
+  find parse, name json-parse
+
+dock load
+  load <@term/make/code/compile/emit-target>, name units-target
+  load <node:fs>, name units-fs
+  load <node:path>, name units-path
+
+host shape-module, <form shape\n  case square\n    link side, like number\n  case strip\n    link long, like number\n    link wide, like number\n\ntask area\n  take of, like shape\n  like number\n  sift of\n    case square\n      back multiply(side, side)\n    case strip\n      back multiply(long, wide)\n>
+
+host count-module, <task total\n  take n, like number\n  like number\n  fork test\n    hook test, is-maximum(n, 0)\n    hook hold\n      back 0\n  back add(n, total(subtract(n, 1)))\n>
+
+# the same answer by another body: only the module's own file may change
+host count-edited, <task total\n  take n, like number\n  like number\n  save sum, 0\n  save at, 1\n  walk test\n    hook test, is-maximum(at, n)\n    hook hold\n      save sum, add(sum, at)\n      save at, add(at, 1)\n  back sum\n>
+
+host entry-module, <load ./shape\n  find shape\n  find square\n  find strip\n  find area\nload ./count\n  find total\n\ntask run\n  like text\n  save small\n    make square\n      bind side, 4\n  save long\n    make strip\n      bind long, 2\n      bind wide, 3\n  back \<\{total(10)\} \{area(small)\} \{area(long)\}\>\n>
+
+# a program of many standard library modules: generics, the text runtime, lists, sorting
+host wide-module, <load @term/base/text\n  find trim\n  find to-upper-case\n  find split\n  find char-count\nload @term/base/list\n  find sort-by\n\ntask size-of\n  take word, like text\n  like number\n  back char-count(word)\n\ntask run\n  like text\n  save words, split(trim(\<  pear fig banana kiwi  \>), \< \>)\n  save sorted, sort-by(words, size-of)\n  save out, \<\>\n  walk list, read sorted\n    hook next\n      take site, name word\n      save out, \<\{out\}\{to-upper-case(word)\},\>\n  back out\n>
+
+# what `emitTarget` is asked
+form target-ask
+  link program, like dynamic
+  link typescript, like dynamic
+  link target, like dynamic
+  link read-runtime, like dynamic
+
+# what `emitTargetUnits` is asked
+form units-ask
+  link program, like dynamic
+  link target, like dynamic
+  link read-runtime, like dynamic
+
+form unit-file
+  link name, like text
+  link text, like text
+
+# a program for one target as one file and as files, or why it did not compile
+form split-program
+  link ok, like boolean
+  link reason, like text, fall <>
+  link one, like text, fall <>
+  link main, like text, fall <>
+  link files
+    like list, like unit-file
+    fall make list
+
+# what each form of a program answered on a toolchain: `state` <ran>, <failed> (the compile or a build) or <skipped>
+form split-answer
+  link state, like text
+  link reason, like text, fall <>
+  link one, like text, fall <>
+  link split, like text, fall <>
+
+# every program and answer made in this process, made once by the first test that asks. `changed` is each target's
+# files the body edit rewrote, joined by a comma
+form units-held
+  mark shared
+  link splits, like hash, like text, like split-program
+  link answers, like hash, like text, like split-answer
+  link changed, like hash, like text, like text
+  link edited, like boolean
+  link first-root, like text
+  link second-root, like text
+
+host held, make(units-held, bind(splits, make hash), bind(answers, make hash), bind(changed, make hash), bind(edited, false), bind(first-root, <>), bind(second-root, <>))
+
+# a project root holding a manifest and the given entry, with the shape and count modules beside it
+task project-root
+  take entry, like text
+  like text
+
+  save made, units-fs/realpath-sync(temp-folder(<native-units->))
+  make-folder(units-path/join(made, <code>))
+  write-file(units-path/join(made, <deck.tree>), <deck @probe/units\n  mark \<0.0.2\>\n>)
+  write-file(units-path/join(made, <code>, <shape.tree>), shape-module)
+  write-file(units-path/join(made, <code>, <count.tree>), count-module)
+  write-file(units-path/join(made, <code>, <base.tree>), entry)
+  back made
+
+# the root of the three modules, made once
+task units-root
+  like text
+
+  fork test, is-equal(held/first-root, <>)
+    hold
+      save held/first-root, project-root(entry-module)
+  back held/first-root
+
+# the root of the wide program, made once
+task wide-units-root
+  like text
+
+  fork test, is-equal(held/second-root, <>)
+    hold
+      save held/second-root, project-root(wide-module)
+  back held/second-root
+
+# the reader the emitters read a runtime file through: its text, void when there is no such file
+task runtime-reader
+  like dynamic
+
+  save reading
+    task
+      take path, like text
+      like dynamic
+      fork test, units-fs/exists-sync(path)
+        hold
+          back units-fs/read-file-sync(path, <utf8>)
+      back void
+  back reading
+
+task first-messages
+  take messages, like list, like text
+  like text
+
+  save out, <>
+  save at, 0
+  walk messages
+    take message, like text
+    fork test, is-below(at, 3)
+      hold
+        fork test, is-equal(at, 0)
+          hold
+            save out, message
+          miss
+            save out, <{out} | {message}>
+    save at, add(at, 1)
+  back out
+
+# the program at `at` for a target, as one file and as files
+task emit-both
+  take at, like text
+  take target, like text
+  like split-program
+
+  save file, units-path/join(at, <code>, <base.tree>)
+  save out, compile-text(units-fs/read-file-sync(file, <utf8>), make(compile-choice, bind(file, file), bind(project, at), bind(project-env, target), bind(env, target)))
+  fork test, not(out/ok)
+    hold
+      back make(split-program, bind(ok, false), bind(reason, <{target} did not compile: {first-messages(out/messages)}>))
+  save reader, runtime-reader()
+  save one
+    like text
+    units-target/emit-target(make(target-ask, bind(program, out/program), bind(typescript, out/emitted), bind(target, target), bind(read-runtime, reader)))
+  save units, units-target/emit-target-units(make(units-ask, bind(program, out/program), bind(target, target), bind(read-runtime, reader)))
+  save main
+    like text
+    units/main
+  save entries, like list, like dynamic
+    units/files
+  save files, make list
+  walk entries
+    take entry, like dynamic
+    save name
+      like text
+      entry/0
+    save body
+      like text
+      entry/1
+    files/push(make(unit-file, bind(name, name), bind(text, body)))
+  back make(split-program, bind(ok, true), bind(one, one), bind(main, main), bind(files, files))
+
+# the program of the first root for a target, made once
+task split-of
+  take target, like text
+  like split-program
+
+  save known, held/splits/has(target)
+  fork test, known
+    hold
+      back held/splits/{target}
+  save made, emit-both(units-root(), target)
+  save held/splits/{target}, made
+  back made
+
+task names-of
+  take split, like split-program
+  like list, like text
+
+  save names, make list
+  walk split/files
+    take file, like unit-file
+    names/push(file/name)
+  back names
+
+task has-name
+  take names, like list, like text
+  take name, like text
+  like boolean
+
+  walk names
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# the text of the shared file, every `include!` taken out
+task shared-text
+  take split, like split-program
+  like text
+
+  walk split/files
+    take file, like unit-file
+    fork test, is-equal(file/name, split/main)
+      hold
+        back replace-matches(make(pattern, <<include!\("[^"]*"\);>>), file/text, <>)
+  back <>
+
+task holds-statement
+  take text, like text
+  like boolean
+
+  back matches(make(pattern, <<\btotal\b|\barea\b>>), text)
+
+# whether a text holds a mark, a code point from U+E000 to U+E002
+task holds-mark
+  take text, like text
+  like boolean
+
+  walk make(list, <"\\ue000">, <"\\ue001">, <"\\ue002">)
+    take quoted, like text
+    save mark
+      like text
+      json-parse(quoted)
+    fork test, text-contains(text, mark)
+      hold
+        back true
+  back false
+
+task marks-left
+  take split, like split-program
+  like boolean
+
+  walk split/files
+    take file, like unit-file
+    fork test, holds-mark(file/text)
+      hold
+        back true
+  back holds-mark(split/one)
+
+# the files the body edit to count.tree rewrote, per target: each target read before the edit and after it, then the
+# module put back
+task edit-once
+  like void
+
+  fork test, held/edited
+    hold
+      back
+  save targets, make(list, <rust>, <swift>, <kotlin>)
+  save before, make hash
+  walk targets
+    take target, like text
+    save before/{target}, emit-both(units-root(), target)
+  write-file(units-path/join(units-root(), <code>, <count.tree>), count-edited)
+  save after, make hash
+  walk targets
+    take target, like text
+    save after/{target}, emit-both(units-root(), target)
+  write-file(units-path/join(units-root(), <code>, <count.tree>), count-module)
+  walk targets
+    take target, like text
+    save old, before/{target}
+    save new, after/{target}
+    save changed, <>
+    walk new/files
+      take file, like unit-file
+      fork test, is-unequal(text-of(old, file/name), file/text)
+        hold
+          fork test, is-equal(changed, <>)
+            hold
+              save changed, file/name
+            miss
+              save changed, <{changed}, {file/name}>
+    save held/changed/{target}, changed
+  save held/edited, true
+
+# the text of a file of a split, <no such file> when it has none of that name
+task text-of
+  take split, like split-program
+  take name, like text
+  like text
+
+  walk split/files
+    take file, like unit-file
+    fork test, is-equal(file/name, name)
+      hold
+        back file/text
+  back <no such file>
+
+task changed-of
+  take target, like text
+  like text
+
+  edit-once()
+  back held/changed/{target}
+
+task one-count-file
+  take changed, like text
+  like boolean
+
+  fork test, or(is-equal(changed, <>), text-contains(changed, <, >))
+    hold
+      back false
+  back text-contains(changed, <count>)
+
+# ---- the answer of each form of the program on a toolchain ----
+
+task tools-of
+  take target, like text
+  like list, like text
+
+  fork test, is-equal(target, <rust>)
+    hold
+      back make list(<rustc>)
+  fork test, is-equal(target, <swift>)
+    hold
+      back make list(<swiftc>)
+  back make list(<kotlinc>, <java>)
+
+task tools-missing
+  take target, like text
+  like boolean
+
+  walk tools-of(target)
+    take tool, like text
+    fork test, is-equal(find-tool(tool), <>)
+      hold
+        back true
+  back false
+
+task answer-failed
+  take reason, like text
+  like split-answer
+
+  back make(split-answer, bind(state, <failed>), bind(reason, reason))
+
+task answer-ran
+  take one, like text
+  take split, like text
+  like split-answer
+
+  save first, run(units-path/join(one, <one>), make(list), bind(directory, one))
+  save second, run(units-path/join(split, <split>), make(list), bind(directory, split))
+  back make(split-answer, bind(state, <ran>), bind(one, first/output), bind(split, second/output))
+
+task write-units
+  take both, like split-program
+  take folder, like text
+  like void
+
+  walk both/files
+    take file, like unit-file
+    write-file(units-path/join(folder, file/name), file/text)
+
+task rust-answer
+  take both, like split-program
+  take one, like text
+  take split, like text
+  like split-answer
+
+  save unwrap, <>
+  fork test, text-contains(both/one, <fn run() -\> std::result::Result>)
+    hold
+      save unwrap, <.unwrap()>
+  save main, <fn main() \{ print!("\{\}", run(){unwrap}); \}\n>
+  write-file(units-path/join(one, <main.rs>), <{both/one}\n{main}>)
+  walk both/files
+    take file, like unit-file
+    fork test, is-equal(file/name, <main.rs>)
+      hold
+        write-file(units-path/join(split, file/name), <{file/text}\n{main}>)
+      miss
+        write-file(units-path/join(split, file/name), file/text)
+  save failed, run-tool(make(list, <rustc>, <--edition>, <2021>, <-A>, <warnings>, <-o>, <one>, <main.rs>), one)
+  fork test, is-unequal(failed, <>)
+    hold
+      back answer-failed(failed)
+  save failed, run-tool(make(list, <rustc>, <--edition>, <2021>, <-A>, <warnings>, <-o>, <split>, <main.rs>), split)
+  fork test, is-unequal(failed, <>)
+    hold
+      back answer-failed(failed)
+  back answer-ran(one, split)
+
+task swift-answer
+  take both, like split-program
+  take one, like text
+  take split, like text
+  like split-answer
+
+  save attempt, <>
+  fork test, text-contains(both/one, <func run() throws>)
+    hold
+      save attempt, <try >
+  save main, <print({attempt}run(), terminator: "")\n>
+  write-file(units-path/join(one, <main.swift>), <import Foundation\n{both/one}\n{main}>)
+  write-units(both, split)
+  write-file(units-path/join(split, <main.swift>), <import Foundation\n{main}>)
+  save failed, run-tool(make(list, <swiftc>, <-o>, <one>, <main.swift>), one)
+  fork test, is-unequal(failed, <>)
+    hold
+      back answer-failed(failed)
+  save command, make(list, <swiftc>, <-o>, <split>, <main.swift>)
+  walk names-of(both)
+    take name, like text
+    command/push(name)
+  save failed, run-tool(command, split)
+  fork test, is-unequal(failed, <>)
+    hold
+      back answer-failed(failed)
+  back answer-ran(one, split)
+
+task kotlin-answer
+  take both, like split-program
+  take one, like text
+  take split, like text
+  like split-answer
+
+  save main, <fun main() \{ print(run()) \}\n>
+  write-file(units-path/join(one, <Main.kt>), <{both/one}\n{main}>)
+  write-units(both, split)
+  write-file(units-path/join(split, <Main.kt>), main)
+  save failed, run-tool(make(list, <kotlinc>, <Main.kt>, <-include-runtime>, <-nowarn>, <-d>, <one.jar>), one)
+  fork test, is-unequal(failed, <>)
+    hold
+      back answer-failed(failed)
+  save command, make(list, <kotlinc>, <Main.kt>)
+  walk names-of(both)
+    take name, like text
+    command/push(name)
+  command/push(<-include-runtime>)
+  command/push(<-nowarn>)
+  command/push(<-d>)
+  command/push(<split.jar>)
+  save failed, run-tool(command, split)
+  fork test, is-unequal(failed, <>)
+    hold
+      back answer-failed(failed)
+  save first, run(<java>, make(list, <-jar>, <one.jar>), bind(directory, one))
+  save second, run(<java>, make(list, <-jar>, <split.jar>), bind(directory, split))
+  back make(split-answer, bind(state, <ran>), bind(one, first/output), bind(split, second/output))
+
+# the answer of each form of the program at `at` on one toolchain: the one file, then the files
+task answers
+  take at, like text
+  take target, like text
+  take label, like text
+  like split-answer
+
+  fork test, tools-missing(target)
+    hold
+      back make(split-answer, bind(state, <skipped>), bind(reason, <{target}: tools not installed>))
+  save both, emit-both(at, target)
+  fork test, not(both/ok)
+    hold
+      back answer-failed(both/reason)
+  save out, units-path/join(at, <out>)
+  save one, units-path/join(out, <{target}-{label}-one>)
+  save split, units-path/join(out, <{target}-{label}-split>)
+  make-folder(one)
+  make-folder(split)
+  fork test, is-equal(target, <rust>)
+    hold
+      back rust-answer(both, one, split)
+  fork test, is-equal(target, <swift>)
+    hold
+      back swift-answer(both, one, split)
+  back kotlin-answer(both, one, split)
+
+# the answer at a key, made once
+task answer-of
+  take at, like text
+  take target, like text
+  take label, like text
+  like split-answer
+
+  save key, <{target}-{label}>
+  save known, held/answers/has(key)
+  fork test, known
+    hold
+      back held/answers/{key}
+  save made, answers(at, target, label)
+  save held/answers/{key}, made
+  back made
+
+task answered
+  take answer, like split-answer
+  take want, like text
+  like boolean
+
+  back and(is-equal(answer/state, <ran>), and(is-equal(answer/one, answer/split), is-equal(answer/one, want)))
+
+# the wide program for a target, made once
+task wide-of
+  take target, like text
+  like split-program
+
+  save key, <wide-{target}>
+  save known, held/splits/has(key)
+  fork test, known
+    hold
+      back held/splits/{key}
+  save made, emit-both(wide-units-root(), target)
+  save held/splits/{key}, made
+  back made
+
+# ---- the split: every module's statements in a file of their own ----
+
+test <rust: one file per module beside the shared one>
+  host split, split-of(<rust>)
+  host names, names-of(split)
+  want hold, split/ok
+  want hold, and(is-equal(names/length, 4), has-name(names, split/main))
+
+test <rust: the shared file holds no module's statement>
+  host split, split-of(<rust>)
+  want hold, split/ok
+  want hold, not(holds-statement(shared-text(split)))
+
+test <rust: and no mark is left in any file>
+  host split, split-of(<rust>)
+  want hold, split/ok
+  want hold, not(marks-left(split))
+
+test <swift: one file per module beside the shared one>
+  host split, split-of(<swift>)
+  host names, names-of(split)
+  want hold, split/ok
+  want hold, and(is-equal(names/length, 4), has-name(names, split/main))
+
+test <swift: the shared file holds no module's statement>
+  host split, split-of(<swift>)
+  want hold, split/ok
+  want hold, not(holds-statement(shared-text(split)))
+
+test <swift: and no mark is left in any file>
+  host split, split-of(<swift>)
+  want hold, split/ok
+  want hold, not(marks-left(split))
+
+test <kotlin: one file per module beside the shared one>
+  host split, split-of(<kotlin>)
+  host names, names-of(split)
+  want hold, split/ok
+  want hold, and(is-equal(names/length, 4), has-name(names, split/main))
+
+test <kotlin: the shared file holds no module's statement>
+  host split, split-of(<kotlin>)
+  want hold, split/ok
+  want hold, not(holds-statement(shared-text(split)))
+
+test <kotlin: and no mark is left in any file>
+  host split, split-of(<kotlin>)
+  want hold, split/ok
+  want hold, not(marks-left(split))
+
+# ---- the edit: one module's body, one file ----
+
+test <rust: a body edit to count.tree rewrites one file, count's>
+  want hold, one-count-file(changed-of(<rust>))
+
+test <swift: a body edit to count.tree rewrites one file, count's>
+  want hold, one-count-file(changed-of(<swift>))
+
+test <kotlin: a body edit to count.tree rewrites one file, count's>
+  want hold, one-count-file(changed-of(<kotlin>))
+
+# ---- the split program answers what the one file answers ----
+
+test <rust: the files answer what the one file answers>
+  host answer, answer-of(units-root(), <rust>, <small>)
+  fork test, is-equal(answer/state, <skipped>)
+    hold
+      skip answer/reason
+  want hold, answered(answer, <55 16 6>)
+
+test <swift: the files answer what the one file answers>
+  host answer, answer-of(units-root(), <swift>, <small>)
+  fork test, is-equal(answer/state, <skipped>)
+    hold
+      skip answer/reason
+  want hold, answered(answer, <55 16 6>)
+
+test <kotlin: the files answer what the one file answers>
+  host answer, answer-of(units-root(), <kotlin>, <small>)
+  fork test, is-equal(answer/state, <skipped>)
+    hold
+      skip answer/reason
+  want hold, answered(answer, <55 16 6>)
+
+# ---- a program of many standard library modules: generics, the text runtime, lists, sorting ----
+
+test <rust: the wide program is cut into a file per module>
+  fork test, tools-missing(<rust>)
+    hold
+      skip <rustc not installed>
+  host wide, wide-of(<rust>)
+  want hold, is-above(wide/files/length, 3)
+
+test <rust: and its files answer what its one file answers>
+  host answer, answer-of(wide-units-root(), <rust>, <wide>)
+  fork test, is-equal(answer/state, <skipped>)
+    hold
+      skip answer/reason
+  want hold, answered(answer, <FIG,PEAR,KIWI,BANANA,>)
+
+test <swift: the wide program is cut into a file per module>
+  fork test, tools-missing(<swift>)
+    hold
+      skip <swiftc not installed>
+  host wide, wide-of(<swift>)
+  want hold, is-above(wide/files/length, 3)
+
+test <swift: and its files answer what its one file answers>
+  host answer, answer-of(wide-units-root(), <swift>, <wide>)
+  fork test, is-equal(answer/state, <skipped>)
+    hold
+      skip answer/reason
+  want hold, answered(answer, <FIG,PEAR,KIWI,BANANA,>)
+
+test <kotlin: the wide program is cut into a file per module>
+  fork test, tools-missing(<kotlin>)
+    hold
+      skip <kotlinc, java not installed>
+  host wide, wide-of(<kotlin>)
+  want hold, is-above(wide/files/length, 3)
+
+test <kotlin: and its files answer what its one file answers>
+  host answer, answer-of(wide-units-root(), <kotlin>, <wide>)
+  fork test, is-equal(answer/state, <skipped>)
+    hold
+      skip answer/reason
+  want hold, answered(answer, <FIG,PEAR,KIWI,BANANA,>)

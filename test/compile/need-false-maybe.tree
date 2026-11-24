@@ -1,0 +1,60 @@
+note <a trailing need-false maybe left out is the maybe's none in the body, on every backend>
+
+# Ported from need-false-maybe.ts by statement (item term-self-host-001-0657), one test per `ok` in its order:
+# typescript, rust, swift, kotlin (item term-self-host-001-0403, decision 074). A task whose last parameter is a `need
+# false` maybe is called left out, given some, and given none, and `none-first` sifts its none case first, which
+# TypeScript tests by the constant's identity. The program is compiled over the project at the suite's root under each
+# backend's env, as projectResolver(process.cwd(), env) asked, built by the real toolchain and run. A backend whose
+# toolchain is missing skips its test, where the original printed a skip line.
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load ../support/temp
+  find temp-folder
+
+host program, <load @term/base/maybe\n  find maybe\n\ntask with-maybe\n  take base, like number\n  take extra\n    like maybe\n      like number\n    need false\n  like number\n  sift extra\n    case some\n      link given\n      back add(base, given)\n    case none\n      back base\n\ntask none-first\n  take base, like number\n  take extra\n    like maybe\n      like text\n    need false\n  like text\n  sift extra\n    case none\n      back \<none \{base\}\>\n    case some\n      link given\n      back \<some \{given\}\>\n\ntask run\n  like text\n  save none, make none\n  back \<\{with-maybe(1)\} \{with-maybe(1, make(some, 4))\} \{with-maybe(1, none)\} \{none-first(2)\} \{none-first(2, make(some, \<x\>))\}\>\n>
+
+# what the run task must return on every backend
+host want, <1 5 1 none 2 some x>
+
+host folder, temp-folder(<term-need-false-maybe->)
+
+task ran-on
+  take backend, like text
+  like ran-program
+
+  back run-text(program, backend, folder, <maybe>)
+
+test <typescript: a left-out maybe is none in the body, a given one itself>
+  host ran, ran-on(<typescript>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(<{ran/state}{ran/stage}{ran/reason}>, <ran>)
+  want hold, is-equal(ran/output, want)
+
+test <rust: a left-out maybe is none in the body, a given one itself>
+  host ran, ran-on(<rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(<{ran/state}{ran/stage}{ran/reason}>, <ran>)
+  want hold, is-equal(ran/output, want)
+
+test <swift: a left-out maybe is none in the body, a given one itself>
+  host ran, ran-on(<swift>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(<{ran/state}{ran/stage}{ran/reason}>, <ran>)
+  want hold, is-equal(ran/output, want)
+
+test <kotlin: a left-out maybe is none in the body, a given one itself>
+  host ran, ran-on(<kotlin>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(<{ran/state}{ran/stage}{ran/reason}>, <ran>)
+  want hold, is-equal(ran/output, want)

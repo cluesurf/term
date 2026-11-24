@@ -1,0 +1,53 @@
+note <a compile error in a test file is placed on the line and column the person wrote, not the rewritten text's>
+
+# `term test` compiles a test file as the preprocessor rewrote it (work/preprocess/test-rewriting.tree), whose preludes
+# and guards add lines, then moves each diagnostic back with `readable`'s `place` (item 1664). Each case runs a fixture
+# through TERM_TEST_SELF, the `term` under test. The wants are what the node binds placed, read on live line.js
+# 321caecccd27 before the move.
+
+load @term/base/environment
+  find variable
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/text
+  find contains
+
+task run-fixture
+  take file, like text
+  like run-result
+  mark async
+
+  save argument-list, make list
+  save entry, variable(<TERM_TEST_SELF_ENTRY>)
+  fork test, is-unequal(entry, <>)
+    hold
+      argument-list/push(entry)
+  argument-list/push(<test>)
+  argument-list/push(<test/{file}.tree>)
+  argument-list/push(<--color>)
+  argument-list/push(<never>)
+  back run(variable(<TERM_TEST_SELF>), argument-list, <test/call/test-place-fixture>, bind(limit, 280000))
+
+# the run prints on either stream
+task said
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+test <a name in a test's body is placed where it was written, below lines the rewrite added>
+  save ran, run-fixture(<unknown-in-body>)
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <The name "no-such-name" is not defined>)
+  want hold, contains(said(ran), <unknown-in-body.tree:7:11>)
+  want hold, contains(said(ran), <save z, no-such-name>)
+
+test <a name in a compared value is placed at the start of the want's line>
+  save ran, run-fixture(<unknown-in-want>)
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <The name "no-such-value" is not defined>)
+  want hold, contains(said(ran), <unknown-in-want.tree:7:3>)
+  want hold, contains(said(ran), <want hold, is-equal(no-such-value, 2)>)

@@ -1,0 +1,7 @@
+# a name nobody defined, inside the value a `want` compares, which the rewrite moves onto a line of its own
+test <one>
+  save x, 1
+  want hold, is-equal(x, 1)
+
+test <two>
+  want hold, is-equal(no-such-value, 2)

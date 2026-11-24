@@ -1,0 +1,148 @@
+# The options, snapshots, `take` readings and diagnostic spans of the `test` preprocessor
+# (work/preprocess/test-rewriting.tree), items term-self-host-001-1663 and 1664. Each answer is what the node binds
+# they replaced gave on live line.js 321caecccd27 (tmp/self-host/1664/probe/live-records/), so the base gate holds
+# that meaning on node, rust, swift and kotlin.
+
+load @term/call/work/preprocess/test-rewriting
+  find preprocess-tests
+  find rewrite-options
+  find snapshot-ask
+  find no-rewrite-options
+  find stored-case-labels
+  find stored-case-texts
+  find placed-span
+
+load @term/make/parser/diagnostic
+  find position
+  find span
+
+load @term/base/list
+  find join
+
+load @term/base/text
+  find contains
+  find split
+
+# `greets` with two snapshots, as a test file writes it
+host snapshot-source, <test \<greets\>\n  want snapshot, \<hello\>\n  want snapshot, \<bye\>\n>
+
+host sampled-source, <test \<adds\>\n  take n, like number\n  take xs, like list, like text\n  want hold, is-equal(n, n)\n\ntest \<refuses\>\n  take q\n  want hold, true\n\ntest \<refuses a list\>\n  take ys, like list\n  want hold, true\n>
+
+host plain-source, <test \<p\>\n  want hold, is-equal(1, 1)\n>
+
+task snapshots-of
+  take update, like boolean
+  like snapshot-ask
+
+  save stored, make hash
+  save texts, make list
+  texts/push(<hello>)
+  texts/push(<bye>)
+  save key, <greets>
+  save stored/{key}, texts
+  back make(snapshot-ask, bind(stored, stored), bind(update, update))
+
+task cases-asked
+  like snapshot-ask
+
+  save stored, make hash
+  save one, make list
+  one/push(<x>)
+  save empty, make list
+  empty/push(<w>)
+  empty/pop()
+  save two, make list
+  two/push(<y>)
+  save other, make list
+  other/push(<z>)
+  save key-a, <c [a]>
+  save key-b, <c [b]>
+  save key-d, <c [d]>
+  save key-other, <other>
+  save stored/{key-a}, one
+  save stored/{key-b}, empty
+  save stored/{key-d}, two
+  save stored/{key-other}, other
+  back make(snapshot-ask, bind(stored, stored), bind(update, false))
+
+task rewritten
+  take source, like text
+  take options, like rewrite-options
+  like text
+
+  back preprocess-tests(source, options)/text
+
+task asked
+  take plain, like boolean
+  take snapshots, like snapshot-ask
+  like rewrite-options
+
+  back make(rewrite-options, bind(plain-wants, plain), bind(snapshots, snapshots))
+
+task at
+  take line, like number
+  take column, like number
+  like position
+
+  back make(position, bind(line, line), bind(column, column))
+
+# 0: the source line each rewritten line came from, here two made-up lines above three written ones
+task origin-sample
+  like list, like number
+
+  save origin, make list
+  origin/push(0)
+  origin/push(0)
+  origin/push(0)
+  origin/push(1)
+  origin/push(2)
+  back origin
+
+task placed-text
+  take moved, like span
+  like text
+
+  back <{moved/start/line}:{moved/start/column} {moved/end/line}:{moved/end/column}>
+
+test <a held snapshot is the stored text at its place>
+  save text, rewritten(snapshot-source, asked(false, snapshots-of(false)))
+  want hold, contains(text, <save want-right-2, \<hello\>>)
+  want hold, contains(text, <save want-right-3, \<bye\>>)
+  want miss, contains(text, <term-snapshot-take(>)
+
+test <an updating run records each snapshot>
+  save text, rewritten(snapshot-source, asked(false, snapshots-of(true)))
+  want hold, contains(text, <term-snapshot-take(\<greets\>, want-snapshot-2)>)
+  want hold, contains(text, <term-snapshot-take(\<greets\>, want-snapshot-3)>)
+
+test <no stored snapshot is the test's failure>
+  save text, rewritten(snapshot-source, no-rewrite-options())
+  want hold, contains(text, <no snapshot is stored for line 2: term test --commit writes it>)
+  want hold, contains(text, <no snapshot is stored for line 3: term test --commit writes it>)
+
+test <plain wants raise the plain marker>
+  want hold, contains(rewritten(plain-source, no-rewrite-options()), <form want-missed>)
+  want miss, contains(rewritten(plain-source, asked(true, cases-asked())), <form want-missed>)
+
+test <the cases with a stored snapshot at a place, in the store's order>
+  want hold, is-equal(join(stored-case-labels(cases-asked(), <c>, 0), <,>), <a,d>)
+  want hold, is-equal(join(stored-case-texts(cases-asked(), <c>, 0), <,>), <x,y>)
+  want hold, is-equal(join(stored-case-labels(cases-asked(), <c>, 1), <,>), <>)
+  want hold, is-equal(join(stored-case-labels(cases-asked(), <other>, 0), <,>), <>)
+
+test <a sampled take is read for its name and type>
+  save text, rewritten(sampled-source, no-rewrite-options())
+  want hold, contains(text, <sampled-make-number-shape()>)
+  want hold, contains(text, <sampled-make-list-shape(sampled-make-text-shape())>)
+  want hold, contains(text, <"q" is no type>)
+  want hold, contains(text, <"ys" is list of no stated type>)
+
+test <a span is placed back on the lines written>
+  save from-lines, split(<test \<a\>\n  save x, y\n    want hold, x>, <\n>)
+  save to-lines, split(<task a\n  mark async\n  like boolean\n  save x, y\n  want hold, x>, <\n>)
+  save one, make(span, bind(start, at(3, 10)), bind(end, at(3, 11)))
+  want hold, is-equal(placed-text(placed-span(one, origin-sample(), from-lines, to-lines)), <1:10 1:11>)
+  save two, make(span, bind(start, at(4, 13)), bind(end, at(4, 14)))
+  want hold, is-equal(placed-text(placed-span(two, origin-sample(), from-lines, to-lines)), <2:15 2:16>)
+  save made, make(span, bind(start, at(1, 4)), bind(end, at(9, 0)))
+  want hold, is-equal(placed-text(placed-span(made, origin-sample(), from-lines, to-lines)), <0:0 9:0>)

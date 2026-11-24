@@ -1,0 +1,107 @@
+note <presence is a type on every backend alike, through fill and melt>
+
+# Ported from presence-native.ts by statement (item term-self-host-001-0658), one test case per `ok` in its order (term/
+# stdlib-parity decision 001, gaps 59 and 157 of the guides). A plain `need false` field has no absent state: `region <>`
+# and no `region` fill the same value, `size 0` and no `size` too, and melt leaves each out. A `need false` field typed
+# `maybe text` carries presence: `region <>` fills some of the empty text and melts back as `region <>`, no `region`
+# fills none and melts to nothing. And a value is still there after its melt (Rust lent it).
+#
+# The original looped over its two cases, and inside over the backends with one assert each. Here each case is one
+# walked test over the backends, each backend a case, in the original's order: 8 cases. A backend whose toolchain is
+# missing is its own skip. The project is a temp folder linking deck/base and deck/host, with a deck.tree, as the
+# original's. PRESENCE_ONLY=typescript, rust, swift or kotlin runs one backend.
+
+load ../support/running
+  find backends
+  find run-text
+
+load ../support/compiling
+  find compile-choice
+
+load ../support/judging
+  find make-record
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/list
+  find list
+
+dock load
+  load <node:fs>, name presence-file
+  load <node:path>, name presence-path
+
+host loads, <load @term/host/code/base\n  find data\n  find read\n  find write\n\nload @term/base/maybe\n  find maybe\n>
+
+# a plain need false field: empty and absent are one value, and melt leaves both out
+host plain-program, <{loads}\nform place\n  link name, like text\n  link region, like text\n    need false\n  link size, like number\n    need false\n  link open, like boolean\n    need false\n\ntask trip\n  take input, like text\n  like text\n  save got\n    call fill\n      call read(read input)\n      like place\n  save back-out\n    call write\n      call melt\n        read got\n        like place\n  send back, text \<[\{got/region\}|\{got/size\}|\{got/open\}] \{back-out\}\>\n\ntask run\n  like text\n  save a, trip(text \<host name, \<a\>\\nhost region, \<\>\\nhost size, 0\\nhost open, false\\n\>)\n  save b, trip(text \<host name, \<b\>\\n\>)\n  send back, text \<\{a\} / \{b\}\>\n>
+
+host plain-want, <[|0|false] host name, \<a\>\n / [|0|false] host name, \<b\>\n>
+
+# a need false maybe field: some of the empty text and none round-trip exactly
+host maybe-program, <{loads}\nform place\n  link name, like text\n  link region\n    like maybe, like text\n    need false\n\ntask region-of\n  take value, like place\n  like text\n  sift value/region\n    case some\n      link written\n      send back, text \<some:\{written\}\>\n    case none\n      send back, text \<none\>\n\ntask trip\n  take input, like text\n  like text\n  save got\n    call fill\n      call read(read input)\n      like place\n  save back-out\n    call write\n      call melt\n        read got\n        like place\n  send back, text \<[\{region-of(read got)\}] \{back-out\}\>\n\ntask run\n  like text\n  save a, trip(text \<host name, \<a\>\\nhost region, \<\>\\n\>)\n  save b, trip(text \<host name, \<b\>\\n\>)\n  save c, trip(text \<host name, \<c\>\\nhost region, \<eu\>\\n\>)\n  send back, text \<\{a\} / \{b\} / \{c\}\>\n>
+
+host maybe-want, <[some:] host name, \<a\>\nhost region, \<\>\n / [none] host name, \<b\>\n / [some:eu] host name, \<c\>\nhost region, \<eu\>\n>
+
+host root, temp-folder(<term-presence->)
+
+task folder
+  take path, like text
+  like text
+
+  presence-file/mkdir-sync(path, make-record(make(list, <recursive>, true)))
+  back path
+
+# the project: link/@term/base and link/@term/host at the real decks, a deck.tree, a code folder, and an out folder
+task set-up
+  take seed, like number
+  like text
+
+  host links, folder(presence-path/join(root, <link>, <@term>))
+  folder(presence-path/join(root, <code>))
+  presence-file/symlink-sync(presence-path/join(term-root(), <deck>, <base>), presence-path/join(links, <base>))
+  presence-file/symlink-sync(presence-path/join(term-root(), <deck>, <host>), presence-path/join(links, <host>))
+  presence-file/write-file-sync(presence-path/join(root, <deck.tree>), <deck @probe/presence\n  code \<0.0.0\>\n>)
+  back folder(presence-path/join(root, <out>))
+
+host dir, set-up(0)
+
+# whether PRESENCE_ONLY leaves this backend in
+task wanted
+  take one, like text
+  like boolean
+
+  save only, variable(<PRESENCE_ONLY>)
+  back or(is-equal(only, <>), is-equal(only, one))
+
+test <a plain need false field: empty and absent are one value, and melt leaves both out (plain)>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <PRESENCE_ONLY leaves {backend} out>
+  host ran, run-text(plain-program, backend, dir, <plain>, make(compile-choice, bind(project, root)))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, plain-want)
+
+test <a need false maybe field: some of the empty text and none round-trip exactly (maybe)>
+  take backend, like text
+    walk backends()
+  fork test, not(wanted(backend))
+    hold
+      skip <PRESENCE_ONLY leaves {backend} out>
+  host ran, run-text(maybe-program, backend, dir, <maybe>, make(compile-choice, bind(project, root)))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, maybe-want)

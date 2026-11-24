@@ -1,0 +1,112 @@
+note <a negated ordering is not the opposite ordering when an operand may be NaN>
+
+# Ported from negated-compare.ts by statement (item term-self-host-001-0657), one test per `ok` in its order
+# (term-compiler-0059). The simplifier (ir/simplifying.tree, the `not` case) turned `not(is-minimum(x, 1))` into `x < 1`,
+# but NaN compares false every way: `not(NaN >= 1)` is true and `NaN < 1` is false. An ordering is flipped only when
+# neither operand can be NaN: an integer literal or a number with a width. `is-equal` and `is-unequal` flip always.
+#
+# Each backend case is built AND run, over the working directory's project as the original's projectResolver(cwd). A
+# backend whose toolchain is missing is the test's own skip. The host NaN program is compiled lean with no resolver, as
+# the original compiled it, and run on node through run-text, which writes the native prelude and main ahead of it where
+# the original bundled it with esbuild and imported its `run`: the main prints what `run` returned, so `true` is the
+# text <true>. Where it does not build, its one test fails, where the original named that failure `a host NaN count
+# builds`. NEGATED_ONLY=typescript, rust, swift or kotlin runs one.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+  find ran-program
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find trim
+  find contains, name text-contains
+
+# a float NaN, made at run time so no fold sees it, against each negated ordering; then a plain float, which each
+# negation must still answer as the opposite ordering does
+host program, <load @term/base/float\n  find square-root\n\ntask nan-of\n  take x, like float\n  like float\n\n  back square-root(x)\n\ntask run\n  like text\n\n  save x, nan-of(-1.0)\n  save a, not(is-minimum(x, 1.0))\n  save b, not(is-above(x, 1.0))\n  save c, not(is-below(x, 1.0))\n  save d, not(is-maximum(x, 1.0))\n  save y, nan-of(4.0)\n  save e, not(is-minimum(y, 1.0))\n  save f, not(is-below(y, 1.0))\n  back \<\{a\} \{b\} \{c\} \{d\} \{e\} \{f\}\>\n>
+
+host expected, <true true true true false true>
+
+# a host number may be NaN on TypeScript: the trap's own shape, a count read through a bind
+host host-text, <bind host-count\n  like number\n  case node\n    text \<Number("x")\>\n\ntask run\n  like boolean\n\n  save count, host-count()\n  back not(is-minimum(count, 1))\n>
+
+# an integer literal against a number with a width cannot be NaN, so that one still flips
+host width-text, <task run\n  take b, like u8\n  like boolean\n\n  back not(is-minimum(b, 1))\n>
+
+host dir, temp-folder(<term-negated-compare->)
+
+task ran-on
+  take backend, like text
+  like ran-program
+
+  save only, variable(<NEGATED_ONLY>)
+  fork test, and(is-unequal(only, <>), is-unequal(only, backend))
+    hold
+      back make(ran-program, bind(state, <skipped>), bind(reason, <NEGATED_ONLY names {only}>))
+  back run-text(program, backend, dir, <negated>)
+
+# whether the TypeScript-only tests run: NEGATED_ONLY unset or <typescript>. It takes the variable's name, since a task of
+# no parameters answering a boolean is counted as a law of the file
+task typescript-asked
+  take name, like text
+  like boolean
+
+  save only, variable(name)
+  back or(is-equal(only, <>), is-equal(only, <typescript>))
+
+test <typescript: a negated ordering over NaN is true, over 2 the opposite ordering>
+  host ran, ran-on(<typescript>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(trim(ran/output), expected)
+
+test <rust: a negated ordering over NaN is true, over 2 the opposite ordering>
+  host ran, ran-on(<rust>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(trim(ran/output), expected)
+
+test <swift: a negated ordering over NaN is true, over 2 the opposite ordering>
+  host ran, ran-on(<swift>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(trim(ran/output), expected)
+
+test <kotlin: a negated ordering over NaN is true, over 2 the opposite ordering>
+  host ran, ran-on(<kotlin>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(trim(ran/output), expected)
+
+test <typescript: not(is-minimum(count, 1)) over a host NaN is true>
+  fork test, not(typescript-asked(<NEGATED_ONLY>))
+    hold
+      skip <NEGATED_ONLY names another backend>
+  host ran, run-text(host-text, <typescript>, dir, <host>, make(compile-choice, bind(lean, true)))
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(trim(ran/output), <true>)
+
+test <typescript: a u8 against 1 still flips to b \< 1>
+  fork test, not(typescript-asked(<NEGATED_ONLY>))
+    hold
+      skip <NEGATED_ONLY names another backend>
+  host width, compile-text(width-text, make(compile-choice, bind(file, <width.tree>), bind(lean, true)))
+  want hold, width/ok
+  want hold, text-contains(width/emitted, <b \< 1>)

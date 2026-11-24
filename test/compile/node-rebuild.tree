@@ -1,0 +1,882 @@
+note <rebuilding every node over its own rebuilt children gives an equal copy that shares nothing with its input>
+
+# Ported from node-rebuild.ts by statement (item term-self-host-001-0657), one test per `ok` in its order. The one rebuild
+# step every walk shares (decision 044, compile/node-rebuild.tree, docked as the subject, decision 106): every node rebuilt
+# over its own children, each child rebuilt first, gives a copy that writes the same program-json as its input, leaves
+# the input as it was, and shares with it no node and no record or list holding one.
+#
+#   - over the corpus of task/term/shared-nodes (docked by its package path, decision 121: the mark benchmarks and files
+#     drawn by its seeded generator, each built whole), at the checked stage and the lowered stage, where the simplifier
+#     shares nodes, and the census of the copy counts no shared place
+#   - with `skip` type and span, the same, the skipped fields left as they were
+#   - built by hand: one literal at two places, one pin record in a record-type's `extend.pins` and `pins`, one named type
+#     with a value argument as two functions' `result`, astral text in a literal, each back as distinct objects
+#   - a children list one too short, one too long, or holding a node of another kind raises, naming it
+#
+# The walks over node-children and node-json are the original's, docked as it imported them.
+#
+# Mapping: the corpus is the original's default, a sample of 30 at seed 7. Its `--sample` and `--seed` flags, its
+# NODE_REBUILD_MODULE (a draft module tried in place of the subject) and its printed totals are left out. The original
+# asserted nothing more when the hand program did not compile, and here each hand test after the first skips then.
+
+load ../support/walking
+  find kind-of
+  find fields-of
+  find field-of
+
+load ../support/judging
+  find set-field
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/term/task/term/shared-nodes>, name shared-nodes
+  load <@term/make/code/compile/node-rebuild>, name node-rebuild
+  load <@term/make/code/compile/node-children>, name node-children
+  load <@term/make/code/compile/node-json>, name node-json
+
+# ---- the host's values, read and made ----
+
+bind items-of
+  take given, like dynamic
+  like list, like dynamic
+  case node
+    text <(Array.isArray($given) ? $given : [])>
+
+bind text-or-empty
+  take given, like dynamic
+  like text
+  case node
+    text <(typeof $given === "string" ? $given : "")>
+
+bind absent
+  like dynamic
+  case node
+    text <undefined>
+
+bind host-empty
+  like dynamic
+  case node
+    text <[]>
+
+bind type-and-span
+  like dynamic
+  case node
+    text <["type", "span"]>
+
+bind push-host
+  take items, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <void $items.push($value)>
+
+bind one-list
+  take one, like dynamic
+  like dynamic
+  case node
+    text <[$one]>
+
+# host reflect: whether two host values are one object
+bind same-object
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <$left === $right>
+
+bind has-key
+  take record, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <(typeof $record === "object" && $record !== null && $key in $record)>
+
+bind names-key
+  take names, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <$names.includes($key)>
+
+bind new-set
+  like dynamic
+  case node
+    text <new Set()>
+
+bind set-has
+  take set, like dynamic
+  take value, like dynamic
+  like boolean
+  case node
+    text <$set.has($value)>
+
+bind set-add
+  take set, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <void $set.add($value)>
+
+bind new-table
+  like dynamic
+  case node
+    text <new Map()>
+
+bind table-set
+  take table, like dynamic
+  take key, like dynamic
+  take value, like boolean
+  like void
+  case node
+    text <void $table.set($key, $value)>
+
+bind table-has
+  take table, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <$table.has($key)>
+
+bind table-truth
+  take table, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <($table.get($key) === true)>
+
+# what the census found: how many objects stand twice, and how many places those take
+bind census-shared
+  take census, like dynamic
+  like number
+  case node
+    text <$census.shared.size>
+
+bind census-places
+  take census, like dynamic
+  like number
+  case node
+    text <$census.sharedPlaces>
+
+# host value: a raised exception's words
+bind cause-text
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+# host value: the records the subject reads, shaped as compile/node.tree declares them
+bind statement-handle
+  take node, like dynamic
+  like dynamic
+  case node
+    text <(\{ of: "statement-handle", node: $node \})>
+
+bind corpus-options
+  take sample, like number
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ sample: $sample, seed: $seed \})>
+
+bind unit-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind span-value
+  like dynamic
+  case node
+    text <(\{ start: \{ line: 1, column: 1 \}, end: \{ line: 1, column: 2 \} \})>
+
+bind string-node
+  take value, like text
+  take span, like dynamic
+  like dynamic
+  case node
+    text <(\{ form: "string", value: $value, span: $span \})>
+
+bind sum-node
+  take left, like dynamic
+  take right, like dynamic
+  take span, like dynamic
+  like dynamic
+  case node
+    text <(\{ form: "binary", op: "+", left: $left, right: $right, span: $span \})>
+
+bind return-node
+  take value, like dynamic
+  take span, like dynamic
+  like dynamic
+  case node
+    text <(\{ form: "return", value: $value, span: $span \})>
+
+bind named-type
+  take name, like text
+  take span, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "named", name: $name, valueArgs: [\{ form: "integer", value: 3, span: $span \}] \})>
+
+# the record-type's own first pin of its extend, else one made
+bind pin-of
+  take record, like dynamic
+  take span, like dynamic
+  like dynamic
+  case node
+    text <($record.extend?.pins?.[0] ?? \{ name: "note", value: \{ form: "string", value: "Upload 😀 𝔸 too large", span: $span \} \})>
+
+# ---- the rebuild, every node over its own children ----
+
+# how many nodes a rebuild met
+form rebuild-tally
+  mark shared
+  link nodes, like number
+
+# every node rebuilt over its own children, each child rebuilt first. A node met at two places is rebuilt at each
+task deep
+  take handle, like dynamic
+  take skip, like dynamic
+  take tally, like rebuild-tally
+  like dynamic
+
+  save tally/nodes, add(tally/nodes, 1)
+  host children, host-empty()
+  walk items-of(node-children/nodeChildren(handle, skip))
+    take child, like dynamic
+    push-host(children, deep(child, skip, tally))
+  back node-rebuild/rebuildNode(handle, children, skip)
+
+task rebuild-program
+  take program, like dynamic
+  take skip, like dynamic
+  take tally, like rebuild-tally
+  like dynamic
+
+  host out, host-empty()
+  walk items-of(program)
+    take one, like dynamic
+    host made, deep(statement-handle(one), skip, tally)
+    push-host(out, field-of(made, <node>))
+  back out
+
+# a rebuild, or the words of what it raised
+form rebuilt
+  link copy, like dynamic
+  link raised, like boolean
+  link message, like text
+
+task rebuild-guarded
+  take program, like dynamic
+  take skip, like dynamic
+  take tally, like rebuild-tally
+  like rebuilt
+
+  save copy, host-empty()
+  save raised, false
+  save message, <>
+  fork
+    mark unsafe
+    save copy, rebuild-program(program, skip, tally)
+  halt take
+    take cause
+    save raised, true
+    save message, cause-text(cause)
+  back make(rebuilt, bind(copy, copy), bind(raised, raised), bind(message, message))
+
+task program-text
+  take program, like dynamic
+  like text
+
+  save json
+    like text
+    node-json/programJson(host-empty(), program)
+  back json
+
+# ---- what a copy shares with its input ----
+
+# every object and list reachable from a value, a `span` never entered (spans are leaves, kept as they were)
+task reach
+  take value, like dynamic
+  take out, like dynamic
+  like void
+
+  host kind, kind-of(value)
+  fork test, and(is-unequal(kind, <list>), is-unequal(kind, <object>))
+    hold
+      back
+  fork test, set-has(out, value)
+    hold
+      back
+  set-add(out, value)
+  fork test, is-equal(kind, <list>)
+    hold
+      walk items-of(value)
+        take one, like dynamic
+        reach(one, out)
+      back
+  walk fields-of(value)
+    take key, like text
+    fork test, is-unequal(key, <span>)
+      hold
+        reach(field-of(value, key), out)
+
+# the nodes a walk by node-children meets, for `skip`
+task node-walk
+  take handle, like dynamic
+  take skip, like dynamic
+  take out, like dynamic
+  like void
+
+  set-add(out, field-of(handle, <node>))
+  walk items-of(node-children/nodeChildren(handle, skip))
+    take child, like dynamic
+    node-walk(child, skip, out)
+
+task nodes-of-program
+  take program, like dynamic
+  take skip, like dynamic
+  like dynamic
+
+  host out, new-set()
+  walk items-of(program)
+    take one, like dynamic
+    node-walk(statement-handle(one), skip, out)
+  back out
+
+# what a walk of the copy knows: the input's objects, the copy's nodes, which values hold a node, and the count
+form sharing
+  mark shared
+  link before, like dynamic
+  link nodes, like dynamic
+  link holding, like dynamic
+  link skip, like dynamic
+  link count, like number
+
+# a skipped key, and a match arm's type (node-children never enters it), stay as they were, as a span does
+task entered
+  take value, like dynamic
+  take key, like text
+  take skip, like dynamic
+  like boolean
+
+  fork test, or(is-equal(key, <span>), names-key(skip, key))
+    hold
+      back false
+  fork test, and(is-equal(key, <type>), and(has-key(value, <label>), has-key(value, <body>)))
+    hold
+      back false
+  back true
+
+# whether the value is a node of the copy or holds one at any depth, counting each such value the input holds too
+task share-walk
+  take value, like dynamic
+  take state, like sharing
+  like boolean
+
+  host kind, kind-of(value)
+  fork test, and(is-unequal(kind, <list>), is-unequal(kind, <object>))
+    hold
+      back false
+  fork test, table-has(state/holding, value)
+    hold
+      back table-truth(state/holding, value)
+  table-set(state/holding, value, false)
+  save holds, set-has(state/nodes, value)
+  fork test, is-equal(kind, <list>)
+    hold
+      walk items-of(value)
+        take one, like dynamic
+        fork test, share-walk(one, state)
+          hold
+            save holds, true
+    miss
+      walk fields-of(value)
+        take key, like text
+        fork test, entered(value, key, state/skip)
+          hold
+            fork test, share-walk(field-of(value, key), state)
+              hold
+                save holds, true
+  table-set(state/holding, value, holds)
+  fork test, and(holds, set-has(state/before, value))
+    hold
+      save state/count, add(state/count, 1)
+  back holds
+
+# the objects and lists of the copy that hold a node of the copy (or are one) and that the input holds too
+task shared-with-input
+  take input, like dynamic
+  take copy, like dynamic
+  take skip, like dynamic
+  like number
+
+  host before, new-set()
+  reach(input, before)
+  host state, make(sharing, bind(before, before), bind(nodes, nodes-of-program(copy, skip)), bind(holding, new-table()), bind(skip, skip), bind(count, 0))
+  save ignored, share-walk(copy, state)
+  back state/count
+
+# ---- the corpus ----
+
+form stage-total
+  mark shared
+  link programs, like number
+  link nodes, like number
+  link unequal, like number
+  link moved, like number
+  link shared-objects, like number
+  link shared-places, like number
+  link input-shared, like number
+  link threw, like number
+  link not-built, like number
+
+form corpus-totals
+  mark shared
+  link made, like boolean
+  link checked, like stage-total
+  link lowered, like stage-total
+  link skipped-unequal, like number
+  link first-failure, like text
+
+task stage-zero
+  like stage-total
+
+  back make(stage-total, bind(programs, 0), bind(nodes, 0), bind(unequal, 0), bind(moved, 0), bind(shared-objects, 0), bind(shared-places, 0), bind(input-shared, 0), bind(threw, 0), bind(not-built, 0))
+
+host corpus-now, make(corpus-totals, bind(made, false), bind(checked, stage-zero()), bind(lowered, stage-zero()), bind(skipped-unequal, 0), bind(first-failure, <>))
+
+task note-failure
+  take totals, like corpus-totals
+  take words, like text
+  like void
+
+  fork test, is-equal(totals/first-failure, <>)
+    hold
+      save totals/first-failure, words
+
+task stage-of
+  take totals, like corpus-totals
+  take stage, like text
+  like stage-total
+
+  fork test, is-equal(stage, <checked>)
+    hold
+      back totals/checked
+  back totals/lowered
+
+# one unit at one stage: built, rebuilt, and the copy compared with its input
+task tally-stage
+  take totals, like corpus-totals
+  take unit, like dynamic
+  take stage, like text
+  like void
+
+  host total, stage-of(totals, stage)
+  host file, text-or-empty(field-of(unit, <file>))
+  host built, shared-nodes/build(unit, is-equal(stage, <lowered>))
+  host program, field-of(built, <program>)
+  fork test, is-unequal(kind-of(program), <list>)
+    hold
+      save total/not-built, add(total/not-built, 1)
+      back
+  save total/programs, add(total/programs, 1)
+  host before, program-text(program)
+  save total/input-shared, add(total/input-shared, census-shared(shared-nodes/census(program, false)))
+  host tally, make(rebuild-tally, bind(nodes, 0))
+  host made, rebuild-guarded(program, host-empty(), tally)
+  fork test, made/raised
+    hold
+      save total/threw, add(total/threw, 1)
+      note-failure(totals, <{file} {stage}: threw {made/message}>)
+      back
+  save total/nodes, add(total/nodes, tally/nodes)
+  fork test, is-unequal(program-text(made/copy), before)
+    hold
+      save total/unequal, add(total/unequal, 1)
+      note-failure(totals, <{file} {stage}: program-json differs>)
+  fork test, is-unequal(program-text(program), before)
+    hold
+      save total/moved, add(total/moved, 1)
+  host sharing, shared-with-input(program, made/copy, host-empty())
+  save total/shared-objects, add(total/shared-objects, sharing)
+  fork test, is-above(sharing, 0)
+    hold
+      note-failure(totals, <{file} {stage}: {sharing} objects shared with the input>)
+  save total/shared-places, add(total/shared-places, census-places(shared-nodes/census(made/copy, false)))
+  fork test, is-equal(stage, <lowered>)
+    hold
+      tally-skipped(totals, program, before, file)
+
+# the lowered program rebuilt again with `skip` type and span
+task tally-skipped
+  take totals, like corpus-totals
+  take program, like dynamic
+  take before, like text
+  take file, like text
+  like void
+
+  host skip, type-and-span()
+  host skipped, rebuild-guarded(program, skip, make(rebuild-tally, bind(nodes, 0)))
+  fork test, skipped/raised
+    hold
+      save totals/skipped-unequal, add(totals/skipped-unequal, 1)
+      note-failure(totals, <{file} skip type: threw {skipped/message}>)
+      back
+  fork test, or(is-unequal(program-text(skipped/copy), before), is-above(shared-with-input(program, skipped/copy, skip), 0))
+    hold
+      save totals/skipped-unequal, add(totals/skipped-unequal, 1)
+
+# the corpus, run once
+task corpus-run
+  like corpus-totals
+
+  fork test, corpus-now/made
+    hold
+      back corpus-now
+  walk items-of(shared-nodes/corpus(corpus-options(30, 7)))
+    take unit, like dynamic
+    tally-stage(corpus-now, unit, <checked>)
+    tally-stage(corpus-now, unit, <lowered>)
+  save corpus-now/made, true
+  back corpus-now
+
+test <the corpus built programs at both stages>
+  host totals, corpus-run()
+  want hold, is-above(totals/checked/programs, 0)
+  want hold, is-above(totals/lowered/programs, 0)
+
+test <the lowered corpus shares nodes, so the copy has sharing to undo>
+  host totals, corpus-run()
+  want hold, is-above(totals/lowered/input-shared, 0)
+
+test <checked: every rebuild ran>
+  host totals, corpus-run()
+  want hold, is-equal(totals/checked/threw, 0)
+
+test <checked: every copy is node-json-equal to its input>
+  host totals, corpus-run()
+  want hold, is-equal(totals/checked/unequal, 0)
+
+test <checked: no input was written>
+  host totals, corpus-run()
+  want hold, is-equal(totals/checked/moved, 0)
+
+test <checked: no copy shares a node or a record holding one with its input>
+  host totals, corpus-run()
+  want hold, is-equal(totals/checked/shared-objects, 0)
+
+test <checked: no copy shares a place within itself>
+  host totals, corpus-run()
+  want hold, is-equal(totals/checked/shared-places, 0)
+
+test <lowered: every rebuild ran>
+  host totals, corpus-run()
+  want hold, is-equal(totals/lowered/threw, 0)
+
+test <lowered: every copy is node-json-equal to its input>
+  host totals, corpus-run()
+  want hold, is-equal(totals/lowered/unequal, 0)
+
+test <lowered: no input was written>
+  host totals, corpus-run()
+  want hold, is-equal(totals/lowered/moved, 0)
+
+test <lowered: no copy shares a node or a record holding one with its input>
+  host totals, corpus-run()
+  want hold, is-equal(totals/lowered/shared-objects, 0)
+
+test <lowered: no copy shares a place within itself>
+  host totals, corpus-run()
+  want hold, is-equal(totals/lowered/shared-places, 0)
+
+test <with skip type and span, every lowered copy is equal and shares nothing entered>
+  host totals, corpus-run()
+  want hold, is-equal(totals/skipped-unequal, 0)
+
+# ---- built by hand ----
+
+host hand-text, <load @term/base/exception\n  find excess\n\nform upload-excess\n  like excess\n    bind note, \<Upload 😀 𝔸 too large\>\n    link policy, like text\n\ntask first\n  take a, like number\n  like number\n  back add(a, 1)\n\ntask second\n  take a, like number\n  like number\n  back add(a, 2)\n>
+
+# the hand program, the objects set into it, and its copy, made once
+form hand-held
+  mark shared
+  link made, like boolean
+  link ok, like boolean
+  link reason, like text
+  link program, like dynamic
+  link first, like dynamic
+  link second, like dynamic
+  link record, like dynamic
+  link literal, like dynamic
+  link named, like dynamic
+  link pin, like dynamic
+  link before, like text
+  link copy, like dynamic
+
+host hand-now, make(hand-held, bind(made, false), bind(ok, false), bind(reason, <>), bind(program, absent()), bind(first, absent()), bind(second, absent()), bind(record, absent()), bind(literal, absent()), bind(named, absent()), bind(pin, absent()), bind(before, <>), bind(copy, absent()))
+
+task statement-named
+  take program, like dynamic
+  take form, like text
+  take name, like text
+  like dynamic
+
+  walk items-of(program)
+    take one, like dynamic
+    fork test, and(is-equal(text-or-empty(field-of(one, <form>)), form), is-equal(text-or-empty(field-of(one, <name>)), name))
+      hold
+        back one
+  back absent()
+
+task hand-of
+  like hand-held
+
+  fork test, hand-now/made
+    hold
+      back hand-now
+  save hand-now/made, true
+  host built, shared-nodes/build(unit-of(<test/compile/node-rebuild-hand.tree>, hand-text), false)
+  host program, field-of(built, <program>)
+  fork test, is-unequal(kind-of(program), <list>)
+    hold
+      save hand-now/reason, text-or-empty(field-of(built, <reason>))
+      back hand-now
+  host span, span-value()
+  host first, statement-named(program, <function>, <first>)
+  host second, statement-named(program, <function>, <second>)
+  host record, statement-named(program, <record-type>, <upload-excess>)
+  # one literal at two places
+  host literal, string-node(<twice 😀 𝔸>, span)
+  set-field(first, <body>, one-list(return-node(sum-node(literal, literal, span), span)))
+  # one named type with a value argument, as two functions' result
+  host named, named-type(<vec>, span)
+  set-field(first, <result>, named)
+  set-field(second, <result>, named)
+  # one pin record in extend.pins and pins
+  host pin, pin-of(record, span)
+  host extend, field-of(record, <extend>)
+  fork test, is-equal(kind-of(extend), <object>)
+    hold
+      set-field(extend, <pins>, one-list(pin))
+  set-field(record, <pins>, one-list(pin))
+  save hand-now/program, program
+  save hand-now/first, first
+  save hand-now/second, second
+  save hand-now/record, record
+  save hand-now/literal, literal
+  save hand-now/named, named
+  save hand-now/pin, pin
+  save hand-now/before, program-text(program)
+  save hand-now/copy, rebuild-program(program, host-empty(), make(rebuild-tally, bind(nodes, 0)))
+  save hand-now/ok, true
+  back hand-now
+
+task copy-named
+  take hand, like hand-held
+  take form, like text
+  take name, like text
+  like dynamic
+
+  back statement-named(hand/copy, form, name)
+
+# the value a function's first statement returns
+task returned
+  take function, like dynamic
+  like dynamic
+
+  back field-of(field-of(field-of(function, <body>), <0>), <value>)
+
+# the first of a pin list under a record
+task first-pin
+  take holder, like dynamic
+  like dynamic
+
+  back field-of(field-of(holder, <pins>), <0>)
+
+task first-value-argument
+  take function, like dynamic
+  like dynamic
+
+  back field-of(field-of(field-of(function, <result>), <valueArgs>), <0>)
+
+test <the hand program compiles>
+  host hand, hand-of()
+  want hold, is-equal(hand/reason, <>)
+  want hold, hand/ok
+
+test <the hand record-type has an extend to share a pin through>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, is-equal(kind-of(field-of(hand/record, <extend>)), <object>)
+
+test <one literal at two places comes back as two objects>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host sum, returned(copy-named(hand, <function>, <first>))
+  want hold, not(same-object(field-of(sum, <left>), field-of(sum, <right>)))
+  want hold, not(same-object(field-of(sum, <left>), hand/literal))
+  want hold, not(same-object(field-of(sum, <right>), hand/literal))
+
+test <both literals keep the astral text>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host sum, returned(copy-named(hand, <function>, <first>))
+  want hold, is-equal(text-or-empty(field-of(field-of(sum, <left>), <value>)), <twice 😀 𝔸>)
+  want hold, is-equal(text-or-empty(field-of(field-of(sum, <right>), <value>)), <twice 😀 𝔸>)
+
+test <the input still holds one literal object>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host sum, returned(hand/first)
+  want hold, same-object(field-of(sum, <left>), field-of(sum, <right>))
+
+test <one named type at two results comes back as two, each value argument its own>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host first, copy-named(hand, <function>, <first>)
+  host second, copy-named(hand, <function>, <second>)
+  want hold, not(same-object(field-of(first, <result>), field-of(second, <result>)))
+  want hold, not(same-object(field-of(first, <result>), hand/named))
+  want hold, not(same-object(first-value-argument(first), first-value-argument(second)))
+
+test <the input still shares its named type>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, same-object(field-of(hand/first, <result>), field-of(hand/second, <result>))
+
+test <one pin record at extend.pins and pins comes back as two>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host record, copy-named(hand, <record-type>, <upload-excess>)
+  host extended, first-pin(field-of(record, <extend>))
+  host own, first-pin(record)
+  want hold, not(same-object(extended, own))
+  want hold, not(same-object(own, hand/pin))
+  want hold, not(same-object(field-of(own, <value>), field-of(extended, <value>)))
+
+test <the input still shares its pin>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, same-object(first-pin(field-of(hand/record, <extend>)), first-pin(hand/record))
+
+test <the hand copy is node-json-equal to its input>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, is-equal(program-text(hand/copy), hand/before)
+
+test <the hand input is unchanged>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, is-equal(program-text(hand/program), hand/before)
+
+test <the hand copy shares nothing holding a node with its input>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, is-equal(shared-with-input(hand/program, hand/copy, host-empty()), 0)
+
+# ---- the children must be node-children's list exactly ----
+
+# the sum's handle: the first child of the first function's return
+task sum-handle
+  take hand, like hand-held
+  like dynamic
+
+  host body, field-of(field-of(hand/first, <body>), <0>)
+  back field-of(node-children/nodeChildren(statement-handle(body), host-empty()), <0>)
+
+task sum-children
+  take hand, like hand-held
+  like list, like dynamic
+
+  back items-of(node-children/nodeChildren(sum-handle(hand), host-empty()))
+
+# the words a rebuild over these children raised, <> when it raised nothing
+task raised-words
+  take handle, like dynamic
+  take children, like list, like dynamic
+  like text
+
+  save message, <>
+  fork
+    mark unsafe
+    save ignored, node-rebuild/rebuildNode(handle, children, host-empty())
+  halt take
+    take cause
+    save message, cause-text(cause)
+  back message
+
+# the children after the first
+task all-but-first
+  take items, like list, like dynamic
+  like list, like dynamic
+
+  save out, make list
+  save at, 0
+  walk items
+    take one, like dynamic
+    fork test, is-above(at, 0)
+      hold
+        out/push(one)
+    save at, add(at, 1)
+  back out
+
+test <one child too few raises>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host words, raised-words(sum-handle(hand), all-but-first(sum-children(hand)))
+  want hold, text-contains(words, <past the>)
+
+test <one child too many raises>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host children, sum-children(hand)
+  save more, make list
+  walk children
+    take one, like dynamic
+    more/push(one)
+  more/push(children/0)
+  host words, raised-words(sum-handle(hand), more)
+  want hold, text-contains(words, <children were given>)
+
+test <a child of another kind raises>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  save other, make list
+  other/push(statement-handle(field-of(field-of(hand/first, <body>), <0>)))
+  walk all-but-first(sum-children(hand))
+    take one, like dynamic
+    other/push(one)
+  host words, raised-words(sum-handle(hand), other)
+  want hold, text-contains(words, <another kind>)

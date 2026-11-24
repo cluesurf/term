@@ -14,7 +14,7 @@
   term
 </h3>
 <p align='center'>
-  A reactive modeling language Ψ
+  <b>T</b>yped <b>E</b>xpressions for <b>R</b>eliable <b>M</b>odels
 </p>
 
 <br/>
@@ -23,7 +23,7 @@
 
 ## Introduction
 
-Term is a programming framework built on a simple, indentation-based
+**Term** (**T**yped **E**xpressions for **R**eliable **M**odels) is a programming framework built on a simple, indentation-based
 syntax (the [tree](https://github.com/cluesurf/tree) format). You write
 the logic once, and one source compiles to idiomatic Rust, TypeScript,
 Kotlin, and Swift, so the same program runs in the browser, on Node, on

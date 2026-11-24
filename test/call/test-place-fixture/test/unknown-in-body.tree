@@ -1,0 +1,8 @@
+# a name nobody defined, in a test below one whose `want` compares two values, so the rewrite puts lines above it
+test <one>
+  save x, 1
+  want hold, is-equal(x, 1)
+
+test <two>
+  save z, no-such-name
+  want hold, is-equal(z, 2)

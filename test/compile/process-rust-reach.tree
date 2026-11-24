@@ -1,0 +1,50 @@
+note <two Rust builds the process shims used to refuse now build and run>
+
+# Ported from process-rust-reach.ts by statement (item term-self-host-001-0658), one test per `ok` in its order (items
+# term-self-host-001-0217 and 0218):
+#   attached   a program that reaches only `run-attached` (the emitter dropped the unreached `run-result` struct, and
+#              runner.rs's `use super::RunResult` failed to resolve)
+#   current    a program that loads @term/base/process/current and reads the process (current.rs called signal_hook, a
+#              crate the stdlib's Cargo.toml never named. It uses libc's signal(2) through extern "C" now)
+# Each program is compiled over the project at the suite's root (the original's projectResolver(cwd, env)), built by
+# rustc or cargo and run through test/support/running's run-text, and its output read. A missing toolchain skips the
+# test, where the original printed a skip line for the case.
+
+load ../support/running
+  find run-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find trim
+
+host attached-program, <load @term/base/process/run\n  find run-attached\n\nload @term/base/list\n  find list\n\ntask run\n  mark async\n  like text\n  save arguments, make list\n  call arguments/push(\<-c\>)\n  call arguments/push(\<exit 3\>)\n  save code, run-attached(\<sh\>, arguments)\n  back \<attached \{code\}\>\n>
+
+host current-program, <load @term/base/process/current\n  find read-process\n  find listen-process\n\ntask run\n  like text\n  save info, read-process()\n  back \<current \{info/id\}\>\n>
+
+host attached-wanted, make pattern, <<^attached 3$>>
+
+host current-wanted, make pattern, <<^current \d+$>>
+
+host folder, temp-folder(<term-process-rust-reach->)
+
+test <rust: a program that reaches only run-attached builds and runs>
+  host ran, run-text(attached-program, <rust>, folder, <attached>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, matches(attached-wanted, trim(ran/output))
+
+test <rust: a program that loads process/current builds and runs>
+  host ran, run-text(current-program, <rust>, folder, <current>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+  want hold, matches(current-wanted, trim(ran/output))

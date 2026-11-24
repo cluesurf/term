@@ -1,0 +1,149 @@
+note <a call that hands a shared list over and reads it in another argument runs on Rust without a borrow panic>
+
+# Ported from rust-cell-argument.ts by statement (item term-self-host-001-0658), one test per `ok` in its order. A call
+# that hands a shared list over and reads the same list in another argument: `set(items, 0, get(items, 2))`. Rust emitted
+# `list_set(items.clone(), 0, list_get(&items.borrow(), 2))`, whose `Ref` lives to the semicolon, so the callee's
+# `borrow_mut` panicked with "RefCell already borrowed". It built clean and failed only when run. Found by
+# deck/base/test/edge-random.tree (`shuffle`), on 2026-10-04. compile/rust now evaluates such arguments into locals first,
+# in order. The program is compiled over the stdlib for node and for rust, as withNativeEnv(env, stdlibResolver()) asked,
+# built and RUN, and its answer held against TypeScript's.
+#
+# The original imported the TypeScript program and called `swap`. Here it is written with the stdlib's main for node and
+# run by node with tsx's loader. The Rust leg is the emitted program and the original's own main, built by rustc once,
+# by the first test that asks. Where the original named a refused compile "the program builds for node" (or rust), the
+# test of that leg fails on `out/ok`. With rustc missing its two tests skip, where the original printed one skip line,
+# and a Rust answer is not asked of a build that failed, as the original did not ask it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+
+load ../support/running
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find trim
+
+dock load
+  load <@term/make/code/compile/native-main>, name cell-main
+  load <node:path>, name cell-path
+
+host program, <load @term/base/list\n  find list\n\ntask swap\n  like text\n  save items, make list\n  call items/push\n    text \<a\>\n  call items/push\n    text \<b\>\n  call items/push\n    text \<c\>\n  save held, call items/get, code 0\n  call items/set\n    code 0\n    call items/get\n      code 2\n  call items/set\n    code 2\n    read held\n  send back, text \<\{\{call(items/get, code 0)\}\}\{\{call(items/get, code 1)\}\}\{\{call(items/get, code 2)\}\}\>\n>
+
+host want, <cba>
+
+# the original's Rust main
+host rust-main, <\nfn main() \{\n    println!("\{\}", swap());\n\}\n>
+
+# a list argument borrowed while a sibling argument hands the same list over
+host lent, make pattern, <<list_set\(items\.clone\(\), [^;]*items\.borrow\(\)>>
+
+task compiled
+  take env, like text
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <swap.tree>), bind(stdlib, env), bind(env, env), bind(entry, <swap>)))
+
+host on-node, compiled(<node>)
+
+host on-rust, compiled(<rust>)
+
+host rust-text, <{emit-text(on-rust, <rust>)}{rust-main}>
+
+# what the TypeScript program's `swap` answered, run by node
+task node-answer
+  like text
+
+  save folder, temp-folder(<term-rust-cell-argument->)
+  save file, cell-path/join(folder, <module.ts>)
+  save code, on-node/emitted
+  write-file(file, <{prelude-text(on-node, <node>, code)}\n{code}\n{cell-main/native-main(<node>, code, <swap>)}\n>)
+  save ran, run(<node>, make list(<--import>, <tsx>, file))
+  back trim(ran/output)
+
+# the Rust program built and run. `state` is <skipped>, <failed> (the build) or <ran>
+form cell-run
+  link state, like text
+  link reason, like text, fall <>
+  link output, like text, fall <>
+
+form cell-held
+  mark shared
+  link made, like boolean
+  link run, like cell-run
+
+host cell-now, make(cell-held, bind(made, false), bind(run, make(cell-run, bind(state, <skipped>))))
+
+task cell-made
+  like cell-run
+
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      back make(cell-run, bind(state, <skipped>), bind(reason, <rustc not installed>))
+  save folder, temp-folder(<term-rust-cell-argument->)
+  save file, cell-path/join(folder, <main.rs>)
+  save binary, cell-path/join(folder, <main>)
+  write-file(file, rust-text)
+  save failed, run-tool(make list(<rustc>, <--edition>, <2021>, <-A>, <warnings>, <-o>, binary, file))
+  fork test, is-unequal(failed, <>)
+    hold
+      back make(cell-run, bind(state, <failed>), bind(reason, failed))
+  save ran, run(binary, make list)
+  back make(cell-run, bind(state, <ran>), bind(output, trim(ran/output)))
+
+# the run, made once
+task cell-ran
+  like cell-run
+
+  fork test, not(cell-now/made)
+    hold
+      save cell-now/run, cell-made()
+      save cell-now/made, true
+  back cell-now/run
+
+test <TypeScript swaps through set and get>
+  want hold, on-node/ok
+  save answer, node-answer()
+  want hold, is-equal(answer, want)
+
+test <no argument borrows the cell a sibling argument hands over>
+  want hold, on-rust/ok
+  want hold, is-equal(matches(lent, rust-text), false)
+
+test <rustc compiles it>
+  want hold, on-rust/ok
+  host ran, cell-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+
+test <Rust answers what TypeScript does, without a borrow panic>
+  want hold, on-rust/ok
+  host ran, cell-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  fork test, is-equal(ran/state, <failed>)
+    hold
+      skip <the Rust program did not build>
+  want hold, is-equal(ran/output, want)

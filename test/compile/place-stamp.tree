@@ -1,0 +1,875 @@
+note <every place of a stamped copy is a fresh node carrying its row, and the input is never written>
+
+# Ported from place-stamp.ts by statement (item term-self-host-001-0658), one test per `ok` in its order. The original's
+# loop over the two stages is written out, six tests a stage. compile/place-stamp.tree (decision 011 rules 2, 3, 5, 6,
+# item 0038): `stamp-places` answers a copy of a program in which every place is a fresh node carrying its row in
+# place-walk's pre-order plus one, and never writes its input.
+#
+#   - over a corpus (task/term/shared-nodes.ts `corpus`, 30 files at seed 7) at the checked and the lowered stage, where
+#     the simplifier shares nodes: every place of the copy is stamped with its row (shared-nodes' census, which mirrors
+#     place-walk), no place of the copy shares an object, the copy is node-json-equal to its input with `placeRow`
+#     skipped, the input is unchanged and carries no `placeRow`, and the copy shares no node, nor any record holding
+#     one, with its input. Every case of node.tree's expression and statement met in the corpus is counted
+#   - built by hand: one literal at two places, one pin record in a record-type's `extend.pins` and `pins`, one named
+#     type with a value argument as two functions' `result`, astral text in a literal. Each comes back as distinct
+#     objects with distinct rows, and the input still holds one object with no `placeRow`
+#   - `same-place` and `same-statement-place`: a stamped node and itself agree, two places do not, and an unstamped node
+#     (row 0) is at no place
+#   - every case a corpus program rarely holds, built by hand and stamped beside the corpus's cases
+#
+# compile/place-stamp and compile/node-json are the subject (decision 106). The census, the corpus and the build are
+# task/term/shared-nodes, and node.tree's cases task/term/node-tree-read, docked by their package paths (decision 121).
+# The corpus, the hand program and the every-case program are each made once, by the first test that asks. A node
+# built by hand is a JSON text read by the host, and a node standing at two places is written into both fields.
+#
+# Mapping: the original's `--sample` and `--seed` flags are its defaults here, 30 and 7. Its PLACE_STAMP_MODULE, a
+# draft build of the module, is not kept. The summary lines it printed (the totals, the stamp and compile times, the
+# cases never met, the first failure) assert nothing and are not ported. Its hand nodes shared one `span` object, and
+# here each node has its own (a `span` is never entered). A hand test whose program did not compile, and an every-case
+# test after the stamp threw, skips, where the original asserted nothing.
+
+load @term/base/list
+  find push
+  find contains
+
+load ../support/walking
+  find kind-of
+  find fields-of
+  find field-of
+
+dock load
+  load <@term/make/code/compile/place-stamp>, name stamp-module
+  load <@term/make/code/compile/node-json>, name node-json
+  load <@term/term/task/term/shared-nodes>, name shared-nodes
+  load <@term/term/task/term/node-tree-read>, name tree-read
+
+# host value: a corpus's options, shaped for shared-nodes' `corpus`
+bind corpus-options
+  take sample, like number
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ sample: $sample, seed: $seed \})>
+
+# host value: a unit, shaped for shared-nodes' `build`
+bind unit-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+# host value: a node built by hand, read from its JSON
+bind json-parse
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+# host value: a set of host objects, by identity
+bind object-set
+  take seed, like number
+  like dynamic
+  case node
+    text <new Set()>
+
+bind set-has
+  take set, like dynamic
+  take value, like dynamic
+  like boolean
+  case node
+    text <$set.has($value)>
+
+bind set-add
+  take set, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$set.add($value)>
+
+bind set-values
+  take set, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$set]>
+
+# host value: a map from host objects, by identity
+bind object-map
+  take seed, like number
+  like dynamic
+  case node
+    text <new Map()>
+
+bind map-has
+  take map, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <$map.has($key)>
+
+bind map-flag
+  take map, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <$map.get($key)>
+
+bind map-get
+  take map, like dynamic
+  take key, like dynamic
+  like dynamic
+  case node
+    text <$map.get($key)>
+
+bind map-put
+  take map, like dynamic
+  take key, like dynamic
+  take flag, like boolean
+  like dynamic
+  case node
+    text <$map.set($key, $flag)>
+
+# host reflect: whether a record holds a key, whatever its value
+bind has-field
+  take value, like dynamic
+  take field, like text
+  like boolean
+  case node
+    text <($field in $value)>
+
+# host reflect: whether two host values are one object
+bind same-object
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <$left === $right>
+
+# host value: a raised exception's words
+bind cause-text
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+task no-skip
+  like list, like text
+
+  back make list
+
+task skip-row
+  like list, like text
+
+  back make list(<placeRow>)
+
+# every object and list reachable from a value, a `span` never entered
+task reach
+  take value, like dynamic
+  take out, like dynamic
+  like void
+
+  host kind, kind-of(value)
+  fork test, and(is-unequal(kind, <list>), is-unequal(kind, <object>))
+    hold
+      back
+  fork test, set-has(out, value)
+    hold
+      back
+  set-add(out, value)
+  fork test, is-equal(kind, <list>)
+    hold
+      walk value
+        take one, like dynamic
+        reach(one, out)
+      back
+  walk fields-of(value)
+    take key, like text
+    fork test, is-unequal(key, <span>)
+      hold
+        reach(field-of(value, key), out)
+
+# how many objects reachable from a value carry a `placeRow` key
+task stamped-objects
+  take value, like dynamic
+  like number
+
+  host all, object-set(0)
+  reach(value, all)
+  save count, 0
+  walk set-values(all)
+    take one, like dynamic
+    fork test, is-unequal(kind-of(one), <list>)
+      hold
+        fork test, has-field(one, <placeRow>)
+          hold
+            save count, add(count, 1)
+  back count
+
+form share-tally
+  mark shared
+  link count, like number
+
+# whether a value of the copy holds a place of the copy at any depth (or is one), each object asked once. One the input
+# holds too is counted. A `span`, a `type` and a record that holds no node stay as they were
+task holds-place
+  take value, like dynamic
+  take before, like dynamic
+  take places, like dynamic
+  take holding, like dynamic
+  take tally, like share-tally
+  like boolean
+
+  host kind, kind-of(value)
+  fork test, and(is-unequal(kind, <list>), is-unequal(kind, <object>))
+    hold
+      back false
+  fork test, map-has(holding, value)
+    hold
+      back map-flag(holding, value)
+  map-put(holding, value, false)
+  save holds, set-has(places, value)
+  fork test, is-equal(kind, <list>)
+    hold
+      walk value
+        take inner, like dynamic
+        fork test, holds-place(inner, before, places, holding, tally)
+          hold
+            save holds, true
+    miss
+      walk fields-of(value)
+        take key, like text
+        fork test, and(is-unequal(key, <span>), is-unequal(key, <type>))
+          hold
+            fork test, holds-place(field-of(value, key), before, places, holding, tally)
+              hold
+                save holds, true
+  map-put(holding, value, holds)
+  fork test, holds
+    hold
+      fork test, set-has(before, value)
+        hold
+          save tally/count, add(tally/count, 1)
+  back holds
+
+# the objects of the copy that hold a place of the copy at any depth (or are one) and that the input holds too: what the
+# copy shares with its input
+task shared-with-input
+  take input, like dynamic
+  take copy, like dynamic
+  like number
+
+  host before, object-set(0)
+  reach(input, before)
+  host places, object-set(0)
+  walk shared-nodes/places-of(copy)
+    take row, like dynamic
+    set-add(places, row/node)
+  host holding, object-map(0)
+  host tally, make(share-tally, bind(count, 0))
+  holds-place(copy, before, places, holding, tally)
+  back tally/count
+
+# ---- the corpus ----
+
+# the names of a node.tree record's variants
+task variant-names
+  take kind, like text
+  like list, like text
+
+  host found, map-get(tree-read/known-records(), kind)
+  host names, make list
+  walk found/variants
+    take one, like dynamic
+    names/push(one/name)
+  back names
+
+host expression-cases, variant-names(<expression>)
+
+host statement-cases, variant-names(<statement>)
+
+form cases-met
+  mark shared
+  link expression, like list, like text
+  link statement, like list, like text
+
+host met, make(cases-met, bind(expression, make list), bind(statement, make list))
+
+# a name both kinds declare counts for both: the census does not say which kind a place is
+task meet
+  take rows, like list, like dynamic
+  like void
+
+  walk rows
+    take row, like dynamic
+    host named, row/node/form
+    fork test, contains(statement-cases, named)
+      hold
+        fork test, not(contains(met/statement, named))
+          hold
+            met/statement/push(named)
+    fork test, contains(expression-cases, named)
+      hold
+        fork test, not(contains(met/expression, named))
+          hold
+            met/expression/push(named)
+
+form stage-total
+  mark shared
+  link programs, like number
+  link places, like number
+  link misstamped, like number
+  link shared-places, like number
+  link unequal, like number
+  link moved, like number
+  link input-stamped, like number
+  link shared-objects, like number
+  link input-shared, like number
+  link threw, like number
+  link not-built, like number
+
+task blank-total
+  like stage-total
+
+  back make(stage-total, bind(programs, 0), bind(places, 0), bind(misstamped, 0), bind(shared-places, 0), bind(unequal, 0), bind(moved, 0), bind(input-stamped, 0), bind(shared-objects, 0), bind(input-shared, 0), bind(threw, 0), bind(not-built, 0))
+
+host checked-total, blank-total()
+
+host lowered-total, blank-total()
+
+form stamp-try
+  link copy, like dynamic
+  link threw, like text
+
+# the stamp of a program, or the words it raised
+task stamp-guarded
+  take program, like dynamic
+  like stamp-try
+
+  fork
+    mark unsafe
+    host copy, stamp-module/stamp-places(program)
+    back make(stamp-try, bind(copy, copy), bind(threw, <>))
+  halt take
+    take cause
+    back make(stamp-try, bind(copy, no-skip()), bind(threw, <threw {cause-text(cause)}>))
+
+# one unit at one stage, counted into its stage's total
+task run-stage
+  take unit, like dynamic
+  take total, like stage-total
+  take lowered, like boolean
+  like void
+
+  host built, shared-nodes/build(unit, lowered)
+  fork test, is-unequal(kind-of(built/program), <list>)
+    hold
+      save total/not-built, add(total/not-built, 1)
+      back
+  host program, built/program
+  save total/programs, add(total/programs, 1)
+  host before, node-json/programJson(no-skip(), program)
+  host input-census, shared-nodes/census(program, false)
+  save total/input-shared, add(total/input-shared, input-census/shared-places)
+  host tried, stamp-guarded(program)
+  fork test, is-unequal(tried/threw, <>)
+    hold
+      save total/threw, add(total/threw, 1)
+      back
+  host copy, tried/copy
+  host counted, shared-nodes/census(copy, true)
+  save total/places, add(total/places, counted/places)
+  save total/misstamped, add(total/misstamped, counted/misstamped)
+  save total/shared-places, add(total/shared-places, counted/shared-places)
+  host copy-json, node-json/programJson(skip-row(), copy)
+  fork test, is-unequal(copy-json, before)
+    hold
+      save total/unequal, add(total/unequal, 1)
+  host after, node-json/programJson(no-skip(), program)
+  fork test, is-unequal(after, before)
+    hold
+      save total/moved, add(total/moved, 1)
+  save total/input-stamped, add(total/input-stamped, stamped-objects(program))
+  save total/shared-objects, add(total/shared-objects, shared-with-input(program, copy))
+  meet(shared-nodes/places-of(copy))
+
+form corpus-state
+  mark shared
+  link ran, like boolean
+
+host corpus-now, make(corpus-state, bind(ran, false))
+
+# the corpus, run once, each unit at the checked stage and then the lowered one
+task corpus-once
+  like void
+
+  fork test, corpus-now/ran
+    hold
+      back
+  save corpus-now/ran, true
+  walk shared-nodes/corpus(corpus-options(30, 7))
+    take unit, like dynamic
+    run-stage(unit, checked-total, false)
+    run-stage(unit, lowered-total, true)
+
+task totals-of
+  take stage, like text
+  like stage-total
+
+  corpus-once()
+  fork test, is-equal(stage, <checked>)
+    hold
+      back checked-total
+  back lowered-total
+
+test <the corpus built programs at both stages>
+  host checked, totals-of(<checked>)
+  host lowered, totals-of(<lowered>)
+  want hold, is-above(checked/programs, 0)
+  want hold, is-above(lowered/programs, 0)
+
+test <the lowered corpus shares places, so the stamp has sharing to undo>
+  host lowered, totals-of(<lowered>)
+  want hold, is-above(lowered/input-shared, 0)
+
+test <checked: every stamp ran>
+  host t, totals-of(<checked>)
+  want hold, is-equal(t/threw, 0)
+
+test <checked: every place carries its row plus one>
+  host t, totals-of(<checked>)
+  want hold, is-equal(t/misstamped, 0)
+  want hold, is-above(t/places, 0)
+
+test <checked: no place of a copy shares an object>
+  host t, totals-of(<checked>)
+  want hold, is-equal(t/shared-places, 0)
+
+test <checked: every copy is node-json-equal to its input, placeRow skipped>
+  host t, totals-of(<checked>)
+  want hold, is-equal(t/unequal, 0)
+
+test <checked: no input was written>
+  host t, totals-of(<checked>)
+  want hold, is-equal(t/moved, 0)
+  want hold, is-equal(t/input-stamped, 0)
+
+test <checked: no copy shares a place or a record holding one with its input>
+  host t, totals-of(<checked>)
+  want hold, is-equal(t/shared-objects, 0)
+
+test <lowered: every stamp ran>
+  host t, totals-of(<lowered>)
+  want hold, is-equal(t/threw, 0)
+
+test <lowered: every place carries its row plus one>
+  host t, totals-of(<lowered>)
+  want hold, is-equal(t/misstamped, 0)
+  want hold, is-above(t/places, 0)
+
+test <lowered: no place of a copy shares an object>
+  host t, totals-of(<lowered>)
+  want hold, is-equal(t/shared-places, 0)
+
+test <lowered: every copy is node-json-equal to its input, placeRow skipped>
+  host t, totals-of(<lowered>)
+  want hold, is-equal(t/unequal, 0)
+
+test <lowered: no input was written>
+  host t, totals-of(<lowered>)
+  want hold, is-equal(t/moved, 0)
+  want hold, is-equal(t/input-stamped, 0)
+
+test <lowered: no copy shares a place or a record holding one with its input>
+  host t, totals-of(<lowered>)
+  want hold, is-equal(t/shared-objects, 0)
+
+# ---- built by hand ----
+
+host hand-text, <load @term/base/exception\n  find excess\n\nform upload-excess\n  like excess\n    bind note, \<Upload 😀 𝔸 too large\>\n    link policy, like text\n\ntask first\n  take a, like number\n  like number\n  back add(a, 1)\n\ntask second\n  take a, like number\n  like number\n  back add(a, 2)\n>
+
+host span-json, <\{"start":\{"line":1,"column":1\},"end":\{"line":1,"column":2\}\}>
+
+# the first statement of a program of the form and name given
+task statement-named
+  take program, like dynamic
+  take kind, like text
+  take name, like text
+  like dynamic
+
+  walk program
+    take one, like dynamic
+    fork test, is-equal(one/form, kind)
+      hold
+        fork test, is-equal(one/name, name)
+          hold
+            back one
+  halt <place-stamp: the hand program has no {kind} {name}>
+
+# whether a record-type's extend holds a first pin
+task has-extend-pin
+  take excess-form, like dynamic
+  like boolean
+
+  fork test, is-unequal(kind-of(excess-form/extend), <object>)
+    hold
+      back false
+  fork test, is-unequal(kind-of(excess-form/extend/pins), <list>)
+    hold
+      back false
+  back is-above(excess-form/extend/pins/length, 0)
+
+# a node's row, read off it
+task row-of
+  take node, like dynamic
+  like dynamic
+
+  back field-of(node, <placeRow>)
+
+form hand-facts
+  link ok, like boolean
+  link program, like dynamic, fall void
+  link copy, like dynamic, fall void
+  link before, like text, fall <>
+  link twice, like dynamic, fall void
+  link named, like dynamic, fall void
+  link value-arg, like dynamic, fall void
+  link pin, like dynamic, fall void
+  link first-task, like dynamic, fall void
+  link second-task, like dynamic, fall void
+  link excess-form, like dynamic, fall void
+  link copy-first, like dynamic, fall void
+  link copy-second, like dynamic, fall void
+  link copy-excess, like dynamic, fall void
+  link sum, like dynamic, fall void
+
+# the hand program built, written by hand where it shares, and stamped
+task hand-case
+  like hand-facts
+
+  host built, shared-nodes/build(unit-of(<test/compile/place-stamp-hand.tree>, hand-text), false)
+  fork test, is-unequal(kind-of(built/program), <list>)
+    hold
+      back make(hand-facts, bind(ok, false))
+  save program, built/program
+  save first-task, statement-named(program, <function>, <first>)
+  save second-task, statement-named(program, <function>, <second>)
+  save excess-form, statement-named(program, <record-type>, <upload-excess>)
+  # one literal at two places
+  save twice, json-parse(<\{"form":"string","value":"twice 😀 𝔸","span":{span-json}\}>)
+  save sum, json-parse(<\{"form":"binary","op":"+","span":{span-json}\}>)
+  save sum/left, twice
+  save sum/right, twice
+  save returned, json-parse(<\{"form":"return","span":{span-json}\}>)
+  save returned/value, sum
+  save first-task/body, make list(returned)
+  # one named type with a value argument, as two functions' result
+  save value-arg, json-parse(<\{"form":"integer","value":3,"span":{span-json}\}>)
+  save named, json-parse(<\{"kind":"named","name":"vec"\}>)
+  save named/value-args, make list(value-arg)
+  save first-task/result, named
+  save second-task/result, named
+  # one pin record in extend.pins and pins
+  save pin, json-parse(<\{"name":"note","value":\{"form":"string","value":"Upload 😀 𝔸 too large","span":{span-json}\}\}>)
+  fork test, has-extend-pin(excess-form)
+    hold
+      save pin, excess-form/extend/pins/0
+  fork test, is-equal(kind-of(excess-form/extend), <object>)
+    hold
+      save excess-form/extend/pins, make list(pin)
+  save excess-form/pins, make list(pin)
+  host before, node-json/programJson(no-skip(), program)
+  host copy, stamp-module/stamp-places(program)
+  host copy-first, statement-named(copy, <function>, <first>)
+  host copy-second, statement-named(copy, <function>, <second>)
+  host copy-excess, statement-named(copy, <record-type>, <upload-excess>)
+  back make(hand-facts, bind(ok, true), bind(program, program), bind(copy, copy), bind(before, before), bind(twice, twice), bind(named, named), bind(value-arg, value-arg), bind(pin, pin), bind(first-task, first-task), bind(second-task, second-task), bind(excess-form, excess-form), bind(copy-first, copy-first), bind(copy-second, copy-second), bind(copy-excess, copy-excess), bind(sum, copy-first/body/0/value))
+
+form hand-held
+  mark shared
+  link held, like hash, like text, like hand-facts
+
+host hand-now, make(hand-held, bind(held, make hash))
+
+task hand-of
+  like hand-facts
+
+  save key, <hand>
+  fork test, hand-now/held/has(key)
+    hold
+      back hand-now/held/{key}
+  save made, hand-case()
+  save hand-now/held/{key}, made
+  back made
+
+test <the hand program compiles>
+  host hand, hand-of()
+  want hold, hand/ok
+
+test <the hand record-type has an extend to share a pin through>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, is-unequal(kind-of(hand/excess-form/extend), <undefined>)
+
+test <one literal at two places comes back as two objects>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host sum, hand/sum
+  want hold, not(same-object(sum/left, sum/right))
+  want hold, not(same-object(sum/left, hand/twice))
+  want hold, not(same-object(sum/right, hand/twice))
+
+test <the two literals carry two rows, each above 0>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host left, row-of(hand/sum/left)
+  host right, row-of(hand/sum/right)
+  want hold, is-above(left, 0)
+  want hold, is-above(right, 0)
+  want hold, is-unequal(left, right)
+
+test <both literals keep the astral text>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, is-equal(hand/sum/left/value, <twice 😀 𝔸>)
+  want hold, is-equal(hand/sum/right/value, <twice 😀 𝔸>)
+
+test <the input still holds one literal object, with no placeRow>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host held, hand/first-task/body/0/value
+  want hold, same-object(held/left, held/right)
+  want hold, not(has-field(hand/twice, <placeRow>))
+
+test <one named type at two results comes back as two, each value argument its own with its own row>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host left-arg, hand/copy-first/result/value-args/0
+  host right-arg, hand/copy-second/result/value-args/0
+  want hold, not(same-object(hand/copy-first/result, hand/copy-second/result))
+  want hold, not(same-object(hand/copy-first/result, hand/named))
+  want hold, not(same-object(left-arg, right-arg))
+  want hold, is-above(row-of(left-arg), 0)
+  want hold, is-above(row-of(right-arg), 0)
+  want hold, is-unequal(row-of(left-arg), row-of(right-arg))
+
+test <the input still shares its named type, unstamped>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, same-object(hand/first-task/result, hand/second-task/result)
+  want hold, not(has-field(hand/value-arg, <placeRow>))
+
+test <one pin record at extend.pins and pins comes back as two, each value with its own row>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host extend-pin, hand/copy-excess/extend/pins/0
+  host own-pin, hand/copy-excess/pins/0
+  want hold, not(same-object(extend-pin, own-pin))
+  want hold, not(same-object(own-pin, hand/pin))
+  want hold, not(same-object(extend-pin/value, own-pin/value))
+  want hold, is-above(row-of(extend-pin/value), 0)
+  want hold, is-above(row-of(own-pin/value), 0)
+  want hold, is-unequal(row-of(extend-pin/value), row-of(own-pin/value))
+
+test <the input still shares its pin, unstamped>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, same-object(hand/excess-form/extend/pins/0, hand/excess-form/pins/0)
+  want hold, not(has-field(hand/pin/value, <placeRow>))
+
+test <the hand copy carries every row>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host counted, shared-nodes/census(hand/copy, true)
+  want hold, is-equal(counted/misstamped, 0)
+
+test <the hand copy shares no place>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  host counted, shared-nodes/census(hand/copy, true)
+  want hold, is-equal(counted/shared-places, 0)
+
+test <the hand copy is node-json-equal to its input, placeRow skipped>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, is-equal(node-json/programJson(skip-row(), hand/copy), hand/before)
+
+test <the hand input is unchanged>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, is-equal(node-json/programJson(no-skip(), hand/program), hand/before)
+  want hold, is-equal(stamped-objects(hand/program), 0)
+
+test <the hand copy shares nothing holding a place with its input>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, is-equal(shared-with-input(hand/program, hand/copy), 0)
+
+# same-place
+
+test <a stamped expression is at its own place>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, stamp-module/same-place(hand/sum/left, hand/sum/left)
+
+test <two places of one literal are not one place>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, not(stamp-module/same-place(hand/sum/left, hand/sum/right))
+
+test <an unstamped expression is at no place, not even its own>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, not(stamp-module/same-place(hand/twice, hand/twice))
+
+test <a stamped statement is at its own place>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, stamp-module/same-statement-place(hand/copy-first, hand/copy-first)
+
+test <two statements are not one place>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, not(stamp-module/same-statement-place(hand/copy-first, hand/copy-second))
+
+test <an unstamped statement is at no place>
+  host hand, hand-of()
+  fork test, not(hand/ok)
+    hold
+      skip <the hand program did not compile>
+  want hold, not(stamp-module/same-statement-place(hand/first-task, hand/first-task))
+
+# ---- every case, built by hand ----
+# the cases a corpus program rarely holds (a probe only `term test --cover` writes, a hole the checker resolves), each
+# built with its fields as node.tree declares them, the optional ones left out, and stamped beside the corpus's cases
+
+host first-return, <\{"form":"return","value":\{"form":"integer","value":1,"span":{span-json}\},"span":{span-json}\}>
+
+host second-return, <\{"form":"return","value":\{"form":"integer","value":2,"span":{span-json}\},"span":{span-json}\}>
+
+host conditional-json, <\{"form":"conditional","branches":[\{"cond":\{"form":"boolean","value":true,"span":{span-json}\},"value":\{"form":"null","span":{span-json}\}\}],"otherwise":\{"form":"unit","span":{span-json}\},"span":{span-json}\}>
+
+host every-json, <[\{"form":"exit","span":{span-json}\},\{"form":"debug","span":{span-json}\},\{"form":"probe","key":"a.tree:1","span":{span-json}\},\{"form":"guard","body":[{first-return}],"catch":\{"name":"problem","body":[{second-return}],"span":{span-json}\},"span":{span-json}\},\{"form":"hold","expr":\{"form":"boolean","value":true,"span":{span-json}\},"span":{span-json}\},\{"form":"mask","name":"show","methods":[],"span":{span-json}\},\{"form":"instance","mask":"show","target":"thing","methods":[],"span":{span-json}\},\{"form":"view","name":"card","params":[],"body":[],"span":{span-json}\},\{"form":"roll","name":"kind","like":"text","span":{span-json}\},\{"form":"tell","name":"upload-excess","links":[],"span":{span-json}\},\{"form":"function","name":"every","params":[],"body":[\{"form":"return","value":{conditional-json},"span":{span-json}\},\{"form":"expression","expr":\{"form":"hole","name":"later","span":{span-json}\},"span":{span-json}\}],"generics":[],"span":{span-json}\}]>
+
+form every-facts
+  link program, like dynamic
+  link before, like text
+  link copy, like dynamic
+  link threw, like text
+
+# the every-case program stamped, its places met after the corpus's
+task every-case
+  like every-facts
+
+  corpus-once()
+  host program, json-parse(every-json)
+  host before, node-json/programJson(no-skip(), program)
+  host tried, stamp-guarded(program)
+  fork test, is-equal(tried/threw, <>)
+    hold
+      meet(shared-nodes/places-of(tried/copy))
+  back make(every-facts, bind(program, program), bind(before, before), bind(copy, tried/copy), bind(threw, tried/threw))
+
+form every-held
+  mark shared
+  link held, like hash, like text, like every-facts
+
+host every-now, make(every-held, bind(held, make hash))
+
+task every-of
+  like every-facts
+
+  save key, <every>
+  fork test, every-now/held/has(key)
+    hold
+      back every-now/held/{key}
+  save made, every-case()
+  save every-now/held/{key}, made
+  back made
+
+# the cases of a kind node.tree declares that neither the corpus nor the every-case program reached
+task missing-cases
+  take cases, like list, like text
+  take reached, like list, like text
+  like list, like text
+
+  host missing, make list
+  walk cases
+    take name, like text
+    fork test, not(contains(reached, name))
+      hold
+        missing/push(name)
+  back missing
+
+test <every hand-built case stamps>
+  host every, every-of()
+  want hold, is-equal(every/threw, <>)
+
+test <the every-case copy carries every row and shares no place>
+  host every, every-of()
+  fork test, is-unequal(every/threw, <>)
+    hold
+      skip <the every-case stamp threw>
+  host counted, shared-nodes/census(every/copy, true)
+  want hold, is-equal(counted/misstamped, 0)
+  want hold, is-equal(counted/shared-places, 0)
+
+test <the every-case copy is node-json-equal to its input, placeRow skipped>
+  host every, every-of()
+  fork test, is-unequal(every/threw, <>)
+    hold
+      skip <the every-case stamp threw>
+  want hold, is-equal(node-json/programJson(skip-row(), every/copy), every/before)
+
+test <the every-case input is unchanged>
+  host every, every-of()
+  fork test, is-unequal(every/threw, <>)
+    hold
+      skip <the every-case stamp threw>
+  want hold, is-equal(node-json/programJson(no-skip(), every/program), every/before)
+  want hold, is-equal(stamped-objects(every/program), 0)
+
+test <every expression case of node.tree is reached>
+  host every, every-of()
+  want hold, is-equal(missing-cases(expression-cases, met/expression), make list)
+
+test <every statement case of node.tree is reached>
+  host every, every-of()
+  want hold, is-equal(missing-cases(statement-cases, met/statement), make list)

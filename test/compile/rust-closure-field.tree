@@ -1,0 +1,138 @@
+note <a call through a closure field, and a record built from a function field in a loop, build and run on Rust>
+
+# Ported from rust-closure-field.ts by statement (item term-self-host-001-0658), one test per `ok` in its order. Two Rust
+# defects the repair-loop port found (self-hosting, 2026-10-04), held through rustc and RUN against TypeScript's answer:
+#   1. a call through a CLOSURE FIELD (`(b.apply)(items, n)`) whose argument borrows the list another argument hands
+#      over: compile/rust hoisted that argument into `__lend_1`, but the closure-field path skipped the wrapper that
+#      declares it, so rustc found `__lend_1` named and never declared (E0425)
+#   2. a record built from a FUNCTION-typed field of another (`make box / bind apply, b/apply`) inside a loop: a
+#      function-typed value was never cloned, and a field of function type is an `Rc<dyn Fn>`, so the first turn moved
+#      it out of `b` and the second used it moved (E0382)
+#
+# The program is compiled over the stdlib for node and for rust, as withNativeEnv(env, stdlibResolver()) asked. The
+# original imported the TypeScript program and called `run`. Here it is written with the stdlib's main for node and run
+# by node with tsx's loader. The Rust leg is the emitted program and the original's own main, built by rustc once, by
+# the first test that asks. Where the original named a refused compile "the program builds for node" (or rust), the test
+# of that leg fails on `out/ok`. With rustc missing its two tests skip, where the original printed one skip line, and a
+# Rust answer is not asked of a build that failed, as the original did not ask it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+
+load ../support/running
+  find run-tool
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find trim
+
+dock load
+  load <@term/make/code/compile/native-main>, name field-main
+  load <node:path>, name field-path
+
+host program, <load @term/base/list\n  find list\n\nform box\n  link apply\n    like task\n      take items, like list, like number\n      take n, like number\n      like number\n  link items, like list, like number\n\ntask total-of\n  take items, like list, like number\n  take n, like number\n  like number\n  send back\n    call add\n      call size\n        read items\n      read n\n\ntask run\n  like number\n  save items, make list\n  call items/push\n    code 1\n  call items/push\n    code 2\n  save b\n    make box\n      bind apply, read total-of\n      bind items, read items\n  save sum, code 0\n  save k, code 0\n  walk test\n    hook test\n      call is-below\n        read k\n        code 3\n    hook hold\n      save again\n        make box\n          bind apply, read b/apply\n          bind items, read b/items\n      save sum\n        call add\n          read sum\n          call again/apply\n            read items\n            call size\n              read items\n      save k\n        call add\n          read k\n          code 1\n  send back, read sum\n>
+
+host want, <12>
+
+# the original's Rust main
+host rust-main, <\nfn main() \{\n    println!("\{\}", run());\n\}\n>
+
+task compiled
+  take env, like text
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <closure-field.tree>), bind(stdlib, env), bind(env, env), bind(entry, <run>)))
+
+host on-node, compiled(<node>)
+
+host on-rust, compiled(<rust>)
+
+# what the TypeScript program's `run` answered, run by node
+task node-answer
+  like text
+
+  save folder, temp-folder(<term-rust-closure-field->)
+  save file, field-path/join(folder, <module.ts>)
+  save code, on-node/emitted
+  write-file(file, <{prelude-text(on-node, <node>, code)}\n{code}\n{field-main/native-main(<node>, code, <run>)}\n>)
+  save ran, run(<node>, make list(<--import>, <tsx>, file))
+  back trim(ran/output)
+
+# the Rust program built and run. `state` is <skipped>, <failed> (the build) or <ran>
+form field-run
+  link state, like text
+  link reason, like text, fall <>
+  link output, like text, fall <>
+
+form field-held
+  mark shared
+  link made, like boolean
+  link run, like field-run
+
+host field-now, make(field-held, bind(made, false), bind(run, make(field-run, bind(state, <skipped>))))
+
+task field-made
+  like field-run
+
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      back make(field-run, bind(state, <skipped>), bind(reason, <rustc not installed>))
+  save folder, temp-folder(<term-rust-closure-field->)
+  save file, field-path/join(folder, <main.rs>)
+  save binary, field-path/join(folder, <main>)
+  write-file(file, <{emit-text(on-rust, <rust>)}{rust-main}>)
+  save failed, run-tool(make list(<rustc>, <--edition>, <2021>, <-A>, <warnings>, <-o>, binary, file))
+  fork test, is-unequal(failed, <>)
+    hold
+      back make(field-run, bind(state, <failed>), bind(reason, failed))
+  save ran, run(binary, make list)
+  back make(field-run, bind(state, <ran>), bind(output, trim(ran/output)))
+
+# the run, made once
+task field-ran
+  like field-run
+
+  fork test, not(field-now/made)
+    hold
+      save field-now/run, field-made()
+      save field-now/made, true
+  back field-now/run
+
+test <TypeScript answers 3 turns of 2 + 2>
+  want hold, on-node/ok
+  save answer, node-answer()
+  want hold, is-equal(answer, want)
+
+test <rustc compiles it>
+  want hold, on-rust/ok
+  host ran, field-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  want hold, is-equal(ran/state, <ran>)
+
+test <Rust answers what TypeScript does>
+  want hold, on-rust/ok
+  host ran, field-ran()
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip ran/reason
+  fork test, is-equal(ran/state, <failed>)
+    hold
+      skip <the Rust program did not build>
+  want hold, is-equal(ran/output, want)

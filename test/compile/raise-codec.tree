@@ -1,0 +1,732 @@
+note <a raise crosses a parallel walk as one tree/code shape, the same bytes on TypeScript and Rust, and fills back to its raise>
+
+# Ported from raise-codec.ts by statement (item term-self-host-001-0658), one test case per `ok` (decision 078 section 4
+# of note/project/term/self-host/change/001-finish-self-host, item 0421). Five raises, each caught in Term and melted:
+# `over-limit` (text and number props), `wrapped` holding it as its cause, `wrapped` holding that one, a `failure` of a
+# text (no props record), and `gathered`, whose props hold an exception and a list of them beside a number (decision 078
+# section 2, item 0439). `gather` keeps the caught raise in a local list and names it twice in one list literal (item
+# 0455). `told` hands a caught raise to a parameter typed `exception` and a list of them to one typed a list of
+# exceptions (decision 085, item 0460). For each, on each backend: the bytes filled and melted again are the bytes, the
+# filled raise re-raised sifts as its form with its props, the bytes are the other backend's with `code` and `time` set
+# aside, and the other backend's bytes fill and melt back to themselves.
+#
+# The bytes are read with compile/host-code's decoder and written with its encoder, the codec this suite is about,
+# docked as decision 106 allows, as the original read them. Each program is built and run once per backend and kept in a
+# shared table. The original's loop over the five raises with two asserts each is two walked tests per backend, each
+# raise a case. Its seven asserts per backend after that are seven tests walked over the backends, each backend a case.
+# The cross asserts are walked over the raises. So the count is the original's 59 (17 per backend, 5 compared, 10 per
+# backend crossed), in another order. A program that does not build or run was one FAIL in the original and is a FAIL
+# in each test of its backend here. A backend without its toolchain was one skip line in the original and is a skip in
+# each of its cases here. The project is a temp folder linking deck/base and deck/host, every program written to one
+# path under its code folder, which every frame names, as the original's. RAISE_NATIVE=0 leaves Rust out.
+
+load ../support/running
+  find run-text
+
+load ../support/compiling
+  find compile-choice
+
+load ../support/judging
+  find make-record
+  find truth
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find split, name text-split
+  find substring
+
+load @term/base/list
+  find list
+
+dock load
+  load <@term/make/code/compile/host-code>, name code-module
+  load <node:fs>, name raise-file
+  load <node:path>, name raise-path
+
+# host value: the bytes a text of hex digits spells
+bind bytes-of-hex
+  take hex, like text
+  like dynamic
+  case node
+    text <Uint8Array.from(Buffer.from($hex, "hex"))>
+
+# host value: bytes as hex digits
+bind hex-of-bytes
+  take bytes, like dynamic
+  like text
+  case node
+    text <Buffer.from($bytes).toString("hex")>
+
+# host value: a value as JSON, as the original compared each field
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# host value: no value, what a field that is not there reads as
+bind nothing
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+# host value: whether a value is not there
+bind is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# ---- the program: the raises when no bytes are given, else the bytes given, each filled, melted and re-raised ----
+
+host raise-loads, <load @term/base/exception\n  find exception\n\nload @term/base/maybe\n  find maybe\n\nload @term/host/code/base\n  find data\n  find to-code\n  find from-code\n\nload @term/base/list\n  find list\n  find get\n\nload @term/base/bytes\n  find to-hex\n  find from-hex\n\n>
+
+host raise-forms, <form over-limit\n  like exception\n    bind note, \<Over the limit\>\n    link limit, like number\n    link label, like text\n\nform wrapped\n  like exception\n    bind note, \<Wrapped\>\n    link step, like text\n\nform gathered\n  like exception\n    bind note, \<Gathered\>\n    link first, like exception\n    link rest, like list, like exception\n    link count, like number\n\n>
+
+host bind-cases, <  case browser\n    text \<0\>\n  case swift\n    text \<0\>\n  case kotlin\n    text \<0\>>
+
+host raise-binds, <bind melt-raise\n  take raised, like exception\n  like data\n  case node\n    text \<__termMeltRaise($raised)\>\n  case rust\n    text \<term_melt_raise(&$raised)\>\n{bind-cases}\n\nbind fill-melt\n  take given, like data\n  like data\n  case node\n    text \<__termMeltRaise(__termFillRaise($given))\>\n  case rust\n    text \<term_melt_raise(&term_fill_raise($given).unwrap_or_else(|e| e))\>\n{bind-cases}\n\nbind reraise\n  take given, like data\n  like number\n  case node\n    text \<(() =\\\> \\\{ throw __termFillRaise($given) \\\})()\>\n  case rust\n    text \<\\\{ return std::result::Result::Err(match term_fill_raise($given) \\\{ Ok(e) =\\\> e, Err(e) =\\\> e \\\}); \\\}\>\n{bind-cases}\n\n>
+
+host raise-throws, <task spin\n  take xs, like list, like number\n  like number\n  walk xs, mark parallel\n    take x\n    save y, check(x)\n  back 0\n\ntask check\n  take n, like number\n  like number\n  fork test, is-above(n, 3)\n    hold\n      halt over-limit\n        bind limit, n\n        bind label, \<cap\>\n  back n\n\ntask outer\n  take n, like number\n  like number\n  fork\n    mark unsafe\n    save x, check(n)\n    back x\n  halt take\n    take problem\n    halt wrapped\n      bind step, \<outer\>\n      bind base, make(some, problem)\n  back 0\n\ntask outer2\n  take n, like number\n  like number\n  fork\n    mark unsafe\n    save x, outer(n)\n    back x\n  halt take\n    take problem\n    halt wrapped\n      bind step, \<outer2\>\n      bind base, make(some, problem)\n  back 0\n\ntask text-fail\n  take n, like number\n  like number\n  fork test, is-above(n, 3)\n    hold\n      halt \<too many \{n\}\>\n  back n\n\ntask gather\n  take n, like number\n  like number\n  fork\n    mark unsafe\n    save x, outer(n)\n    back x\n  halt take\n    take problem\n    save caught, make list\n    push(caught, problem)\n    save kept, get(caught, 0)\n    halt gathered\n      bind first, kept\n      bind rest, make list(problem, problem)\n      bind count, caught/length\n  back 0\n\n>
+
+host raise-tells, <task describe\n  take e, like exception\n  like text\n  back \<\{e/form\}:\{e/link/step\}\>\n\ntask count-told\n  take all, like list, like exception\n  like text\n  save forms, make list\n  walk all\n    take one\n    push(forms, one/form)\n  back \<\{all/length\}:\{join(forms, \<,\>)\}\>\n\ntask told\n  take n, like number\n  like text\n  fork\n    mark unsafe\n    save x, outer(n)\n    back \<none\>\n  halt take\n    take problem\n    save kept, make list\n    push(kept, problem)\n    back \<\{describe(problem)\}/\{count-told(kept)\}/\{count-told(make list(problem, problem))\}\>\n  back \<none\>\n\n>
+
+host raise-crosses, <task crossed\n  take given, like data\n  take n, like number\n  like number\n  fork test, is-below(n, 0)\n    hold\n      halt over-limit\n        bind limit, 0\n        bind label, \<never\>\n  fork test, is-below(n, -1)\n    hold\n      halt wrapped\n        bind step, \<never\>\n  fork test, is-below(n, -2)\n    hold\n      save g, gather(9)\n  save z, reraise(given)\n  back z\n\ntask hex-of\n  take one, like data\n  like text\n  back to-hex(to-code(one))\n\ntask data-of\n  take hex, like text\n  like data\n  back get(from-code(from-hex(hex)), 0)\n\ntask again\n  take hex, like text\n  like text\n  save round, hex-of(fill-melt(data-of(hex)))\n  save given, data-of(hex)\n  fork\n    mark unsafe\n    save z, crossed(given, 1)\n  halt take\n    take problem\n    sift problem\n      case over-limit\n        back \<\{round\}|\{problem/form\}:\{limit\}:\{label\}\>\n      case wrapped\n        back \<\{round\}|\{problem/form\}:\{step\}\>\n      case gathered\n        back \<\{round\}|\{problem/form\}:\{first/form\}:\{rest/length\}\>\n      miss\n        back \<\{round\}|\{problem/form\}:\{problem/note\}\>\n  back \<\{round\}|none\>\n\ntask run\n  like text\n  save out, make list\n>
+
+host raise-head, <{raise-loads}{raise-forms}{raise-binds}{raise-throws}{raise-tells}{raise-crosses}>
+
+# each raising task called on 9, caught, melted and kept as hex
+host raise-pushes, <  fork\n    mark unsafe\n    save raised0, check(9)\n  halt take\n    take problem\n    push(out, hex-of(melt-raise(problem)))\n  fork\n    mark unsafe\n    save raised1, outer(9)\n  halt take\n    take problem\n    push(out, hex-of(melt-raise(problem)))\n  fork\n    mark unsafe\n    save raised2, outer2(9)\n  halt take\n    take problem\n    push(out, hex-of(melt-raise(problem)))\n  fork\n    mark unsafe\n    save raised3, text-fail(9)\n  halt take\n    take problem\n    push(out, hex-of(melt-raise(problem)))\n  fork\n    mark unsafe\n    save raised4, gather(9)\n  halt take\n    take problem\n    push(out, hex-of(melt-raise(problem)))\n>
+
+host raise-tail, <  save lines, make list\n  walk out\n    take hex\n    push(lines, \<\{hex\}|\{again(hex)\}\>)\n  push(lines, \<told|\{told(9)\}\>)\n  back join(lines, \<\\n\>)\n>
+
+host cross-tail, <  save lines, make list\n  walk out\n    take hex\n    push(lines, \<\{hex\}|\{again(hex)\}\>)\n  back join(lines, \<\\n\>)\n>
+
+# ---- the project ----
+
+host root, temp-folder(<term-raise-codec->)
+
+task folder
+  take path, like text
+  like text
+
+  raise-file/mkdir-sync(path, make-record(make(list, <recursive>, true)))
+  back path
+
+# link/@term/base and link/@term/host at the real decks, a deck.tree, a code folder, and an out folder for the builds
+task set-up
+  take seed, like number
+  like text
+
+  host links, folder(raise-path/join(root, <link>, <@term>))
+  folder(raise-path/join(root, <code>))
+  raise-file/symlink-sync(raise-path/join(term-root(), <deck>, <base>), raise-path/join(links, <base>))
+  raise-file/symlink-sync(raise-path/join(term-root(), <deck>, <host>), raise-path/join(links, <host>))
+  raise-file/write-file-sync(raise-path/join(root, <deck.tree>), <deck @probe/raise-codec\n  code \<0.0.0\>\n>)
+  back folder(raise-path/join(root, <out>))
+
+host out, set-up(0)
+
+# one path on every backend, which every frame names
+host file, raise-path/join(root, <code>, <raise-codec.tree>)
+
+# ---- the raises, and what a handler that catches each again reads ----
+
+task case-names
+  like list, like text
+
+  back make list(<over-limit>, <a cause>, <a nested cause>, <failure of a text>, <exception props>)
+
+task case-sifted
+  like list, like text
+
+  back make list(<over-limit:9:cap>, <wrapped:outer>, <wrapped:outer2>, <failure:too many 9>, <gathered:wrapped:2>)
+
+# the place of a text in a list, -1 when it is not there
+task place-of
+  take all, like list, like text
+  take one, like text
+  like number
+
+  save at, 0
+  walk all
+    take each, like text
+    fork test, is-equal(each, one)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+task sifted-of
+  take name, like text
+  like text
+
+  save all, case-sifted()
+  back all/{place-of(case-names(), name)}
+
+task raise-backends
+  like list, like text
+
+  back make list(<typescript>, <rust>)
+
+# ---- each program built and run once, kept by its name ----
+
+# one program built and run. `state` is <skipped>, <failed> or <ran>, and `got` its output's lines
+form codec-leg
+  link state, like text
+  link reason, like text, fall <>
+  link got
+    like list, like text
+    fall make list
+
+form codec-legs
+  mark shared
+  link held, like hash, like text, like codec-leg
+
+host codec-held, make(codec-legs, bind(held, make hash))
+
+task leg-skipped
+  take reason, like text
+  like codec-leg
+
+  back make(codec-leg, bind(state, <skipped>), bind(reason, reason))
+
+task leg-failed
+  take reason, like text
+  like codec-leg
+
+  back make(codec-leg, bind(state, <failed>), bind(reason, reason))
+
+task leg-ran
+  take output, like text
+  like codec-leg
+
+  back make(codec-leg, bind(state, <ran>), bind(got, text-split(output, <\n>)))
+
+# what a leg printed at a line, <> past its end
+task got-at
+  take leg, like codec-leg
+  take at, like number
+  like text
+
+  fork test, is-below(at, leg/got/length)
+    hold
+      back leg/got/{at}
+  back <>
+
+# a part of a line split at its bars: the hex, the hex filled and melted again, and what the handler read
+task part-of
+  take line, like text
+  take at, like number
+  like text
+
+  save parts, text-split(line, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+task other-of
+  take backend, like text
+  like text
+
+  fork test, is-equal(backend, <typescript>)
+    hold
+      back <rust>
+  back <typescript>
+
+# whether RAISE_NATIVE leaves this backend in
+task wanted
+  take backend, like text
+  like boolean
+
+  fork test, is-equal(backend, <typescript>)
+    hold
+      back true
+  back is-unequal(variable(<RAISE_NATIVE>), <0>)
+
+# the program filling the bytes the other backend wrote for the five raises
+task cross-program
+  take given, like codec-leg
+  like text
+
+  save pushes, <>
+  save at, 0
+  walk case-names()
+    take one, like text
+    save hex, part-of(got-at(given, at), 0)
+    save pushes, <{pushes}  push(out, \<{hex}\>)\n>
+    save at, add(at, 1)
+  back <{raise-head}{pushes}{cross-tail}>
+
+# `kind` is <raise> for the raises, <cross> for the other backend's bytes, which runs only when both raise legs ran
+task leg-made
+  take kind, like text
+  take backend, like text
+  like codec-leg
+
+  fork test, not(wanted(backend))
+    hold
+      back leg-skipped(<RAISE_NATIVE=0 leaves {backend} out>)
+  save program, <{raise-head}{raise-pushes}{raise-tail}>
+  fork test, is-equal(kind, <cross>)
+    hold
+      save own, leg-of(<raise>, backend)
+      save given, leg-of(<raise>, other-of(backend))
+      fork test, or(is-unequal(own/state, <ran>), is-unequal(given/state, <ran>))
+        hold
+          back leg-skipped(<both raise programs must run first: {backend} {own/state}, {other-of(backend)} {given/state}>)
+      save program, cross-program(given)
+  save ran, run-text(program, backend, out, <{kind}-{backend}>, make(compile-choice, bind(project, root)), file)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back leg-skipped(ran/reason)
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      back leg-failed(<{ran/stage}: {substring(ran/reason, 0, 900)}>)
+  back leg-ran(ran/output)
+
+task leg-held
+  take key, like text
+  like boolean
+
+  back codec-held/held/has(key)
+
+task leg-at
+  take key, like text
+  like codec-leg
+
+  back codec-held/held/{key}
+
+task leg-keep
+  take key, like text
+  take made, like codec-leg
+  like void
+
+  save codec-held/held/{key}, made
+
+task leg-of
+  take kind, like text
+  take backend, like text
+  like codec-leg
+
+  save key, <{kind}-{backend}>
+  fork test, leg-held(key)
+    hold
+      back leg-at(key)
+  save made, leg-made(kind, backend)
+  leg-keep(key, made)
+  back made
+
+# ---- reading the bytes ----
+
+# the first value of a hex text's tree/code, nothing when it does not decode
+task decoded
+  take hex, like text
+  like dynamic
+
+  host got, code-module/decode-tree(bytes-of-hex(hex))
+  fork test, not(truth(got/ok))
+    hold
+      back nothing(0)
+  back got/values/0
+
+# a field of a hash, nothing when the value is not a hash or has no such field
+task field
+  take value, like dynamic
+  take name, like text
+  like dynamic
+
+  fork test, is-nothing(value)
+    hold
+      back nothing(0)
+  fork test, is-unequal(value/kind, <hash>)
+    hold
+      back nothing(0)
+  walk value/list
+    take entry, like dynamic
+    fork test, is-equal(entry/name, name)
+      hold
+        back entry/base
+  back nothing(0)
+
+task decoded-at
+  take leg, like codec-leg
+  take at, like number
+  like dynamic
+
+  back decoded(part-of(got-at(leg, at), 0))
+
+# a raise inside the props, as a field or a list's item (item 0439), masked as a cause is
+task is-raise
+  take value, like dynamic
+  like boolean
+
+  fork test, is-unequal(value/kind, <hash>)
+    hold
+      back false
+  walk value/list
+    take entry, like dynamic
+    fork test, is-equal(entry/name, <host>)
+      hold
+        back true
+  back false
+
+task hash-of
+  take entries, like list, like dynamic
+  like dynamic
+
+  back make-record(make(list, <kind>, <hash>, <list>, entries))
+
+task entry-of
+  take name, like text
+  take base, like dynamic
+  like dynamic
+
+  back make-record(make(list, <name>, name, <base>, base))
+
+# the raise with its `code` and `time` set aside, at every depth of its causes
+task masked
+  take value, like dynamic
+  like dynamic
+
+  fork test, is-unequal(value/kind, <hash>)
+    hold
+      back value
+  save entries, make list
+  walk value/list
+    take entry, like dynamic
+    entries/push(masked-entry(entry))
+  back hash-of(entries)
+
+task masked-entry
+  take entry, like dynamic
+  like dynamic
+
+  fork test, is-equal(entry/name, <code>)
+    hold
+      back entry-of(<code>, make-record(make(list, <kind>, <text>, <value>, <>)))
+  fork test, is-equal(entry/name, <time>)
+    hold
+      back entry-of(<time>, make-record(make(list, <kind>, <number>, <value>, 0)))
+  fork test, is-equal(entry/name, <base>)
+    hold
+      back entry-of(<base>, masked(entry/base))
+  fork test, is-equal(entry/name, <link>)
+    hold
+      back entry-of(<link>, masked-props(entry/base))
+  back entry
+
+task masked-props
+  take value, like dynamic
+  like dynamic
+
+  fork test, is-unequal(value/kind, <hash>)
+    hold
+      back value
+  save entries, make list
+  walk value/list
+    take entry, like dynamic
+    entries/push(entry-of(entry/name, masked-prop(entry/base)))
+  back hash-of(entries)
+
+task masked-prop
+  take base, like dynamic
+  like dynamic
+
+  fork test, is-raise(base)
+    hold
+      back masked(base)
+  fork test, is-unequal(base/kind, <list>)
+    hold
+      back base
+  save items, make list
+  walk base/list
+    take item, like dynamic
+    fork test, is-raise(item)
+      hold
+        items/push(masked(item))
+      miss
+        items/push(item)
+  back make-record(make(list, <kind>, <list>, <list>, items))
+
+task masked-hex
+  take value, like dynamic
+  like text
+
+  back hex-of-bytes(code-module/encode-tree(masked(value)))
+
+# ---- what the bytes hold ----
+
+host number-9, <\{"kind":"number","value":9\}>
+
+host number-1, <\{"kind":"number","value":1\}>
+
+host text-cap, <\{"kind":"text","value":"cap"\}>
+
+host form-over-limit, <\{"kind":"text","value":"over-limit"\}>
+
+host form-wrapped, <\{"kind":"text","value":"wrapped"\}>
+
+task limit-props
+  take leg, like codec-leg
+  like boolean
+
+  save props, field(decoded-at(leg, 0), <link>)
+  back and(is-equal(json-of(field(props, <limit>)), number-9), is-equal(json-of(field(props, <label>)), text-cap))
+
+task cause-holds
+  take leg, like codec-leg
+  like boolean
+
+  back is-equal(json-of(field(field(decoded-at(leg, 1), <base>), <form>)), form-over-limit)
+
+task nested-holds
+  take leg, like codec-leg
+  like boolean
+
+  save cause, field(decoded-at(leg, 2), <base>)
+  back and(is-equal(json-of(field(cause, <form>)), form-wrapped), is-equal(json-of(field(field(cause, <base>), <form>)), form-over-limit))
+
+task text-holds
+  take leg, like codec-leg
+  like boolean
+
+  save failed, decoded-at(leg, 3)
+  fork test, is-nothing(failed)
+    hold
+      back false
+  back and(is-nothing(field(failed, <link>)), is-nothing(field(failed, <base>)))
+
+task first-holds
+  take leg, like codec-leg
+  like boolean
+
+  save first, field(field(decoded-at(leg, 4), <link>), <first>)
+  back and(is-equal(json-of(field(first, <form>)), form-wrapped), is-equal(json-of(field(field(first, <base>), <form>)), form-over-limit))
+
+task rest-holds
+  take leg, like codec-leg
+  like boolean
+
+  save props, field(decoded-at(leg, 4), <link>)
+  save rest, field(props, <rest>)
+  fork test, is-nothing(rest)
+    hold
+      back false
+  fork test, is-unequal(rest/kind, <list>)
+    hold
+      back false
+  fork test, is-unequal(rest/list/length, 2)
+    hold
+      back false
+  walk rest/list
+    take item, like dynamic
+    fork test, is-unequal(json-of(field(item, <form>)), form-wrapped)
+      hold
+        back false
+  back is-equal(json-of(field(props, <count>)), number-1)
+
+# the told line: its first part `told`, its second what the handler passed on
+task told-of
+  take leg, like codec-leg
+  like text
+
+  walk leg/got
+    take line, like text
+    fork test, is-equal(part-of(line, 0), <told>)
+      hold
+        back part-of(line, 1)
+  back <no told line>
+
+# ---- each backend's own bytes ----
+
+test <typescript: fills and melts back to its own bytes>
+  take name, like text
+    walk case-names()
+  host leg, leg-of(<raise>, <typescript>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  save line, got-at(leg, place-of(case-names(), name))
+  want hold, and(is-unequal(part-of(line, 0), <>), is-equal(part-of(line, 1), part-of(line, 0)))
+
+test <typescript: re-raised is caught as its form and props>
+  take name, like text
+    walk case-names()
+  host leg, leg-of(<raise>, <typescript>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  save line, got-at(leg, place-of(case-names(), name))
+  want hold, is-equal(part-of(line, 2), sifted-of(name))
+
+test <rust: fills and melts back to its own bytes>
+  take name, like text
+    walk case-names()
+  host leg, leg-of(<raise>, <rust>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  save line, got-at(leg, place-of(case-names(), name))
+  want hold, and(is-unequal(part-of(line, 0), <>), is-equal(part-of(line, 1), part-of(line, 0)))
+
+test <rust: re-raised is caught as its form and props>
+  take name, like text
+    walk case-names()
+  host leg, leg-of(<raise>, <rust>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  save line, got-at(leg, place-of(case-names(), name))
+  want hold, is-equal(part-of(line, 2), sifted-of(name))
+
+test <over-limit's props are its own melt (limit 9, label cap)>
+  take backend, like text
+    walk raise-backends()
+  host leg, leg-of(<raise>, backend)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, limit-props(leg)
+
+test <a cause is the codec again, over-limit inside wrapped>
+  take backend, like text
+    walk raise-backends()
+  host leg, leg-of(<raise>, backend)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, cause-holds(leg)
+
+test <a nested cause holds wrapped holding over-limit>
+  take backend, like text
+    walk raise-backends()
+  host leg, leg-of(<raise>, backend)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, nested-holds(leg)
+
+test <a failure of a text carries no props record and no cause>
+  take backend, like text
+    walk raise-backends()
+  host leg, leg-of(<raise>, backend)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, text-holds(leg)
+
+test <an exception props field is the codec again, wrapped holding over-limit>
+  take backend, like text
+    walk raise-backends()
+  host leg, leg-of(<raise>, backend)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, first-holds(leg)
+
+test <a list of exceptions props field is the codec again for each, beside a number>
+  take backend, like text
+    walk raise-backends()
+  host leg, leg-of(<raise>, backend)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, rest-holds(leg)
+
+test <a caught raise passes to a parameter typed exception and to a list of them>
+  take backend, like text
+    walk raise-backends()
+  host leg, leg-of(<raise>, backend)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  want hold, is-equal(told-of(leg), <wrapped:outer/1:wrapped/2:wrapped,wrapped>)
+
+# ---- the same raise, the same bytes on both backends, code and time set aside ----
+
+test <TypeScript and Rust write the same bytes, code and time aside>
+  take name, like text
+    walk case-names()
+  host left, leg-of(<raise>, <typescript>)
+  host right, leg-of(<raise>, <rust>)
+  fork test, or(is-unequal(left/state, <ran>), is-unequal(right/state, <ran>))
+    hold
+      skip <both raise programs must run first: typescript {left/state}, rust {right/state}>
+  save at, place-of(case-names(), name)
+  save from-left, decoded-at(left, at)
+  save from-right, decoded-at(right, at)
+  want hold, not(is-nothing(from-left))
+  want hold, not(is-nothing(from-right))
+  want hold, is-equal(masked-hex(from-left), masked-hex(from-right))
+
+# ---- each backend fills what the other wrote, and melts it back to the same bytes ----
+
+test <typescript: as the other backend wrote it fills and melts back to those bytes>
+  take name, like text
+    walk case-names()
+  host leg, leg-of(<cross>, <typescript>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  save at, place-of(case-names(), name)
+  save line, got-at(leg, at)
+  save given, part-of(got-at(leg-of(<raise>, <rust>), at), 0)
+  want hold, and(is-equal(part-of(line, 0), given), is-equal(part-of(line, 1), part-of(line, 0)))
+
+test <typescript: as the other backend wrote it is caught as its form and props>
+  take name, like text
+    walk case-names()
+  host leg, leg-of(<cross>, <typescript>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  save line, got-at(leg, place-of(case-names(), name))
+  want hold, is-equal(part-of(line, 2), sifted-of(name))
+
+test <rust: as the other backend wrote it fills and melts back to those bytes>
+  take name, like text
+    walk case-names()
+  host leg, leg-of(<cross>, <rust>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  save at, place-of(case-names(), name)
+  save line, got-at(leg, at)
+  save given, part-of(got-at(leg-of(<raise>, <typescript>), at), 0)
+  want hold, and(is-equal(part-of(line, 0), given), is-equal(part-of(line, 1), part-of(line, 0)))
+
+test <rust: as the other backend wrote it is caught as its form and props>
+  take name, like text
+    walk case-names()
+  host leg, leg-of(<cross>, <rust>)
+  fork test, is-equal(leg/state, <skipped>)
+    hold
+      skip leg/reason
+  want hold, is-equal(leg/reason, <>)
+  save line, got-at(leg, place-of(case-names(), name))
+  want hold, is-equal(part-of(line, 2), sifted-of(name))
